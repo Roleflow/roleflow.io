@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roleflow: Stop losing $50K/mo on slow replies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0A1226;--bg2:#101A33;--line:#243155;--ink:#EEF1FA;--mute:#9AA6C6;--gold:#E8B04A;--m:#C0409A;--o:#FF8A3D;--grad:linear-gradient(120deg,#7B4DFF,#C0409A 50%,#FF8A3D);
+--h:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;--b:'Instrument Sans','Segoe UI',system-ui,sans-serif;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html{color-scheme:dark;scroll-behavior:smooth;scroll-padding-top:calc(76px + env(safe-area-inset-top,0px))}
+body{margin:0;background:radial-gradient(900px 520px at 50% -8%,rgba(123,77,255,.28),transparent 62%),radial-gradient(700px 420px at 100% 40%,rgba(255,138,61,.09),transparent 60%),var(--bg);color:var(--ink);font:400 17px/1.55 var(--b);text-align:center}
+h1,h2,h3{font-family:var(--h);line-height:1.05;margin:0;letter-spacing:-.02em}
+h1{font-size:clamp(2.5rem,8.2vw,5.6rem);font-weight:800;text-transform:uppercase;letter-spacing:-.03em}
+h2{font-size:clamp(1.8rem,4.6vw,3rem);font-weight:800}
+h3{font-size:1.15rem;font-weight:700}
+p{margin:0}.mute{color:var(--mute)}
+.g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+:focus-visible{outline:2px solid var(--o);outline-offset:3px}
+.wrap{max-width:900px;margin:0 auto;padding:0 22px}
+section{padding:92px 0}
+.sub{color:var(--mute);max-width:36em;margin:16px auto 0;font-size:1.08rem}
+nav{position:sticky;top:0;z-index:5;background:rgba(10,18,38,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+nav .in{max-width:1080px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;justify-content:center}
+.brand{display:flex;align-items:center;gap:10px;font:800 1.2rem var(--h)}
+.brand img{width:34px;height:34px;border-radius:50%}
+.btn{display:inline-block;border:0;cursor:pointer;font:600 1.02rem var(--b);color:#fff;background:var(--grad);padding:15px 30px;border-radius:999px;transition:transform .15s,box-shadow .15s;text-decoration:none}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(192,64,154,.45)}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--ink)}
+.btn.ghost:hover{box-shadow:none;border-color:var(--o)}
+.btn.sm{padding:9px 20px;font-size:.92rem}
+.btn[disabled]{opacity:.35;pointer-events:none}
+.hero{padding:56px 0 40px}.hero .panel{margin-top:34px}
+.hero .sub{font-size:1.2rem;max-width:34em;margin:26px auto 34px}
+.pills{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.pill{border:1px solid var(--line);background:var(--bg2);border-radius:999px;padding:7px 16px;font-size:.9rem;color:var(--mute)}
+.checks{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:26px}
+.ck{border:1px solid var(--line);border-radius:12px;padding:10px 8px;font-size:.8rem;color:var(--mute);line-height:1.25;transition:.3s}
+.ck i{display:block;font-style:normal;font-size:1.1rem;margin-bottom:2px}
+.ck.ok{border-color:var(--gold);color:var(--ink);background:rgba(232,176,74,.1)}
+.ck.no{border-color:var(--o);color:var(--ink);background:rgba(255,138,61,.1)}
+.panel{background:var(--bg2);border:1px solid var(--line);border-radius:26px;padding:34px;max-width:700px;margin:38px auto 0}
+
+/* leak calc */
+.sl{text-align:left;margin:18px 0}
+.sl label{display:flex;justify-content:space-between;color:var(--mute);font-size:.95rem}
+.sl b{color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--m);margin:8px 0 0}
+.lost{margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}
+.big{font:800 clamp(2.4rem,7vw,4rem) var(--h);color:var(--gold);line-height:1}
+
+/* voice demo */
+.dm{background:var(--bg);border:1px solid var(--line);border-radius:22px;padding:18px;max-width:400px;margin:38px auto 0;display:flex;flex-direction:column;gap:10px;text-align:left}
+.dm .top{display:flex;align-items:center;gap:10px;font-weight:600;font-size:.92rem;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.dot{width:30px;height:30px;border-radius:50%;background:var(--grad)}
+.bub{max-width:88%;padding:10px 14px;border-radius:17px;font-size:.95rem;line-height:1.4}
+.bub.them{background:#1D2848;align-self:flex-start;border-bottom-left-radius:4px}
+.bub.us{background:linear-gradient(120deg,#6A45E0,#B03F9F);align-self:flex-end;border-bottom-right-radius:4px;display:flex;align-items:center;gap:10px;min-width:240px}
+.play{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:#fff;color:#7B2FB5;cursor:pointer;font-size:.8rem}
+.wave{display:flex;align-items:center;gap:2px;height:30px;flex:1}
+.wave i{flex:1;background:rgba(255,255,255,.4);border-radius:2px;transition:background .15s}
+.wave i.on{background:#fff}
+.tm{font-size:.78rem;opacity:.85;min-width:2.4em}
+.tr{font-size:.85rem;color:var(--mute);align-self:flex-end;max-width:88%;font-style:italic;min-height:2.8em}
+.tag{align-self:center;font-size:.8rem;color:var(--gold);border:1px solid var(--gold);background:rgba(232,176,74,.1);border-radius:999px;padding:3px 12px}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+.trio div{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:22px 18px}
+.trio p{color:var(--mute);font-size:.95rem;margin-top:6px}
+
+/* before/after */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px;text-align:left}
+.vs>div{border:1px solid var(--line);border-radius:22px;padding:26px;background:var(--bg2)}
+.vs .w{border-color:var(--m);background:rgba(192,64,154,.09)}
+.vs ul{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:10px;color:var(--mute)}
+.vs li::before{content:"\2715  ";color:#7E8AAE}.vs .w li::before{content:"\2713  ";color:var(--gold)}.vs .w li{color:var(--ink)}
+
+/* pay */
+.seg{display:flex;gap:8px;max-width:300px;margin:0 auto}
+.seg button{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:11px;font:700 1rem var(--b);cursor:pointer}
+.seg button[aria-pressed=true]{border-color:var(--m);background:rgba(192,64,154,.18)}
+.row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+
+/* quiz */
+#quiz .checks{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:26px}
+.ck{border:1px solid var(--line);border-radius:12px;padding:10px 8px;font-size:.8rem;color:var(--mute);line-height:1.25;transition:.3s}
+.ck i{display:block;font-style:normal;font-size:1.1rem;margin-bottom:2px}
+.ck.ok{border-color:var(--gold);color:var(--ink);background:rgba(232,176,74,.1)}
+.ck.no{border-color:var(--o);color:var(--ink);background:rgba(255,138,61,.1)}
+.panel{background:var(--bg2);text-align:center;padding:34px 30px}
+.prog{display:flex;gap:6px;margin-bottom:28px}
+.prog i{flex:1;height:5px;border-radius:9px;background:var(--line);transition:.3s}
+.prog i.on{background:var(--grad)}
+.screen{animation:inR .35s cubic-bezier(.2,.8,.2,1)}.screen.back{animation-name:inL}
+@keyframes inR{from{opacity:0;transform:translateX(34px)}to{opacity:1;transform:none}}
+@keyframes inL{from{opacity:0;transform:translateX(-34px)}to{opacity:1;transform:none}}
+.opts{display:grid;gap:10px;margin-top:24px}
+.opt{display:flex;align-items:center;gap:14px;text-align:left;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:16px 18px;font:500 1.02rem var(--b);cursor:pointer;transition:.15s}
+.opt:hover{border-color:var(--o);transform:translateX(4px)}
+.opt kbd{font:600 .8rem var(--b);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--mute)}
+.opt.sel{border-color:var(--m);background:rgba(192,64,154,.22)}
+.fin{width:100%;background:transparent;border:0;border-bottom:2px solid var(--line);color:var(--ink);font:600 clamp(1.3rem,4vw,1.9rem) var(--h);padding:14px 0;margin-top:22px;text-align:center}
+.fin:focus{outline:0;border-color:var(--m)}
+.err{color:var(--o);min-height:1.5em;margin-top:10px;font-size:.95rem}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:26px}
+.spin{width:60px;height:60px;border-radius:50%;margin:10px auto 22px;border:4px solid var(--line);border-top-color:var(--o);border-right-color:var(--m);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.result p{margin:14px auto 22px;max-width:30em;color:var(--mute)}
+.tick{width:70px;height:70px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-size:2rem;margin:0 auto 18px}
+.recap{list-style:none;padding:0;margin:0 0 22px;color:var(--mute);font-size:.95rem}
+details{border-bottom:1px solid var(--line);padding:18px 0;text-align:left}
+summary{cursor:pointer;font:600 1.1rem var(--h)}
+details p{color:var(--mute);margin-top:10px}
+footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px solid var(--line)}
+@media(max-width:760px){.checks{grid-template-columns:1fr 1fr}.trio,.vs{grid-template-columns:1fr}section{padding:64px 0}.panel{padding:26px 18px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<nav><div class="in"><div class="brand"><img alt="" src="data:image/jpeg;base64,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">Roleflow</div></div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <h1>Stop losing $50K/mo<br><span class="g">on slow replies</span></h1>
+  <p class="sub">We build and run your Instagram DM system. It answers every lead in seconds and sends voice notes in your own voice. You pay 5 to 7% of what it earns. Answer 4 questions to see if you qualify.</p>
+  <div class="panel" id="start"><div id="qz" tabindex="-1" style="outline:0" aria-live="polite"></div></div>
+</div></header>
+
+<section id="leak" style="padding-top:30px"><div class="wrap">
+  <h2>How much are slow replies costing you?</h2>
+  <p class="sub">Drag the sliders. Every lead who waits hours is a lead who's already talking to someone else.</p>
+  <div class="panel">
+    <div class="sl"><label for="d">DMs from potential customers per day <b id="dv"></b></label><input id="d" type="range" min="5" max="200" step="5" value="30"></div>
+    <div class="sl"><label for="l">Share answered too late (over an hour) <b id="lv"></b></label><input id="l" type="range" min="5" max="90" step="5" value="40"></div>
+    <div class="sl"><label for="v">Average deal value <b id="vv"></b></label><input id="v" type="range" min="200" max="10000" step="100" value="2000"></div>
+    <div class="lost"><p class="mute">Estimated revenue lost every month</p><div class="big" id="lost"></div>
+    <p class="mute" style="font-size:.82rem;margin:8px 0 20px">Estimate only. Assumes 5% of DMs would have become customers if answered quickly.</p>
+    <a class="btn" href="#start">Stop the leak</a></div>
+  </div>
+</div></section>
+
+<section id="voice"><div class="wrap">
+  <h2>Voice notes in your own voice. <span class="g">Sent automatically.</span></h2>
+  <p class="sub">We clone your voice, so every lead gets a personal voice note back within seconds. Not a template. Not a robotic text. You.</p>
+  <div class="dm" aria-label="Sample Instagram DM with an automated voice note">
+    <div class="top"><span class="dot"></span>Instagram DM</div>
+    <div class="bub them">hey, do you still have spots open for coaching?</div>
+    <div class="bub us"><button class="play" id="play" aria-label="Play sample voice note">&#9654;</button><div class="wave" id="wave"></div><span class="tm" id="tm">0:07</span></div>
+    <div class="tr" id="tr"></div>
+    <span class="tag">Sample: sent in the owner's voice in 9 seconds</span>
+  </div>
+  <p class="mute" style="font-size:.85rem;margin-top:14px">Tap play to see the flow. Real voice notes are generated from your own voice.</p>
+  <div class="trio">
+    <div><h3>Send a short recording</h3><p>We create your voice clone from a sample of you talking.</p></div>
+    <div><h3>We write the replies</h3><p>Scripts match how you actually speak to leads.</p></div>
+    <div><h3>Leads hear you</h3><p>Voice notes go out in seconds, day or night.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What changes after Roleflow</h2>
+  <div class="vs">
+    <div><h3>Without Roleflow</h3><ul><li>Leads wait hours for a reply</li><li>Text-only replies that feel generic</li><li>Follow-ups get forgotten</li><li>Hot leads go cold in the inbox</li><li>You chase setters instead of selling</li></ul></div>
+    <div class="w"><h3>With Roleflow</h3><ul><li>Every lead answered in seconds</li><li>Voice notes in your own voice</li><li>Follow-ups sent automatically</li><li>Qualified leads booked on your calendar</li><li>We build it and only earn when you do</li></ul></div>
+  </div>
+</div></section>
+
+<section id="pay" style="padding-top:20px"><div class="wrap">
+  <h2>$0 upfront. <span class="g">5 to 7% of what it earns.</span></h2>
+  <p class="sub">No setup fee. No monthly retainer. If the system generates nothing, you owe nothing.</p>
+  <div class="panel">
+    <div class="seg" id="seg"></div>
+    <div class="sl" style="margin-top:22px"><label for="rv">Monthly revenue from the system <b id="rvv"></b></label><input id="rv" type="range" min="2000" max="100000" step="1000" value="20000"></div>
+    <div style="text-align:left;margin-top:12px"><div class="row"><span>Setup cost</span><b>$0</b></div><div class="row"><span>Monthly retainer</span><b>$0</b></div><div class="row"><span>Roleflow share</span><b id="fee"></b></div><div class="row"><span>You keep</span><b id="keep" style="color:var(--gold)"></b></div></div>
+    <p class="mute" style="font-size:.82rem;margin-top:14px">Your exact rate is confirmed on your demo call.</p>
+  </div>
+</div></section>
+
+
+<section style="padding-top:20px"><div class="wrap">
+  <h2>Questions</h2>
+  <div style="margin-top:28px">
+    <details><summary>Is it really my voice?</summary><p>Yes. We clone your voice from a short recording, so the voice notes leads receive sound like you.</p></details>
+    <details><summary>What does commission mean exactly?</summary><p>We take 5 to 7% of the revenue the system generates for you. There is no upfront fee and no fixed monthly charge.</p></details>
+    <details><summary>Why can't everyone book a demo?</summary><p>We fund the setup, so we only work with businesses where a DM system can realistically generate revenue. To qualify you need over 20 DMs a day, an offer above $1k, a closing rate above 20% and over $30k a month in cash collected.</p></details>
+    <details><summary>Which platforms do you work on?</summary><p>Instagram DMs.</p></details>
+    <details><summary>What if I don't qualify now?</summary><p>Retake the quiz once your offer, price point or inbound volume changes.</p></details>
+  </div>
+</div></section>
+<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+
+<script>
+const BOOKING_URL="https://calendar.app.google/8i1gomkozavqYU5b8";
+const $=n=>'$'+Math.round(n).toLocaleString('en-US'),g=id=>document.getElementById(id);
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* leak calculator */
+function leak(){const d=+g('d').value,l=+g('l').value,v=+g('v').value;g('dv').textContent=d.toLocaleString();g('lv').textContent=l+'%';g('vv').textContent=$(v);g('lost').textContent=$(d*30*l/100*.05*v)}
+['d','l','v'].forEach(i=>g(i).oninput=leak);leak();
+
+/* voice note demo */
+const W=g('wave');for(let i=0;i<30;i++){const b=document.createElement('i');b.style.height=(30+Math.abs(Math.sin(i*1.7)*60+Math.cos(i*.6)*20))+'%';W.appendChild(b)}
+const TX='"Hey! Yes, I have two spots left this month. Want me to save one for you?"';let pt=null;
+g('play').onclick=()=>{const bs=[...W.children],p=g('play');
+  if(pt){clearInterval(pt);pt=null;bs.forEach(b=>b.classList.remove('on'));p.innerHTML='&#9654;';g('tm').textContent='0:07';return}
+  let i=0;p.innerHTML='&#10074;&#10074;';g('tr').textContent=TX;
+  pt=setInterval(()=>{i++;bs.forEach((b,k)=>b.classList.toggle('on',k<i));g('tm').textContent='0:0'+Math.max(0,7-Math.floor(i/bs.length*7));
+    if(i>=bs.length){clearInterval(pt);pt=null;p.innerHTML='&#9654;';g('tm').textContent='0:07'}},230)};
+
+/* commission calculator */
+let rate=6;
+g('seg').innerHTML=[5,6,7].map(r=>`<button data-r="${r}" aria-pressed="${r===rate}">${r}%</button>`).join('');
+function pay(){const v=+g('rv').value;g('rvv').textContent=$(v);g('fee').textContent=$(v*rate/100);g('keep').textContent=$(v*(100-rate)/100)}
+g('rv').oninput=pay;
+g('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{rate=+b.dataset.r;g('seg').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));pay()});pay();
+
+/* qualification quiz: click an answer and it moves on. 0 = fails qualification */
+const CK=['20+ DMs a day','Offer above $1k','Close rate above 20%','$30k+ cash collected a month'];
+const Q=[
+{k:'dms',n:'over 20 DMs a day',q:'How many DMs do you get from potential customers per day?',o:[['20 or fewer',0],['21 to 50',1],['51 to 100',1],['More than 100',1]]},
+{k:'offer',n:'an offer priced above $1k',q:'What is the price of your main offer?',o:[['$1,000 or less',0],['$1,001 to $3,000',1],['$3,001 to $10,000',1],['More than $10,000',1]]},
+{k:'close',n:'a closing rate above 20%',q:'What is your closing rate on sales calls?',o:[['20% or lower',0],['21% to 30%',1],['31% to 50%',1],['More than 50%',1],["I don't track it yet",0]]},
+{k:'cash',n:'over $30k a month in cash collected',q:'How much cash do you collect each month?',o:[['$30,000 or less',0],['$30,001 to $100,000',1],['$100,001 to $500,000',1],['More than $500,000',1]]}
+];
+const F=[['n','What should we call you?','text','name','Your first name'],['e','What email can we reach you on?','email','email','you@business.com'],['ig','What is your Instagram handle?','text','off','@yourbusiness']];
+const A={},T=Q.length+F.length,qz=g('qz');let qi=0,keyH=null,first=true;
+const prog=n=>`<div class="prog">${Array.from({length:T},(_,i)=>`<i class="${i<=n?'on':''}"></i>`).join('')}</div>`;
+const wrap=(h,back)=>{qz.innerHTML=`<div class="screen${back?' back':''}">${h}</div>`};
+function quiz(back){
+  
+  if(qi<Q.length){
+    const q=Q[qi];
+    wrap(`${prog(qi)}<h3 style="font-size:1.5rem">${q.q}</h3><div class="opts">${q.o.map((o,j)=>`<button class="opt${A[q.k]&&A[q.k][0]===j?' sel':''}" data-j="${j}"><kbd>${j+1}</kbd>${o[0]}</button>`).join('')}</div>
+    <div class="nav"><button class="btn ghost sm" id="bk" ${qi?'':'disabled'}>Back</button><span class="mute">${qi+1} of ${T}</span></div>`,back);
+    const pick=j=>{A[q.k]=[j,q.o[j][0],q.o[j][1]];qz.querySelectorAll('.opt')[j].classList.add('sel');setTimeout(()=>{qi++;quiz()},260)};
+    qz.querySelectorAll('.opt').forEach(b=>b.onclick=()=>pick(+b.dataset.j));
+    keyH=e=>{const j=+e.key-1;if(j>=0&&j<q.o.length)pick(j)};
+    g('bk').onclick=()=>{qi--;quiz(1)};
+  }else if(qi<T){
+    const f=F[qi-Q.length];keyH=null;
+    wrap(`${prog(qi)}<h3 style="font-size:1.5rem">${f[1]}</h3><input class="fin" id="fi" type="${f[2]}" autocomplete="${f[3]}" placeholder="${f[4]}" value="${esc(A[f[0]]||'')}"><p class="err" id="er"></p>
+    <div class="nav"><button class="btn ghost sm" id="bk">Back</button><button class="btn" id="nx">${qi===T-1?'See my result':'Continue'}</button></div>`,back);
+    const fi=g('fi');fi.focus({preventScroll:true});
+    const next=()=>{const v=fi.value.trim();if(f[0]==='e'?!/^\S+@\S+\.\S+$/.test(v):!v){g('er').textContent=f[0]==='e'?'Enter a valid email address.':'This field is required.';return}A[f[0]]=v;qi++;quiz()};
+    fi.onkeydown=e=>{if(e.key==='Enter')next()};g('nx').onclick=next;g('bk').onclick=()=>{qi--;quiz(1)};
+  }else{keyH=null;analyze()}
+}
+qz.addEventListener('keydown',e=>{if(keyH&&e.target.tagName!=='INPUT')keyH(e)});
+function analyze(){
+  const m=['Checking your offer','Matching deal value to volume','Reviewing commission fit'];let k=0;
+  wrap(`<div class="result"><div class="spin"></div><h3 id="am">${m[0]}</h3></div>`);
+  const iv=setInterval(()=>{k++;if(g('am')&&k<m.length)g('am').textContent=m[k]},600);
+  setTimeout(()=>{clearInterval(iv);result()},1900);
+}
+function result(){
+  const fails=Q.filter(q=>A[q.k][2]===0),ok=!fails.length,nm=esc(A.n.split(' ')[0]);
+  // TODO: send {name:A.n,email:A.e,instagram:A.ig,answers:A,qualified:ok} to your form backend / CRM here
+  const recap='<ul class="recap">'+Q.map(q=>`<li>${esc(A[q.k][1])}</li>`).join('')+'</ul>';
+  wrap(ok?`<div class="result"><div class="tick">&#10003;</div><h2 style="font-size:2rem">You qualify, ${nm}.</h2><p>Your business is a strong fit for a commission-based DM system that replies in your own voice. Taking you to book your call now. If nothing happens, use the button.</p>${recap}<a class="btn" id="bookbtn" href="${BOOKING_URL}" target="_blank" rel="noopener">Book your call</a></div>`:
+  `<div class="result"><h2 style="font-size:2rem">Not a fit yet, ${nm}.</h2><p>Because we're paid from the revenue your DMs generate, we can't take on your business right now. To work with us you need over 20 DMs a day, an offer above $1k, a closing rate above 20% and over $30k a month in cash collected. Right now you're missing: ${fails.map(f=>f.n).join(', ')}.</p><button class="btn ghost" id="again">Retake the quiz</button></div>`);
+  if(ok)setTimeout(()=>{if(g('bookbtn')){try{window.top.location.href=BOOKING_URL}catch(e){}}},2500);
+  const a=g('again');if(a)a.onclick=()=>{for(const k in A)delete A[k];qi=0;quiz()};
+}
+quiz();
+</script>
+</body>
+</html>
