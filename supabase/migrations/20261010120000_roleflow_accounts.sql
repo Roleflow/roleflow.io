@@ -340,3 +340,8 @@ insert into public.admins (user_id)
 select u.id from auth.users u
 where lower(u.email) = 'diego@roleflow.io'
 on conflict (user_id) do nothing;
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.handle_user_email_change() from public, anon, authenticated;
+revoke execute on function public.guard_profile_update() from public, anon, authenticated;
+revoke execute on function public.guard_onboarding_update() from public, anon, authenticated;
