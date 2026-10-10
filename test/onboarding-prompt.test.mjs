@@ -191,13 +191,22 @@ assert.match(section(extraPrompt, "Identity and Mission"), /SENTINEL_EXTRA_FIELD
 assert.doesNotMatch(section(extraPrompt, "Objection Handling"), /SENTINEL_EXTRA_FIELD/);
 
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
-assert.match(homepage, /src="onboarding\/config\.js"/);
-assert.match(homepage, /Start your onboarding/);
-assert.match(homepage, /id="onboarding"/);
+assert.match(homepage, /src="supabase\/config\.js"/);
+assert.match(homepage, /Create your account/);
 assert.match(homepage, /Book your call/);
 assert.match(homepage, /How many DMs do you get from potential customers per day/);
+assert.doesNotMatch(homepage, /id="onboarding"/);
+assert.doesNotMatch(homepage, /Start your onboarding/);
 const redirect = fs.readFileSync(path.join(root, "onboarding/index.html"), "utf8");
-assert.match(redirect, /location\.replace\("\/#onboarding"\)/);
+assert.match(redirect, /\/login\/\?next=\/account\//);
 assert.doesNotMatch(redirect, /HIGH_PRIORITY_RULES/);
+const configJs = fs.readFileSync(path.join(root, "supabase/config.js"), "utf8");
+assert.match(configJs, /https:\/\/xrsipofgofvjiskmsgij\.supabase\.co/);
+assert.match(configJs, /sb_publishable_/);
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20261010120000_roleflow_accounts.sql"), "utf8");
+assert.match(migration, /enable row level security/i);
+assert.match(migration, /diego@roleflow\.io/);
+assert.match(migration, /create policy submissions_select/);
+assert.match(migration, /on_auth_user_created/);
 
 console.log("onboarding prompt tests passed");

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reset password · Roleflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+</head>
+<body>
+<a class="skip" href="#request-form">Skip to password reset</a>
+<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><a class="navlink" href="/login/">Log in</a></div></nav>
+<header class="hero"><div class="wrap">
+  <h1>Reset your <span class="g">password</span></h1>
+  <p class="sub">We will email you a link. It opens this page so you can choose a new password.</p>
+</div></header>
+<main class="wrap">
+  <p class="err" id="form-error" role="alert"></p>
+  <p class="okmsg" id="form-ok" role="status"></p>
+  <div class="panel" id="request-panel">
+    <form id="request-form" class="auth-form">
+      <label>Email<input id="email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
+      <button class="btn" type="submit">Email me a reset link</button>
+    </form>
+  </div>
+  <div class="panel" id="password-panel" hidden>
+    <form id="password-form" class="auth-form">
+      <label>New password<span class="hint">At least 8 characters.</span><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Confirm password<input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn" type="submit">Save new password</button>
+    </form>
+  </div>
+</main>
+<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+<script src="/supabase/config.js"></script>
+<script type="module" src="/reset/reset.js"></script>
+</body>
+</html>

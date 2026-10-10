@@ -30,8 +30,15 @@
     storageError: "",
     promptText: "",
     submissionText: "",
-    opened: false
+    opened: false,
+    remoteState: "",
+    accountStatus: "not_started",
+    locked: false
   };
+
+  var account = globalThis.ROLEFLOW_ACCOUNT || null;
+  var remoteTimer = null;
+  var remoteChain = Promise.resolve();
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -117,6 +124,90 @@
     if (section) section.scrollIntoView({ block: "start" });
   }
 
+  function storageKey() {
+    return account && account.userId ? STORAGE_KEY + "." + account.userId : STORAGE_KEY;
+  }
+
+  function saveMessage() {
+    if (state.storageError) return state.storageError;
+    if (!account) return "Saved on this device";
+    if (state.remoteState === "saving") return "Saving…";
+    if (state.remoteState === "error") return "Couldn't save to your account. A copy is still on this device.";
+    if (state.remoteState === "saved") return "Saved to your account";
+    return "Answers save to your account";
+  }
+
+  function paintSave() {
+    var label = document.getElementById("save-state");
+    if (!label) return;
+    label.textContent = saveMessage();
+    label.classList.toggle("warn", Boolean(state.storageError) || state.remoteState === "error");
+  }
+
+  function statusPhrase() {
+    var n = Math.min(progressMax, state.stepIndex + 1);
+    var status = state.accountStatus || "not_started";
+    if (status === "in_progress") return "In progress · step " + n + " of " + progressMax;
+    if (status === "not_started") return "Not started";
+    if (status === "submitted") return "Submitted";
+    if (status === "integrated") return "Integrated";
+    if (status === "live") return "Live";
+    return status;
+  }
+
+  function paintAccountStatus() {
+    var node = document.getElementById("account-status");
+    if (node) node.textContent = statusPhrase();
+  }
+
+  function currentSnapshot(status) {
+    return {
+      answers: state.answers,
+      stepIndex: state.stepIndex,
+      status: status,
+      promptText: state.promptText || ""
+    };
+  }
+
+  function snapshotStatus() {
+    if (state.locked) return state.accountStatus;
+    if (state.stepIndex === promptIndex && state.promptText) return "submitted";
+    if (hasAnyAnswer(state.answers) || state.stepIndex > 0) return "in_progress";
+    return "not_started";
+  }
+
+  function enqueueRemote(task) {
+    remoteChain = remoteChain.then(task, task);
+    return remoteChain;
+  }
+
+  function flushRemote() {
+    if (!account || state.locked || !account.save) return;
+    var snapshot = currentSnapshot(snapshotStatus());
+    state.remoteState = "saving";
+    paintSave();
+    enqueueRemote(function () {
+      return account.save(snapshot).then(function () {
+        state.remoteState = "saved";
+        state.storageError = "";
+        state.accountStatus = snapshot.status;
+        paintSave();
+        paintAccountStatus();
+      }, function () {
+        state.remoteState = "error";
+        state.storageError = "Couldn't save to your account. A copy is still on this device.";
+        paintSave();
+      });
+    });
+  }
+
+  function scheduleRemote(immediate) {
+    if (!account || state.locked) return;
+    clearTimeout(remoteTimer);
+    if (immediate) flushRemote();
+    else remoteTimer = setTimeout(flushRemote, 700);
+  }
+
   function saveLocal() {
     var payload = {
       version: 1,
@@ -125,20 +216,18 @@
       savedAt: new Date().toISOString()
     };
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      state.storageError = "";
+      localStorage.setItem(storageKey(), JSON.stringify(payload));
     } catch (error) {
-      state.storageError = "Couldn't save in this browser. Download your submission before you leave.";
+      state.storageError = account
+        ? "Couldn't save in this browser. Your account save will still be tried."
+        : "Couldn't save in this browser. Download your submission before you leave.";
     }
-    var label = document.getElementById("save-state");
-    if (label) {
-      label.textContent = state.storageError || "Saved on this device";
-      label.classList.toggle("warn", Boolean(state.storageError));
-    }
+    paintSave();
   }
 
-  function persist(historyMode) {
+  function persist(historyMode, opts) {
     saveLocal();
+    if (!(opts && opts.skipRemote)) scheduleRemote(true);
     if (historyMode === "none" || !window.history) return;
     var hash = hashFor(state.stepIndex);
     var url = window.location.pathname + window.location.search + hash;
@@ -245,8 +334,8 @@
       el("div", { class: "prog", "aria-hidden": "true" }, bars),
       el("p", { class: "prog-label" }, [
         el("span", {}, [progressLabel()]),
-        el("span", { class: state.storageError ? "save-state warn" : "save-state", id: "save-state" }, [
-          state.storageError || "Saved on this device"
+        el("span", { class: state.storageError || state.remoteState === "error" ? "save-state warn" : "save-state", id: "save-state" }, [
+          saveMessage()
         ])
       ])
     ]);
@@ -255,7 +344,9 @@
   function banner() {
     if (!state.banner) return null;
     return el("div", { class: "banner" }, [
-      el("p", {}, ["Welcome back. Your answers were restored on this device."]),
+      el("p", {}, [account
+        ? "Welcome back. Your answers were restored from your account."
+        : "Welcome back. Your answers were restored on this device."]),
       el("div", { class: "banner-actions" }, [
         el("button", { type: "button", class: "btn sm", "data-action": "dismiss-banner" }, ["Continue"]),
         el("button", { type: "button", class: "btn ghost sm", "data-action": "start-over" }, ["Start over"])
@@ -486,7 +577,9 @@
     ensurePrompt();
     var root = el("div", {}, [
       el("h2", { id: "step-title", tabindex: "-1" }, ["Your setter prompt"]),
-      el("p", { class: "step-desc" }, ["This is the full system prompt for your Instagram DM setter. Nothing was sent to Roleflow automatically."]),
+      el("p", { class: "step-desc" }, [account
+        ? "This prompt is saved to your account. Copy or download it here. Email Diego only if you also want a copy in his inbox."
+        : "This is the full system prompt for your Instagram DM setter. Nothing was sent to Roleflow automatically."]),
       el("p", { class: "note" }, ["Section 1 uses Roleflow's shared High Priority Rules. Roleflow reviews the prompt before it goes live."])
     ]);
     root.append(el("div", { class: "toolbar" }, [
@@ -505,7 +598,9 @@
     var handoff = el("div", { class: "handoff" }, [
       el("h3", {}, ["Send this to Diego"]),
       el("p", { class: "step-desc" }, [
-        "Download the submission file (your answers plus the prompt), then email it to Diego and attach the file before you send. This page does not send anything on its own."
+        account
+          ? "Your answers and this prompt are saved in your account, so Diego can open them in the tracking dashboard. You can still download the file or email it."
+          : "Download the submission file (your answers plus the prompt), then email it to Diego and attach the file before you send. This page does not send anything on its own."
       ])
     ]);
     var mail = el("a", { class: "btn ghost", href: mailtoHref(), "data-action": "email", id: "email-diego" }, ["Email Diego"]);
@@ -514,19 +609,29 @@
       mail
     ]));
     root.append(handoff);
-    root.append(el("div", { class: "actions" }, [
-      el("button", { type: "button", class: "btn ghost", "data-action": "back-to-review" }, ["Edit answers"]),
-      el("div", { class: "right" }, [
-        hasAnyAnswer(state.answers)
-          ? el("button", { type: "button", class: "text-btn", "data-action": "start-over" }, ["Start over"])
-          : null
-      ])
-    ]));
+    if (!state.locked) {
+      root.append(el("div", { class: "actions" }, [
+        el("button", { type: "button", class: "btn ghost", "data-action": "back-to-review" }, ["Edit answers"]),
+        el("div", { class: "right" }, [
+          hasAnyAnswer(state.answers)
+            ? el("button", { type: "button", class: "text-btn", "data-action": "start-over" }, ["Start over"])
+            : null
+        ])
+      ]));
+    }
     return root;
   }
 
   function buildView() {
     var view = document.createDocumentFragment();
+    if (state.locked) {
+      view.append(el("p", { class: "note" }, [
+        "Roleflow marked this onboarding " + (state.accountStatus === "live" ? "live" : "integrated") + ". You can read and copy the prompt. Answers stay locked."
+      ]));
+      if (state.promptText) view.append(renderPrompt());
+      else view.append(el("p", { class: "step-desc" }, ["The prompt is not stored on this account yet."]));
+      return view;
+    }
     var note = banner();
     if (note) view.append(note);
     if (state.stepIndex !== promptIndex) view.append(progressBar());
@@ -560,13 +665,14 @@
     if (options.focusHeading) {
       focusHeading();
       setStatus(progressLabel());
-    } else if (options.focusError) {
+    } else     if (options.focusError) {
       focusFirstError();
       setStatus("Some required answers are missing.");
     } else if (options.focusId) {
       var node = document.getElementById(options.focusId);
       if (node) node.focus({ preventScroll: true });
     }
+    paintAccountStatus();
   }
 
   function visibilityKey(step) {
@@ -603,6 +709,7 @@
     }
     clearError(fieldId);
     saveLocal();
+    scheduleRemote(false);
   }
 
   function updateCheckbox(target) {
@@ -617,6 +724,7 @@
     state.answers[fieldId] = Form.orderSelection(field || { options: [] }, selected);
     clearError(fieldId);
     saveLocal();
+    scheduleRemote(false);
     var after = step ? visibilityKey(step) : "";
     if (before !== after) render({ focusId: target.id });
   }
@@ -658,7 +766,32 @@
     state.errors = {};
     state.cameFromReview = false;
     state.stepIndex = promptIndex;
-    persist("push");
+    ensurePrompt();
+    saveLocal();
+    if (window.history) {
+      var hash = hashFor(state.stepIndex);
+      var url = window.location.pathname + window.location.search + hash;
+      if (window.location.hash !== hash) history.pushState({ step: state.stepIndex }, "", url);
+    }
+    if (account && !state.locked && account.submit) {
+      clearTimeout(remoteTimer);
+      state.remoteState = "saving";
+      paintSave();
+      enqueueRemote(function () {
+        ensurePrompt();
+        return account.submit(currentSnapshot("submitted")).then(function () {
+          state.accountStatus = "submitted";
+          state.remoteState = "saved";
+          state.storageError = "";
+          paintAccountStatus();
+          render({ focusHeading: true });
+        }, function () {
+          state.remoteState = "error";
+          state.storageError = "Couldn't save the prompt to your account. A copy is still on this device.";
+          render({ focusHeading: true });
+        });
+      });
+    }
     render({ focusHeading: true });
   }
 
@@ -683,7 +816,11 @@
   }
 
   function startOver() {
-    if (!window.confirm("Clear your saved answers on this device and start over?")) return;
+    if (state.locked) return;
+    var message = account
+      ? "Clear your saved answers in your account and start over?"
+      : "Clear your saved answers on this device and start over?";
+    if (!window.confirm(message)) return;
     state.answers = {};
     state.stepIndex = 0;
     state.errors = {};
@@ -691,11 +828,27 @@
     state.banner = false;
     state.promptText = "";
     state.submissionText = "";
-    try { localStorage.removeItem(STORAGE_KEY); } catch (error) { /* ignore */ }
+    state.accountStatus = "not_started";
+    try { localStorage.removeItem(storageKey()); } catch (error) { /* ignore */ }
     try { sessionStorage.removeItem(BANNER_KEY); } catch (error) { /* ignore */ }
-    persist("push");
+    clearTimeout(remoteTimer);
+    if (account && account.save) {
+      enqueueRemote(function () {
+        return account.save(currentSnapshot("not_started")).then(function () {
+          state.remoteState = "saved";
+          state.storageError = "";
+          paintAccountStatus();
+          paintSave();
+        }, function () {
+          state.remoteState = "error";
+          state.storageError = "Couldn't clear the account copy. It is cleared in this browser.";
+          paintSave();
+        });
+      });
+    }
+    persist("push", { skipRemote: true });
     render({ focusHeading: true });
-    setStatus("Answers cleared on this device.");
+    setStatus(account ? "Answers cleared in your account." : "Answers cleared on this device.");
   }
 
   function copyPrompt() {
@@ -808,7 +961,39 @@
     }
   });
 
+  function bootAccount() {
+    var boot = account.boot || {};
+    state.answers = boot.answers && typeof boot.answers === "object" ? boot.answers : {};
+    var index = Number(boot.stepIndex);
+    if (Number.isInteger(index) && index >= 0 && index <= promptIndex) state.stepIndex = index;
+    state.promptText = boot.promptText || "";
+    state.accountStatus = account.status || "not_started";
+    state.locked = state.accountStatus === "integrated" || state.accountStatus === "live";
+    prefill(account.profilePrefill);
+    var dismissed = false;
+    try { dismissed = sessionStorage.getItem(BANNER_KEY) === "1"; } catch (error) { dismissed = false; }
+    state.banner = Boolean(account.restored) && !state.locked && !dismissed && hasAnyAnswer(state.answers);
+    if (state.locked || state.accountStatus === "submitted") state.stepIndex = promptIndex;
+    var fromHash = indexFromHash(window.location.hash);
+    if (fromHash != null && !state.locked && state.accountStatus !== "submitted") state.stepIndex = fromHash;
+    showSection();
+    persist("replace", { skipRemote: true });
+    render({ focusHeading: true });
+  }
+
   window.addEventListener("popstate", function () {
+    if (account) {
+      if (state.locked) return;
+      var next = indexFromHash(window.location.hash);
+      if (next == null) return;
+      state.stepIndex = next;
+      state.cameFromReview = false;
+      state.errors = {};
+      saveLocal();
+      scheduleRemote(true);
+      render({ focusHeading: true });
+      return;
+    }
     if (!hashIsOnboarding(window.location.hash)) {
       if (state.opened) hideSection();
       return;
@@ -823,15 +1008,19 @@
     render({ focusHeading: true });
   });
 
-  loadLocal();
-  var stepFromHash = indexFromHash(window.location.hash);
-  if (stepFromHash != null) state.stepIndex = stepFromHash;
-  if (hashIsOnboarding(window.location.hash)) {
-    showSection();
-    persist("replace");
-    render({ focusHeading: true });
+  if (account) {
+    bootAccount();
   } else {
-    render();
+    loadLocal();
+    var stepFromHash = indexFromHash(window.location.hash);
+    if (stepFromHash != null) state.stepIndex = stepFromHash;
+    if (hashIsOnboarding(window.location.hash)) {
+      showSection();
+      persist("replace", { skipRemote: true });
+      render({ focusHeading: true });
+    } else {
+      render();
+    }
   }
 
   globalThis.RoleflowOnboarding = { open: open };
