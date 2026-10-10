@@ -449,6 +449,7 @@
       el("button", { type: "button", class: "btn ghost", "data-action": "download-md" }, ["Download .md"]),
       el("button", { type: "button", class: "btn ghost", "data-action": "download-txt" }, ["Download .txt"])
     ]));
+    root.append(el("p", { id: "copy-note", class: "copy-note", role: "status" }));
     root.append(el("pre", {
       class: "prompt",
       id: "prompt-text",
@@ -654,28 +655,54 @@
 
   function copyPrompt() {
     var button = document.getElementById("copy-btn");
-    function done(ok) {
+    var note = document.getElementById("copy-note");
+    function show(ok) {
       if (button) button.textContent = ok ? "Copied" : "Copy prompt";
-      setStatus(ok ? "Prompt copied." : "Couldn't copy automatically. Select the prompt and copy it manually.");
-      if (ok) setTimeout(function () { if (button) button.textContent = "Copy prompt"; }, 2000);
+      if (note) {
+        note.textContent = ok
+          ? "Copied to your clipboard."
+          : "Couldn't copy automatically. The prompt text is selected. Press Ctrl+C.";
+        note.classList.toggle("ok", ok);
+        note.classList.toggle("bad", !ok);
+      }
+      setStatus(ok ? "Prompt copied." : "Couldn't copy automatically. The prompt text is selected.");
+      if (ok) {
+        setTimeout(function () {
+          if (button && button.textContent === "Copied") button.textContent = "Copy prompt";
+        }, 2500);
+      }
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(state.promptText).then(function () { done(true); }, function () { done(fallbackCopy()); });
+    var text = state.promptText;
+    if (navigator.clipboard && window.isSecureContext && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { show(true); }, function () { show(fallbackCopy(text)); });
     } else {
-      done(fallbackCopy());
+      show(fallbackCopy(text));
     }
   }
 
-  function fallbackCopy() {
+  function fallbackCopy(text) {
     var area = el("textarea", { readonly: "readonly" });
-    area.value = state.promptText;
+    area.value = text;
     area.style.position = "fixed";
-    area.style.left = "-9999px";
+    area.style.top = "0";
+    area.style.left = "0";
+    area.style.opacity = "0";
     document.body.appendChild(area);
+    area.focus();
     area.select();
     var ok = false;
     try { ok = document.execCommand("copy"); } catch (error) { ok = false; }
     area.remove();
+    if (!ok) {
+      var pre = document.getElementById("prompt-text");
+      if (pre) {
+        var range = document.createRange();
+        range.selectNodeContents(pre);
+        var selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
     return ok;
   }
 
