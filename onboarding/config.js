@@ -50,7 +50,7 @@
       comes from HIGH_PRIORITY_RULES.
 
    4. DIEGO_EMAIL
-      Used by the "Email Diego" button. Placeholder until confirmed.
+      Used by the "Email Diego" button. Confirmed: diego@roleflow.io.
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -957,7 +957,7 @@
 
   root.ROLEFLOW_ONBOARDING_CONFIG = {
     configVersion: 1,
-    /* Placeholder. Confirm the real inbox before sending clients to this page. */
+    /* Confirmed inbox for the Email Diego button. */
     DIEGO_EMAIL: "diego@roleflow.io",
     HIGH_PRIORITY_RULES: HIGH_PRIORITY_RULES,
     PROMPT_SECTIONS: PROMPT_SECTIONS,

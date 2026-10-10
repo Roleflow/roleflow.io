@@ -191,6 +191,13 @@ assert.match(section(extraPrompt, "Identity and Mission"), /SENTINEL_EXTRA_FIELD
 assert.doesNotMatch(section(extraPrompt, "Objection Handling"), /SENTINEL_EXTRA_FIELD/);
 
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
-assert.doesNotMatch(homepage, /onboarding/);
+assert.match(homepage, /src="onboarding\/config\.js"/);
+assert.match(homepage, /Start your onboarding/);
+assert.match(homepage, /id="onboarding"/);
+assert.match(homepage, /Book your call/);
+assert.match(homepage, /How many DMs do you get from potential customers per day/);
+const redirect = fs.readFileSync(path.join(root, "onboarding/index.html"), "utf8");
+assert.match(redirect, /location\.replace\("\/#onboarding"\)/);
+assert.doesNotMatch(redirect, /HIGH_PRIORITY_RULES/);
 
 console.log("onboarding prompt tests passed");

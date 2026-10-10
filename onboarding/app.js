@@ -7,8 +7,8 @@
   var config = globalThis.ROLEFLOW_ONBOARDING_CONFIG;
   var Form = globalThis.RoleflowForm;
   var Prompt = globalThis.RoleflowPrompt;
-  var app = document.getElementById("app");
-  var statusEl = document.getElementById("status");
+  var app = document.getElementById("onboarding-app");
+  var statusEl = document.getElementById("onboarding-status");
 
   if (!app || !config || !Form || !Prompt) {
     if (app) app.textContent = "The form could not load. Refresh the page.";
@@ -29,7 +29,8 @@
     banner: false,
     storageError: "",
     promptText: "",
-    submissionText: ""
+    submissionText: "",
+    opened: false
   };
 
   function el(tag, attrs, children) {
@@ -57,19 +58,63 @@
   }
 
   function hashFor(index) {
-    if (index === reviewIndex) return "#review";
-    if (index === promptIndex) return "#prompt";
+    if (index === reviewIndex) return "#onboarding-review";
+    if (index === promptIndex) return "#onboarding-prompt";
     var step = config.QUESTIONS[index];
-    return step ? "#" + step.id : "#about";
+    return "#onboarding-" + (step ? step.id : "about");
   }
 
   function indexFromHash(hash) {
     var id = String(hash || "").replace(/^#/, "");
-    if (!id) return null;
-    if (id === "review") return reviewIndex;
-    if (id === "prompt") return promptIndex;
-    var index = config.QUESTIONS.findIndex(function (step) { return step.id === id; });
+    if (id.indexOf("onboarding-") !== 0) return null;
+    var stepId = id.slice("onboarding-".length);
+    if (stepId === "review") return reviewIndex;
+    if (stepId === "prompt") return promptIndex;
+    var index = config.QUESTIONS.findIndex(function (step) { return step.id === stepId; });
     return index === -1 ? null : index;
+  }
+
+  function hashIsOnboarding(hash) {
+    var id = String(hash || "").replace(/^#/, "");
+    return id === "onboarding" || id.indexOf("onboarding-") === 0;
+  }
+
+  function showSection() {
+    var section = document.getElementById("onboarding");
+    if (section) section.hidden = false;
+    state.opened = true;
+  }
+
+  function hideSection() {
+    var section = document.getElementById("onboarding");
+    if (section) section.hidden = true;
+    state.opened = false;
+  }
+
+  function normalizeHandle(value) {
+    var handle = String(value || "").trim();
+    if (!handle || handle.charAt(0) === "@" || /[/\s]/.test(handle)) return handle;
+    return "@" + handle;
+  }
+
+  function prefill(values) {
+    if (!values) return;
+    Object.keys(values).forEach(function (key) {
+      if (!Form.isBlank(state.answers[key]) || Form.isBlank(values[key])) return;
+      state.answers[key] = key === "instagramHandle" ? normalizeHandle(values[key]) : String(values[key]).trim();
+    });
+    saveLocal();
+  }
+
+  function open(values) {
+    prefill(values);
+    showSection();
+    var fromHash = indexFromHash(window.location.hash);
+    if (fromHash != null) state.stepIndex = fromHash;
+    persist("push");
+    render({ focusHeading: true });
+    var section = document.getElementById("onboarding");
+    if (section) section.scrollIntoView({ block: "start" });
   }
 
   function saveLocal() {
@@ -764,6 +809,11 @@
   });
 
   window.addEventListener("popstate", function () {
+    if (!hashIsOnboarding(window.location.hash)) {
+      if (state.opened) hideSection();
+      return;
+    }
+    showSection();
     var index = indexFromHash(window.location.hash);
     if (index == null) return;
     state.stepIndex = index;
@@ -774,6 +824,15 @@
   });
 
   loadLocal();
-  persist("replace");
-  render({ focusHeading: true });
+  var stepFromHash = indexFromHash(window.location.hash);
+  if (stepFromHash != null) state.stepIndex = stepFromHash;
+  if (hashIsOnboarding(window.location.hash)) {
+    showSection();
+    persist("replace");
+    render({ focusHeading: true });
+  } else {
+    render();
+  }
+
+  globalThis.RoleflowOnboarding = { open: open };
 })();
