@@ -46,3 +46,13 @@ export async function logout() {
   if (supabase) await supabase.auth.signOut();
   window.location.replace("/");
 }
+
+export function signupErrorMessage(error) {
+  const raw = [error && error.message, error && error.msg, error && error.error_description, error && error.details, error && error.code]
+    .filter(Boolean)
+    .join(" ");
+  if (/invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) {
+    return "Invalid access code.";
+  }
+  return (error && error.message) || "Could not create the account.";
+}

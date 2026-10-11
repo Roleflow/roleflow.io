@@ -122,10 +122,77 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:760px){.navlink{right:12px;font-size:.85rem}.endbtns{flex-direction:column}.endbtns .btn{width:100%}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+.menu-toggle{min-height:44px;min-width:44px}
+html.drawer-open,html.drawer-open body{overflow:hidden}
+.drawer-backdrop{position:fixed;inset:0;z-index:25;background:rgba(5,8,20,.62)}
+.drawer{position:fixed;top:0;right:0;z-index:30;width:min(420px,100%);height:100%;overflow:auto;background:#101A33;border-left:1px solid var(--line);padding:22px 22px calc(28px + env(safe-area-inset-bottom,0px));text-align:left;box-shadow:-20px 0 60px rgba(0,0,0,.35)}
+.drawer-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.drawer-head h2{font-size:1.6rem}
+.drawer-close{background:none;border:0;color:var(--mute);font:600 .95rem var(--b);cursor:pointer;padding:8px 0}
+.drawer-close:hover{color:var(--gold)}
+.drawer-switch{display:flex;gap:8px;margin-top:18px}
+.drawer-switch button{flex:1;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px;font:600 .95rem var(--b);cursor:pointer}
+.drawer-switch button[aria-selected=true]{border-color:var(--m);background:rgba(192,64,154,.2)}
+.drawer-form{display:grid;gap:12px;margin-top:16px}
+.drawer-form label{display:grid;gap:6px;font-weight:600;text-align:left;font-size:.95rem}
+.drawer-form input{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font:400 1rem/1.4 var(--b)}
+.drawer-form input:focus{outline:none;border-color:var(--m)}
+.drawer-hint{color:var(--mute);font-weight:400;font-size:.85rem}
+.drawer-err{color:var(--o);min-height:1.3em;margin:0;font-size:.95rem}
+.drawer-ok{color:var(--gold);margin:0;font-weight:600}
+.drawer-name{font:700 1.35rem var(--h);margin:12px 0 6px}
+.drawer-note{color:var(--mute);margin:0 0 16px}
+.drawer-actions{display:grid;gap:10px}
+.drawer-actions .btn,.drawer-form .btn{width:100%}
+@media(max-width:760px){.drawer{width:100%}}
 </style>
 </head>
 <body>
-<nav><div class="in"><div class="brand"><img alt="" src="data:image/jpeg;base64,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">Roleflow</div><a class="navlink" id="nav-account" href="/login/">Log in</a></div></nav>
+<nav><div class="in"><div class="brand"><img alt="" src="data:image/jpeg;base64,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">Roleflow</div><button type="button" class="navlink menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="site-drawer">Menu</button></div></nav>
+<div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+<aside id="site-drawer" class="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+  <div class="drawer-head">
+    <h2 id="drawer-title">Account</h2>
+    <button type="button" class="drawer-close" id="drawer-close">Close</button>
+  </div>
+  <div id="drawer-guest">
+    <div class="drawer-switch" role="tablist" aria-label="Account">
+      <button type="button" id="show-signup" role="tab" aria-selected="true" aria-controls="drawer-signup">Sign up</button>
+      <button type="button" id="show-login" role="tab" aria-selected="false" aria-controls="drawer-login">Log in</button>
+    </div>
+    <form id="drawer-signup" class="drawer-form">
+      <label>Your name<input id="drawer-full-name" name="name" type="text" autocomplete="name" required></label>
+      <label>Email<input id="drawer-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
+      <label>Instagram handle<input id="drawer-instagram" name="instagram" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      <label>Access code<span class="drawer-hint">Ask Roleflow if you don't have one.</span><input id="drawer-access-code" name="access_code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      <label>Password<span class="drawer-hint">At least 8 characters.</span><input id="drawer-password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Confirm password<input id="drawer-confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="drawer-err" id="drawer-signup-error" role="alert"></p>
+      <p class="drawer-ok" id="drawer-signup-ok" role="status"></p>
+      <button class="btn" type="submit">Create account</button>
+    </form>
+    <form id="drawer-login" class="drawer-form" hidden>
+      <label>Email<input id="drawer-login-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
+      <label>Password<input id="drawer-login-password" name="password" type="password" autocomplete="current-password"></label>
+      <p class="drawer-err" id="drawer-login-error" role="alert"></p>
+      <p class="drawer-ok" id="drawer-login-ok" role="status"></p>
+      <button class="btn" type="submit">Log in</button>
+      <button class="btn ghost" id="drawer-magic" type="button">Email me a sign-in link</button>
+      <p><a href="/reset/">Forgot password</a></p>
+    </form>
+  </div>
+  <div id="drawer-member" hidden>
+    <p class="drawer-name" id="drawer-name"></p>
+    <p class="drawer-note">Your onboarding lives in your dashboard.</p>
+    <div class="drawer-actions">
+      <a class="btn" id="drawer-dashboard" href="/account/">Your dashboard</a>
+      <a class="btn ghost" id="drawer-admin" href="/admin/" hidden>Client tracking</a>
+      <button type="button" class="btn ghost" id="drawer-logout">Log out</button>
+    </div>
+  </div>
+</aside>
+
 
 <header class="hero" id="top"><div class="wrap">
   <h1>Stop losing $50K/mo<br><span class="g">on slow replies</span></h1>
@@ -197,6 +264,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
 <script src="supabase/config.js"></script>
 <script type="module" src="auth/nav.js"></script>
+<script type="module" src="auth/sidebar.js"></script>
 <script>
 const BOOKING_URL="https://calendar.app.google/8i1gomkozavqYU5b8";
 const $=n=>'$'+Math.round(n).toLocaleString('en-US'),g=id=>document.getElementById(id);

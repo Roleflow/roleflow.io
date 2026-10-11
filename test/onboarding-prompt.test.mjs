@@ -197,6 +197,18 @@ assert.match(homepage, /Book your call/);
 assert.match(homepage, /How many DMs do you get from potential customers per day/);
 assert.doesNotMatch(homepage, /id="onboarding"/);
 assert.doesNotMatch(homepage, /Start your onboarding/);
+assert.match(homepage, /id="menu-toggle"/);
+assert.match(homepage, /id="site-drawer"/);
+assert.match(homepage, /id="drawer-access-code"/);
+assert.doesNotMatch(homepage, /Roleflow2026/);
+const signupPage = fs.readFileSync(path.join(root, "signup/index.html"), "utf8");
+assert.match(signupPage, /id="access-code"/);
+assert.doesNotMatch(signupPage, /Roleflow2026/);
+for (const file of ["signup/signup.js", "auth/sidebar.js", "auth/supabase.js", "login/login.js"]) {
+  assert.doesNotMatch(fs.readFileSync(path.join(root, file), "utf8"), /Roleflow2026/, file);
+}
+assert.match(fs.readFileSync(path.join(root, "login/login.js"), "utf8"), /shouldCreateUser:\s*false/);
+assert.match(fs.readFileSync(path.join(root, "auth/sidebar.js"), "utf8"), /shouldCreateUser:\s*false/);
 const redirect = fs.readFileSync(path.join(root, "onboarding/index.html"), "utf8");
 assert.match(redirect, /\/login\/\?next=\/account\//);
 assert.doesNotMatch(redirect, /HIGH_PRIORITY_RULES/);
@@ -208,5 +220,10 @@ assert.match(migration, /enable row level security/i);
 assert.match(migration, /diego@roleflow\.io/);
 assert.match(migration, /create policy submissions_select/);
 assert.match(migration, /on_auth_user_created/);
+const accessMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261011090000_signup_access_code.sql"), "utf8");
+assert.match(accessMigration, /private\.signup_settings/);
+assert.match(accessMigration, /enforce_signup_access_code/);
+assert.match(accessMigration, /revoke execute on function private\.enforce_signup_access_code\(\) from public, anon, authenticated/);
+assert.match(accessMigration, /- 'access_code'/);
 
 console.log("onboarding prompt tests passed");

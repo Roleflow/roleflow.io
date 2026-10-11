@@ -43,7 +43,10 @@ if (!isConfigured()) {
     button.disabled = true;
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: originPath("/account/") }
+      options: {
+        emailRedirectTo: originPath("/account/"),
+        shouldCreateUser: false
+      }
     });
     button.disabled = false;
     if (error) return showError(error.message);

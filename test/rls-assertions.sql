@@ -1,10 +1,16 @@
 -- Proves client isolation and admin access after the migration.
 -- Run as a superuser against a database where the migration has been applied.
 
-insert into auth.users (id, email, raw_user_meta_data) values
-  ('11111111-1111-1111-1111-111111111111', 'ava@northstar.example', '{"full_name":"Ava Shah","instagram":"@northstar"}'),
-  ('22222222-2222-2222-2222-222222222222', 'ben@other.example', '{"full_name":"Ben Cole","instagram":"@bencole"}'),
-  ('33333333-3333-3333-3333-333333333333', 'diego@roleflow.io', '{"full_name":"Diego"}')
+insert into auth.users (id, email, raw_user_meta_data)
+select v.id, v.email, v.meta || jsonb_build_object('access_code', s.access_code)
+from (
+  values
+    ('11111111-1111-1111-1111-111111111111'::uuid, 'ava@northstar.example', '{"full_name":"Ava Shah","instagram":"@northstar"}'::jsonb),
+    ('22222222-2222-2222-2222-222222222222'::uuid, 'ben@other.example', '{"full_name":"Ben Cole","instagram":"@bencole"}'::jsonb),
+    ('33333333-3333-3333-3333-333333333333'::uuid, 'diego@roleflow.io', '{"full_name":"Diego"}'::jsonb)
+) as v(id, email, meta)
+cross join private.signup_settings s
+where s.id = 1
 on conflict (id) do nothing;
 
 update public.onboarding_submissions
