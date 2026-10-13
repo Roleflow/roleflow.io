@@ -1,10 +1,8 @@
-/* Social profile URLs. The real handles are not set yet.
-   Swap these three placeholders when Diego confirms them, then update the
-   same strings in the static footer and in the Organization sameAs JSON-LD
-   (search the repo for "tiktok.com/@[CONFIRM]"). Crawlers read the HTML;
-   this file is the single runtime copy. */
+/* Confirmed social profile URLs. Crawlers read the same three URLs in the
+   static footer HTML and in the Organization sameAs JSON-LD. LinkedIn, X,
+   and Crunchbase are still [CONFIRM] placeholders. */
 var SOCIAL_LINKS = {
-  instagram: "https://www.instagram.com/[CONFIRM]",
-  tiktok: "https://www.tiktok.com/@[CONFIRM]",
-  youtube: "https://www.youtube.com/@[CONFIRM]"
+  instagram: "https://www.instagram.com/roleflow.io",
+  tiktok: "https://www.tiktok.com/@roleflow.io",
+  youtube: "https://www.youtube.com/@roleflow"
 };
