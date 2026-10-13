@@ -1,0 +1,38 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": true,
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "roleflow.io"
+        }
+      ],
+      "destination": "https://www.roleflow.io/:path*",
+      "permanent": true,
+      "statusCode": 301
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(account|admin|reset)(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/llms.txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    }
+  ]
+}
