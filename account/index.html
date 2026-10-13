@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your account · Roleflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+</head>
+<body>
+<a class="skip" href="#onboarding">Skip to onboarding</a>
+<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
+<header class="hero"><div class="wrap">
+  <h1>Your <span class="g">account</span></h1>
+  <p class="sub" id="account-hello">Loading your account…</p>
+  <p class="status-pill" id="account-status" role="status"></p>
+</div></header>
+<section id="onboarding" hidden>
+  <div class="wrap">
+    <h2>Build your <span class="g">DM setter</span></h2>
+    <p class="sub">Answer a few steps about your offer. This writes the system prompt Roleflow uses to run your Instagram DMs. Each step saves to your account.</p>
+    <div class="onboard-panel" id="onboarding-app" tabindex="-1"><p>Loading the form…</p></div>
+  </div>
+</section>
+<div class="wrap" id="gate" hidden></div>
+<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+<div id="onboarding-status" class="sr" role="status" aria-live="polite"></div>
+<script src="/supabase/config.js"></script>
+<script src="/onboarding/config.js"></script>
+<script src="/onboarding/form-model.js"></script>
+<script src="/onboarding/prompt.js"></script>
+<script type="module" src="/account/account.js"></script>
+</body>
+</html>

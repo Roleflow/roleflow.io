@@ -131,7 +131,7 @@
     {
       id: "about",
       title: "About you",
-      description: "Who you are, and the business this setter will represent. Your answers stay in this browser until you copy them, download them, or email them.",
+      description: "Who you are, and the business this setter will represent. Answers save to your account.",
       fields: [
         {
           id: "clientName",

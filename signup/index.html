@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Create your account · Roleflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+</head>
+<body>
+<a class="skip" href="#signup-form">Skip to sign-up</a>
+<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
+<header class="hero"><div class="wrap">
+  <h1>Create your <span class="g">account</span></h1>
+  <p class="sub">This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.</p>
+</div></header>
+<main class="wrap"><div class="panel">
+  <form id="signup-form" class="auth-form">
+    <label>Your name<input id="name" name="name" type="text" autocomplete="name" required></label>
+    <label>Email<input id="email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
+    <label>Instagram handle<input id="instagram" name="instagram" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+    <label>Access code<span class="hint">Ask Roleflow if you don't have one.</span><input id="access-code" name="access_code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+    <label>Password<span class="hint">At least 8 characters.</span><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+    <label>Confirm password<input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+    <p class="err" id="form-error" role="alert"></p>
+    <p class="okmsg" id="form-ok" role="status"></p>
+    <button class="btn" type="submit">Create account</button>
+    <p class="links"><a href="/login/">Already have an account? Log in</a></p>
+  </form>
+</div></main>
+<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+<script src="/supabase/config.js"></script>
+<script type="module" src="/signup/signup.js"></script>
+</body>
+</html>

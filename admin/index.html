@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Client tracking · Roleflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+</head>
+<body>
+<a class="skip" href="#admin-app">Skip to clients</a>
+<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
+<header class="hero"><div class="wrap wide">
+  <h1>Client <span class="g">tracking</span></h1>
+  <p class="sub" id="admin-hello">Loading clients…</p>
+</div></header>
+<main class="wrap wide" id="admin-app"></main>
+<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+<script src="/supabase/config.js"></script>
+<script src="/onboarding/config.js"></script>
+<script src="/onboarding/form-model.js"></script>
+<script src="/onboarding/prompt.js"></script>
+<script type="module" src="/admin/admin.js"></script>
+</body>
+</html>
