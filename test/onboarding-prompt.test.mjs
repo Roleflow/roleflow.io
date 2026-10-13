@@ -203,7 +203,13 @@ assert.match(homepage, /id="drawer-access-code"/);
 assert.doesNotMatch(homepage, /Roleflow2026/);
 const signupPage = fs.readFileSync(path.join(root, "signup/index.html"), "utf8");
 assert.match(signupPage, /id="access-code"/);
+assert.match(signupPage, /role="tablist"/);
+assert.match(signupPage, /id="login-form"/);
+assert.match(signupPage, /Forgot password/);
 assert.doesNotMatch(signupPage, /Roleflow2026/);
+assert.match(fs.readFileSync(path.join(root, "signup/signup.js"), "utf8"), /mode"\) === "login"|get\("mode"\) === "login"/);
+assert.match(fs.readFileSync(path.join(root, "auth/sidebar.js"), "utf8"), /get\("mode"\) === "login"/);
+assert.match(homepage, /drawer-form\[hidden\]/);
 for (const file of ["signup/signup.js", "auth/sidebar.js", "auth/supabase.js", "login/login.js"]) {
   assert.doesNotMatch(fs.readFileSync(path.join(root, file), "utf8"), /Roleflow2026/, file);
 }
