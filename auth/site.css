@@ -32,7 +32,11 @@ nav .in{position:relative;max-width:1080px;margin:0 auto;padding:12px 22px;displ
 .hero{padding:48px 0 12px}
 .hero .sub{color:var(--mute);max-width:36em;margin:16px auto 0;font-size:1.08rem}
 .panel{background:var(--bg2);border:1px solid var(--line);border-radius:26px;padding:34px 30px;max-width:560px;margin:28px auto 0;text-align:left}
+.auth-tabs{display:flex;gap:8px;margin:0 0 18px}
+.auth-tabs button{flex:1;min-height:44px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:12px 10px;font:600 .98rem var(--b);cursor:pointer}
+.auth-tabs button[aria-selected=true]{border-color:var(--m);background:rgba(192,64,154,.22);color:#fff}
 .auth-form{display:grid;gap:16px}
+.auth-form[hidden]{display:none !important}
 .auth-form label{display:grid;gap:6px;font-weight:600;text-align:left}
 .auth-form input,.auth-form select,.auth-form textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font:400 1rem/1.45 var(--b)}
 .auth-form input:focus,.auth-form select:focus,.auth-form textarea:focus{outline:none;border-color:var(--m)}

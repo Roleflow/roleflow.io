@@ -131,10 +131,11 @@ html.drawer-open,html.drawer-open body{overflow:hidden}
 .drawer-head h2{font-size:1.6rem}
 .drawer-close{background:none;border:0;color:var(--mute);font:600 .95rem var(--b);cursor:pointer;padding:8px 0}
 .drawer-close:hover{color:var(--gold)}
-.drawer-switch{display:flex;gap:8px;margin-top:18px}
-.drawer-switch button{flex:1;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px;font:600 .95rem var(--b);cursor:pointer}
-.drawer-switch button[aria-selected=true]{border-color:var(--m);background:rgba(192,64,154,.2)}
+.drawer-switch{display:flex;gap:8px;margin-top:12px;position:sticky;top:0;z-index:2;background:#101A33;padding:8px 0}
+.drawer-switch button{flex:1;min-height:44px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px;font:600 .95rem var(--b);cursor:pointer}
+.drawer-switch button[aria-selected=true]{border-color:var(--m);background:rgba(192,64,154,.22);color:#fff}
 .drawer-form{display:grid;gap:12px;margin-top:16px}
+.drawer-form[hidden]{display:none !important}
 .drawer-form label{display:grid;gap:6px;font-weight:600;text-align:left;font-size:.95rem}
 .drawer-form input{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font:400 1rem/1.4 var(--b)}
 .drawer-form input:focus{outline:none;border-color:var(--m)}
@@ -158,10 +159,10 @@ html.drawer-open,html.drawer-open body{overflow:hidden}
   </div>
   <div id="drawer-guest">
     <div class="drawer-switch" role="tablist" aria-label="Account">
-      <button type="button" id="show-signup" role="tab" aria-selected="true" aria-controls="drawer-signup">Sign up</button>
-      <button type="button" id="show-login" role="tab" aria-selected="false" aria-controls="drawer-login">Log in</button>
+      <button type="button" id="show-signup" role="tab" aria-selected="true" aria-controls="drawer-signup" tabindex="0">Sign up</button>
+      <button type="button" id="show-login" role="tab" aria-selected="false" aria-controls="drawer-login" tabindex="-1">Log in</button>
     </div>
-    <form id="drawer-signup" class="drawer-form">
+    <form id="drawer-signup" class="drawer-form" role="tabpanel" aria-labelledby="show-signup">
       <label>Your name<input id="drawer-full-name" name="name" type="text" autocomplete="name" required></label>
       <label>Email<input id="drawer-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
       <label>Instagram handle<input id="drawer-instagram" name="instagram" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
@@ -172,7 +173,7 @@ html.drawer-open,html.drawer-open body{overflow:hidden}
       <p class="drawer-ok" id="drawer-signup-ok" role="status"></p>
       <button class="btn" type="submit">Create account</button>
     </form>
-    <form id="drawer-login" class="drawer-form" hidden>
+    <form id="drawer-login" class="drawer-form" role="tabpanel" aria-labelledby="show-login" hidden>
       <label>Email<input id="drawer-login-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
       <label>Password<input id="drawer-login-password" name="password" type="password" autocomplete="current-password"></label>
       <p class="drawer-err" id="drawer-login-error" role="alert"></p>

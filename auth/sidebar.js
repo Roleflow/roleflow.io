@@ -32,12 +32,37 @@ if (!drawer || !toggle) {
     }
   }
 
+  const tabSignup = document.getElementById("show-signup");
+  const tabLogin = document.getElementById("show-login");
+  const drawerTabs = [tabSignup, tabLogin];
+
+  function wantsLogin() {
+    const query = new URLSearchParams(window.location.search);
+    const hash = window.location.hash.replace(/^#/, "");
+    return query.get("mode") === "login" || hash === "login";
+  }
+
   function showPanel(which) {
     const signup = which === "signup";
     signupForm.hidden = !signup;
     loginForm.hidden = signup;
-    document.getElementById("show-signup").setAttribute("aria-selected", signup ? "true" : "false");
-    document.getElementById("show-login").setAttribute("aria-selected", signup ? "false" : "true");
+    tabSignup.setAttribute("aria-selected", signup ? "true" : "false");
+    tabLogin.setAttribute("aria-selected", signup ? "false" : "true");
+    tabSignup.tabIndex = signup ? 0 : -1;
+    tabLogin.tabIndex = signup ? -1 : 0;
+  }
+
+  function rememberMode(which) {
+    const url = new URL(window.location.href);
+    if (which === "login") {
+      url.searchParams.set("mode", "login");
+      url.hash = "login";
+    } else {
+      url.searchParams.delete("mode");
+      if (url.hash === "#login") url.hash = "";
+    }
+    history.replaceState(null, "", url);
+    showPanel(which);
   }
 
   toggle.addEventListener("click", () => setOpen(drawer.hidden));
@@ -46,8 +71,23 @@ if (!drawer || !toggle) {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !drawer.hidden) setOpen(false);
   });
-  document.getElementById("show-signup").addEventListener("click", () => showPanel("signup"));
-  document.getElementById("show-login").addEventListener("click", () => showPanel("login"));
+  drawerTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => rememberMode(tab === tabLogin ? "login" : "signup"));
+    tab.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+      event.preventDefault();
+      const next = event.key === "ArrowRight" ? (index + 1) % drawerTabs.length : (index - 1 + drawerTabs.length) % drawerTabs.length;
+      drawerTabs[next].focus();
+      rememberMode(drawerTabs[next] === tabLogin ? "login" : "signup");
+    });
+  });
+  window.addEventListener("hashchange", () => {
+    const mode = wantsLogin() ? "login" : "signup";
+    showPanel(mode);
+    if (mode === "login") setOpen(true);
+  });
+  showPanel(wantsLogin() ? "login" : "signup");
+  if (wantsLogin()) setOpen(true);
   document.getElementById("drawer-logout").addEventListener("click", logout);
 
   function normalizeHandle(value) {
