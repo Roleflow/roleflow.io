@@ -78,13 +78,21 @@ if (!isConfigured()) {
             boot: {
               answers,
               stepIndex: Number(submission?.step_index || 0),
-              promptText: submission?.prompt_text || ""
+              promptText: submission?.prompt_text || "",
+              generationStatus: submission?.generation_status || "",
+              generationError: submission?.generation_error || "",
+              emailStatus: submission?.email_status || "",
+              emailError: submission?.email_error || "",
+              submittedAt: submission?.submitted_at || ""
             },
             save(snapshot) {
               return saveProgress(supabase, user.id, snapshot);
             },
             submit(snapshot) {
               return saveProgress(supabase, user.id, { ...snapshot, status: "submitted" });
+            },
+            generate(snapshot) {
+              return generatePrompt(supabase, user.id, snapshot);
             }
           };
           section.hidden = false;
@@ -102,9 +110,7 @@ async function saveProgress(supabase, userId, snapshot) {
   const patch = {
     answers: snapshot.answers || {},
     step_index: Number(snapshot.stepIndex) || 0,
-    status,
-    prompt_text: status === "submitted" ? (snapshot.promptText || null) : null,
-    submitted_at: status === "submitted" ? new Date().toISOString() : null
+    status
   };
   const { error } = await supabase.from("onboarding_submissions").update(patch).eq("user_id", userId);
   if (error) throw error;
@@ -121,4 +127,22 @@ async function saveProgress(supabase, userId, snapshot) {
     const { error: profileError } = await supabase.from("profiles").update(profilePatch).eq("id", userId);
     if (profileError) throw profileError;
   }
+}
+
+async function generatePrompt(supabase, userId, snapshot) {
+  await saveProgress(supabase, userId, { ...snapshot, status: "submitted" });
+  const { data, error } = await supabase.functions.invoke("generate-setter-prompt", { body: {} });
+  if (error) {
+    let message = error.message || "The prompt could not be written.";
+    const context = error.context;
+    if (context && typeof context.json === "function") {
+      try {
+        const body = await context.json();
+        if (body && body.error) message = body.error;
+      } catch (_readError) { /* the status text is enough */ }
+    }
+    if (!/answers are saved/i.test(message)) message += " Your answers are saved.";
+    throw new Error(message);
+  }
+  return data || {};
 }

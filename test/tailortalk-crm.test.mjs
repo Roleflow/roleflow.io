@@ -78,7 +78,10 @@ for (const id of ["afwbuhnx", "bsojvzgf", "rojkojbk", "taongeti", "udnnperp"]) {
 }
 assert.match(upsertSql, /paste-access-token/);
 assert.doesNotMatch(upsertSql, /[0-9a-f]{40,}/i);
-assert.match(read("supabase/config.toml"), /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
+const toml = read("supabase/config.toml");
+assert.match(toml, /\[functions\.generate-setter-prompt\]\nverify_jwt = true/);
+assert.match(toml, /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
+assert.doesNotMatch(toml, /<<<<<<<|>>>>>>>/);
 
 const adminPage = read("admin/index.html");
 assert.match(adminPage, /id="tab-crm"/);
@@ -95,5 +98,23 @@ const homepage = read("index.html");
 assert.doesNotMatch(homepage, /tab-crm/);
 assert.doesNotMatch(homepage, /\/admin\/crm/);
 assert.doesNotMatch(homepage, /id="admin-tabs"/);
+assert.match(homepage, /id="drawer-crm" href="\/admin\/#crm" hidden>CRM</);
+assert.match(homepage, /id="drawer-admin" href="\/admin\/" hidden>Client tracking</);
+assert.match(homepage, /href="\/resources\/">Resources</);
+assert.match(read("auth/sidebar.js"), /crmLink\.hidden = !isAdmin/);
+assert.match(read("admin/index.html"), /id="nav-crm" href="\/admin\/#crm" hidden>CRM</);
+assert.match(read("admin/admin.js"), /headerCrm\.hidden = false/);
+const migrationNames = [
+  "20261010120000_roleflow_accounts.sql",
+  "20261011090000_signup_access_code.sql",
+  "20261014120000_prompt_generation.sql",
+  "20261014140000_prompt_sections.sql",
+  "20261014160000_tailortalk_crm.sql",
+  "20261014180000_tailortalk_registry.sql"
+];
+assert.deepEqual(
+  migrationNames,
+  migrationNames.slice().sort()
+);
 
 console.log("tailortalk crm tests passed");
