@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from geo_pages import (
     FAQ_EN, FAQ_ES, HOME_FAQ_EN, HOME_FAQ_ES, CHECKED, CHECKED_ES,
-    table, src, src_es, links_en, links_es, ROLE_ROW, VS_HEADERS,
-    SS_SOURCES, ST_SOURCES, SF_SOURCES, MC_SOURCES, UNVERIFIED_EN, UNVERIFIED_ES,
+    table, src, src_es, links_en, links_es,
+    RD_SOURCES, MO_SOURCES,
 )
 
 def P(en, es, name_en, name_es, **k):
@@ -37,10 +37,10 @@ HOME_ES_BODY = '''
 DEF_EN = '''
 <h2>What it does</h2>
 <p>An AI DM setter replies, qualifies, follows up, and books. The lead messages you. The setter answers, asks the questions that decide fit, nudges people who go quiet, and puts a qualified call on the calendar. Your closers take that call.</p>
-<h2>How it differs from a chatbot or a ManyChat flow</h2>
-<p>A button flow sends people down a path you drew. An AI DM setter holds a conversation about your offer. ManyChat, on its own pricing page, describes automation for comments and messages across several channels. Roleflow is not that product. Roleflow is a done-for-you setter for Instagram DMs only. See <a href="/vs/manychat/">Roleflow vs ManyChat</a>.</p>
-<h2>How it differs from a human setter</h2>
-<p>A person can hear nuance and can work the phone. They also work a shift, and someone has to hire and manage them. Roleflow replies in seconds, including when you are asleep, and does not forget the follow-up. It does not replace your closer. <a href="/vs/human-setter/">Roleflow vs a human setter</a>.</p>
+<h2>How it differs from a button flow</h2>
+<p>A button flow sends people down a path you drew. An AI DM setter holds a conversation about your offer. Roleflow is a done-for-you setter for Instagram DMs only. The two products compared on this site, using only their own pages, are <a href="/vs/ripdrip/">RipDrip</a> and <a href="/vs/mochi/">Mochi</a>.</p>
+<h2>How it differs from a person in the inbox</h2>
+<p>A person can hear nuance and can work the phone. They also work a shift, and someone has to hire and manage them. Roleflow replies in seconds, including when you are asleep, and does not forget the follow-up. It does not replace your closer. We do not publish a salary for that role.</p>
 <h2>Done for you, not self-serve</h2>
 <p>Self-serve tools hand you a login and a monthly plan. Roleflow builds the setter and runs it. You record a short sample so voice notes use your cloned voice. [CONFIRM: review/approval process.]</p>
 <h2>Instagram rules</h2>
@@ -53,10 +53,10 @@ DEF_EN = '''
 DEF_ES = '''
 <h2>Qué hace</h2>
 <p>Un setter con IA responde, califica, hace seguimiento y agenda. El lead te escribe. El setter contesta, hace las preguntas de encaje, retoma a quien se enfría y deja la llamada calificada en el calendario. Tus closers hacen esa llamada.</p>
-<h2>En qué se diferencia de un chatbot o de un flujo de ManyChat</h2>
-<p>Un flujo de botones empuja a la gente por un camino que dibujaste. Un setter con IA conversa sobre tu oferta. ManyChat, en su página de precios, se describe como automatización de comentarios y mensajes en varios canales. Roleflow no es ese producto. Es un setter hecho para ti, solo para DMs de Instagram. Mira <a href="/es/vs/manychat/">Roleflow vs ManyChat</a>.</p>
-<h2>En qué se diferencia de un setter humano</h2>
-<p>Una persona lee matices y puede atender el teléfono. También trabaja un turno, y alguien tiene que contratarla y supervisarla. Roleflow responde en segundos, también cuando duermes, y no olvida el seguimiento. No reemplaza a tu closer. <a href="/es/vs/setter-humano/">Roleflow vs un setter humano</a>.</p>
+<h2>En qué se diferencia de un flujo de botones</h2>
+<p>Un flujo de botones empuja a la gente por un camino que dibujaste. Un setter con IA conversa sobre tu oferta. Roleflow es un setter hecho para ti, solo para DMs de Instagram. Los dos productos que comparamos en este sitio, solo con sus propias páginas, son <a href="/es/vs/ripdrip/">RipDrip</a> y <a href="/es/vs/mochi/">Mochi</a>.</p>
+<h2>En qué se diferencia de una persona en el inbox</h2>
+<p>Una persona lee matices y puede atender el teléfono. También trabaja un turno, y alguien tiene que contratarla y supervisarla. Roleflow responde en segundos, también cuando duermes, y no olvida el seguimiento. No reemplaza a tu closer. No publicamos un sueldo para ese rol.</p>
 <h2>Hecho para ti, no autoservicio</h2>
 <p>El autoservicio te da un login y un plan mensual. Roleflow arma el setter y lo opera. Grabas una muestra corta para que las notas de voz usen tu voz clonada. [CONFIRMAR proceso de revisión/aprobación.]</p>
 <h2>Reglas de Instagram</h2>
@@ -75,7 +75,7 @@ PRICE_EN = '''
 <h2>Who qualifies</h2>
 <p>20+ DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ a month in cash collected. We fund the setup, so the offer has to be able to produce revenue from Instagram DMs.</p>
 <h2>Percent of revenue, or a flat fee</h2>
-<p>A flat monthly tool bill is predictable and you pay it even in a quiet month. A percent of revenue stays at $0 until the system generates revenue, and it moves with that revenue. The percent model fits a high-ticket Instagram offer with enough inbound. A flat fee can fit a team that wants software it operates itself. We do not publish a human setter's salary. The comparison with a person is about speed, coverage, follow-up, and management, on <a href="/vs/human-setter/">Roleflow vs a human setter</a>.</p>
+<p>A flat monthly tool bill is predictable and you pay it even in a quiet month. A percent of revenue stays at $0 until the system generates revenue, and it moves with that revenue. The percent model fits a high-ticket Instagram offer with enough inbound. A flat fee can fit a team that wants software it operates itself. On ''' + CHECKED + ''', Mochi publishes monthly prices on its homepage and RipDrip does not publish a price on dm.ripdrip.ai. Sources are on <a href="/vs/mochi/">Roleflow vs Mochi</a> and <a href="/vs/ripdrip/">Roleflow vs RipDrip</a>.</p>
 <h2>What you still do</h2>
 <p>You take the sales calls. Roleflow handles first response, follow-ups, and booking. Setup time: [CONFIRM].</p>
 ''' + links_en()
@@ -89,92 +89,65 @@ PRICE_ES = '''
 <h2>Quién califica</h2>
 <p>Más de 20 DMs al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes. Nosotros financiamos el setup, así que la oferta tiene que poder generar ingresos desde los DMs de Instagram.</p>
 <h2>Porcentaje de ingresos, o cuota fija</h2>
-<p>Una cuota mensual de software es predecible y se paga también en un mes flojo. Un porcentaje se queda en $0 hasta que el sistema genera, y se mueve con esos ingresos. Encaja con una oferta de ticket alto y suficiente inbound en Instagram. Una cuota fija puede encajar con un equipo que quiere operar el software solo. No publicamos el sueldo de un setter humano. La comparación con una persona va de velocidad, cobertura, seguimiento y gestión, en <a href="/es/vs/setter-humano/">Roleflow vs un setter humano</a>.</p>
+<p>Una cuota mensual de software es predecible y se paga también en un mes flojo. Un porcentaje se queda en $0 hasta que el sistema genera, y se mueve con esos ingresos. Encaja con una oferta de ticket alto y suficiente inbound en Instagram. Una cuota fija puede encajar con un equipo que quiere operar el software solo. El ''' + CHECKED_ES + ''', Mochi publica precios mensuales en su home y RipDrip no publica un precio en dm.ripdrip.ai. Las fuentes están en <a href="/es/vs/mochi/">Roleflow frente a Mochi</a> y <a href="/es/vs/ripdrip/">Roleflow frente a RipDrip</a>.</p>
 <h2>Qué sigues haciendo tú</h2>
 <p>Tú haces las llamadas de venta. Roleflow hace la primera respuesta, los seguimientos y la agenda. Puesta en marcha: [CONFIRMAR].</p>
 ''' + links_es()
 
 BEST_EN = '''
-<p class="note">Roleflow wrote this article. We sell a done-for-you AI DM setter, so read the wrong-for line on Roleflow the same way you read it on every other tool.</p>
+<p class="note">Roleflow wrote this article. We sell a done-for-you AI DM setter, so read the wrong-for line on Roleflow the same way you read it on RipDrip and on Mochi.</p>
 <h2>What is an AI DM setter</h2>
-<p>Software that answers inbound DMs, qualifies leads, follows up, and books calls: the job of a human appointment setter. <a href="/what-is-an-ai-dm-setter/">Full definition</a>.</p>
+<p>Software that answers inbound DMs, qualifies leads, follows up, and books calls. <a href="/what-is-an-ai-dm-setter/">Full definition</a>.</p>
 <h2>How we compared</h2>
-<p>We looked at pricing model, done-for-you versus self-serve, channels, voice, booking, human handoff, and whether a vendor states an official Instagram API. A cell is filled only when we could read it on that company's site on ''' + CHECKED + '''. Otherwise it says [CONFIRM]. We did not add reviews, ratings, or customer results.</p>
+<p>Diego named RipDrip and Mochi as the fair comparisons. We read each company homepage on ''' + CHECKED + '''. A cell is filled only from that page. Otherwise it says [CONFIRM]. We did not add reviews, ratings, follower counts, or customer results. Performance multiples on those pages are not repeated here.</p>
 <h2>Comparison table</h2>
 ''' + table(
     ["Tool", "Type", "Published price", "Channels", "Best for", "Wrong for"],
     [
         ["Roleflow", "Done for you", "$0 setup, $0 retainer, 5–7% of revenue generated", "Instagram DMs only", "High-ticket Instagram sellers with 20+ DMs/day who want it built and run", "WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume"],
-        ["SetSmart", "Self-serve AI setter", "$99/month Pro on the pricing page; llms.txt says $97/month. [CONFIRM current checkout price.]", "Instagram, WhatsApp, Messenger (llms.txt)", "Teams who will run a multi-channel setter on a monthly plan", "Buyers who want $0 retainer and a percent of revenue only"],
-        ["ManyChat / ManySetter", "Self-serve flow builder", "Annual prices from $0 to $139/month on manychat.com/pricing. ManySetter: [CONFIRM]", "Instagram, Messenger, TikTok, Telegram, WhatsApp, SMS, email (ManyChat pricing page). ManySetter: [CONFIRM]", "People who want to build automations themselves", "People who want a done-for-you setter and will not build flows. ManySetter wrong-for: [CONFIRM]"],
-        ["SetterFlo", "Pilot described as done for you; Starter described as DIY", "Pilot $997 onboarding then $297/month; Starter $297/month. [CONFIRM checkout price.]", "Instagram (plan cards name IG accounts)", "Instagram operators comparing a monthly plan with a percent-of-revenue fee", "Buyers who need a confirmed cloned-voice note feature. Voice notes: [CONFIRM]"],
-        ["Setterr", "Self-serve, flat monthly", "$250/month up to 500 conversations, or $400/month up to 1,000", "Instagram, from the product's own positioning on its pricing page", "Owners who want a flat Instagram plan and no commission", "Owners who want Roleflow to build and run it and to pay only a percent of revenue. Cloned-voice notes: [CONFIRM]"],
-        ["Intellicoach", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]"],
-        ["Appointwise", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]"],
-        ["Instaset", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]"],
-        ["LeadsNow", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]"],
-        ["Human setter", "A person on your team", "No salary published here", "Whatever you hire them to cover, including phone", "Nuance, phone calls, and judgment on odd deals", "Teams that need a first reply in seconds, all day, without managing a setter's shift"],
+        ["RipDrip", "A team builds a custom AI sales clone", "No price on dm.ripdrip.ai. [CONFIRM]", "Instagram DM funnel, in the page meta description. Other channels: [CONFIRM]", "Buyers who want that team-built clone and have confirmed the price", "Buyers who need a published price and a percent-of-revenue fee before they apply"],
+        ["Mochi", "Workspace for an Instagram sales team. The Pro card also lists AI Setter.", "Homepage cards: Starter $149/month, Essential $297/month, Pro $497/month. 7-day trial. Checkout price: [CONFIRM]", "Instagram, connected through Meta's official API on that page. Other channels: [CONFIRM]", "Teams that will run setters inside that software on a monthly plan", "Buyers who want Roleflow to build and run the setter for a percent of revenue and no monthly plan"],
     ],
 ) + '''
 <h2>Roleflow</h2>
 <p>Done for you. Instagram DMs only. Voice notes in your cloned voice. Follow-ups and booked calls. $0 setup, $0 retainer, 5–7% of revenue generated, rate set on the demo call. Wrong for: WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume. <a href="/pricing/">Pricing</a>.</p>
-<h2>SetSmart</h2>
-<p>SetSmart's pricing page lists a Pro plan at $99/month for 1,000 AI messages, usage pricing above that, and no setup fee. Its llms.txt lists Pro at $97/month and names Instagram, WhatsApp, and Messenger, and says it books appointments. [CONFIRM current checkout price.] Cloned-voice Instagram voice notes: [CONFIRM]. Wrong for: buyers who only want a percent-of-revenue price and no monthly plan. <a href="/vs/setsmart/">Roleflow vs SetSmart</a>.</p>
-<h2>ManyChat and ManySetter</h2>
-<p>ManyChat's pricing page shows a free plan and annual prices of $14, $29, $69, and $139 per month, and names several channels. It is a flow builder you operate, not a done-for-you setter. ManySetter's features: [CONFIRM]. Wrong for: someone who will not build automations and wants the setter run for them. <a href="/vs/manychat/">Roleflow vs ManyChat</a>.</p>
-<h2>SetterFlo</h2>
-<p>SetterFlo's homepage plan cards list a Pilot Partner at $997 onboarding then $297/month, described as done for you, and a Starter at $297/month, described as DIY, on Instagram. [CONFIRM checkout price.] Cloned-voice voice notes: [CONFIRM]. Wrong for: buyers who need that voice-note fact confirmed before they switch. <a href="/vs/setterflo/">Roleflow vs SetterFlo</a>.</p>
-<h2>Setterr</h2>
-<p>Setterr's pricing page lists $250/month for 500 conversations and $400/month for 1,000, with no commission, replies trained on your DMs, booking, and follow-ups. Cloned-voice voice notes: [CONFIRM]. Wrong for: owners who want the system built and run, paid only as a percent of revenue. <a href="/vs/setterr/">Roleflow vs Setterr</a>.</p>
-''' + UNVERIFIED_EN + '''
-<h2>A human setter</h2>
-<p>A person is the baseline. They can take phone calls and read odd situations. They work a shift, and you manage them. We do not publish salary figures. Wrong for: a team that needs every Instagram DM answered in seconds, all day, without a setter to supervise. <a href="/vs/human-setter/">Roleflow vs a human setter</a>.</p>
+<h2>RipDrip</h2>
+<p>The RipDrip homepage says its team builds a custom AI sales clone for an Instagram DM funnel, trained on your voice, offer, sales process, and personality. It says the clone qualifies leads and books calls, and is usually live in 72 hours after an onboarding form. You apply, and you book a demo if you qualify. You do not write the code. That page does not publish a price. Price: [CONFIRM]. Audio voice notes, as distinct from writing trained on your voice: [CONFIRM]. Wrong for: buyers who need a published price and a percent-of-revenue fee before they apply. <a href="/vs/ripdrip/">Roleflow vs RipDrip</a>.</p>
+<h2>Mochi</h2>
+<p>The Mochi homepage is a workspace for Instagram DM sales. Monthly cards list Starter at $149 for 300 active conversations and 3 team members, Essential at $297 for 1,000 active conversations, 10 team members, unlimited automations, Mochi MCP, and AI Voice Clone, and Pro at $497 for 5,000 active conversations, unlimited team members, AI Voice Clone, AI Setter, VIP WhatsApp support, and monthly coaching calls. The page says 7 days free, save 25% with yearly, setup in under 5 minutes, and connect Instagram through Meta's official API. The voice section says setters type the message and Mochi makes the voice note. The signup app says you can go live in about two minutes, which does not match the homepage time. [CONFIRM which time a new customer is shown.] A request to themochi.app/pricing returned HTTP 404, so checkout price is [CONFIRM] if it differs from the cards. Wrong for: buyers who want the setter built and run for a percent of revenue and no monthly plan. <a href="/vs/mochi/">Roleflow vs Mochi</a>.</p>
 <h2>Pricing models</h2>
-<p>Per message and per conversation bills grow when a post works. A flat retainer is owed in a quiet month too. A percent of revenue stays at zero until revenue shows up, and it only fits when the offer can pay for the work. Roleflow uses the percent model on Instagram. The other published prices above are monthly software plans.</p>
+<p>A flat monthly plan is owed in a quiet month too. A percent of revenue stays at zero until revenue shows up, and it only fits when the offer can pay for the work. Roleflow uses the percent model on Instagram. Mochi publishes monthly software prices. RipDrip's homepage does not publish a price.</p>
 <h2>How to choose</h2>
-<p>If you have 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ collected, and you want the setter built and run with voice notes in your cloned voice, start with Roleflow. If you want to operate the software and pay a monthly plan across more channels, read the self-serve rows and confirm the [CONFIRM] cells on the vendor's site. If the sale happens on the phone and the DM is only a prelude a person must judge, keep a human setter in the process. Your closers still take Roleflow's booked calls.</p>
-<p class="note">Methodology: public pages only, checked ''' + CHECKED + '''. No paid placement. Re-check prices before you buy. This is not a ranking and not a review score.</p>
-''' + links_en()
+<p>If you have 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ collected, and you want the setter built and run with voice notes in your cloned voice, start with Roleflow. If you want Mochi's published monthly plans and a team inbox, read that row and confirm the [CONFIRM] cells on themochi.app. If you want the clone RipDrip describes, and you have confirmed the price, read that row. Your closers still take Roleflow's booked calls.</p>
+<p class="note">Methodology: official pages only, checked ''' + CHECKED + '''. No paid placement. Re-check prices before you buy. This is not a ranking and not a review score.</p>
+''' + src(RD_SOURCES + MO_SOURCES) + links_en()
 
 BEST_ES = '''
-<p class="note">Roleflow escribió este artículo. Vendemos un setter con IA hecho para ti, así que lee la línea de "no recomendable" de Roleflow igual que la de las demás herramientas.</p>
+<p class="note">Roleflow escribió este artículo. Vendemos un setter con IA hecho para ti, así que lee la línea de "no recomendable" de Roleflow igual que la de RipDrip y la de Mochi.</p>
 <h2>Qué es un setter con IA</h2>
-<p>Un software que responde DMs, califica, hace seguimiento y agenda llamadas: el trabajo de un setter humano. No es un chatbot de botones ni un flujo de ManyChat. <a href="/es/que-es-un-setter-con-ia/">Definición completa</a>.</p>
+<p>Un software que responde DMs, califica, hace seguimiento y agenda llamadas. <a href="/es/que-es-un-setter-con-ia/">Definición completa</a>.</p>
 <h2>Cómo comparamos</h2>
-<p>Miramos el modelo de precio, hecho para ti frente a autoservicio, canales, voz, agenda, traspaso a una persona y si el proveedor dice usar la API oficial. Una celda se llena solo si la leímos en el sitio de esa empresa el ''' + CHECKED_ES + '''. Si no, dice [CONFIRM]. No agregamos reseñas, puntuaciones ni resultados de clientes.</p>
+<p>Diego nombró a RipDrip y a Mochi como las comparaciones justas. Leímos el home de cada empresa el ''' + CHECKED_ES + '''. Una celda se llena solo desde esa página. Si no, dice [CONFIRM]. No agregamos reseñas, puntuaciones, seguidores ni resultados de clientes. Los múltiplos de rendimiento de esas páginas no se repiten aquí.</p>
 <h2>Tabla comparativa</h2>
 ''' + table(
     ["Herramienta", "Tipo", "Precio publicado", "Canales", "Ideal para", "No recomendable si"],
     [
         ["Roleflow", "Hecho para ti", "$0 de setup, $0 de cuota, del 5 % al 7 % de los ingresos", "Solo DMs de Instagram", "Quien vende ticket alto en Instagram, con más de 20 DMs al día, y quiere que se lo operen", "Vendes por WhatsApp, email o teléfono, tienes ticket bajo o muy pocos DMs"],
-        ["SetSmart", "Setter de IA en autoservicio", "$99/mes en su página de precios; su llms.txt dice $97/mes. [CONFIRM precio de checkout.]", "Instagram, WhatsApp y Messenger (llms.txt)", "Quien va a operar un setter multicanal con plan mensual", "Quieres $0 de cuota y solo un porcentaje de ingresos"],
-        ["ManyChat / ManySetter", "Constructor de flujos", "Precios anuales de $0 a $139/mes en manychat.com/pricing. ManySetter: [CONFIRM]", "Instagram, Messenger, TikTok, Telegram, WhatsApp, SMS y email (página de ManyChat). ManySetter: [CONFIRM]", "Quien quiere armar automatizaciones", "No quieres construir flujos y buscas un setter operado por otro. ManySetter: [CONFIRM]"],
-        ["Setterr", "Autoservicio, cuota fija", "$250/mes hasta 500 conversaciones, o $400/mes hasta 1.000", "Instagram, según su página de precios", "Quien quiere un plan fijo de Instagram y cero comisión", "Quieres que Roleflow lo monte y lo opere, y pagar solo un porcentaje. Notas de voz clonadas: [CONFIRM]"],
-        ["Instaset", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]"],
-        ["SetterFlo", "Piloto descrito como hecho para ti; Starter descrito como DIY", "Piloto $997 de onboarding y luego $297/mes; Starter $297/mes. [CONFIRM precio de checkout.]", "Instagram (las tarjetas nombran cuentas de IG)", "Quien compara una cuota mensual con un fee sobre ingresos", "Necesitas confirmada la nota de voz clonada. Notas de voz: [CONFIRM]"],
-        ["Intellicoach", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]"],
-        ["WhatSetter", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "Pensado en el esquema para quien vende por WhatsApp. Encaje real: [CONFIRM]", "[CONFIRM]"],
-        ["Setter humano", "Una persona en tu equipo", "Aquí no publicamos sueldos", "Lo que le contrates, incluido el teléfono", "Matices, llamadas y criterio en casos raros", "Necesitas la primera respuesta en segundos, todo el día, sin supervisar un turno"],
+        ["RipDrip", "Su equipo arma un clon de ventas con IA", "Sin precio en dm.ripdrip.ai. [CONFIRM]", "Embudo de DMs de Instagram, en la meta descripción. Otros canales: [CONFIRM]", "Quieres ese clon armado por su equipo y ya confirmaste el precio", "Necesitas un precio publicado y un fee sobre ingresos antes de solicitar"],
+        ["Mochi", "Espacio de trabajo para un equipo de ventas en Instagram. La tarjeta Pro también lista AI Setter.", "Tarjetas del home: Starter $149/mes, Essential $297/mes, Pro $497/mes. Prueba de 7 días. Precio de checkout: [CONFIRM]", "Instagram, con la API oficial de Meta según esa página. Otros canales: [CONFIRM]", "Equipos que van a operar setters en ese software, con un plan mensual", "Quieres que Roleflow lo monte y lo opere por un porcentaje, sin plan mensual"],
     ],
 ) + '''
 <h2>Roleflow</h2>
 <p>Hecho para ti. Solo DMs de Instagram. Notas de voz con tu voz clonada. Seguimientos y llamadas agendadas. $0 de setup, $0 de cuota, del 5 % al 7 % de los ingresos, porcentaje en la demo. No recomendable si vendes por WhatsApp, email o teléfono, si el ticket es bajo o si hay muy pocos DMs. <a href="/es/precios/">Precios</a>.</p>
-<h2>SetSmart</h2>
-<p>Su página de precios lista un plan Pro a $99/mes por 1.000 mensajes de IA. Su llms.txt lista Pro a $97/mes y nombra Instagram, WhatsApp y Messenger, y dice que agenda citas. [CONFIRM precio de checkout.] Notas de voz clonadas en Instagram: [CONFIRM]. No recomendable si solo quieres un porcentaje de ingresos y ningún plan mensual. <a href="/es/vs/setsmart/">Roleflow vs SetSmart</a>.</p>
-<h2>ManyChat y ManySetter</h2>
-<p>La página de precios de ManyChat muestra un plan gratis y precios anuales de $14, $29, $69 y $139 al mes, y nombra varios canales. Es un constructor de flujos que operas tú. ManySetter: [CONFIRM]. No recomendable si no vas a armar automatizaciones. <a href="/es/vs/manychat/">Roleflow vs ManyChat</a>.</p>
-<h2>Setterr</h2>
-<p>Su página de precios lista $250/mes por 500 conversaciones y $400/mes por 1.000, sin comisión, con respuestas entrenadas en tus DMs, agenda y seguimientos. Notas de voz clonadas: [CONFIRM]. No recomendable si quieres que lo monten y lo operen, pagando solo un porcentaje. <a href="/es/vs/setterr/">Roleflow vs Setterr</a>.</p>
-<h2>SetterFlo</h2>
-<p>Las tarjetas de su home listan un Pilot Partner a $997 de onboarding y luego $297/mes, descrito como hecho para ti, y un Starter a $297/mes, descrito como DIY, en Instagram. [CONFIRM precio de checkout.] Notas de voz clonadas: [CONFIRM]. <a href="/es/vs/setterflo/">Roleflow vs SetterFlo</a>.</p>
-''' + UNVERIFIED_ES + '''
-<h2>Setter humano</h2>
-<p>Una persona es la base. Puede atender el teléfono y leer situaciones raras. Trabaja un turno y tú la gestionas. No publicamos sueldos. No recomendable si cada DM de Instagram tiene que responderse en segundos, todo el día, sin un setter al que supervisar. <a href="/es/vs/setter-humano/">Roleflow vs un setter humano</a>.</p>
+<h2>RipDrip</h2>
+<p>El home de RipDrip dice que su equipo arma un clon de ventas con IA para un embudo de DMs de Instagram, entrenado con tu voz, tu oferta, tu proceso y tu personalidad. Dice que el clon califica y agenda llamadas, y que en general está en vivo en 72 horas después de un formulario de onboarding. Solicitas, y agendas una demo si calificas. No escribes el código. Esa página no publica un precio. Precio: [CONFIRM]. Notas de voz de audio, distintas de un texto entrenado con tu voz: [CONFIRM]. No recomendable si necesitas un precio publicado y un fee sobre ingresos antes de solicitar. <a href="/es/vs/ripdrip/">Roleflow frente a RipDrip</a>.</p>
+<h2>Mochi</h2>
+<p>El home de Mochi es un espacio de trabajo para ventas por DM de Instagram. Las tarjetas mensuales listan Starter a $149 por 300 conversaciones activas y 3 miembros, Essential a $297 por 1.000 conversaciones activas, 10 miembros, automatizaciones ilimitadas, Mochi MCP y AI Voice Clone, y Pro a $497 por 5.000 conversaciones activas, miembros ilimitados, AI Voice Clone, AI Setter, soporte VIP por WhatsApp y llamadas de coaching mensuales. La página dice 7 días gratis, 25 % de ahorro anual, setup en menos de 5 minutos, y conectar Instagram con la API oficial de Meta. La sección de voz dice que el setter escribe el mensaje y Mochi hace la nota de voz. La app de alta dice que puedes salir en vivo en unos dos minutos, y eso no coincide con el tiempo del home. [CONFIRM cuál se muestra.] Una solicitud a themochi.app/pricing devolvió HTTP 404, así que el precio de checkout es [CONFIRM] si difiere de las tarjetas. No recomendable si quieres el setter montado y operado por un porcentaje y sin plan mensual. <a href="/es/vs/mochi/">Roleflow frente a Mochi</a>.</p>
 <h2>Modelos de precio</h2>
-<p>Cobrar por mensaje o por conversación sube cuando una publicación funciona. Una cuota fija se debe también en un mes flojo. Un porcentaje de ingresos se queda en cero hasta que hay ingresos, y solo encaja si la oferta puede pagarlo. Roleflow usa ese porcentaje en Instagram. Los otros precios publicados de arriba son planes mensuales de software.</p>
+<p>Un plan mensual se debe también en un mes flojo. Un porcentaje de ingresos se queda en cero hasta que hay ingresos, y solo encaja si la oferta puede pagarlo. Roleflow usa ese porcentaje en Instagram. Mochi publica precios mensuales de software. El home de RipDrip no publica un precio.</p>
 <h2>Cómo elegir</h2>
-<p>Si tienes más de 20 DMs de Instagram al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados, y quieres el setter montado y operado con notas de voz en tu voz clonada, empieza por Roleflow. Si quieres operar el software y pagar un plan mensual en más canales, lee las filas de autoservicio y confirma las celdas [CONFIRM] en el sitio del proveedor. Si la venta ocurre por teléfono y el DM solo es la antesala, mantén a una persona en el proceso. Tus closers igual hacen las llamadas que Roleflow agenda.</p>
-<p class="note">Metodología: solo páginas públicas, revisadas el ''' + CHECKED_ES + '''. Sin pago por aparecer. Vuelve a mirar los precios antes de comprar. Esto no es un ranking ni una puntuación.</p>
-''' + links_es()
+<p>Si tienes más de 20 DMs de Instagram al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados, y quieres el setter montado y operado con notas de voz en tu voz clonada, empieza por Roleflow. Si quieres los planes mensuales de Mochi y un inbox para tu equipo, lee esa fila y confirma las celdas [CONFIRM] en themochi.app. Si quieres el clon que describe RipDrip, y ya confirmaste el precio, lee esa fila. Tus closers igual hacen las llamadas que Roleflow agenda.</p>
+<p class="note">Metodología: solo páginas oficiales, revisadas el ''' + CHECKED_ES + '''. Sin pago por aparecer. Vuelve a mirar los precios antes de comprar. Esto no es un ranking ni una puntuación.</p>
+''' + src_es(RD_SOURCES + MO_SOURCES) + links_es()
 
 from pages_tail import PAGES

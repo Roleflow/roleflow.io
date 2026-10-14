@@ -18,8 +18,8 @@ LI = "https://www.linkedin.com/company/[CONFIRM]"
 XURL = "https://x.com/[CONFIRM]"
 CB = "https://www.crunchbase.com/organization/[CONFIRM]"
 SAME_AS = [LI, XURL, IG, CB, TT, YT]
-UPDATED_EN = "Updated: 13 October 2026"
-UPDATED_ES = "Actualizado: 13 de octubre de 2026"
+UPDATED_EN = "Updated: 14 October 2026"
+UPDATED_ES = "Actualizado: 14 de octubre de 2026"
 
 NAV_EN = [
     ("/what-is-an-ai-dm-setter/", "AI DM Setter"),

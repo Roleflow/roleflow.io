@@ -20,6 +20,8 @@ FAQ_EN = [
     ("Do I still need my setters?", "Roleflow handles first response, follow-ups and booking; your closers take the calls.", True),
     ("Which channels?", "Instagram DMs only, for now.", True),
     ("How long does setup take?", "[CONFIRM]", False),
+    ("How does Roleflow compare with RipDrip?", "RipDrip's homepage says it builds a custom AI sales clone for an Instagram DM funnel, usually live in 72 hours, and that its team does the build. That page does not publish a price. Roleflow is paid 5–7% of revenue it generates, with $0 setup and voice notes in your cloned voice. See the comparison for sources.", True),
+    ("How does Roleflow compare with Mochi?", "Mochi's homepage lists monthly plans at $149, $297, and $497, a 7-day trial, and an Instagram inbox your team uses. Voice notes that sound like you are on the Essential and Pro cards, and setters type the message. Roleflow builds and runs the setter for a percent of revenue. See the comparison for sources.", True),
 ]
 FAQ_ES = [
     ("¿Qué es un setter con IA?", "Un software que responde los DMs entrantes, califica leads, hace seguimiento y agenda llamadas: el trabajo de un appointment setter humano. Roleflow es un setter con IA para Instagram, hecho para ti.", True),
@@ -32,6 +34,8 @@ FAQ_ES = [
     ("¿Sigo necesitando setters?", "Roleflow se encarga de la primera respuesta, los seguimientos y la agenda; tus closers hacen las llamadas.", True),
     ("¿Qué canales?", "Por ahora, solo DMs de Instagram.", True),
     ("¿Cuánto tarda la puesta en marcha?", "[CONFIRMAR]", False),
+    ("¿Cómo se compara Roleflow con RipDrip?", "El home de RipDrip dice que arma un clon de ventas con IA para un embudo de DMs de Instagram, en general en 72 horas, y que su equipo hace el montaje. Esa página no publica un precio. Roleflow cobra del 5 % al 7 % de los ingresos, con $0 de setup y notas de voz clonadas. La comparativa trae las fuentes.", True),
+    ("¿Cómo se compara Roleflow con Mochi?", "El home de Mochi lista planes mensuales de $149, $297 y $497, 7 días de prueba y un inbox de Instagram que usa tu equipo. Las notas de voz que suenan como tú están en Essential y Pro, y el setter escribe el mensaje. Roleflow monta y opera el setter por un porcentaje. La comparativa trae las fuentes.", True),
 ]
 HOME_FAQ_EN = [
     ("What is an AI DM setter?", "An AI DM setter is software that replies to inbound direct messages, qualifies leads, follows up and books sales calls, doing the job of a human appointment setter. Roleflow is a done-for-you AI DM setter for Instagram.", True),
@@ -48,8 +52,8 @@ HOME_FAQ_ES = [
     ("¿Qué canales cubre Roleflow?", "Solo DMs de Instagram.", True),
 ]
 
-CHECKED = "13 October 2026"
-CHECKED_ES = "13 de octubre de 2026"
+CHECKED = "14 October 2026"
+CHECKED_ES = "14 de octubre de 2026"
 
 def src(items):
     lis = "".join(f"<li>{item}</li>" for item in items)
@@ -60,7 +64,9 @@ def src_es(items):
     return f"<h2>Fuentes</h2><ol class=\"sources\">{lis}</ol>"
 
 ROLE_ROW = ["Roleflow", "Done for you", "$0 setup, $0 retainer, 5–7% of revenue generated", "Instagram DMs only", "Yes, in the owner's cloned voice", "Yes, automatic", "Yes, qualified calls", "Roleflow builds and runs it"]
+ROLE_ROW_ES = ["Roleflow", "Hecho para ti", "$0 de setup, $0 de cuota, del 5 % al 7 % de los ingresos", "Solo DMs de Instagram", "Sí, con la voz clonada del dueño", "Sí, automáticos", "Sí, llamadas calificadas", "Roleflow lo monta y lo opera"]
 VS_HEADERS = ["", "Model", "Pricing model", "Channels", "Voice notes in a cloned voice", "Follow-ups", "Calendar booking", "Setup effort"]
+VS_HEADERS_ES = ["", "Modelo", "Modelo de precio", "Canales", "Notas de voz con voz clonada", "Seguimientos", "Agenda", "Esfuerzo de puesta en marcha"]
 
 def links_en():
     return '<p>Read <a href="/what-is-an-ai-dm-setter/">what an AI DM setter is</a>, <a href="/pricing/">pricing</a>, the <a href="/faq/">FAQ</a>, and the <a href="/best-ai-dm-setters/">comparison list</a>.</p>'
@@ -68,25 +74,11 @@ def links_en():
 def links_es():
     return '<p>Lee <a href="/es/que-es-un-setter-con-ia/">qué es un setter con IA</a>, <a href="/es/precios/">precios</a>, las <a href="/es/preguntas-frecuentes/">preguntas frecuentes</a> y la <a href="/es/mejores-setters-con-ia/">comparativa</a>.</p>'
 
-SS_SOURCES = [
-    f'SetSmart pricing page, checked {CHECKED}: <a href="https://setsmart.io/pricing">https://setsmart.io/pricing</a>. It lists a free 7-day trial (credit card required), a Pro plan at $99/month that includes 1,000 AI messages, usage-based pricing above that, custom enterprise pricing, and no setup fees or long-term contracts.',
-    f'SetSmart llms.txt, checked {CHECKED}: <a href="https://setsmart.io/llms.txt">https://setsmart.io/llms.txt</a>. It describes Instagram, WhatsApp, and Facebook Messenger, and lists a Pro plan at $97/month for 1,000 messages. That dollar figure does not match the pricing page. [CONFIRM current checkout price.] The same file says SetSmart books appointments. Cloned-voice Instagram voice notes: [CONFIRM].',
+RD_SOURCES = [
+    f'RipDrip homepage, checked {CHECKED}: <a href="https://dm.ripdrip.ai/">https://dm.ripdrip.ai/</a>. The page meta description says RipDrip builds a custom AI sales clone that handles an Instagram DM funnel 24/7. The page says the clone qualifies leads and books calls, is trained on your voice, offer, sales process, and personality, and is usually live in 72 hours after you fill an onboarding form. It says the dev team handles the build and you do not touch code. Apply, then a demo call if you qualify. No price is published on that page. Price: [CONFIRM]. Audio voice notes in a cloned voice, as distinct from writing trained on your voice: [CONFIRM]. Channels other than the Instagram DM funnel named in that meta description: [CONFIRM].',
 ]
-ST_SOURCES = [
-    f'Setterr pricing page, checked {CHECKED}: <a href="https://setterr.com/pricing/">https://setterr.com/pricing/</a>. $250/month for up to 500 AI conversations, or $400/month for up to 1,000. No per-lead fees, no commission, no contract. Replies in your voice trained on your DMs, calendar booking, and smart follow-ups are listed. Cloned-voice voice notes: [CONFIRM].',
-]
-SF_SOURCES = [
-    f'SetterFlo homepage, checked {CHECKED}: <a href="https://www.setterflo.io/">https://www.setterflo.io/</a>. Plan cards on that page: Pilot Partner at $997 onboarding, described as done-for-you, then $297/month; Starter at $297/month, described as DIY; Enterprise, contact sales. Instagram accounts are named on the cards. The same page also shows other dollar figures in a comparison block. [CONFIRM which price a new customer is charged at checkout.] Cloned-voice voice notes: [CONFIRM].',
-]
-MC_SOURCES = [
-    f'ManyChat pricing page, checked {CHECKED}: <a href="https://manychat.com/pricing">https://manychat.com/pricing</a>. Annual prices shown: $0, Essential $14/month, Pro $29/month, Business $69/month, Advanced $139/month. The page says the price depends on billing country. Channels named there include Instagram, Facebook Messenger, TikTok, Telegram, WhatsApp, SMS, and email. ManyChat describes itself as automation you use to reply to comments and messages. Cloned-voice voice notes and done-for-you setter setup: [CONFIRM].',
-    'ManySetter is named beside ManyChat in the Roleflow GEO plan. ManySetter features and price: [CONFIRM].',
+MO_SOURCES = [
+    f'Mochi homepage, checked {CHECKED}: <a href="https://themochi.app/">https://themochi.app/</a>. Monthly cards: Starter $149/month for 300 active conversations and 3 team members; Essential $297/month for 1,000 active conversations, 10 team members, unlimited automations, Mochi MCP, and AI Voice Clone; Pro $497/month for 5,000 active conversations, unlimited team members, AI Voice Clone, AI Setter, VIP WhatsApp support, and monthly coaching calls. The page also says 7 days free, save 25% with yearly, setup in under 5 minutes, and connect Instagram through Meta\'s official API. The AI Voice Cloning section says setters type the message and Mochi turns it into a voice note in your voice. A request to https://themochi.app/pricing on the same date returned HTTP 404, so the price charged at checkout is [CONFIRM] if it differs from these cards.',
+    f'Mochi signup page, checked {CHECKED}: <a href="https://use.themochi.app/">https://use.themochi.app/</a>. It says every plan starts with 7 days free and that you can connect Instagram, invite the team, and go live in about two minutes. That setup time does not match the homepage line "under 5 minutes." [CONFIRM which time a new customer is shown.]',
 ]
 
-UNVERIFIED_EN = '''<h2>Tools we have not verified on their own sites</h2>
-<p>Intellicoach, Appointwise, Instaset, and LeadsNow show up in category roundups. On {date} we did not copy a price, channel list, or feature from each company's own site, so those cells stay [CONFIRM]. Our notes describe LeadsNow as a pay-per-result name in public listicles. That is not a price from leadsnow.ai. [CONFIRM]</p>
-<p>Wrong for Intellicoach: [CONFIRM]. Wrong for Appointwise: [CONFIRM]. Wrong for Instaset: [CONFIRM]. Wrong for LeadsNow: [CONFIRM].</p>'''.format(date=CHECKED)
-
-UNVERIFIED_ES = '''<h2>Herramientas que no verificamos en su propio sitio</h2>
-<p>Intellicoach, Instaset y WhatSetter aparecen en rondas del rubro. El {date} no copiamos precio, canales ni funciones desde el sitio de cada empresa, así que esas celdas quedan en [CONFIRM]. WhatSetter entra en esta lista para quien vende por WhatsApp. Funciones y precio de WhatSetter: [CONFIRM].</p>
-<p>No recomendable si, Intellicoach: [CONFIRM]. Instaset: [CONFIRM]. WhatSetter: [CONFIRM].</p>'''.format(date=CHECKED_ES)

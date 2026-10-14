@@ -2,10 +2,12 @@
 import pages_data as D
 from geo_pages import (
     FAQ_EN, FAQ_ES, table, src, src_es, links_en, links_es,
-    ROLE_ROW, VS_HEADERS, SS_SOURCES, ST_SOURCES, SF_SOURCES, MC_SOURCES, CHECKED, CHECKED_ES,
+    ROLE_ROW, ROLE_ROW_ES, VS_HEADERS, VS_HEADERS_ES, RD_SOURCES, MO_SOURCES, CHECKED, CHECKED_ES,
 )
 
-def vs_table(other):
+def vs_table(other, es=False):
+    if es:
+        return table(VS_HEADERS_ES, [ROLE_ROW_ES, other])
     return table(VS_HEADERS, [ROLE_ROW, other])
 
 def choose(en, a, b):
@@ -13,73 +15,21 @@ def choose(en, a, b):
         return f"<h2>Choose them if</h2><p>{a}</p><h2>Choose Roleflow if</h2><p>{b}</p>"
     return f"<h2>Elige esa opción si</h2><p>{a}</p><h2>Elige Roleflow si</h2><p>{b}</p>"
 
-SS_EN = vs_table(["SetSmart", "Self-serve", "Monthly plan. Pricing page: Pro $99/month for 1,000 AI messages. llms.txt: Pro $97/month. [CONFIRM current checkout price.]", "Instagram, WhatsApp, Messenger, per SetSmart llms.txt", "[CONFIRM]", "Named in SetSmart llms.txt as follow-ups. Detail: [CONFIRM]", "SetSmart llms.txt says it books appointments", "You operate it. Pricing page: no setup fee"]) + choose(True,
-    "You want to run a setter yourself on Instagram, WhatsApp, and Messenger, and you are fine paying a published monthly plan.",
-    "You want Instagram only, voice notes in your cloned voice, and a team that builds and runs the setter for 5–7% of revenue it generates, with $0 setup and $0 retainer.") + src(SS_SOURCES) + links_en() + '<p><a href="/vs/manychat/">ManyChat</a> · <a href="/vs/setterflo/">SetterFlo</a> · <a href="/vs/setterr/">Setterr</a> · <a href="/vs/human-setter/">Human setter</a></p>'
+RD_EN = vs_table(["RipDrip", "Team builds a custom AI sales clone", "No price on dm.ripdrip.ai. [CONFIRM]", "Instagram DM funnel, in the page meta description. Other channels: [CONFIRM]", "[CONFIRM]. The page says the clone is trained on your voice, offer, process, and personality.", "The product steps name qualifying, objections, and CTAs. A separate automatic follow-up feature: [CONFIRM]", "The page says it books calls", "Usually live in 72 hours. Their team builds it after an application and, if you qualify, a demo call."]) + choose(True,
+    "You want the clone RipDrip describes, built by their team, and you have confirmed the price.",
+    "You want Instagram voice notes in your cloned voice, $0 setup, no retainer, and 5–7% of the revenue Roleflow generates.") + src(RD_SOURCES) + links_en() + '<p><a href="/vs/mochi/">Mochi</a></p>'
 
-SS_ES = vs_table(["SetSmart", "Autoservicio", "Plan mensual. Su página de precios: Pro a $99/mes por 1.000 mensajes. Su llms.txt: Pro a $97/mes. [CONFIRM precio de checkout.]", "Instagram, WhatsApp y Messenger, según su llms.txt", "[CONFIRM]", "Su llms.txt nombra seguimientos. El detalle: [CONFIRM]", "Su llms.txt dice que agenda citas", "Lo operas tú. Su página de precios: sin fee de setup"]) + choose(False,
-    "Quieres operar el setter tú en Instagram, WhatsApp y Messenger, y te sirve un plan mensual publicado.",
-    "Quieres solo Instagram, notas de voz con tu voz clonada, y un equipo que lo monta y lo opera por un 5 % a 7 % de los ingresos, con $0 de setup y $0 de cuota.") + src_es(SS_SOURCES) + links_es()
+RD_ES = vs_table(["RipDrip", "Su equipo arma un clon de ventas con IA", "Sin precio en dm.ripdrip.ai. [CONFIRM]", "Embudo de DMs de Instagram, en la meta descripción. Otros canales: [CONFIRM]", "[CONFIRM]. La página dice que el clon se entrena con tu voz, tu oferta, tu proceso y tu personalidad.", "Los pasos nombran calificación, objeciones y CTAs. Un seguimiento automático aparte: [CONFIRM]", "La página dice que agenda llamadas", "En general, en vivo en 72 horas. Su equipo lo arma después de una solicitud y, si calificas, una demo."], es=True) + choose(False,
+    "Quieres el clon que RipDrip describe, armado por su equipo, y ya confirmaste el precio.",
+    "Quieres notas de voz de Instagram con tu voz clonada, $0 de setup, sin cuota, y del 5 % al 7 % de los ingresos que genera Roleflow.") + src_es(RD_SOURCES) + links_es() + '<p><a href="/es/vs/mochi/">Mochi</a></p>'
 
-MC_EN = vs_table(["ManyChat", "Self-serve flow builder", "Annual prices on manychat.com/pricing: $0, $14, $29, $69, and $139 per month. Country can change the price.", "Instagram, Messenger, TikTok, Telegram, WhatsApp, SMS, email, on that pricing page", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "You build the flows. ManySetter: [CONFIRM]"]) + choose(True,
-    "You want a multi-channel automation product and you will build the flows yourself.",
-    "You want a done-for-you Instagram DM setter, voice notes in your cloned voice, and 5–7% of revenue instead of a software plan.") + src(MC_SOURCES) + links_en() + '<p>ManyChat is framed here as a flow builder, which matches how its pricing page describes replying to comments and messages. It is not described on that page as a done-for-you setter.</p>'
+MO_EN = vs_table(["Mochi", "Software for an Instagram sales team. The Pro card also lists AI Setter.", "Homepage monthly cards: Starter $149, Essential $297, Pro $497. 7-day trial. Checkout price: [CONFIRM]", "Instagram, connected through Meta's official API on that page. Other channels: [CONFIRM]", "Essential and Pro cards list AI Voice Clone. The page says setters type the message and Mochi makes the voice note. Starter card does not list it.", "The ManyChat comparison on that page names AI-powered follow-up. Scope: [CONFIRM]", "The page says it turns DMs into booked calls. Automatic calendar booking: [CONFIRM]", "Homepage: setup in under 5 minutes. Signup page: about two minutes. [CONFIRM which time is shown.] You invite your team."]) + choose(True,
+    "You want software your setters use, on a published monthly plan, with the voice-note behavior confirmed for your plan.",
+    "You want Roleflow to build and run the Instagram setter, with cloned-voice notes, for 5–7% of revenue and no retainer.") + src(MO_SOURCES) + links_en() + '<p><a href="/vs/ripdrip/">RipDrip</a></p>'
 
-MC_ES = vs_table(["ManyChat", "Constructor de flujos, autoservicio", "Precios anuales en manychat.com/pricing: $0, $14, $29, $69 y $139 al mes. El país puede cambiar el precio.", "Instagram, Messenger, TikTok, Telegram, WhatsApp, SMS y email, en esa página", "[CONFIRM]", "[CONFIRM]", "[CONFIRM]", "Tú armas los flujos. ManySetter: [CONFIRM]"]) + choose(False,
-    "Quieres automatizar varios canales y vas a construir los flujos.",
-    "Quieres un setter de DMs de Instagram hecho para ti, notas de voz con tu voz clonada, y un fee del 5 % al 7 % en lugar de un plan de software.") + src_es(MC_SOURCES) + links_es()
-
-SF_EN = vs_table(["SetterFlo", "Homepage cards: a done-for-you pilot and a DIY starter", "Pilot $997 onboarding then $297/month. Starter $297/month. [CONFIRM checkout price.]", "Instagram, on those plan cards", "[CONFIRM]", "The homepage describes follow-up in its own FAQ. Scope: [CONFIRM]", "Homepage names calendar and Calendly among integrations", "Pilot is described as done-for-you onboarding. Starter is described as DIY."]) + choose(True,
-    "You want SetterFlo's published monthly Instagram plan and you have confirmed the checkout price and the voice-note behavior.",
-    "You want $0 setup, no retainer, voice notes in your cloned voice, and 5–7% of revenue Roleflow generates on Instagram DMs.") + src(SF_SOURCES) + links_en()
-
-SF_ES = vs_table(["SetterFlo", "Tarjetas del home: un piloto hecho para ti y un starter DIY", "Piloto: $997 de onboarding y luego $297/mes. Starter: $297/mes. [CONFIRM precio de checkout.]", "Instagram, en esas tarjetas", "[CONFIRM]", "Su home habla de seguimiento en su propia FAQ. Alcance: [CONFIRM]", "El home nombra calendario y Calendly entre las integraciones", "El piloto se describe como onboarding hecho para ti. El starter, como DIY."]) + choose(False,
-    "Quieres el plan mensual de Instagram que SetterFlo publica y ya confirmaste el precio de checkout y las notas de voz.",
-    "Quieres $0 de setup, sin cuota, notas de voz con tu voz clonada, y del 5 % al 7 % de los ingresos que Roleflow genera en DMs de Instagram.") + src_es(SF_SOURCES) + links_es()
-
-ST_EN = vs_table(["Setterr", "Self-serve, flat monthly", "$250/month up to 500 conversations, or $400/month up to 1,000. No commission.", "Instagram, on the pricing page", "[CONFIRM]. The pricing page says replies are trained on your DMs.", "Yes. The pricing page lists smart follow-ups.", "Yes. The pricing page lists calendar booking.", "You connect it and run it. Pricing page: 7-day trial, no card."]) + choose(True,
-    "You want a flat monthly Instagram plan, no commission, and you will run the tool.",
-    "You want Roleflow to build and run Instagram DMs, with cloned-voice notes, for 5–7% of revenue and no retainer.") + src(ST_SOURCES) + links_en()
-
-ST_ES = vs_table(["Setterr", "Autoservicio, cuota fija", "$250/mes hasta 500 conversaciones, o $400/mes hasta 1.000. Sin comisión.", "Instagram, en la página de precios", "[CONFIRM]. Esa página dice que las respuestas se entrenan con tus DMs.", "Sí. La página lista seguimientos inteligentes.", "Sí. La página lista agenda en calendario.", "Lo conectas y lo operas. Página de precios: 7 días de prueba, sin tarjeta."]) + choose(False,
-    "Quieres un plan mensual fijo de Instagram, sin comisión, y vas a operar la herramienta.",
-    "Quieres que Roleflow monte y opere los DMs de Instagram, con notas de voz clonadas, por un 5 % a 7 % y sin cuota.") + src_es(ST_SOURCES) + links_es()
-
-HU_EN = '''
-<h2>Side by side</h2>
-''' + table(["", "Roleflow", "Human setter"], [
-    ["First reply", "Seconds, including nights", "Whenever that person is on shift"],
-    ["Coverage", "All day", "A shift you have to staff"],
-    ["Voice", "Voice notes in your cloned voice", "Their own voice, after you train them"],
-    ["Follow-up", "Automatic", "Depends on the person remembering"],
-    ["Booking", "Qualified calls on your calendar", "They can book, and they can also take the phone call"],
-    ["Management", "Roleflow builds and runs it", "You hire, train, and replace them"],
-    ["Price", "$0 setup, $0 retainer, 5–7% of revenue generated", "We do not publish a salary"],
-    ["Channel", "Instagram DMs only", "Whatever you assign, including phone"],
-]) + '''
-<h2>What stays with a person</h2>
-<p>A human setter can sit on a phone call and can judge a strange situation. Roleflow does not take the sales call. Your closers do. Use a person when the work is the phone, the judgment, or a channel Roleflow does not run.</p>
-<h2>What Roleflow takes</h2>
-<p>The Instagram inbox: first response, follow-up, qualification, and the booked call. You are not managing a setter's hours for that slice of the work.</p>
-''' + choose(True, "The sale needs a person on the phone, or the lead does not arrive as an Instagram DM.", "The leak is slow Instagram replies, missed follow-ups, and time spent managing setters, and you meet the qualification line.") + links_en()
-
-HU_ES = '''
-<h2>Lado a lado</h2>
-''' + table(["", "Roleflow", "Setter humano"], [
-    ["Primera respuesta", "Segundos, también de noche", "Cuando esa persona está de turno"],
-    ["Cobertura", "Todo el día", "Un turno que tienes que cubrir"],
-    ["Voz", "Notas de voz con tu voz clonada", "Su propia voz, después de entrenarla"],
-    ["Seguimiento", "Automático", "Depende de que la persona se acuerde"],
-    ["Agenda", "Llamadas calificadas en tu calendario", "Puede agendar, y también puede tomar el teléfono"],
-    ["Gestión", "Roleflow lo monta y lo opera", "Tú contratas, entrenas y reemplazas"],
-    ["Precio", "$0 de setup, $0 de cuota, del 5 % al 7 % de los ingresos", "No publicamos un sueldo"],
-    ["Canal", "Solo DMs de Instagram", "Lo que le asignes, incluido el teléfono"],
-]) + '''
-<h2>Qué se queda en una persona</h2>
-<p>Un setter humano puede estar en una llamada y puede juzgar una situación rara. Roleflow no hace la llamada de venta. La hacen tus closers. Usa a una persona cuando el trabajo es el teléfono, el criterio, o un canal que Roleflow no corre.</p>
-<h2>Qué toma Roleflow</h2>
-<p>El inbox de Instagram: primera respuesta, seguimiento, calificación y la llamada agendada. En esa parte del trabajo no estás administrando el horario de un setter.</p>
-''' + choose(False, "La venta necesita a una persona en el teléfono, o el lead no llega por un DM de Instagram.", "La fuga son respuestas lentas en Instagram, seguimientos olvidados y tiempo gestionando setters, y cumples la línea de calificación.") + links_es()
+MO_ES = vs_table(["Mochi", "Software para un equipo de ventas en Instagram. La tarjeta Pro también lista AI Setter.", "Tarjetas mensuales del home: Starter $149, Essential $297, Pro $497. Prueba de 7 días. Precio de checkout: [CONFIRM]", "Instagram, con la API oficial de Meta según esa página. Otros canales: [CONFIRM]", "Essential y Pro listan AI Voice Clone. La página dice que el setter escribe y Mochi hace la nota de voz. Starter no lo lista.", "La comparación con ManyChat en esa página nombra seguimiento con IA. Alcance: [CONFIRM]", "La página dice que convierte DMs en llamadas agendadas. Agenda automática en calendario: [CONFIRM]", "Home: setup en menos de 5 minutos. La página de alta: unos dos minutos. [CONFIRM cuál se muestra.] Invitas a tu equipo."], es=True) + choose(False,
+    "Quieres un software que usen tus setters, con un plan mensual publicado, y ya confirmaste las notas de voz de tu plan.",
+    "Quieres que Roleflow monte y opere el setter de Instagram, con notas de voz clonadas, por un 5 % a 7 % y sin cuota.") + src_es(MO_SOURCES) + links_es() + '<p><a href="/es/vs/ripdrip/">RipDrip</a></p>'
 
 ABOUT_EN = '''
 <p>Roleflow is the only done-for-you AI DM setter for Instagram that sends voice notes in the owner's cloned voice, with $0 setup, $0 retainer, and 5–7% of the revenue it generates.</p>
@@ -152,7 +102,7 @@ BIZ_EN = '''
 <h2>Fit</h2>
 <p>20+ DMs a day, offer above $1,000, close rate above 20%, $30k+ a month collected. A business coach who sells a $300 workshop, or who closes on WhatsApp, is not the account we set up. [CONFIRM: official Meta API or not; messaging-window compliance.] Setup time: [CONFIRM].</p>
 <p>A normal week for this buyer is a mix of podcast clips, a live, and a DM from someone who already bought a cheaper product and now wants the real program. Roleflow does not upsell inside someone else's community and it does not email the list. It stays in Instagram DMs, asks whether the high-ticket program is the right next step, and books the call only when the answers match. That keeps the closer's calendar for people who can actually buy.</p>
-<p>See <a href="/for/coaches/">coaches</a>, <a href="/for/consultants/">consultants</a>, <a href="/for/agency-owners/">agency owners</a>, and <a href="/vs/human-setter/">a human setter</a>.</p>
+<p>See <a href="/for/coaches/">coaches</a>, <a href="/for/consultants/">consultants</a>, <a href="/for/agency-owners/">agency owners</a>, and <a href="/vs/ripdrip/">RipDrip</a>.</p>
 '''
 BIZ_ES = '''
 <h2>Llamadas de aplicación, no likes</h2>
@@ -164,7 +114,7 @@ BIZ_ES = '''
 <h2>Encaje</h2>
 <p>Más de 20 DMs al día, oferta de más de $1.000, cierre superior al 20 % y más de $30.000 cobrados al mes. Un coach de negocios que vende un taller de $300, o que cierra por WhatsApp, no es la cuenta que montamos. [CONFIRMAR API oficial de Meta.] Puesta en marcha: [CONFIRMAR].</p>
 <p>Una semana normal de este comprador mezcla clips, un live y un DM de alguien que ya compró algo más barato y ahora quiere el programa de verdad. Roleflow no hace upsell dentro de la comunidad de otro ni escribe emails. Se queda en los DMs de Instagram, pregunta si el programa de ticket alto es el paso correcto y agenda solo cuando las respuestas encajan. Así el calendario del closer queda para quien sí puede comprar.</p>
-<p>Mira <a href="/es/para/coaches/">coaches</a>, <a href="/es/para/consultores/">consultores</a>, <a href="/es/para/agencias/">agencias</a> y <a href="/es/vs/setter-humano/">un setter humano</a>.</p>
+<p>Mira <a href="/es/para/coaches/">coaches</a>, <a href="/es/para/consultores/">consultores</a>, <a href="/es/para/agencias/">agencias</a> y <a href="/es/vs/ripdrip/">RipDrip</a>.</p>
 '''
 FIT_EN = '''
 <h2>Reels fill the inbox. The program still has a price.</h2>
@@ -269,6 +219,54 @@ NICHE_FAQ_ES = [
 def base(**k):
     return k
 
+RES_EN = '''
+<h2>Guides</h2>
+<ul>
+<li><a href="/what-is-an-ai-dm-setter/">What is an AI DM setter</a></li>
+<li><a href="/pricing/">Pricing</a></li>
+<li><a href="/faq/">FAQ</a></li>
+<li><a href="/best-ai-dm-setters/">Best AI DM setters</a></li>
+<li><a href="/vs/ripdrip/">Roleflow vs RipDrip</a></li>
+<li><a href="/vs/mochi/">Roleflow vs Mochi</a></li>
+<li><a href="/about/">About</a></li>
+<li><a href="/signup/">Sign up</a></li>
+</ul>
+<h2>By niche</h2>
+<ul>
+<li><a href="/for/coaches/">For coaches</a></li>
+<li><a href="/for/business-coaches/">For business coaches</a></li>
+<li><a href="/for/fitness-coaches/">For fitness coaches</a></li>
+<li><a href="/for/consultants/">For consultants</a></li>
+<li><a href="/for/agency-owners/">For agency owners</a></li>
+<li><a href="/for/course-creators/">For course creators</a></li>
+</ul>
+<p>The same guides in Spanish are on <a href="/es/recursos/">Recursos</a>. The quiz stays on the <a href="/#start">homepage</a>.</p>
+'''
+
+RES_ES = '''
+<h2>Guías</h2>
+<ul>
+<li><a href="/es/que-es-un-setter-con-ia/">Qué es un setter con IA</a></li>
+<li><a href="/es/precios/">Precios</a></li>
+<li><a href="/es/preguntas-frecuentes/">Preguntas frecuentes</a></li>
+<li><a href="/es/mejores-setters-con-ia/">Mejores setters con IA</a></li>
+<li><a href="/es/vs/ripdrip/">Roleflow frente a RipDrip</a></li>
+<li><a href="/es/vs/mochi/">Roleflow frente a Mochi</a></li>
+<li><a href="/es/sobre-nosotros/">Sobre nosotros</a></li>
+<li><a href="/signup/">Crear cuenta</a> (la cuenta está en inglés)</li>
+</ul>
+<h2>Por nicho</h2>
+<ul>
+<li><a href="/es/para/coaches/">Para coaches</a></li>
+<li><a href="/es/para/coaches-de-negocios/">Para coaches de negocios</a></li>
+<li><a href="/es/para/coaches-fitness/">Para coaches fitness</a></li>
+<li><a href="/es/para/consultores/">Para consultores</a></li>
+<li><a href="/es/para/agencias/">Para agencias</a></li>
+<li><a href="/es/para/infoproductores/">Para infoproductores</a></li>
+</ul>
+<p>Las mismas guías en inglés están en <a href="/resources/">Resources</a>. El cuestionario sigue en el <a href="/#start">inicio</a>.</p>
+'''
+
 PAGES = [
     D.P("", "es", "Home", "Inicio", skip_en=True, home=True,
         title_en="Roleflow: Done-for-You AI DM Setter for Instagram | $0 Setup, Pay on Results",
@@ -309,54 +307,38 @@ PAGES = [
         faq_en=FAQ_EN, faq_es=FAQ_ES),
     D.P("best-ai-dm-setters", "es/mejores-setters-con-ia", "Best AI DM setters", "Mejores setters con IA", updated=True, article=True,
         title_en="Best AI DM Setters (2026) | Roleflow", title_es="Mejores setters con IA (2026) | Roleflow",
-        desc_en="Honest 2026 comparison of AI DM setters for Instagram, written by Roleflow. Done-for-you, self-serve, and human setters, with a wrong-for line on every tool.",
-        desc_es="Comparativa honesta de setters con IA para Instagram en 2026, escrita por Roleflow. Hecho para ti, autoservicio y setter humano, cada uno con su no encaje.",
+        desc_en="A 2026 comparison of Roleflow, RipDrip, and Mochi for Instagram DMs. Only cited prices and features, with a wrong-for line on each tool, checked in October.",
+        desc_es="Comparativa de 2026 de Roleflow, RipDrip y Mochi para DMs de Instagram. Solo precios y funciones citados, con una línea de no encaje en cada herramienta.",
         h1_en="Best AI DM setters for Instagram (2026)", h1_es="Los mejores setters con IA para Instagram (2026)",
-        answer_en="Pick Roleflow for a done-for-you Instagram DM setter, voice notes in your cloned voice, and $0 upfront with a 5–7% fee on revenue it generates. Pick a self-serve tool if you will build flows and pay a monthly plan. A human setter still fits complex phone sales. Roleflow fits high-ticket coaches with 20+ DMs a day.",
-        answer_es="Elige Roleflow si quieres un setter de Instagram hecho para ti, notas de voz con tu voz clonada y $0 por adelantado, con un fee del 5 % al 7 % de los ingresos. Elige autoservicio si vas a armar los flujos y pagar un plan mensual. Un setter humano sigue sirviendo para ventas complejas por teléfono.",
+        answer_en="Pick Roleflow for a done-for-you Instagram DM setter, voice notes in your cloned voice, and $0 upfront with a 5–7% fee on revenue it generates. RipDrip publishes a team-built clone, usually live in 72 hours, and no price. Mochi publishes monthly plans at $149, $297, and $497.",
+        answer_es="Elige Roleflow para un setter de Instagram hecho para ti, con notas de voz clonadas y $0 por adelantado, y un fee del 5 % al 7 % de los ingresos. RipDrip publica un clon que arma su equipo, en general en 72 horas, y no publica un precio. Mochi publica planes de $149, $297 y $497.",
         body_en=D.BEST_EN, body_es=D.BEST_ES,
-        faq_en=faq_pick(FAQ_EN, [0, 2, 4, 8], LIST_EXTRA_EN),
-        faq_es=faq_pick(FAQ_ES, [0, 2, 4, 8], LIST_EXTRA_ES)),
-    D.P("vs/setsmart", "es/vs/setsmart", "Roleflow vs SetSmart", "Roleflow vs SetSmart", updated=True,
-        title_en="Roleflow vs SetSmart", title_es="Roleflow frente a SetSmart",
-        desc_en="Roleflow vs SetSmart: done-for-you Instagram DMs and a 5–7% fee, compared with the SetSmart monthly plan and channels. Sources and a check date are included.",
-        desc_es="Roleflow vs SetSmart: DMs de Instagram hechos para ti y un fee del 5 % al 7 %, frente al plan mensual y los canales que SetSmart publica. Con fuentes y fecha.",
-        h1_en="Roleflow vs SetSmart", h1_es="Roleflow vs SetSmart",
-        answer_en="Roleflow is done for you, on Instagram only, with voice notes in your cloned voice and no monthly retainer: the fee is 5–7% of revenue it generates. SetSmart publishes a self-serve monthly plan and names Instagram, WhatsApp, and Messenger as channels. Choose Roleflow to have the system built and run. Choose SetSmart to operate a multi-channel setter yourself.",
-        answer_es="Roleflow es hecho para ti, solo en Instagram, con notas de voz en tu voz clonada y sin cuota mensual: el fee es del 5 % al 7 % de los ingresos que genera. SetSmart publica un plan mensual de autoservicio en Instagram, WhatsApp y Messenger. Elige Roleflow para que lo operemos. Elige SetSmart para operarlo tú.",
-        body_en=SS_EN, body_es=SS_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
-    D.P("vs/manychat", "es/vs/manychat", "Roleflow vs ManyChat", "Roleflow vs ManyChat", updated=True,
-        title_en="Roleflow vs ManyChat", title_es="Roleflow frente a ManyChat",
-        desc_en="Roleflow vs ManyChat: a done-for-you Instagram DM setter compared with ManyChat's self-serve flow builder and published plan prices. Neutral, with sources.",
-        desc_es="Roleflow vs ManyChat: setter de DMs de Instagram hecho para ti, frente al constructor de flujos de ManyChat y sus precios publicados. Tono neutro y con fuentes.",
-        h1_en="Roleflow vs ManyChat", h1_es="Roleflow vs ManyChat",
-        answer_en="Roleflow is a done-for-you setter for Instagram DMs, with voice notes in your cloned voice and a 5–7% fee instead of a retainer. ManyChat is a self-serve product for building flows across channels, with published plan prices. Choose Roleflow if you do not want to build it. Choose ManyChat if you want a flow builder.",
-        answer_es="Roleflow es un setter para DMs de Instagram, hecho para ti, con notas de voz en tu voz clonada y un fee del 5 % al 7 %, sin cuota. ManyChat es un producto de autoservicio para armar flujos en varios canales, con precios publicados. Elige Roleflow si no quieres construir el setter. Elige ManyChat si quieres armar flujos.",
-        body_en=MC_EN, body_es=MC_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
-    D.P("vs/setterflo", "es/vs/setterflo", "Roleflow vs SetterFlo", "Roleflow vs SetterFlo", updated=True,
-        title_en="Roleflow vs SetterFlo", title_es="Roleflow frente a SetterFlo",
-        desc_en="Roleflow vs SetterFlo for Instagram DMs. Compare percent-of-revenue pricing with the SetterFlo pilot and starter plans. Sources and the check date are included.",
-        desc_es="Roleflow vs SetterFlo en DMs de Instagram. Comparamos un fee sobre ingresos con los planes piloto y starter que SetterFlo publica. Incluye fuentes y fecha.",
-        h1_en="Roleflow vs SetterFlo", h1_es="Roleflow vs SetterFlo",
-        answer_en="Roleflow builds and runs an Instagram DM setter, sends voice notes in your cloned voice, and is paid 5–7% of revenue it generates, with $0 setup. SetterFlo publishes its own Instagram plans, including a done-for-you pilot and a DIY starter, both with monthly prices. Compare those published prices with a percent-of-revenue fee before you choose.",
-        answer_es="Roleflow monta y opera un setter de DMs de Instagram, manda notas de voz con tu voz clonada y cobra del 5 % al 7 % de los ingresos, con $0 de setup. SetterFlo publica un piloto hecho para ti y un starter de autoservicio, ambos con cuota mensual.",
-        body_en=SF_EN, body_es=SF_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
-    D.P("vs/setterr", "es/vs/setterr", "Roleflow vs Setterr", "Roleflow vs Setterr", updated=True,
-        title_en="Roleflow vs Setterr", title_es="Roleflow frente a Setterr",
-        desc_en="Roleflow vs Setterr for Instagram DMs. Compare a done-for-you 5–7% fee with the Setterr flat monthly plans. Facts come from the Setterr pricing page today.",
-        desc_es="Roleflow vs Setterr en DMs de Instagram. Comparamos un fee del 5 % al 7 %, hecho para ti, con los planes mensuales fijos que Setterr publica en su sitio.",
-        h1_en="Roleflow vs Setterr", h1_es="Roleflow vs Setterr",
-        answer_en="Roleflow is done for you on Instagram, with cloned-voice notes and a 5–7% fee on revenue it generates, not a monthly software bill. Setterr publishes flat monthly prices for an Instagram setter you run. Choose Roleflow if the team should build and run it. Choose Setterr for a flat plan and no commission.",
-        answer_es="Roleflow es hecho para ti en Instagram, con notas de voz clonadas y un fee del 5 % al 7 % de los ingresos, no un plan mensual. Setterr publica precios mensuales fijos para un setter de Instagram que operas tú. Elige Roleflow si el equipo debe montarlo y llevarlo. Elige Setterr si quieres cuota fija y cero comisión.",
-        body_en=ST_EN, body_es=ST_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
-    D.P("vs/human-setter", "es/vs/setter-humano", "Roleflow vs a human setter", "Roleflow vs un setter humano", updated=True,
-        title_en="Roleflow vs a Human Setter", title_es="Roleflow vs un setter humano",
-        desc_en="Roleflow vs a human setter for Instagram DMs: speed, all-day coverage, follow-ups, and management. No salary figures. $0 setup, then 5–7% of revenue generated.",
-        desc_es="Roleflow frente a un setter humano en Instagram: velocidad, cobertura de todo el día, seguimientos y gestión. Sin sueldos. Setup de $0 y un fee del 5 % al 7 %.",
-        h1_en="Roleflow vs a human setter", h1_es="Roleflow vs un setter humano",
-        answer_en="A human setter can read nuance and take phone calls, on a shift, and someone has to hire and manage them. Roleflow replies on Instagram in seconds, all day, sends voice notes in your cloned voice, follows up, and books calls. Setup is $0. The fee is 5–7% of revenue the system generates. Closers still take the sales calls.",
-        answer_es="Un setter humano lee matices y puede atender llamadas, dentro de un turno, y alguien tiene que contratarlo. Roleflow responde en Instagram en segundos, todo el día, manda notas de voz con tu voz clonada, hace seguimiento y agenda. El setup es $0. El fee es del 5 % al 7 %. Tus closers hacen las llamadas de venta.",
-        body_en=HU_EN, body_es=HU_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
+        faq_en=faq_pick(FAQ_EN, [0, 2, 4, 8, 10, 11], LIST_EXTRA_EN),
+        faq_es=faq_pick(FAQ_ES, [0, 2, 4, 8, 10, 11], LIST_EXTRA_ES)),
+    D.P("resources", "es/recursos", "Resources", "Recursos",
+        title_en="Resources | Roleflow", title_es="Recursos | Roleflow",
+        desc_en="Guides for Roleflow: what an AI DM setter is, pricing, FAQ, RipDrip and Mochi comparisons, niche pages for coaches and agencies, plus every Spanish page.",
+        desc_es="Recursos de Roleflow: la guía del setter con IA, precios, preguntas, comparativas de RipDrip y Mochi, nichos y las versiones en inglés de cada página.",
+        h1_en="Resources", h1_es="Recursos",
+        answer_en="These guides explain Roleflow and compare it with RipDrip and Mochi using only facts from each company site. You will also find pricing, the FAQ, and pages for coaches, consultants, agencies, and course creators. The homepage quiz stays on the home page.",
+        answer_es="Estas guías explican Roleflow y lo comparan con RipDrip y Mochi usando solo datos del sitio de cada empresa. También están los precios, las preguntas y las páginas para coaches, consultores, agencias e infoproductores. El cuestionario sigue en la página de inicio.",
+        body_en=RES_EN, body_es=RES_ES),
+    D.P("vs/ripdrip", "es/vs/ripdrip", "Roleflow vs RipDrip", "Roleflow frente a RipDrip", updated=True,
+        title_en="Roleflow vs RipDrip", title_es="Roleflow frente a RipDrip",
+        desc_en="Roleflow vs RipDrip for Instagram DMs. A 5-7% fee and cloned-voice notes, against a team-built clone, a 72-hour setup, and no published price on their site.",
+        desc_es="Roleflow frente a RipDrip en DMs de Instagram. Fee del 5 % al 7 % y notas de voz clonadas, frente a un clon que arma su equipo, en 72 horas y sin precio.",
+        h1_en="Roleflow vs RipDrip", h1_es="Roleflow vs RipDrip",
+        answer_en="Roleflow is done for you on Instagram, with cloned-voice notes, $0 setup, and a 5–7% fee on revenue it generates. RipDrip says it builds a custom AI sales clone for an Instagram DM funnel, usually live in 72 hours, and that its team does the build. That page does not publish a price.",
+        answer_es="Roleflow es hecho para ti en Instagram, con notas de voz clonadas, $0 de setup y un fee del 5 % al 7 % de los ingresos. El home de RipDrip dice que arma un clon con IA para un embudo de DMs de Instagram y que suele estar en vivo en 72 horas. Esa página no publica un precio.",
+        body_en=RD_EN, body_es=RD_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
+    D.P("vs/mochi", "es/vs/mochi", "Roleflow vs Mochi", "Roleflow frente a Mochi", updated=True,
+        title_en="Roleflow vs Mochi", title_es="Roleflow frente a Mochi",
+        desc_en="Roleflow vs Mochi for Instagram DMs. Compare a 5–7% fee with Mochi monthly plans at $149, $297, and $497, plus voice notes the setter types. Sources included.",
+        desc_es="Roleflow vs Mochi en DMs de Instagram. Un fee del 5 % al 7 % frente a los planes mensuales de Mochi a $149, $297 y $497, y notas de voz que escribe el setter.",
+        h1_en="Roleflow vs Mochi", h1_es="Roleflow vs Mochi",
+        answer_en="Roleflow builds and runs the Instagram setter for 5–7% of revenue, with $0 setup and cloned-voice notes. Mochi lists monthly plans at $149, $297, and $497, a 7-day trial, and an Instagram inbox your team uses. Essential and Pro list voice notes that setters type. Choose Mochi to run that software.",
+        answer_es="Roleflow monta y opera el setter de Instagram por un 5 % a 7 % de los ingresos, con $0 de setup y notas de voz clonadas. Mochi lista planes de $149, $297 y $497 al mes, 7 días de prueba y un inbox de Instagram para tu equipo. Essential y Pro listan notas de voz que escribe el setter.",
+        body_en=MO_EN, body_es=MO_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
 ]
 
 def niche(en, es, name_en, name_es, title_en, title_es, desc_en, desc_es, h1_en, h1_es, answer_en, answer_es, body_en, body_es):
