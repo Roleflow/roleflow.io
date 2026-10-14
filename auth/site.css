@@ -145,6 +145,21 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 }
 .admin-tabs{max-width:420px;margin:22px auto 0}
 .admin-tabs[hidden]{display:none !important}
+#setter[hidden]{display:none !important}
+#setter{padding:12px 0 8px}
+#setter .sub{margin-bottom:8px}
+.setter{text-align:left;margin-top:8px}
+.setter h3{margin-top:26px}
+.setter-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:8px}
+.setter-head h3{margin:0;font-size:clamp(1.35rem,3vw,1.8rem)}
+.setter .badge{border:1px solid var(--gold);color:var(--gold);border-radius:999px;padding:4px 12px;font-size:.85rem;font-weight:600}
+.setter .badge.paused{border-color:var(--line);color:var(--mute)}
+.setter .panel{max-width:none;margin:18px 0 0}
+.setter .section-list{display:grid;gap:12px;margin-top:12px}
+.setter .section-block{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.setter .section-block h3{font-size:1.02rem;margin:0}
+.setter .prompt{text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;max-height:220px;overflow:auto;font:400 .92rem/1.5 var(--b);margin:10px 0 0}
+.crm-link{width:100%;max-width:240px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font:500 .9rem var(--b)}
 .crm{text-align:left;margin-top:22px}
 .crm h2{font-size:clamp(1.45rem,3vw,2.1rem)}
 .crm h3{margin-top:26px}
@@ -185,5 +200,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
   .crm-table th,.crm-table td{padding:8px}
   .status-bars .row{grid-template-columns:72px 1fr 32px}
   .crm .section-block header{align-items:flex-start;flex-direction:column}
+  .setter-head{align-items:flex-start;flex-direction:column}
+  .crm-link{max-width:none}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

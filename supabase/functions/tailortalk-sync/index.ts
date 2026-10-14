@@ -1,4 +1,8 @@
-// TailorTalk CRM sync. Not deployed by this change.
+// TailorTalk CRM sync. Redeploy after applying
+// supabase/migrations/20261014200000_client_setter.sql.
+// The hourly job already caches every lead it pages through, newest messages
+// included, so the client setter can read the recent rows. This revision also
+// stores a username when the lead payload has one, and counts leads by category.
 //
 // Secrets (set in the Supabase function secrets UI; do not commit them):
 //   TAILORTALK_CRON_SECRET required for the hourly job. Same value as
@@ -143,11 +147,27 @@ function b64ToBytes(value: string) {
 async function saveAgent(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
   const existingId = body.id ? String(body.id) : "";
   if (!existingId) return json(400, { error: "Agents are added by the TailorTalk registry upsert." });
-  const profileId = body.profile_id ? String(body.profile_id) : null;
+  const requested = body.client_id != null && String(body.client_id) !== ""
+    ? String(body.client_id)
+    : (body.profile_id ? String(body.profile_id) : "");
+  const clientId = requested || null;
+  if (clientId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId)) {
+    return json(400, { error: "Choose a client account." });
+  }
   const token = String(body.token || "").trim();
+  const now = new Date().toISOString();
+  if (clientId) {
+    const cleared = await service.from("tailortalk_agents").update({
+      client_id: null,
+      profile_id: null,
+      updated_at: now
+    }).or("client_id.eq." + clientId + ",profile_id.eq." + clientId).neq("id", existingId);
+    if (cleared.error) return json(400, { error: cleared.error.message });
+  }
   const updated = await service.from("tailortalk_agents").update({
-    profile_id: profileId,
-    updated_at: new Date().toISOString()
+    client_id: clientId,
+    profile_id: clientId,
+    updated_at: now
   }).eq("id", existingId).select("id, agent_name, label").maybeSingle();
   if (updated.error || !updated.data) return json(400, { error: updated.error?.message || "Agent not found." });
 
@@ -223,6 +243,7 @@ async function syncOne(service: ReturnType<typeof createClient>, agent: { id: st
       total_leads: stats.total_leads,
       by_status: stats.by_status,
       by_source: stats.by_source,
+      by_category: stats.by_category,
       converted_count: stats.converted_count,
       conversion_rate: stats.conversion_rate,
       last_activity_at: stats.last_activity_at,
@@ -347,8 +368,15 @@ function mapLead(agentId, lead, names, syncedAt) {
     total_followups: followups(lead.total_followups),
     integration: textOrNull(lead.integration),
     source: source || null,
+    username: usernameOf(lead),
     synced_at: syncedAt
   };
+}
+
+function usernameOf(lead) {
+  const raw = lead?.username || lead?.instagram_username || lead?.ig_username || lead?.instagram_handle || lead?.handle;
+  const text = textOrNull(raw);
+  return text ? text.replace(/^@+/, "") : null;
 }
 
 function textOrNull(value) {

@@ -112,7 +112,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
 
   async function load() {
     const [agentRes, statRes, profileRes] = await Promise.all([
-      supabase.from("tailortalk_agents").select("id, tailortalk_agent_id, agent_name, label, profile_id, channels, prompt_version_id, prompt_updated_at, tailortalk_created_at, archived, last_synced_at, last_sync_error, last_activity_at").order("agent_name"),
+      supabase.from("tailortalk_agents").select("id, tailortalk_agent_id, agent_name, label, profile_id, client_id, channels, prompt_version_id, prompt_updated_at, tailortalk_created_at, archived, last_synced_at, last_sync_error, last_activity_at").order("agent_name"),
       supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, converted_count, conversion_rate, last_activity_at, leads_per_day"),
       supabase.from("profiles").select("id, full_name, email, instagram").order("full_name")
     ]);
@@ -120,7 +120,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
     if (error) {
       root.innerHTML = "";
       const text = missingTable(error)
-        ? "Apply supabase/migrations/20261014160000_tailortalk_crm.sql and supabase/migrations/20261014180000_tailortalk_registry.sql in the Supabase SQL editor, then refresh."
+        ? "Apply supabase/migrations/20261014160000_tailortalk_crm.sql, supabase/migrations/20261014180000_tailortalk_registry.sql, and supabase/migrations/20261014200000_client_setter.sql in the Supabase SQL editor, then refresh."
         : error.message;
       root.append(el("div", { class: "panel" }, [el("p", {}, [text])]));
       return false;
@@ -131,8 +131,13 @@ export async function renderCrm(supabase, user, { app, hello }) {
     return true;
   }
 
+  function linkedId(agent) {
+    return agent.client_id || agent.profile_id || "";
+  }
+
   function profileOf(agent) {
-    return profiles.find((profile) => profile.id === agent.profile_id) || null;
+    const id = linkedId(agent);
+    return profiles.find((profile) => profile.id === id) || null;
   }
 
   function statOf(agent) {
@@ -141,6 +146,42 @@ export async function renderCrm(supabase, user, { app, hello }) {
 
   function agentName(agent) {
     return agent.agent_name || agent.label || "Agent";
+  }
+
+  function clientSelect(agent) {
+    const select = el("select", {
+      class: "crm-link",
+      id: "crm-link-" + agent.id,
+      "aria-label": "Link " + agentName(agent) + " to a client"
+    }, [el("option", { value: "" }, ["Not linked"])]);
+    profiles.forEach((profile) => {
+      const option = el("option", { value: profile.id }, [clientLabel(profile)]);
+      if (linkedId(agent) === profile.id) option.selected = true;
+      select.append(option);
+    });
+    select.addEventListener("change", () => linkClient(agent, select));
+    return select;
+  }
+
+  async function linkClient(agent, select) {
+    const previous = linkedId(agent);
+    select.disabled = true;
+    live.textContent = "Saving client link…";
+    try {
+      await invoke(supabase, {
+        action: "save",
+        id: agent.id,
+        client_id: select.value || null,
+        profile_id: select.value || null
+      });
+      live.textContent = "Client link saved.";
+      if (!(await load())) return;
+      paint();
+    } catch (error) {
+      select.value = previous;
+      select.disabled = false;
+      live.textContent = error.message;
+    }
   }
 
   function channelList(agent) {
@@ -288,6 +329,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
         paint();
       });
       const actions = el("div", { class: "crm-row-actions" }, [open, edit]);
+      const link = clientSelect(agent);
       const nameCell = el("td", {}, [
         el("strong", {}, [agentName(agent)]),
         el("span", { class: "mute agent-meta" }, [
@@ -298,7 +340,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
       ]);
       body.append(el("tr", {}, [
         nameCell,
-        el("td", {}, [clientLabel(profileOf(agent))]),
+        el("td", {}, [link]),
         el("td", {}, [String(num(row?.total_leads))]),
         el("td", {}, [String(num(status.hot))]),
         el("td", {}, [String(num(status.warm))]),
@@ -332,7 +374,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
     const client = el("select", { id: "crm-client" }, [el("option", { value: "" }, ["Not linked"])]);
     profiles.forEach((profile) => {
       const option = el("option", { value: profile.id }, [clientLabel(profile)]);
-      if (agent.profile_id === profile.id) option.selected = true;
+      if (linkedId(agent) === profile.id) option.selected = true;
       client.append(option);
     });
     const token = el("input", {
@@ -361,6 +403,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
         await invoke(supabase, {
           action: "save",
           id: agent.id,
+          client_id: client.value || null,
           profile_id: client.value || null,
           token: token.value
         });

@@ -1,8 +1,10 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
+import { renderSetter } from "./setter.js";
 
 const hello = document.getElementById("account-hello");
 const gate = document.getElementById("gate");
 const section = document.getElementById("onboarding");
+const setter = document.getElementById("setter");
 const logoutBtn = document.getElementById("nav-logout");
 
 function showGate(message) {
@@ -15,6 +17,7 @@ function showGate(message) {
   panel.append(p);
   gate.append(panel);
   section.hidden = true;
+  if (setter) setter.hidden = true;
 }
 
 logoutBtn.addEventListener("click", logout);
@@ -96,6 +99,18 @@ if (!isConfigured()) {
             }
           };
           section.hidden = false;
+          if (setter) setter.hidden = false;
+          renderSetter(supabase, user.id, document.getElementById("setter-app")).catch(() => {
+            const root = document.getElementById("setter-app");
+            if (root && !root.childElementCount) {
+              const panel = document.createElement("div");
+              panel.className = "panel";
+              const p = document.createElement("p");
+              p.textContent = "Your AI setter could not be loaded.";
+              panel.append(p);
+              root.append(panel);
+            }
+          });
           const script = document.createElement("script");
           script.src = "/onboarding/app.js";
           document.body.append(script);
