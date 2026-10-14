@@ -162,8 +162,21 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .status-bars .track{background:var(--bg);border:1px solid var(--line);border-radius:999px;height:10px;overflow:hidden}
 .status-bars .fill{display:block;height:100%;width:var(--w,0%);background:var(--grad)}
 .crm .panel{max-width:640px;margin-left:0}
+.agent-meta{display:block;font-size:.82rem;margin-top:2px}
+.crm .section-list{display:grid;gap:12px;margin-top:12px}
+.crm .section-block{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.crm .section-block header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.crm .section-block h3{font-size:1.02rem;margin:0}
+.crm .prompt{text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;max-height:220px;overflow:auto;font:400 .92rem/1.5 var(--b);margin:10px 0 0}
+.crm .copy-note{min-height:1.4em;margin:8px 0 0;font-weight:600}
+.crm .copy-note.ok{color:var(--gold)}
+.crm .copy-note.bad{color:var(--o)}
+.crm .version{border-top:1px solid var(--line);padding:10px 0}
+.crm .version summary{cursor:pointer;font-weight:600}
+.crm .version-body{margin-top:10px}
 @media(max-width:760px){
   .crm-table th,.crm-table td{padding:8px}
   .status-bars .row{grid-template-columns:72px 1fr 32px}
+  .crm .section-block header{align-items:flex-start;flex-direction:column}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

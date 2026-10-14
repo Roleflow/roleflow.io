@@ -1,11 +1,14 @@
 // TailorTalk CRM sync. Not deployed by this change.
 //
 // Secrets (set in the Supabase function secrets UI; do not commit them):
-//   TAILORTALK_TOKEN_KEY   required. Long random string. AES-GCM key material.
 //   TAILORTALK_CRON_SECRET required for the hourly job. Same value as
 //                          private.tailortalk_settings key cron_secret.
-// There is no project-wide TailorTalk API key. Each agent token is entered
-// in the admin form and stored encrypted via tailortalk_put_secret.
+//   TAILORTALK_TOKEN_KEY   optional. Only used to read a token saved by the
+//                          earlier AES-GCM path. New tokens are plaintext in
+//                          private.tailortalk_agent_secrets, written by
+//                          tailortalk_upsert_agent or tailortalk_put_secret.
+// There is no project-wide TailorTalk API key. The registry upsert stores
+// one token per agent. The browser never receives it.
 // SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are injected.
 //
 // verify_jwt is false in config.toml so pg_cron can send TAILORTALK_CRON_SECRET.
@@ -138,49 +141,25 @@ function b64ToBytes(value: string) {
 }
 
 async function saveAgent(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
-  const label = String(body.label || "").trim();
-  if (!label) return json(400, { error: "Label is required." });
+  const existingId = body.id ? String(body.id) : "";
+  if (!existingId) return json(400, { error: "Agents are added by the TailorTalk registry upsert." });
   const profileId = body.profile_id ? String(body.profile_id) : null;
   const token = String(body.token || "").trim();
-  const existingId = body.id ? String(body.id) : "";
-  if (!existingId && !token) return json(400, { error: "Token is required." });
-
-  let agentId = existingId;
-  if (existingId) {
-    const updated = await service.from("tailortalk_agents").update({
-      label,
-      profile_id: profileId,
-      updated_at: new Date().toISOString()
-    }).eq("id", existingId).select("id").maybeSingle();
-    if (updated.error || !updated.data) return json(400, { error: updated.error?.message || "Agent not found." });
-  } else {
-    const inserted = await service.from("tailortalk_agents").insert({
-      label,
-      profile_id: profileId
-    }).select("id").single();
-    if (inserted.error || !inserted.data) return json(400, { error: inserted.error?.message || "Could not add the agent." });
-    agentId = inserted.data.id;
-  }
+  const updated = await service.from("tailortalk_agents").update({
+    profile_id: profileId,
+    updated_at: new Date().toISOString()
+  }).eq("id", existingId).select("id, agent_name, label").maybeSingle();
+  if (updated.error || !updated.data) return json(400, { error: updated.error?.message || "Agent not found." });
 
   if (token) {
-    let encrypted = "";
-    try {
-      encrypted = await encryptToken(token);
-    } catch (error) {
-      if (!existingId) await service.from("tailortalk_agents").delete().eq("id", agentId);
-      return json(500, { error: error instanceof Error ? error.message : "Could not encrypt the token." });
-    }
     const saved = await service.rpc("tailortalk_put_secret", {
-      p_agent_id: agentId,
-      p_token_encrypted: encrypted
+      p_agent_id: existingId,
+      p_token_encrypted: token
     });
-    if (saved.error) {
-      if (!existingId) await service.from("tailortalk_agents").delete().eq("id", agentId);
-      return json(500, { error: saved.error.message });
-    }
+    if (saved.error) return json(500, { error: saved.error.message });
   }
 
-  return json(200, { ok: true, id: agentId, label });
+  return json(200, { ok: true, id: existingId, label: updated.data.agent_name || updated.data.label });
 }
 
 async function deleteAgent(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
@@ -192,8 +171,9 @@ async function deleteAgent(service: ReturnType<typeof createClient>, body: Recor
 }
 
 async function syncAgents(service: ReturnType<typeof createClient>, onlyId: string | null) {
-  let query = service.from("tailortalk_agents").select("id, label").order("label");
+  let query = service.from("tailortalk_agents").select("id, label, agent_name, archived").order("agent_name");
   if (onlyId) query = query.eq("id", onlyId);
+  else query = query.eq("archived", false);
   const { data, error } = await query;
   if (error) return [{ id: onlyId, error: error.message }];
   const agents = data || [];
@@ -203,16 +183,16 @@ async function syncAgents(service: ReturnType<typeof createClient>, onlyId: stri
   return results;
 }
 
-async function syncOne(service: ReturnType<typeof createClient>, agent: { id: string; label: string }) {
+async function syncOne(service: ReturnType<typeof createClient>, agent: { id: string; label?: string; agent_name?: string }) {
   const secretRes = await service.rpc("tailortalk_read_secret", { p_agent_id: agent.id });
   if (secretRes.error) return fail(service, agent, secretRes.error.message);
   if (!secretRes.data) return fail(service, agent, "No token stored.");
 
   let token = "";
   try {
-    token = await decryptToken(String(secretRes.data));
+    token = await tokenFromStored(String(secretRes.data));
   } catch {
-    return fail(service, agent, "Stored token could not be decrypted.");
+    return fail(service, agent, "Stored token could not be read.");
   }
 
   const syncedAt = new Date().toISOString();
@@ -257,19 +237,28 @@ async function syncOne(service: ReturnType<typeof createClient>, agent: { id: st
       updated_at: syncedAt
     }).eq("id", agent.id);
     if (marked.error) throw new Error(marked.error.message);
-    return { id: agent.id, label: agent.label, total_leads: stats.total_leads };
+    return { id: agent.id, label: agent.agent_name || agent.label, total_leads: stats.total_leads };
   } catch (error) {
     return fail(service, agent, error instanceof Error ? error.message : "Sync failed.");
   }
 }
 
-async function fail(service: ReturnType<typeof createClient>, agent: { id: string; label: string }, message: string) {
+async function tokenFromStored(stored: string) {
+  if (/^[0-9a-f]{32,}$/i.test(stored)) return stored;
+  try {
+    return await decryptToken(stored);
+  } catch {
+    return stored;
+  }
+}
+
+async function fail(service: ReturnType<typeof createClient>, agent: { id: string; label?: string; agent_name?: string }, message: string) {
   const text = message.slice(0, 500);
   await service.from("tailortalk_agents").update({
     last_sync_error: text,
     updated_at: new Date().toISOString()
   }).eq("id", agent.id);
-  return { id: agent.id, label: agent.label, error: text };
+  return { id: agent.id, label: agent.agent_name || agent.label, error: text };
 }
 
 async function fetchLeads(token: string) {

@@ -45,6 +45,17 @@ function asSeries(value) {
   return Array.isArray(parsed) ? parsed : [];
 }
 
+function asList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+}
+
 function num(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -96,11 +107,12 @@ export async function renderCrm(supabase, user, { app, hello }) {
   let stats = new Map();
   let profiles = [];
   let view = { name: "overview" };
+  let showArchived = false;
   let paintGeneration = 0;
 
   async function load() {
     const [agentRes, statRes, profileRes] = await Promise.all([
-      supabase.from("tailortalk_agents").select("id, label, profile_id, last_synced_at, last_sync_error, last_activity_at").order("label"),
+      supabase.from("tailortalk_agents").select("id, tailortalk_agent_id, agent_name, label, profile_id, channels, prompt_version_id, prompt_updated_at, tailortalk_created_at, archived, last_synced_at, last_sync_error, last_activity_at").order("agent_name"),
       supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, converted_count, conversion_rate, last_activity_at, leads_per_day"),
       supabase.from("profiles").select("id, full_name, email, instagram").order("full_name")
     ]);
@@ -108,7 +120,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
     if (error) {
       root.innerHTML = "";
       const text = missingTable(error)
-        ? "Apply supabase/migrations/20261014160000_tailortalk_crm.sql in the Supabase SQL editor, then refresh."
+        ? "Apply supabase/migrations/20261014160000_tailortalk_crm.sql and supabase/migrations/20261014180000_tailortalk_registry.sql in the Supabase SQL editor, then refresh."
         : error.message;
       root.append(el("div", { class: "panel" }, [el("p", {}, [text])]));
       return false;
@@ -127,12 +139,24 @@ export async function renderCrm(supabase, user, { app, hello }) {
     return stats.get(agent.id) || null;
   }
 
+  function agentName(agent) {
+    return agent.agent_name || agent.label || "Agent";
+  }
+
+  function channelList(agent) {
+    return asList(agent.channels);
+  }
+
+  function visibleAgents() {
+    return agents.filter((agent) => showArchived || !agent.archived);
+  }
+
   function overviewTotals() {
     const byStatus = {};
     let total = 0;
     let converted = 0;
     let last = null;
-    agents.forEach((agent) => {
+    agents.filter((agent) => !agent.archived).forEach((agent) => {
       const row = statOf(agent);
       total += num(row?.total_leads);
       converted += num(row?.converted_count);
@@ -222,17 +246,21 @@ export async function renderCrm(supabase, user, { app, hello }) {
     const totals = overviewTotals();
     const tools = el("div", { class: "crm-actions" });
     const sync = el("button", { type: "button", class: "btn", id: "crm-sync" }, ["Sync now"]);
-    const add = el("button", { type: "button", class: "btn ghost", id: "crm-add" }, ["Add agent"]);
-    tools.append(sync, add);
+    const archivedCount = agents.filter((agent) => agent.archived).length;
+    const archivedToggle = el("button", { type: "button", class: "btn ghost", id: "crm-archived" }, [
+      showArchived ? "Hide archived" : "Show archived (" + archivedCount + ")"
+    ]);
+    tools.append(sync);
+    if (archivedCount) tools.append(archivedToggle);
     sync.addEventListener("click", () => runSync(sync, null));
-    add.addEventListener("click", () => {
-      view = { name: "form", agent: null };
+    archivedToggle.addEventListener("click", () => {
+      showArchived = !showArchived;
       paint();
     });
 
     root.append(el("h2", {}, ["Overview"]));
     root.append(el("p", { class: "mute crm-note" }, [
-      "Cached from TailorTalk Get Leads. Message counts are not in that response, so they are not shown."
+      "Agents appear when the TailorTalk registry upsert runs. Sync now reads leads for every agent that is not archived. Message counts are not in the Get Leads response, so they are not shown."
     ]));
     root.append(tools);
     root.append(kpiRow(totals, true));
@@ -242,10 +270,11 @@ export async function renderCrm(supabase, user, { app, hello }) {
       "Agent", "Client", "Leads", "Hot", "Warm", "Cold", "Converted", "Rate", "Last activity", ""
     ].map((label) => el("th", { scope: "col" }, [label])))]));
     const body = el("tbody");
-    if (!agents.length) {
-      body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No agents yet. Add one and paste its TailorTalk token."])]));
+    const rows = visibleAgents();
+    if (!rows.length) {
+      body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No agents in the registry yet. Run supabase/tailortalk_registry_upsert.sql."])]));
     }
-    agents.forEach((agent) => {
+    rows.forEach((agent) => {
       const row = statOf(agent);
       const status = asObject(row?.by_status);
       const open = el("button", { type: "button", class: "btn ghost sm crm-open" }, ["Open"]);
@@ -259,8 +288,16 @@ export async function renderCrm(supabase, user, { app, hello }) {
         paint();
       });
       const actions = el("div", { class: "crm-row-actions" }, [open, edit]);
+      const nameCell = el("td", {}, [
+        el("strong", {}, [agentName(agent)]),
+        el("span", { class: "mute agent-meta" }, [
+          (agent.tailortalk_agent_id || "No TailorTalk id")
+            + (channelList(agent).length ? " · " + channelList(agent).join(", ") : "")
+            + (agent.archived ? " · archived" : "")
+        ])
+      ]);
       body.append(el("tr", {}, [
-        el("td", {}, [agent.label]),
+        nameCell,
         el("td", {}, [clientLabel(profileOf(agent))]),
         el("td", {}, [String(num(row?.total_leads))]),
         el("td", {}, [String(num(status.hot))]),
@@ -287,12 +324,15 @@ export async function renderCrm(supabase, user, { app, hello }) {
       view = { name: "overview" };
       paint();
     });
+    if (!agent) {
+      root.append(back, el("p", {}, ["New agents show up here after the registry upsert. There is no manual add."]));
+      return;
+    }
     const form = el("form", { class: "auth-form", id: "crm-form" });
-    const label = el("input", { id: "crm-label", required: true, maxlength: "120", value: agent?.label || "" });
     const client = el("select", { id: "crm-client" }, [el("option", { value: "" }, ["Not linked"])]);
     profiles.forEach((profile) => {
       const option = el("option", { value: profile.id }, [clientLabel(profile)]);
-      if (agent && agent.profile_id === profile.id) option.selected = true;
+      if (agent.profile_id === profile.id) option.selected = true;
       client.append(option);
     });
     const token = el("input", {
@@ -302,14 +342,14 @@ export async function renderCrm(supabase, user, { app, hello }) {
       spellcheck: "false"
     });
     const msg = el("p", { class: "err", role: "status" });
-    const save = el("button", { type: "submit", class: "btn" }, [agent ? "Save agent" : "Add agent"]);
-    form.append(el("label", {}, ["Label", label]));
+    const save = el("button", { type: "submit", class: "btn" }, ["Save link"]);
+    form.append(el("p", { class: "mute" }, [agentName(agent) + (agent.tailortalk_agent_id ? " · " + agent.tailortalk_agent_id : "")]));
     form.append(el("label", {}, ["Onboarding client", client]));
     form.append(el("label", {}, [
-      "Agent token",
+      "Replace agent token",
       token,
       el("span", { class: "hint" }, [
-        "The token is encrypted on the server and is not shown again. Leave it blank when you only change the label or the linked client."
+        "Stored in the private schema and not shown again. Leave it blank to keep the current token. The registry upsert is the usual way the token is saved."
       ])
     ]));
     form.append(save, msg);
@@ -320,13 +360,12 @@ export async function renderCrm(supabase, user, { app, hello }) {
       try {
         await invoke(supabase, {
           action: "save",
-          id: agent?.id || undefined,
-          label: label.value.trim(),
+          id: agent.id,
           profile_id: client.value || null,
           token: token.value
         });
         token.value = "";
-        live.textContent = "Agent saved.";
+        live.textContent = "Link saved.";
         if (!(await load())) return;
         view = { name: "overview" };
         paint();
@@ -335,32 +374,36 @@ export async function renderCrm(supabase, user, { app, hello }) {
         save.disabled = false;
       }
     });
-
-    const panel = el("div", { class: "panel" }, [
-      el("h2", {}, [agent ? "Edit agent" : "Add agent"]),
+    root.append(back, el("div", { class: "panel" }, [
+      el("h2", {}, ["Link client"]),
       form
-    ]);
-    if (agent) {
-      const sync = el("button", { type: "button", class: "btn ghost", id: "crm-sync-one" }, ["Sync now"]);
-      const remove = el("button", { type: "button", class: "btn ghost", id: "crm-delete" }, ["Delete agent"]);
-      sync.addEventListener("click", () => runSync(sync, agent.id));
-      remove.addEventListener("click", async () => {
-        if (!window.confirm("Delete this agent and its cached leads?")) return;
-        remove.disabled = true;
+    ]));
+    client.focus();
+  }
+
+  function sectionBlocks(sections, note) {
+    const list = asList(sections).filter((item) => item && (item.node || item.instruction));
+    if (!list.length) return el("p", { class: "mute" }, ["No prompt sections stored yet."]);
+    const wrap = el("div", { class: "section-list" });
+    list.forEach((item) => {
+      const instruction = item.instruction == null ? "" : String(item.instruction);
+      const copy = el("button", { type: "button", class: "btn ghost sm" }, ["Copy section"]);
+      copy.addEventListener("click", async () => {
         try {
-          await invoke(supabase, { action: "delete", id: agent.id });
-          if (!(await load())) return;
-          view = { name: "overview" };
-          paint();
-        } catch (error) {
-          msg.textContent = error.message;
-          remove.disabled = false;
+          await navigator.clipboard.writeText(instruction);
+          note.textContent = "Copied " + (item.node || "section") + ".";
+          note.className = "copy-note ok";
+        } catch {
+          note.textContent = "Couldn't copy automatically.";
+          note.className = "copy-note bad";
         }
       });
-      panel.append(el("div", { class: "crm-actions" }, [sync, remove]));
-    }
-    root.append(back, panel);
-    label.focus();
+      wrap.append(el("article", { class: "section-block" }, [
+        el("header", {}, [el("h3", {}, [item.node || "Section"]), copy]),
+        el("pre", { class: "prompt" }, [instruction || "—"])
+      ]));
+    });
+    return wrap;
   }
 
   async function paintDetail(generation) {
@@ -381,12 +424,46 @@ export async function renderCrm(supabase, user, { app, hello }) {
     const bySource = asObject(row?.by_source);
     const series = asSeries(row?.leads_per_day);
     const week = series.slice(-7);
-    root.append(el("h2", {}, [agent.label]));
-    root.append(el("p", { class: "mute" }, ["Linked client: " + clientLabel(profileOf(agent))]));
+    const promptRes = await supabase.from("tailortalk_agents").select("prompt_sections").eq("id", agent.id).maybeSingle();
+    const historyRes = await supabase.from("tailortalk_prompt_versions").select("version_id, deployed_at, sections").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
+    if (generation !== paintGeneration) return;
+    root.append(el("h2", {}, [agentName(agent)]));
+    root.append(el("p", { class: "mute" }, [
+      (agent.tailortalk_agent_id || "No TailorTalk id")
+        + " · Channels: " + (channelList(agent).length ? channelList(agent).join(", ") : "—")
+        + " · Created " + when(agent.tailortalk_created_at)
+    ]));
+    root.append(el("p", { class: "mute" }, [
+      "Live version " + (agent.prompt_version_id || "—") + " · Updated " + when(agent.prompt_updated_at)
+        + " · Linked client: " + clientLabel(profileOf(agent))
+    ]));
     const sync = el("button", { type: "button", class: "btn", id: "crm-sync-one" }, ["Sync now"]);
     sync.addEventListener("click", () => runSync(sync, agent.id));
     root.append(el("div", { class: "crm-actions" }, [sync]));
     if (agent.last_sync_error) root.append(el("p", { class: "sync-error" }, [agent.last_sync_error]));
+    const copyNote = el("p", { class: "copy-note", role: "status" });
+    root.append(el("h3", {}, ["Live prompt"]));
+    if (promptRes.error) root.append(el("p", { class: "sync-error" }, [promptRes.error.message]));
+    else root.append(sectionBlocks(promptRes.data?.prompt_sections, copyNote));
+    root.append(copyNote);
+    root.append(el("h3", {}, ["Prompt version history"]));
+    if (historyRes.error) root.append(el("p", { class: "sync-error" }, [historyRes.error.message]));
+    else if (!(historyRes.data || []).length) root.append(el("p", { class: "mute" }, ["No earlier version has been recorded."]));
+    else {
+      const history = el("div", { class: "version-list" });
+      historyRes.data.forEach((version) => {
+        const body = el("div", { class: "version-body" });
+        body.append(sectionBlocks(version.sections, copyNote));
+        const details = el("details", { class: "version" });
+        details.append(el("summary", {}, [
+          (version.version_id || "Version") + " · " + when(version.deployed_at)
+        ]));
+        details.append(body);
+        history.append(details);
+      });
+      root.append(history);
+    }
+    root.append(el("h3", {}, ["Leads and stats"]));
     root.append(kpiRow({
       total: num(row?.total_leads),
       converted: num(row?.converted_count),

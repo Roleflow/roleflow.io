@@ -59,8 +59,25 @@ assert.match(fn, /method: "POST"/);
 assert.match(fn, /JSON\.stringify\(payload\)/);
 assert.match(fn, /TAILORTALK_TOKEN_KEY/);
 assert.match(fn, /TAILORTALK_CRON_SECRET/);
+assert.match(fn, /eq\("archived", false\)/);
 assert.doesNotMatch(fn, /service\.tailortalk\.ai/);
 assert.doesNotMatch(fn, /message_count/);
+
+const registry = read("supabase/migrations/20261014180000_tailortalk_registry.sql");
+assert.match(registry, /tailortalk_agent_id/);
+assert.match(registry, /prompt_sections jsonb/);
+assert.match(registry, /prompt_version_id/);
+assert.match(registry, /public\.tailortalk_prompt_versions/);
+assert.match(registry, /create unique index if not exists tailortalk_agents_tt_id/);
+assert.match(registry, /revoke all on function public\.tailortalk_upsert_agent\(text, text, jsonb, text, timestamptz, jsonb, timestamptz, text, boolean\) from public, anon, authenticated/);
+assert.match(registry, /access_token/);
+assert.match(registry, /ntrtnxfad/);
+const upsertSql = read("supabase/tailortalk_registry_upsert.sql");
+for (const id of ["afwbuhnx", "bsojvzgf", "rojkojbk", "taongeti", "udnnperp"]) {
+  assert.match(upsertSql, new RegExp(id));
+}
+assert.match(upsertSql, /paste-access-token/);
+assert.doesNotMatch(upsertSql, /[0-9a-f]{40,}/i);
 assert.match(read("supabase/config.toml"), /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
 
 const adminPage = read("admin/index.html");
@@ -69,7 +86,10 @@ assert.match(adminPage, /id="admin-tabs" hidden/);
 assert.match(read("auth/site.css"), /\.admin-tabs\[hidden\]\{display:none !important\}/);
 assert.match(read("admin/admin.js"), /renderCrm/);
 assert.match(read("admin/crm.js"), /TailorTalk did not return a source on these leads/);
+assert.match(read("admin/crm.js"), /Copy section/);
+assert.match(read("admin/crm.js"), /Prompt version history/);
 assert.doesNotMatch(read("admin/crm.js"), /token_encrypted/);
+assert.doesNotMatch(read("admin/crm.js"), /access_token/);
 assert.doesNotMatch(read("admin/crm.js"), /message_count/);
 const homepage = read("index.html");
 assert.doesNotMatch(homepage, /tab-crm/);
