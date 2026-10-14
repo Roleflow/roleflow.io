@@ -1,5 +1,9 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
+import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
+import { bindShell, markNav, toast } from "../auth/ui.js";
 import { renderCrm } from "./crm.js";
+
+bindShell();
 
 const SUBMISSION_COLUMNS = "status, step_index, answers, prompt_text, prompt_sections, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
 const SUBMISSION_COLUMNS_TRACKED = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
@@ -90,20 +94,38 @@ function displayName(profile) {
   return profile.full_name || answersOf(submissionOf(profile)).clientName || "Unnamed client";
 }
 
-function showMessage(text) {
-  app.innerHTML = "";
-  app.append(el("div", { class: "panel" }, [el("p", {}, [text])]));
+function hideBoot() {
+  const boot = document.getElementById("boot-state");
+  if (boot) boot.hidden = true;
 }
 
-if (!isConfigured()) {
+function showMessage(text) {
+  hideBoot();
+  app.innerHTML = "";
+  app.append(el("div", { class: "state" }, [
+    el("h2", {}, ["Admin unavailable"]),
+    el("p", {}, [text])
+  ]));
+}
+
+const arriving = rememberCallback(window.location.href);
+if (arriving.type === "recovery") {
+  window.location.replace("/reset/" + window.location.hash);
+} else if (!isConfigured()) {
   hello.textContent = "Add the Supabase keys in supabase/config.js.";
   showMessage("Paste SUPABASE_URL and SUPABASE_ANON_KEY into supabase/config.js, then refresh.");
 } else {
   const supabase = getSupabase();
-  const { data } = await supabase.auth.getSession();
-  if (!data.session) {
-    window.location.replace("/login/?next=/admin/");
+  const resolved = await resolveSession(supabase, window.location.href);
+  if (!resolved.session) {
+    const notice = resolved.errorMessage;
+    window.location.replace(notice
+      ? "/signup/?mode=login&notice=" + encodeURIComponent(notice)
+      : "/login/?next=/admin/");
   } else {
+    clearAuthParams();
+    clearCallbackMemory();
+    const data = { session: resolved.session };
     logoutBtn.hidden = false;
     const user = data.session.user;
     const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
@@ -116,12 +138,14 @@ if (!isConfigured()) {
       app.append(el("p", { class: "links" }, [el("a", { href: "/account/" }, ["Go to your account"])]));
     } else {
       hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+      hideBoot();
       const tabs = document.getElementById("admin-tabs");
       const tabClients = document.getElementById("tab-clients");
       const tabCrm = document.getElementById("tab-crm");
       tabs.hidden = false;
       const headerCrm = document.getElementById("nav-crm");
       if (headerCrm) headerCrm.hidden = false;
+      markNav();
       async function showSection(name) {
         const crm = name === "crm";
         tabClients.setAttribute("aria-selected", crm ? "false" : "true");
@@ -277,6 +301,7 @@ async function renderDashboard(supabase, user) {
       if (submission) submission.status = select.value;
       statusMsg.textContent = "Status saved.";
       live.textContent = "Status saved for " + displayName(profile) + ".";
+      toast("Status saved for " + displayName(profile) + ".");
       paintCounts();
       paintList();
     });
@@ -324,6 +349,7 @@ async function renderDashboard(supabase, user) {
       }
       noteInput.value = "";
       live.textContent = "Note added.";
+      toast("Note added.");
       paintDetail();
     });
 
@@ -387,7 +413,7 @@ async function renderDashboard(supabase, user) {
     const sections = sectionMap(submission);
     const sectionList = globalThis.ROLEFLOW_ONBOARDING_CONFIG?.TAILORTALK_SECTIONS || [];
     if (sectionList.length && Object.keys(sections).length) {
-      panel.append(el("p", { class: "step-desc" }, ["Copy one section at a time into Tailortalk."]));
+      panel.append(el("p", { class: "step-desc" }, ["Copy one section at a time."]));
       sectionList.forEach((section) => {
         const text = String(sections[section.id] || "").trim();
         const block = el("section", { class: "section-block" });
@@ -396,7 +422,8 @@ async function renderDashboard(supabase, user) {
         const copy = el("button", { type: "button", class: "btn" }, ["Copy section"]);
         copy.addEventListener("click", async () => {
           const ok = await copyText(text);
-          note.textContent = ok ? "Copied. Paste this section into Tailortalk." : "Couldn't copy automatically.";
+          note.textContent = ok ? "Copied." : "Couldn't copy automatically.";
+          if (ok) toast("Section copied.");
           note.className = ok ? "copy-note ok" : "copy-note bad";
         });
         block.append(el("div", { class: "toolbar" }, [copy]));

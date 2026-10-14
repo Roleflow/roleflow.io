@@ -5,26 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Admin · Roleflow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 </head>
-<body>
+<body class="app">
 <a class="skip" href="#admin-app">Skip to admin</a>
-<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><a class="navlink" id="nav-crm" href="/admin/#crm" hidden>CRM</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
-<header class="hero"><div class="wrap wide">
-  <h1>Client <span class="g">tracking</span></h1>
-  <p class="sub" id="admin-hello">Loading clients…</p>
-  <div class="auth-tabs admin-tabs" id="admin-tabs" hidden role="tablist" aria-label="Admin sections">
-    <button type="button" role="tab" id="tab-clients" aria-selected="true" aria-controls="admin-app">Clients</button>
-    <button type="button" role="tab" id="tab-crm" aria-selected="false" aria-controls="admin-app">CRM</button>
+<div class="app-shell">
+  <aside class="app-side" id="app-side">
+    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+    <p class="side-kicker">Admin</p>
+    <nav class="app-nav" aria-label="Admin">
+      <a href="/admin/#clients">Clients</a>
+      <a id="nav-crm" href="/admin/#crm" hidden>CRM</a>
+      <a href="/account/">Your account</a>
+    </nav>
+    <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
+  </aside>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <div class="app-main">
+    <header class="app-top">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
+      <div>
+        <h1>Client <span class="g">tracking</span></h1>
+        <p class="hello" id="admin-hello">Loading clients…</p>
+      </div>
+    </header>
+    <main class="wrap wide" id="main">
+      <div class="auth-tabs admin-tabs" id="admin-tabs" hidden role="tablist" aria-label="Admin sections">
+        <button type="button" role="tab" id="tab-clients" aria-selected="true" aria-controls="admin-app">Clients</button>
+        <button type="button" role="tab" id="tab-crm" aria-selected="false" aria-controls="admin-app">CRM</button>
+      </div>
+      <div id="boot-state" class="state" role="status">
+        <span class="skel"></span>
+        <span class="skel short"></span>
+        <p>Loading clients…</p>
+      </div>
+      <div id="admin-app"></div>
+    </main>
+    <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
   </div>
-</div></header>
-<main class="wrap wide" id="admin-app"></main>
-<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
-<script src="/supabase/config.js"></script>
-<script src="/onboarding/config.js"></script>
-<script src="/onboarding/form-model.js"></script>
-<script src="/onboarding/prompt.js"></script>
+</div>
+<div id="toasts" class="toast-stack" aria-live="polite"></div>
+<script src="/supabase/config.js" defer></script>
+<script src="/onboarding/config.js" defer></script>
+<script src="/onboarding/form-model.js" defer></script>
+<script src="/onboarding/prompt.js" defer></script>
 <script type="module" src="/admin/admin.js"></script>
 </body>
 </html>

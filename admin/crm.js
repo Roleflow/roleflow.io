@@ -1,5 +1,6 @@
 // Admin CRM. Reads cached setter rows. Tokens stay in the edge function.
 import { liveSections } from "../account/setter-model.js";
+import { toast } from "../auth/ui.js";
 
 function shown(message) {
   return String(message || "").replace(/tailortalk/ig, "the setter service");
@@ -112,6 +113,8 @@ export async function renderCrm(supabase, user, { app, hello }) {
   let profiles = [];
   let view = { name: "overview" };
   let showArchived = false;
+  let setterQuery = "";
+  let sortKey = "name";
   let paintGeneration = 0;
   let detailTab = "leads";
   let leadQuery = "";
@@ -277,6 +280,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
       const count = num(item.count);
       const showLabel = !labelStep || index % labelStep === 0 || index === series.length - 1;
       const column = el("div", { class: "bar" }, [
+        el("span", { class: "bar-value" }, [count ? String(count) : ""]),
         el("i", { style: "--h:" + Math.round((count / max) * 100) + "%", title: count + " on " + item.day }),
         el("small", {}, [showLabel ? dayLabel(item.day) : ""])
       ]);
@@ -363,16 +367,60 @@ export async function renderCrm(supabase, user, { app, hello }) {
     root.append(el("h3", {}, ["Last 30 days"]));
     root.append(totals.series.length ? bars(totals.series, "Conversations per day over the last 30 days", 5) : el("p", { class: "mute" }, ["No daily counts yet."]));
 
-    const table = el("table", { class: "crm-table" });
-    table.append(el("thead", {}, [el("tr", {}, [
-      "Setter", "Client", "Conversations", "Hot", "Warm", "Cold", "Booked", "Rate", "Last activity", ""
-    ].map((label) => el("th", { scope: "col" }, [label])))]));
-    const body = el("tbody");
-    const rows = visibleAgents();
-    if (!rows.length) {
-      body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No setters in the registry yet."])]));
+    const search = el("input", {
+      id: "crm-setter-search",
+      type: "search",
+      value: setterQuery,
+      placeholder: "Search setters or clients",
+      "aria-label": "Search setters"
+    });
+    const sort = el("select", { id: "crm-sort", "aria-label": "Sort setters" }, [
+      el("option", { value: "name" }, ["Sort by name"]),
+      el("option", { value: "conversations" }, ["Sort by conversations"]),
+      el("option", { value: "booked" }, ["Sort by booked"]),
+      el("option", { value: "activity" }, ["Sort by last activity"])
+    ]);
+    sort.value = sortKey;
+    const tableHost = el("div", { id: "crm-setter-table" });
+    function sortedAgents() {
+      const query = setterQuery.trim().toLowerCase();
+      const rows = visibleAgents().filter((agent) => {
+        if (!query) return true;
+        const profile = profileOf(agent);
+        const hay = [agentName(agent), clientLabel(profile), channelList(agent).join(" ")].join(" ").toLowerCase();
+        return hay.includes(query);
+      });
+      const valueOf = (agent) => {
+        const row = statOf(agent);
+        if (sortKey === "conversations") return num(row?.total_leads);
+        if (sortKey === "booked") return num(row?.converted_count);
+        if (sortKey === "activity") return Date.parse(row?.last_activity_at || agent.last_activity_at || "") || 0;
+        return agentName(agent).toLowerCase();
+      };
+      rows.sort((a, b) => {
+        const left = valueOf(a);
+        const right = valueOf(b);
+        if (typeof left === "number" && typeof right === "number") return right - left;
+        return String(left).localeCompare(String(right));
+      });
+      return rows;
     }
-    rows.forEach((agent) => {
+    function paintSetterTable() {
+      const table = el("table", { class: "crm-table" });
+      table.append(el("caption", { class: "sr" }, ["Setters"]));
+      const heads = ["Setter", "Client", "Conversations", "Hot", "Warm", "Cold", "Booked", "Rate", "Last activity", ""];
+      table.append(el("thead", {}, [el("tr", {}, heads.map((label, index) => {
+        const numeric = index >= 2 && index <= 7;
+        return el("th", { scope: "col", class: numeric ? "num" : "" }, [label]);
+      }))]));
+      const body = el("tbody");
+      const rows = sortedAgents();
+      if (!visibleAgents().length) {
+        body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No setters in the registry yet."])]));
+      } else if (!rows.length) {
+        body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No setters match this search."])]));
+      }
+      rows.forEach((agent) => {
       const row = statOf(agent);
       const status = asObject(row?.by_status);
       const open = el("button", { type: "button", class: "btn ghost sm crm-open" }, ["Open"]);
@@ -402,12 +450,12 @@ export async function renderCrm(supabase, user, { app, hello }) {
       body.append(el("tr", {}, [
         nameCell,
         el("td", {}, [link]),
-        el("td", {}, [String(num(row?.total_leads))]),
-        el("td", {}, [String(num(status.hot))]),
-        el("td", {}, [String(num(status.warm))]),
-        el("td", {}, [String(num(status.cold))]),
-        el("td", {}, [String(num(row?.converted_count))]),
-        el("td", {}, [formatRate(row ? row.conversion_rate : null, num(row?.total_leads))]),
+        el("td", { class: "num" }, [String(num(row?.total_leads))]),
+        el("td", { class: "num" }, [String(num(status.hot))]),
+        el("td", { class: "num" }, [String(num(status.warm))]),
+        el("td", { class: "num" }, [String(num(status.cold))]),
+        el("td", { class: "num" }, [String(num(row?.converted_count))]),
+        el("td", { class: "num" }, [formatRate(row ? row.conversion_rate : null, num(row?.total_leads))]),
         el("td", {}, [when(row?.last_activity_at || agent.last_activity_at)]),
         el("td", {}, [actions])
       ]));
@@ -415,8 +463,21 @@ export async function renderCrm(supabase, user, { app, hello }) {
         body.append(el("tr", {}, [el("td", { colspan: "10", class: "sync-error" }, ["Last sync: " + shown(agent.last_sync_error)])]));
       }
     });
-    table.append(body);
-    root.append(el("div", { class: "crm-scroll" }, [table]));
+      table.append(body);
+      tableHost.replaceChildren(el("div", { class: "crm-scroll" }, [table]));
+    }
+    search.addEventListener("input", () => {
+      setterQuery = search.value;
+      paintSetterTable();
+    });
+    sort.addEventListener("change", () => {
+      sortKey = sort.value;
+      paintSetterTable();
+    });
+    tools.classList.add("crm-tools");
+    tools.append(search, sort);
+    paintSetterTable();
+    root.append(tableHost);
   }
 
   function paintForm() {
@@ -748,6 +809,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
   function leadResults(agent, leads) {
     const shownLeads = filteredLeads(leads);
     const wrap = el("div", { class: "crm-detail-grid", id: "crm-lead-results" });
+    wrap.append(el("p", { class: "mute" }, [shownLeads.length + " of " + leads.length + " leads"]));
     if (!shownLeads.length) {
       wrap.append(el("p", { class: "mute" }, [leads.length ? "No leads match that search." : "No cached leads yet. Use Sync now."]));
       wrap.append(paintLeadDetail(agent, null));
@@ -917,10 +979,12 @@ export async function renderCrm(supabase, user, { app, hello }) {
       const result = await invoke(supabase, { action: "sync", agent_id: agentId || undefined });
       const failed = (result.results || []).filter((item) => item.error);
       live.textContent = failed.length ? failed.map((item) => item.error).join(" ") : "Sync finished.";
+      toast(live.textContent, failed.length ? "bad" : "ok");
       if (!(await load())) return;
       paint();
     } catch (error) {
       live.textContent = error.message;
+      toast(error.message, "bad");
       button.disabled = false;
       root.append(el("p", { class: "sync-error", role: "status" }, [error.message]));
     }
@@ -933,6 +997,11 @@ export async function renderCrm(supabase, user, { app, hello }) {
     else paintOverview();
   }
 
+  root.append(el("div", { class: "state", id: "crm-loading" }, [
+    el("span", { class: "skel" }),
+    el("span", { class: "skel short" }),
+    el("p", {}, ["Loading setters…"])
+  ]));
   if (await load()) paint();
   void user;
 }

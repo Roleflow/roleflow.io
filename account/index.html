@@ -5,38 +5,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Your account · Roleflow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 </head>
-<body>
-<a class="skip" href="#setter">Skip to your AI setter</a>
-<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
-<header class="hero"><div class="wrap">
-  <h1>Your <span class="g">account</span></h1>
-  <p class="sub" id="account-hello">Loading your account…</p>
-  <p class="status-pill" id="account-status" role="status"></p>
-</div></header>
-<section id="setter" hidden>
-  <div class="wrap wide">
-    <h2>Your <span class="g">AI Setter</span></h2>
-    <p class="sub">The setter linked to this account: status, conversations, and the live prompt.</p>
-    <div class="setter" id="setter-app"></div>
+<body class="app">
+<a class="skip" href="#main">Skip to your account</a>
+<div class="app-shell">
+  <aside class="app-side" id="app-side">
+    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+    <p class="side-kicker">Account</p>
+    <nav class="app-nav" aria-label="Account">
+      <a href="/account/#setter" id="nav-setter">AI Setter</a>
+      <a href="/account/#onboarding" id="nav-onboarding">Onboarding</a>
+      <a href="/admin/" id="nav-admin" hidden>Clients</a>
+      <a href="/admin/#crm" id="nav-admin-crm" hidden>CRM</a>
+    </nav>
+    <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
+  </aside>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <div class="app-main">
+    <header class="app-top">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
+      <div>
+        <h1>Your <span class="g">account</span></h1>
+        <p class="hello" id="account-hello">Loading your account…</p>
+      </div>
+      <p class="status-pill" id="account-status" role="status"></p>
+    </header>
+    <main id="main">
+      <div class="wrap wide" id="boot-state">
+        <div class="state" role="status">
+          <span class="skel"></span>
+          <span class="skel short"></span>
+          <p>Loading your account…</p>
+        </div>
+      </div>
+      <section id="setter" hidden>
+        <div class="wrap wide">
+          <h2>Your <span class="g">AI Setter</span></h2>
+          <p class="sub">The setter linked to this account: status, conversations, and the live prompt.</p>
+          <div class="setter" id="setter-app"></div>
+        </div>
+      </section>
+      <section id="onboarding" hidden>
+        <div class="wrap">
+          <h2>Build your <span class="g">DM setter</span></h2>
+          <p class="sub">About ten short answers, under 10 minutes. Each step saves to your account. On submit, Roleflow writes the DM setter prompt and emails it to Diego.</p>
+          <div class="onboard-panel" id="onboarding-app" tabindex="-1"><p>Loading the form…</p></div>
+        </div>
+      </section>
+      <div class="wrap" id="gate" hidden></div>
+    </main>
+    <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
   </div>
-</section>
-<section id="onboarding" hidden>
-  <div class="wrap">
-    <h2>Build your <span class="g">DM setter</span></h2>
-    <p class="sub">About ten short answers, under 10 minutes. Each step saves to your account. On submit, Roleflow writes the DM setter prompt and emails it to Diego.</p>
-    <div class="onboard-panel" id="onboarding-app" tabindex="-1"><p>Loading the form…</p></div>
-  </div>
-</section>
-<div class="wrap" id="gate" hidden></div>
-<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+</div>
+<div id="toasts" class="toast-stack" aria-live="polite"></div>
 <div id="onboarding-status" class="sr" role="status" aria-live="polite"></div>
-<script src="/supabase/config.js"></script>
-<script src="/onboarding/config.js"></script>
-<script src="/onboarding/form-model.js"></script>
-<script src="/onboarding/prompt.js"></script>
+<script src="/supabase/config.js" defer></script>
+<script src="/onboarding/config.js" defer></script>
+<script src="/onboarding/form-model.js" defer></script>
+<script src="/onboarding/prompt.js" defer></script>
 <script type="module" src="/account/account.js"></script>
 </body>
 </html>
