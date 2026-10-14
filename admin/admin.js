@@ -1,4 +1,5 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
+import { renderCrm } from "./crm.js";
 
 const hello = document.getElementById("admin-hello");
 const app = document.getElementById("admin-app");
@@ -93,7 +94,28 @@ if (!isConfigured()) {
       app.append(el("p", { class: "links" }, [el("a", { href: "/account/" }, ["Go to your account"])]));
     } else {
       hello.textContent = "Signed in as " + (user.email || "admin") + ".";
-      await renderDashboard(supabase, user);
+      const tabs = document.getElementById("admin-tabs");
+      const tabClients = document.getElementById("tab-clients");
+      const tabCrm = document.getElementById("tab-crm");
+      tabs.hidden = false;
+      async function showSection(name) {
+        const crm = name === "crm";
+        tabClients.setAttribute("aria-selected", crm ? "false" : "true");
+        tabCrm.setAttribute("aria-selected", crm ? "true" : "false");
+        const nextHash = crm ? "#crm" : "#clients";
+        if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
+        if (crm) await renderCrm(supabase, user, { app, hello });
+        else {
+          hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+          await renderDashboard(supabase, user);
+        }
+      }
+      tabClients.addEventListener("click", () => { showSection("clients"); });
+      tabCrm.addEventListener("click", () => { showSection("crm"); });
+      window.addEventListener("hashchange", () => {
+        showSection(location.hash === "#crm" ? "crm" : "clients");
+      });
+      await showSection(location.hash === "#crm" ? "crm" : "clients");
     }
   }
 }

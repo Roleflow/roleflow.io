@@ -136,4 +136,34 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
   .filters{flex-direction:column;align-items:stretch}
   .filters input,.filters select{width:100%}
 }
+.admin-tabs{max-width:420px;margin:22px auto 0}
+.admin-tabs[hidden]{display:none !important}
+.crm{text-align:left;margin-top:22px}
+.crm h2{font-size:clamp(1.45rem,3vw,2.1rem)}
+.crm h3{margin-top:26px}
+.crm-note{margin:8px 0 0}
+.crm-actions,.crm-row-actions{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+.crm-row-actions{margin:0}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:18px 0}
+.kpi{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.kpi b{display:block;font:800 1.45rem var(--h);letter-spacing:-.03em}
+.kpi span{color:var(--mute);font-size:.86rem}
+.crm-scroll{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--bg2)}
+.crm-table{width:100%;border-collapse:collapse}
+.crm-table th,.crm-table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:.95rem}
+.crm-table th{color:var(--mute);font-weight:600}
+.sync-error{color:var(--o);margin:8px 0 0}
+.chart{display:flex;align-items:flex-end;gap:4px;height:150px;margin:12px 0 0;overflow:auto}
+.chart .bar{flex:1 0 18px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:18px}
+.chart .bar i{display:block;width:100%;max-width:22px;border-radius:7px 7px 2px 2px;background:var(--grad);height:var(--h,0%);min-height:2px}
+.chart .bar small{color:var(--mute);font-size:.68rem;margin-top:6px;white-space:nowrap}
+.status-bars{display:grid;gap:8px;margin-top:10px}
+.status-bars .row{display:grid;grid-template-columns:minmax(72px,120px) 1fr 40px;gap:8px;align-items:center}
+.status-bars .track{background:var(--bg);border:1px solid var(--line);border-radius:999px;height:10px;overflow:hidden}
+.status-bars .fill{display:block;height:100%;width:var(--w,0%);background:var(--grad)}
+.crm .panel{max-width:640px;margin-left:0}
+@media(max-width:760px){
+  .crm-table th,.crm-table td{padding:8px}
+  .status-bars .row{grid-template-columns:72px 1fr 32px}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
