@@ -60,7 +60,10 @@ function when(value) {
 }
 
 function businessName(profile) {
-  return answersOf(submissionOf(profile)).businessName || "—";
+  const answers = answersOf(submissionOf(profile));
+  if (answers.businessName) return answers.businessName;
+  const story = String(answers.brandStory || "").split(/[.\n]/)[0].trim();
+  return story || "—";
 }
 
 function displayName(profile) {
@@ -98,13 +101,24 @@ if (!isConfigured()) {
   }
 }
 
-async function renderDashboard(supabase, user) {
-  const { data, error } = await supabase.from("profiles").select(`
+const SUBMISSION_COLUMNS = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
+const SUBMISSION_COLUMNS_BASE = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at";
+
+async function loadClients(supabase) {
+  const full = await supabase.from("profiles").select(`
     id, full_name, email, instagram, created_at,
-    onboarding_submissions (
-      status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at
-    )
+    onboarding_submissions ( ${SUBMISSION_COLUMNS} )
   `).order("created_at", { ascending: false });
+  if (!full.error) return full;
+  if (!/schema cache|PGRST204|generation_status|email_status/i.test(full.error.message || "")) return full;
+  return supabase.from("profiles").select(`
+    id, full_name, email, instagram, created_at,
+    onboarding_submissions ( ${SUBMISSION_COLUMNS_BASE} )
+  `).order("created_at", { ascending: false });
+}
+
+async function renderDashboard(supabase, user) {
+  const { data, error } = await loadClients(supabase);
   if (error) {
     showMessage(error.message);
     return;
@@ -286,6 +300,48 @@ async function renderDashboard(supabase, user) {
     panel.append(listEl);
 
     panel.append(el("h3", {}, ["Generated prompt"]));
+    const generationLabel = submission?.generation_status ? "Generation: " + submission.generation_status : "Generation: not tracked yet";
+    const emailLabel = submission?.email_status ? "Email to Diego: " + submission.email_status : "Email to Diego: not tracked yet";
+    panel.append(el("p", { class: "step-desc" }, [generationLabel + " · " + emailLabel]));
+    if (submission?.generation_error) panel.append(el("p", { class: "err" }, [submission.generation_error]));
+    if (submission?.email_error) panel.append(el("p", { class: "err" }, [submission.email_error]));
+    const regenMsg = el("p", { class: "err", role: "status" });
+    const regenerate = el("button", { type: "button", class: "btn" }, ["Regenerate"]);
+    regenerate.addEventListener("click", async () => {
+      regenMsg.textContent = "";
+      regenerate.disabled = true;
+      regenerate.textContent = "Regenerating…";
+      const invoked = await supabase.functions.invoke("generate-setter-prompt", { body: { user_id: profile.id } });
+      regenerate.disabled = false;
+      regenerate.textContent = "Regenerate";
+      if (invoked.error) {
+        let message = invoked.error.message || "Regenerate failed.";
+        const context = invoked.error.context;
+        if (context && typeof context.json === "function") {
+          try {
+            const body = await context.json();
+            if (body && body.error) message = body.error;
+          } catch (_readError) { /* keep the status text */ }
+        }
+        regenMsg.textContent = message;
+        return;
+      }
+      const payload = invoked.data || {};
+      if (submission) {
+        submission.prompt_text = payload.prompt_text || submission.prompt_text;
+        submission.generation_status = payload.generation_status || "ready";
+        submission.generation_error = payload.generation_error || "";
+        submission.email_status = payload.email_status || "";
+        submission.email_error = payload.email_error || "";
+        if (!submission.status || submission.status === "not_started" || submission.status === "in_progress") {
+          submission.status = "submitted";
+        }
+      }
+      live.textContent = "Prompt regenerated for " + displayName(profile) + ".";
+      paintDetail();
+    });
+    panel.append(el("div", { class: "toolbar" }, [regenerate]));
+    panel.append(regenMsg);
     if (submission?.prompt_text) {
       const pre = el("pre", { class: "prompt", id: "admin-prompt", tabindex: "0" }, [submission.prompt_text]);
       const copy = el("button", { type: "button", class: "btn" }, ["Copy prompt"]);

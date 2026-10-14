@@ -328,6 +328,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# generate-setter-prompt reads OPENAI_API_KEY, optional OPENAI_MODEL,
+# RESEND_API_KEY, and RESEND_FROM from function secrets. verify_jwt stays on.
+[functions.generate-setter-prompt]
+verify_jwt = true
+
 [analytics]
 enabled = false
 port = 54327

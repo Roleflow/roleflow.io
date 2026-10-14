@@ -72,6 +72,8 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 #onboarding .help{color:var(--mute);font-size:.92rem;margin:0 0 8px}
 #onboarding input[type=text],#onboarding input[type=email],#onboarding input[type=url],#onboarding textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font:400 1rem/1.45 var(--b);caret-color:var(--o)}
 #onboarding textarea{display:block;resize:vertical;min-height:120px}
+#onboarding .file-label{display:block;margin-top:10px;color:var(--mute);font-size:.92rem;font-weight:600}
+#onboarding .file-input{display:block;margin-top:6px;color:var(--mute);font:500 .92rem/1.4 var(--b);max-width:100%}
 #onboarding input:focus,#onboarding textarea:focus{outline:none;border-color:var(--m)}
 #onboarding input:-webkit-autofill,#onboarding textarea:-webkit-autofill{-webkit-text-fill-color:var(--ink);caret-color:var(--o);transition:background-color 9999s ease-out}
 #onboarding ::placeholder{color:#7E8AAE;opacity:1}
