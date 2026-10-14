@@ -5,44 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Create your account · Roleflow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 </head>
-<body>
+<body class="app">
 <a class="skip" id="skip-link" href="#signup-form">Skip to the form</a>
-<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
-<header class="hero"><div class="wrap">
-  <h1 id="page-heading">Create your <span class="g">account</span></h1>
-  <p class="sub" id="page-sub">This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.</p>
-</div></header>
-<main class="wrap"><div class="panel">
-  <div class="auth-tabs" role="tablist" aria-label="Account">
-    <button type="button" id="tab-signup" role="tab" aria-selected="true" aria-controls="signup-form" tabindex="0">Sign up</button>
-    <button type="button" id="tab-login" role="tab" aria-selected="false" aria-controls="login-form" tabindex="-1">Log in</button>
+<div class="app-shell">
+  <aside class="app-side" id="app-side">
+    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+    <p class="side-kicker">Account</p>
+    <nav class="app-nav" aria-label="Account access">
+      <a href="/signup/">Sign up</a>
+      <a href="/signup/?mode=login">Log in</a>
+      <a href="/reset/">Reset password</a>
+    </nav>
+    <p class="side-note">Qualified clients start here. Answers stay on the account, so you can finish on any device.</p>
+  </aside>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <div class="app-main">
+    <header class="app-top">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
+      <div>
+        <h1 id="page-heading">Create your <span class="g">account</span></h1>
+        <p class="sub" id="page-sub">This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.</p>
+      </div>
+    </header>
+    <main class="wrap auth-main" id="main"><div class="panel">
+      <div class="auth-tabs" role="tablist" aria-label="Account">
+        <button type="button" id="tab-signup" role="tab" aria-selected="true" aria-controls="signup-form" tabindex="0">Sign up</button>
+        <button type="button" id="tab-login" role="tab" aria-selected="false" aria-controls="login-form" tabindex="-1">Log in</button>
+      </div>
+      <form id="signup-form" class="auth-form" role="tabpanel" aria-labelledby="tab-signup">
+        <label>Your name<input id="name" name="name" type="text" autocomplete="name" required></label>
+        <label>Email<input id="email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
+        <label>Instagram handle<input id="instagram" name="instagram" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+        <label>Access code<span class="hint">Ask Roleflow if you don't have one.</span><input id="access-code" name="access_code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+        <label>Password<span class="hint">At least 8 characters.</span><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>Confirm password<input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+        <p class="err" id="form-error" role="alert"></p>
+        <p class="okmsg" id="form-ok" role="status"></p>
+        <button class="btn" type="submit">Create account</button>
+      </form>
+      <form id="login-form" class="auth-form" role="tabpanel" aria-labelledby="tab-login" hidden>
+        <label>Email<input id="login-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
+        <label>Password<input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+        <p class="err" id="login-error" role="alert"></p>
+        <p class="okmsg" id="login-ok" role="status"></p>
+        <button class="btn" id="login-btn" type="submit">Log in</button>
+        <button class="btn ghost" id="magic-btn" type="button">Email me a sign-in link</button>
+        <p class="links"><a href="/reset/">Forgot password</a></p>
+      </form>
+    </div></main>
+    <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
   </div>
-  <form id="signup-form" class="auth-form" role="tabpanel" aria-labelledby="tab-signup">
-    <label>Your name<input id="name" name="name" type="text" autocomplete="name" required></label>
-    <label>Email<input id="email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
-    <label>Instagram handle<input id="instagram" name="instagram" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-    <label>Access code<span class="hint">Ask Roleflow if you don't have one.</span><input id="access-code" name="access_code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-    <label>Password<span class="hint">At least 8 characters.</span><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-    <label>Confirm password<input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
-    <p class="err" id="form-error" role="alert"></p>
-    <p class="okmsg" id="form-ok" role="status"></p>
-    <button class="btn" type="submit">Create account</button>
-  </form>
-  <form id="login-form" class="auth-form" role="tabpanel" aria-labelledby="tab-login" hidden>
-    <label>Email<input id="login-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
-    <label>Password<input id="login-password" name="password" type="password" autocomplete="current-password"></label>
-    <p class="err" id="login-error" role="alert"></p>
-    <p class="okmsg" id="login-ok" role="status"></p>
-    <button class="btn" id="login-btn" type="submit">Log in</button>
-    <button class="btn ghost" id="magic-btn" type="button">Email me a sign-in link</button>
-    <p class="links"><a href="/reset/">Forgot password</a></p>
-  </form>
-</div></main>
-<footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
-<script src="/supabase/config.js"></script>
+</div>
+<div id="toasts" class="toast-stack" aria-live="polite"></div>
+<script src="/supabase/config.js" defer></script>
 <script type="module" src="/signup/signup.js"></script>
 </body>
 </html>

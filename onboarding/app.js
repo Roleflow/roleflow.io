@@ -63,6 +63,10 @@
     if (statusEl) statusEl.textContent = message || "";
   }
 
+  function notify(message, tone) {
+    if (globalThis.RoleflowUI && globalThis.RoleflowUI.toast) globalThis.RoleflowUI.toast(message, tone);
+  }
+
   function hasAnyAnswer(answers) {
     return Object.keys(answers || {}).some(function (key) {
       return !Form.isBlank(answers[key]);
@@ -302,20 +306,43 @@
     return "Step " + (state.stepIndex + 1) + " of " + progressMax + " · " + (step ? step.title : "");
   }
 
+  function progressSteps() {
+    var steps = config.QUESTIONS.map(function (step, index) {
+      return { title: step.title, index: index };
+    });
+    steps.push({ title: "Review", index: reviewIndex });
+    steps.push({ title: "Prompt", index: promptIndex });
+    return steps;
+  }
+
   function progressBar() {
     var current = Math.min(state.stepIndex, progressMax - 1);
     var bars = [];
     for (var i = 0; i < progressMax; i += 1) {
       bars.push(el("i", { class: i <= current ? "on" : "" }));
     }
+    var steps = progressSteps().map(function (step) {
+      var className = step.index < state.stepIndex ? "done" : step.index === state.stepIndex ? "current" : "";
+      var button = el("button", {
+        type: "button",
+        "data-action": "goto-step",
+        "data-step": String(step.index),
+        "aria-current": step.index === state.stepIndex ? "step" : null
+      }, [
+        el("span", { class: "step-index", "aria-hidden": "true" }, [String(step.index + 1)]),
+        el("span", {}, [step.title])
+      ]);
+      return el("li", { class: className }, [button]);
+    });
     return el("div", {
       class: "progress",
       role: "progressbar",
       "aria-valuemin": "1",
       "aria-valuemax": String(progressMax),
-      "aria-valuenow": String(current + 1),
+      "aria-valuenow": String(Math.min(progressMax, state.stepIndex + 1)),
       "aria-valuetext": progressLabel()
     }, [
+      el("ol", { class: "stepper" }, steps),
       el("div", { class: "prog", "aria-hidden": "true" }, bars),
       el("p", { class: "prog-label" }, [
         el("span", {}, [progressLabel()]),
@@ -839,9 +866,11 @@
         state.generationError = state.promptText ? "" : "The prompt came back empty. Your answers are saved.";
         if (!state.promptText) {
           state.stepIndex = reviewIndex;
+          notify(state.generationError, "bad");
           render({ focusHeading: true });
           return;
         }
+        notify("Your setter prompt is ready.");
         showPromptStep();
       }, function (error) {
         state.generating = false;
@@ -849,6 +878,7 @@
         state.remoteState = "error";
         state.generationError = (error && error.message) || "The prompt could not be written. Your answers are saved.";
         state.stepIndex = reviewIndex;
+        notify(state.generationError, "bad");
         render({ focusHeading: true });
       });
     });
@@ -991,7 +1021,26 @@
     var button = event.target.closest("[data-action]");
     if (!button || !app.contains(button)) return;
     var action = button.getAttribute("data-action");
-    if (action === "back") goBack();
+    if (action === "goto-step") {
+      if (state.locked || state.generating) return;
+      var index = Number(button.getAttribute("data-step"));
+      if (!Number.isInteger(index) || index < 0 || index > promptIndex) return;
+      if (index === promptIndex && state.stepIndex !== promptIndex) return;
+      if (index > state.stepIndex) {
+        if (index !== state.stepIndex + 1 || state.stepIndex >= reviewIndex) return;
+        var stepErrors = Form.validateStep(config.QUESTIONS[state.stepIndex], state.answers);
+        if (Object.keys(stepErrors).length) {
+          state.errors = stepErrors;
+          render({ focusError: true });
+          return;
+        }
+      }
+      state.errors = {};
+      state.cameFromReview = false;
+      state.stepIndex = index;
+      persist("push");
+      render({ focusHeading: true });
+    } else if (action === "back") goBack();
     else if (action === "back-to-review") backToReview();
     else if (action === "edit") {
       state.cameFromReview = true;
@@ -1042,7 +1091,7 @@
     var fromHash = indexFromHash(window.location.hash);
     if (fromHash != null && !state.locked && state.accountStatus !== "submitted") state.stepIndex = fromHash;
     showSection();
-    persist("replace", { skipRemote: true });
+    persist(window.location.hash === "#setter" ? "none" : "replace", { skipRemote: true });
     render({ focusHeading: true });
   }
 

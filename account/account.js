@@ -1,5 +1,9 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
+import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
+import { bindShell, markNav, toast } from "../auth/ui.js";
 import { renderSetter } from "./setter.js";
+
+bindShell();
 
 const hello = document.getElementById("account-hello");
 const gate = document.getElementById("gate");
@@ -7,14 +11,22 @@ const section = document.getElementById("onboarding");
 const setter = document.getElementById("setter");
 const logoutBtn = document.getElementById("nav-logout");
 
+function hideBoot() {
+  const boot = document.getElementById("boot-state");
+  if (boot) boot.hidden = true;
+}
+
 function showGate(message) {
+  hideBoot();
   gate.hidden = false;
   gate.innerHTML = "";
   const panel = document.createElement("div");
-  panel.className = "panel";
+  panel.className = "state";
+  const title = document.createElement("h2");
+  title.textContent = "Account unavailable";
   const p = document.createElement("p");
   p.textContent = message;
-  panel.append(p);
+  panel.append(title, p);
   gate.append(panel);
   section.hidden = true;
   if (setter) setter.hidden = true;
@@ -22,16 +34,25 @@ function showGate(message) {
 
 logoutBtn.addEventListener("click", logout);
 
-if (!isConfigured()) {
+const arriving = rememberCallback(window.location.href);
+if (arriving.type === "recovery") {
+  window.location.replace("/reset/" + window.location.hash);
+} else if (!isConfigured()) {
   hello.textContent = "Accounts need the Supabase keys in supabase/config.js.";
   showGate("Paste SUPABASE_URL and SUPABASE_ANON_KEY into supabase/config.js, then refresh.");
 } else {
   const supabase = getSupabase();
-  const { data } = await supabase.auth.getSession();
-  const session = data.session;
+  const resolved = await resolveSession(supabase, window.location.href);
+  const session = resolved.session;
   if (!session) {
-    window.location.replace("/login/?next=/account/");
+    const notice = resolved.errorMessage;
+    window.location.replace(notice
+      ? "/signup/?mode=login&notice=" + encodeURIComponent(notice)
+      : "/login/?next=/account/");
   } else {
+    clearAuthParams();
+    if (arriving.type === "signup" || arriving.type === "magiclink" || arriving.hasGrant) toast("You're signed in.");
+    clearCallbackMemory();
     logoutBtn.hidden = false;
     const user = session.user;
     const missingTable = (error) => error && /schema cache|does not exist|PGRST205|PGRST204/i.test(error.message || "");
@@ -98,8 +119,17 @@ if (!isConfigured()) {
               return generatePrompt(supabase, user.id, snapshot);
             }
           };
+          hideBoot();
           section.hidden = false;
           if (setter) setter.hidden = false;
+          const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
+          if (adminRes.data) {
+            const navAdmin = document.getElementById("nav-admin");
+            const navCrm = document.getElementById("nav-admin-crm");
+            if (navAdmin) navAdmin.hidden = false;
+            if (navCrm) navCrm.hidden = false;
+            markNav();
+          }
           renderSetter(supabase, user.id, document.getElementById("setter-app")).catch(() => {
             const root = document.getElementById("setter-app");
             if (root && !root.childElementCount) {

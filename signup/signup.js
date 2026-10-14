@@ -1,4 +1,8 @@
-import { getSupabase, isConfigured, logout, originPath, safeNext, signupErrorMessage } from "../auth/supabase.js";
+import { getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
+import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
+import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
+
+bindShell();
 
 const form = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
@@ -13,8 +17,8 @@ const tabs = [tabSignup, tabLogin];
 
 function wantsLogin() {
   const query = new URLSearchParams(window.location.search);
-  const hash = window.location.hash.replace(/^#/, "");
-  return query.get("mode") === "login" || hash === "login";
+  if (query.get("mode") === "login") return true;
+  return isLoginTab(window.location.search, window.location.hash);
 }
 
 function showTab(mode) {
@@ -33,13 +37,16 @@ function showTab(mode) {
     : "This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
   document.title = login ? "Log in · Roleflow" : "Create your account · Roleflow";
   document.getElementById("skip-link").setAttribute("href", login ? "#login-form" : "#signup-form");
+  markNav();
 }
 
 function rememberMode(mode) {
   const url = new URL(window.location.href);
+  const hash = url.hash.replace(/^#/, "");
+  const authHash = /access_token|refresh_token|error|error_description|type=/.test(hash);
   if (mode === "login") {
     url.searchParams.set("mode", "login");
-    url.hash = "login";
+    if (!authHash) url.hash = "login";
   } else {
     url.searchParams.delete("mode");
     if (url.hash === "#login") url.hash = "";
@@ -51,9 +58,13 @@ function rememberMode(mode) {
 tabs.forEach((tab, index) => {
   tab.addEventListener("click", () => rememberMode(tab === tabLogin ? "login" : "signup"));
   tab.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : (index - 1 + tabs.length) % tabs.length;
+    let next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else next = tabs.length - 1;
     tabs[next].focus();
     rememberMode(tabs[next] === tabLogin ? "login" : "signup");
   });
@@ -74,11 +85,26 @@ document.getElementById("instagram").value = normalizeHandle(params.get("ig") ||
 function showError(message) {
   errorEl.textContent = message || "";
   okEl.textContent = "";
+  if (message) toast(message, "bad");
 }
 
 function showLoginError(message) {
   loginErrorEl.textContent = message || "";
   if (message) loginOkEl.textContent = "";
+  if (message) toast(message, "bad");
+}
+
+function showLoginOk(message) {
+  loginOkEl.textContent = message || "";
+  if (message) toast(message, "ok");
+}
+
+const notice = params.get("notice");
+if (notice) {
+  showTab("login");
+  loginErrorEl.textContent = notice;
+  toast(notice, "bad");
+  clearAuthParams();
 }
 
 if (!isConfigured()) {
@@ -87,78 +113,98 @@ if (!isConfigured()) {
   document.getElementById("login-btn").disabled = true;
   document.getElementById("magic-btn").disabled = true;
 } else {
-  const supabase = getSupabase();
-  const { data } = await supabase.auth.getSession();
-  if (data.session) {
-    window.location.replace(safeNext(params.get("next")));
-  }
-  document.getElementById("nav-logout").hidden = !data.session;
-  document.getElementById("nav-logout").addEventListener("click", logout);
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    showError("");
-    const name = document.getElementById("name").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const instagram = normalizeHandle(document.getElementById("instagram").value);
-    const accessCode = document.getElementById("access-code").value.trim();
-    const password = document.getElementById("password").value;
-    const confirm = document.getElementById("confirm").value;
-    if (!name) return showError("Enter your name.");
-    if (!/^\S+@\S+\.\S+$/.test(email)) return showError("Enter a valid email address.");
-    if (!instagram) return showError("Enter your Instagram handle.");
-    if (!accessCode) return showError("Enter your access code.");
-    if (password.length < 8) return showError("Use at least 8 characters in the password.");
-    if (password !== confirm) return showError("Those passwords do not match.");
-    const button = form.querySelector("button[type=submit]");
-    button.disabled = true;
-    const { data: created, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name, instagram, access_code: accessCode },
-        emailRedirectTo: originPath("/account/")
+  const callback = rememberCallback(window.location.href);
+  if (callback.type === "recovery") {
+    window.location.replace("/reset/" + window.location.hash);
+  } else {
+    const supabase = getSupabase();
+    const resolved = await resolveSession(supabase, window.location.href);
+    if (resolved.session) {
+      clearAuthParams();
+      clearCallbackMemory();
+      window.location.replace(safeNext(params.get("next")));
+    } else {
+      if (resolved.errorMessage) {
+        showTab("login");
+        loginErrorEl.textContent = resolved.errorMessage;
+        toast(resolved.errorMessage, "bad");
+        const url = new URL(window.location.href);
+        url.searchParams.set("mode", "login");
+        history.replaceState(null, "", url);
+        clearAuthParams();
+        clearCallbackMemory();
+        markNav();
       }
-    });
-    button.disabled = false;
-    if (error) return showError(signupErrorMessage(error));
-    if (created.session) {
-      window.location.replace("/account/");
-      return;
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        errorEl.textContent = "";
+        okEl.textContent = "";
+        const name = document.getElementById("name").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const instagram = normalizeHandle(document.getElementById("instagram").value);
+        const accessCode = document.getElementById("access-code").value.trim();
+        const password = document.getElementById("password").value;
+        const confirm = document.getElementById("confirm").value;
+        if (!name) return showError("Enter your name.");
+        if (!/^\S+@\S+\.\S+$/.test(email)) return showError("Enter a valid email address.");
+        if (!instagram) return showError("Enter your Instagram handle.");
+        if (!accessCode) return showError("Enter your access code.");
+        if (password.length < 8) return showError("Use at least 8 characters in the password.");
+        if (password !== confirm) return showError("Those passwords do not match.");
+        const button = form.querySelector("button[type=submit]");
+        setBusy(button, true, "Creating account…");
+        const { data: created, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { full_name: name, instagram, access_code: accessCode },
+            emailRedirectTo: originPath("/account/")
+          }
+        });
+        setBusy(button, false);
+        if (error) return showError(friendlyAuthError(error));
+        if (created.session) {
+          window.location.replace("/account/");
+          return;
+        }
+        okEl.textContent = "Check your email to confirm the account, then log in. The link brings you back to your account.";
+        toast(okEl.textContent, "ok");
+      });
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        loginErrorEl.textContent = "";
+        loginOkEl.textContent = "";
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value;
+        if (!/^\S+@\S+\.\S+$/.test(email)) return showLoginError("Enter a valid email address.");
+        if (!password) return showLoginError("Enter your password.");
+        const button = document.getElementById("login-btn");
+        setBusy(button, true, "Logging in…");
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        setBusy(button, false);
+        if (error) return showLoginError(friendlyAuthError(error));
+        window.location.replace(safeNext(params.get("next")));
+      });
+
+      document.getElementById("magic-btn").addEventListener("click", async () => {
+        loginErrorEl.textContent = "";
+        loginOkEl.textContent = "";
+        const email = document.getElementById("login-email").value.trim();
+        if (!/^\S+@\S+\.\S+$/.test(email)) return showLoginError("Enter the email for the sign-in link.");
+        const button = document.getElementById("magic-btn");
+        setBusy(button, true, "Sending…");
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: originPath("/account/"),
+            shouldCreateUser: false
+          }
+        });
+        setBusy(button, false);
+        if (error) return showLoginError(friendlyAuthError(error));
+        showLoginOk("Check your email for a sign-in link.");
+      });
     }
-    okEl.textContent = "Check your email to confirm the account, then log in. The link brings you back to your account.";
-  });
-
-  loginForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    showLoginError("");
-    const email = document.getElementById("login-email").value.trim();
-    const password = document.getElementById("login-password").value;
-    if (!/^\S+@\S+\.\S+$/.test(email)) return showLoginError("Enter a valid email address.");
-    if (!password) return showLoginError("Enter your password.");
-    const button = document.getElementById("login-btn");
-    button.disabled = true;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    button.disabled = false;
-    if (error) return showLoginError(error.message);
-    window.location.replace(safeNext(params.get("next")));
-  });
-
-  document.getElementById("magic-btn").addEventListener("click", async () => {
-    showLoginError("");
-    const email = document.getElementById("login-email").value.trim();
-    if (!/^\S+@\S+\.\S+$/.test(email)) return showLoginError("Enter the email for the sign-in link.");
-    const button = document.getElementById("magic-btn");
-    button.disabled = true;
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: originPath("/account/"),
-        shouldCreateUser: false
-      }
-    });
-    button.disabled = false;
-    if (error) return showLoginError(error.message);
-    loginOkEl.textContent = "Check your email for a sign-in link.";
-  });
+  }
 }
