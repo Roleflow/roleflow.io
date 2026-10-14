@@ -15,7 +15,7 @@
     return;
   }
 
-  var STORAGE_KEY = "roleflow.onboarding.v1";
+  var STORAGE_KEY = "roleflow.onboarding.v2";
   var BANNER_KEY = "roleflow.onboarding.bannerDismissed";
   var reviewIndex = config.QUESTIONS.length;
   var promptIndex = reviewIndex + 1;
@@ -33,7 +33,12 @@
     opened: false,
     remoteState: "",
     accountStatus: "not_started",
-    locked: false
+    locked: false,
+    generating: false,
+    generationError: "",
+    emailStatus: "",
+    emailError: "",
+    clientEmail: ""
   };
 
   var account = globalThis.ROLEFLOW_ACCOUNT || null;
@@ -171,6 +176,7 @@
 
   function snapshotStatus() {
     if (state.locked) return state.accountStatus;
+    if (state.accountStatus === "submitted" || state.generating) return "submitted";
     if (state.stepIndex === promptIndex && state.promptText) return "submitted";
     if (hasAnyAnswer(state.answers) || state.stepIndex > 0) return "in_progress";
     return "not_started";
@@ -202,7 +208,7 @@
   }
 
   function scheduleRemote(immediate) {
-    if (!account || state.locked) return;
+    if (!account || state.locked || state.generating) return;
     clearTimeout(remoteTimer);
     if (immediate) flushRemote();
     else remoteTimer = setTimeout(flushRemote, 700);
@@ -210,7 +216,7 @@
 
   function saveLocal() {
     var payload = {
-      version: 1,
+      version: 2,
       stepIndex: state.stepIndex,
       answers: state.answers,
       savedAt: new Date().toISOString()
@@ -282,32 +288,11 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
   }
 
-  function mailtoHref() {
-    var business = String(state.answers.businessName || "New client").trim();
-    var file = submissionFilename();
-    var body = [
-      "Hi Diego,",
-      "",
-      String(state.answers.clientName || "A client").trim() + " finished the Roleflow DM setter onboarding.",
-      "",
-      "Business: " + String(state.answers.businessName || "").trim(),
-      "Instagram: " + String(state.answers.instagramHandle || "").trim(),
-      "Email: " + String(state.answers.clientEmail || "").trim(),
-      "Offer: " + String(state.answers.offerName || "").trim(),
-      "",
-      "The full answers and system prompt are in the downloaded file. Please attach \"" + file + "\" before sending this email.",
-      "",
-      "Sent from the Roleflow onboarding page."
-    ].join("\r\n");
-    return "mailto:" + encodeURIComponent(config.DIEGO_EMAIL) +
-      "?subject=" + encodeURIComponent("DM setter onboarding: " + business) +
-      "&body=" + encodeURIComponent(body);
-  }
-
-  function ensurePrompt() {
-    var options = { now: new Date() };
-    state.promptText = Prompt.buildPrompt(config, state.answers, options);
-    state.submissionText = Prompt.buildSubmission(config, state.answers, options);
+  function submissionBody() {
+    var answers = Object.assign({}, state.answers, {
+      clientEmail: state.clientEmail || state.answers.clientEmail || ""
+    });
+    return Prompt.buildSubmission(config, answers, { promptText: state.promptText, now: new Date() });
   }
 
   function progressLabel() {
@@ -453,6 +438,18 @@
       if (required) textarea.setAttribute("aria-required", "true");
       if (error) textarea.setAttribute("aria-invalid", "true");
       applyControl(textarea, field, state.answers[field.id] || "");
+      if (field.file) {
+        wrap.append(el("label", { class: "file-label", for: "file-" + field.id }, [
+          "Or upload a .txt or .md file"
+        ]));
+        wrap.append(el("input", {
+          type: "file",
+          class: "file-input",
+          id: "file-" + field.id,
+          accept: ".txt,.md,text/plain,text/markdown",
+          "data-file-for": field.id
+        }));
+      }
       wrap.append(textarea);
     } else {
       var inputType = field.type === "email" || field.type === "url" ? field.type : "text";
@@ -532,7 +529,7 @@
   function renderReview() {
     var root = el("div", {}, [
       el("h2", { id: "step-title", tabindex: "-1" }, ["Review your answers"]),
-      el("p", { class: "step-desc" }, ["Check everything. The prompt uses your words. Edit any step, then generate the setter prompt."])
+      el("p", { class: "step-desc" }, ["Check everything. Submit writes the setter prompt and emails it to Diego. This usually takes a minute."])
     ]);
     config.QUESTIONS.forEach(function (step, index) {
       var block = el("section", { class: "review-block" }, [
@@ -560,10 +557,21 @@
       block.append(list);
       root.append(block);
     });
+    if (state.generating) {
+      root.append(el("p", { class: "note" }, ["Your answers are saved. Roleflow is writing the prompt."]));
+    }
+    if (state.generationError) {
+      root.append(el("p", { class: "note" }, [state.generationError]));
+    }
     var actions = el("div", { class: "actions" }, [
       el("button", { type: "button", class: "btn ghost", "data-action": "back" }, ["Back"]),
       el("div", { class: "right" }, [
-        el("button", { type: "button", class: "btn", "data-action": "generate" }, ["Generate my prompt"])
+        el("button", {
+          type: "button",
+          class: "btn",
+          "data-action": "generate",
+          disabled: state.generating ? "disabled" : false
+        }, [state.generating ? "Writing the prompt…" : "Submit"])
       ])
     ]);
     root.append(actions);
@@ -573,14 +581,21 @@
     return root;
   }
 
+  function promptHandoff() {
+    if (state.emailStatus === "sent") return "Diego has this prompt by email, and it is saved on your account.";
+    if (state.emailStatus === "failed") {
+      return "The prompt is saved on your account. The email to Diego did not send"
+        + (state.emailError ? " (" + state.emailError + ")." : ".")
+        + " He can open it from the tracking page.";
+    }
+    return "The prompt is saved on your account. Diego opens it from the tracking page.";
+  }
+
   function renderPrompt() {
-    ensurePrompt();
     var root = el("div", {}, [
       el("h2", { id: "step-title", tabindex: "-1" }, ["Your setter prompt"]),
-      el("p", { class: "step-desc" }, [account
-        ? "This prompt is saved to your account. Copy or download it here. Email Diego only if you also want a copy in his inbox."
-        : "This is the full system prompt for your Instagram DM setter. Nothing was sent to Roleflow automatically."]),
-      el("p", { class: "note" }, ["Section 1 uses Roleflow's shared High Priority Rules. Roleflow reviews the prompt before it goes live."])
+      el("p", { class: "step-desc" }, [promptHandoff()]),
+      el("p", { class: "note" }, ["The high priority rules are Roleflow's shared block. Roleflow reviews the prompt before it goes live."])
     ]);
     root.append(el("div", { class: "toolbar" }, [
       el("button", { type: "button", class: "btn", "data-action": "copy", id: "copy-btn" }, ["Copy prompt"]),
@@ -596,17 +611,11 @@
       "aria-label": "Generated system prompt"
     }, [state.promptText]));
     var handoff = el("div", { class: "handoff" }, [
-      el("h3", {}, ["Send this to Diego"]),
-      el("p", { class: "step-desc" }, [
-        account
-          ? "Your answers and this prompt are saved in your account, so Diego can open them in the tracking dashboard. You can still download the file or email it."
-          : "Download the submission file (your answers plus the prompt), then email it to Diego and attach the file before you send. This page does not send anything on its own."
-      ])
+      el("h3", {}, ["Your copy"]),
+      el("p", { class: "step-desc" }, ["Download the prompt, or a file that also includes your answers. Diego already receives the prompt by email when sending works."])
     ]);
-    var mail = el("a", { class: "btn ghost", href: mailtoHref(), "data-action": "email", id: "email-diego" }, ["Email Diego"]);
     handoff.append(el("div", { class: "toolbar" }, [
-      el("button", { type: "button", class: "btn", "data-action": "download-submission" }, ["Download submission for Diego"]),
-      mail
+      el("button", { type: "button", class: "btn ghost", "data-action": "download-submission" }, ["Download submission"])
     ]));
     root.append(handoff);
     if (!state.locked) {
@@ -693,6 +702,33 @@
     });
   }
 
+  function readUpload(input) {
+    var fieldId = input.getAttribute("data-file-for");
+    var file = input.files && input.files[0];
+    if (!fieldId || !file) return;
+    var allowed = /\.(txt|md)$/i.test(file.name) || file.type === "text/plain" || file.type === "text/markdown";
+    if (!allowed) {
+      state.errors[fieldId] = "Upload a .txt or .md file.";
+      render({ focusError: true });
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      state.answers[fieldId] = String(reader.result || "");
+      clearError(fieldId);
+      var area = document.getElementById("field-" + fieldId);
+      if (area) area.value = state.answers[fieldId];
+      saveLocal();
+      scheduleRemote(true);
+      setStatus("Added " + file.name + " to the paste box.");
+    };
+    reader.onerror = function () {
+      state.errors[fieldId] = "That file could not be read. Paste the text instead.";
+      render({ focusError: true });
+    };
+    reader.readAsText(file);
+  }
+
   function updateText(target) {
     var fieldId = target.getAttribute("data-id");
     if (!fieldId) return;
@@ -752,7 +788,19 @@
     generate();
   }
 
+  function showPromptStep() {
+    state.stepIndex = promptIndex;
+    saveLocal();
+    if (window.history) {
+      var hash = hashFor(state.stepIndex);
+      var url = window.location.pathname + window.location.search + hash;
+      if (window.location.hash !== hash) history.pushState({ step: state.stepIndex }, "", url);
+    }
+    render({ focusHeading: true });
+  }
+
   function generate() {
+    if (state.generating || state.locked) return;
     var result = Form.validateAll(config, state.answers);
     if (!result.ok) {
       state.stepIndex = result.firstStepIndex;
@@ -765,34 +813,45 @@
     }
     state.errors = {};
     state.cameFromReview = false;
-    state.stepIndex = promptIndex;
-    ensurePrompt();
+    state.generationError = "";
+    if (!account || !account.generate) {
+      state.generationError = "Sign in to submit. Your answers stay on this device until then.";
+      state.stepIndex = reviewIndex;
+      render({ focusHeading: true });
+      return;
+    }
+    state.generating = true;
+    state.accountStatus = "submitted";
+    clearTimeout(remoteTimer);
+    state.stepIndex = reviewIndex;
     saveLocal();
-    if (window.history) {
-      var hash = hashFor(state.stepIndex);
-      var url = window.location.pathname + window.location.search + hash;
-      if (window.location.hash !== hash) history.pushState({ step: state.stepIndex }, "", url);
-    }
-    if (account && !state.locked && account.submit) {
-      clearTimeout(remoteTimer);
-      state.remoteState = "saving";
-      paintSave();
-      enqueueRemote(function () {
-        ensurePrompt();
-        return account.submit(currentSnapshot("submitted")).then(function () {
-          state.accountStatus = "submitted";
-          state.remoteState = "saved";
-          state.storageError = "";
-          paintAccountStatus();
+    render();
+    setStatus("Writing the setter prompt.");
+    enqueueRemote(function () {
+      return account.generate(currentSnapshot("submitted")).then(function (payload) {
+        state.generating = false;
+        state.accountStatus = "submitted";
+        state.remoteState = "saved";
+        state.storageError = "";
+        state.promptText = payload && payload.prompt_text ? payload.prompt_text : "";
+        state.emailStatus = payload && payload.email_status ? payload.email_status : "";
+        state.emailError = payload && payload.email_error ? payload.email_error : "";
+        state.generationError = state.promptText ? "" : "The prompt came back empty. Your answers are saved.";
+        if (!state.promptText) {
+          state.stepIndex = reviewIndex;
           render({ focusHeading: true });
-        }, function () {
-          state.remoteState = "error";
-          state.storageError = "Couldn't save the prompt to your account. A copy is still on this device.";
-          render({ focusHeading: true });
-        });
+          return;
+        }
+        showPromptStep();
+      }, function (error) {
+        state.generating = false;
+        state.accountStatus = "submitted";
+        state.remoteState = "error";
+        state.generationError = (error && error.message) || "The prompt could not be written. Your answers are saved.";
+        state.stepIndex = reviewIndex;
+        render({ focusHeading: true });
       });
-    }
-    render({ focusHeading: true });
+    });
   }
 
   function goBack() {
@@ -828,6 +887,10 @@
     state.banner = false;
     state.promptText = "";
     state.submissionText = "";
+    state.generating = false;
+    state.generationError = "";
+    state.emailStatus = "";
+    state.emailError = "";
     state.accountStatus = "not_started";
     try { localStorage.removeItem(storageKey()); } catch (error) { /* ignore */ }
     try { sessionStorage.removeItem(BANNER_KEY); } catch (error) { /* ignore */ }
@@ -907,13 +970,14 @@
   app.addEventListener("input", function (event) {
     var target = event.target;
     if (!target || !target.getAttribute) return;
-    if (target.type === "checkbox") return;
+    if (target.type === "checkbox" || target.type === "file") return;
     updateText(target);
   });
 
   app.addEventListener("change", function (event) {
     var target = event.target;
     if (target && target.type === "checkbox") updateCheckbox(target);
+    else if (target && target.type === "file") readUpload(target);
   });
 
   app.addEventListener("submit", function (event) {
@@ -943,21 +1007,17 @@
       render();
     } else if (action === "copy") copyPrompt();
     else if (action === "download-md") {
-      ensurePrompt();
+      if (!state.promptText) { setStatus("The prompt is not ready yet."); return; }
       download(promptFilename() + ".md", state.promptText, "text/markdown;charset=utf-8");
       setStatus("Markdown download started.");
     } else if (action === "download-txt") {
-      ensurePrompt();
+      if (!state.promptText) { setStatus("The prompt is not ready yet."); return; }
       download(promptFilename() + ".txt", state.promptText, "text/plain;charset=utf-8");
       setStatus("Text download started.");
     } else if (action === "download-submission") {
-      ensurePrompt();
-      download(submissionFilename(), state.submissionText, "text/markdown;charset=utf-8");
+      if (!state.promptText) { setStatus("The prompt is not ready yet."); return; }
+      download(submissionFilename(), submissionBody(), "text/markdown;charset=utf-8");
       setStatus("Submission download started.");
-    } else if (action === "email") {
-      ensurePrompt();
-      download(submissionFilename(), state.submissionText, "text/markdown;charset=utf-8");
-      setStatus("Submission downloaded. Attach that file to the email before you send it.");
     }
   });
 
@@ -968,12 +1028,17 @@
     if (Number.isInteger(index) && index >= 0 && index <= promptIndex) state.stepIndex = index;
     state.promptText = boot.promptText || "";
     state.accountStatus = account.status || "not_started";
+    state.emailStatus = boot.emailStatus || "";
+    state.emailError = boot.emailError || "";
+    state.generationError = boot.generationError || "";
+    state.clientEmail = account.profilePrefill && account.profilePrefill.clientEmail || "";
     state.locked = state.accountStatus === "integrated" || state.accountStatus === "live";
     prefill(account.profilePrefill);
     var dismissed = false;
     try { dismissed = sessionStorage.getItem(BANNER_KEY) === "1"; } catch (error) { dismissed = false; }
     state.banner = Boolean(account.restored) && !state.locked && !dismissed && hasAnyAnswer(state.answers);
-    if (state.locked || state.accountStatus === "submitted") state.stepIndex = promptIndex;
+    if (state.locked || (state.accountStatus === "submitted" && state.promptText)) state.stepIndex = promptIndex;
+    else if (state.accountStatus === "submitted") state.stepIndex = reviewIndex;
     var fromHash = indexFromHash(window.location.hash);
     if (fromHash != null && !state.locked && state.accountStatus !== "submitted") state.stepIndex = fromHash;
     showSection();
