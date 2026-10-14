@@ -20,14 +20,27 @@
 //
 // Get Leads and Get Contacts are JSON POST requests to api.tailortalk.ai,
 // header Authorization: Agent <token>. The guide's example lead payload has
-// no source and no message count. Source is stored only when the payload
-// includes source or lead_source. Message counts are not requested or stored.
+// no source, no message history, and no message count. Source is stored only
+// when the payload includes source or lead_source.
+//
+// Admin actions that call the public API with the stored per-agent token:
+//   mark_booked    POST /api/v1/mark_converted
+//   templates      GET  /api/v1/get_whatsapp_templates
+//   template_sends GET  /api/v1/campaign_logs
+//   send_template  POST /api/v1/send_whatsapp_template_message
+// The public API has no free-text message, no arbitrary stage update, and no
+// prompt edit. Those actions are not implemented. A cron body can only sync.
+// Error text returned to the browser has the provider name removed.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { computeStats } from "./stats.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
 const CONTACTS_URL = "https://api.tailortalk.ai/api/v1/get_contacts";
+const MARK_URL = "https://api.tailortalk.ai/api/v1/mark_converted";
+const TEMPLATES_URL = "https://api.tailortalk.ai/api/v1/get_whatsapp_templates";
+const LOGS_URL = "https://api.tailortalk.ai/api/v1/campaign_logs";
+const SEND_TEMPLATE_URL = "https://api.tailortalk.ai/api/v1/send_whatsapp_template_message";
 const PAGE_CAP = 100;
 
 const cors = {
@@ -87,11 +100,23 @@ Deno.serve(async (req) => {
     const results = await syncAgents(service, only);
     return json(200, { ok: results.every((item) => !item.error), results });
   }
+  if (action === "mark_booked") return markBooked(service, body);
+  if (action === "templates") return listTemplates(service, body);
+  if (action === "template_sends") return listTemplateSends(service, body);
+  if (action === "send_template") return sendTemplate(service, body);
   return json(400, { error: "Unknown action." });
 });
 
+function scrub(text: string) {
+  return text
+    .replace(/https?:\/\/api\.tailortalk\.ai\S*/gi, "the setter service")
+    .replace(/tailortalk/gi, "the setter service");
+}
+
 function json(status: number, payload: Record<string, unknown>) {
-  return new Response(JSON.stringify(payload), { status, headers: cors });
+  const body = { ...payload };
+  if (typeof body.error === "string") body.error = scrub(body.error);
+  return new Response(JSON.stringify(body), { status, headers: cors });
 }
 
 function timingSafeEqual(a: string, b: string) {
@@ -274,7 +299,7 @@ async function tokenFromStored(stored: string) {
 }
 
 async function fail(service: ReturnType<typeof createClient>, agent: { id: string; label?: string; agent_name?: string }, message: string) {
-  const text = message.slice(0, 500);
+  const text = scrub(message).slice(0, 500);
   await service.from("tailortalk_agents").update({
     last_sync_error: text,
     updated_at: new Date().toISOString()
@@ -287,16 +312,152 @@ async function fetchLeads(token: string) {
 }
 
 function leadsFrom(payload) {
-  if (payload?.success === false) throw new Error("TailorTalk rejected get_leads.");
+  if (payload?.success === false) throw new Error("The setter service rejected the lead request.");
   const leads = payload?.data?.leads;
-  if (!Array.isArray(leads)) throw new Error("TailorTalk get_leads response had no leads array.");
+  if (!Array.isArray(leads)) throw new Error("The lead response had no leads array.");
   return leads;
 }
 
 function contactsFrom(payload) {
   const contacts = payload?.contacts;
-  if (!Array.isArray(contacts)) throw new Error("TailorTalk get_contacts response had no contacts array.");
+  if (!Array.isArray(contacts)) throw new Error("The contact response had no contacts array.");
   return contacts;
+}
+
+function usableContact(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text || text.includes("*") || text.length > 80) return "";
+  return text;
+}
+
+async function agentToken(service: ReturnType<typeof createClient>, agentId: string) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId)) {
+    return { error: "Setter not found." };
+  }
+  const agent = await service.from("tailortalk_agents").select("id").eq("id", agentId).maybeSingle();
+  if (agent.error || !agent.data) return { error: "Setter not found." };
+  const secretRes = await service.rpc("tailortalk_read_secret", { p_agent_id: agentId });
+  if (secretRes.error || !secretRes.data) return { error: "No token stored for this setter." };
+  try {
+    return { token: await tokenFromStored(String(secretRes.data)) };
+  } catch {
+    return { error: "Stored token could not be read." };
+  }
+}
+
+async function agentFetch(token: string, url: string, init: RequestInit) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Authorization", "Agent " + token);
+  const res = await fetch(url, { ...init, headers });
+  const raw = await res.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = {};
+  }
+  if (!res.ok || payload.success === false) {
+    const message = payload.message || payload.error || ("Request failed (" + res.status + ").");
+    throw new Error(typeof message === "string" ? message : "Request failed.");
+  }
+  return payload;
+}
+
+async function markBooked(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
+  const agentId = String(body.agent_id || "");
+  const contact = usableContact(body.contact_id);
+  if (!contact) return json(400, { error: "This lead's contact is hidden, so it can't be marked booked from here." });
+  const loaded = await agentToken(service, agentId);
+  if ("error" in loaded) return json(400, { error: loaded.error });
+  try {
+    const result = await agentFetch(loaded.token, MARK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contact_ids: [contact] })
+    });
+    const data = (result.data && typeof result.data === "object" ? result.data : result) as Record<string, unknown>;
+    const stamped = new Date().toISOString();
+    const marked = await service.from("tailortalk_leads").update({
+      is_converted: true,
+      converted_at: stamped
+    }).eq("agent_id", agentId).eq("lead_contact", contact);
+    if (marked.error) return json(200, { ok: true, updated_count: data.updated_count ?? null, not_found: data.not_found || [], cache_error: marked.error.message });
+    await service.from("tailortalk_leads").update({ lead_status: "converted" })
+      .eq("agent_id", agentId).eq("lead_contact", contact).eq("category", "sales");
+    return json(200, { ok: true, updated_count: data.updated_count ?? null, not_found: data.not_found || [] });
+  } catch (error) {
+    return json(502, { error: error instanceof Error ? error.message : "The lead could not be marked booked." });
+  }
+}
+
+async function listTemplates(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
+  const loaded = await agentToken(service, String(body.agent_id || ""));
+  if ("error" in loaded) return json(400, { error: loaded.error });
+  try {
+    const result = await agentFetch(loaded.token, TEMPLATES_URL, { method: "GET" });
+    const templates = Array.isArray(result.templates) ? result.templates : [];
+    return json(200, {
+      ok: true,
+      templates: templates.map((item) => ({
+        template_name: item?.template_name || "",
+        template_status: item?.template_status || "",
+        template_type: item?.template_type || "",
+        language: item?.language || ""
+      }))
+    });
+  } catch (error) {
+    return json(502, { error: error instanceof Error ? error.message : "Templates could not be loaded." });
+  }
+}
+
+async function listTemplateSends(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
+  const loaded = await agentToken(service, String(body.agent_id || ""));
+  if ("error" in loaded) return json(400, { error: loaded.error });
+  const params = new URLSearchParams({ limit: "200" });
+  const cursor = String(body.start_after || "").trim();
+  if (cursor) params.set("start_after", cursor);
+  try {
+    const result = await agentFetch(loaded.token, LOGS_URL + "?" + params.toString(), { method: "GET" });
+    const logs = Array.isArray(result.logs) ? result.logs : [];
+    return json(200, {
+      ok: true,
+      logs: logs.map((item) => ({
+        message_id: item?.message_id || "",
+        contact_number: item?.contact_number || "",
+        template_name: item?.template_name || "",
+        status: item?.status || "",
+        error: item?.error || null
+      })),
+      next_cursor: result.next_cursor || null
+    });
+  } catch (error) {
+    return json(502, { error: error instanceof Error ? error.message : "Template sends could not be loaded." });
+  }
+}
+
+async function sendTemplate(service: ReturnType<typeof createClient>, body: Record<string, unknown>) {
+  const templateName = String(body.template_name || "").trim();
+  if (!/^[A-Za-z0-9_]+$/.test(templateName)) return json(400, { error: "Choose a template." });
+  const contact = usableContact(body.lead_contact);
+  if (!contact) return json(400, { error: "This lead's contact is hidden, so a template can't be sent from here." });
+  const loaded = await agentToken(service, String(body.agent_id || ""));
+  if ("error" in loaded) return json(400, { error: loaded.error });
+  const payload: Record<string, unknown> = { lead_contact: contact, template_name: templateName };
+  const name = textOrNull(body.lead_name);
+  if (name) payload.lead_name = name.slice(0, 120);
+  if (Array.isArray(body.template_params)) {
+    payload.template_params = body.template_params.map((item) => String(item).slice(0, 500)).slice(0, 20);
+  }
+  try {
+    const result = await agentFetch(loaded.token, SEND_TEMPLATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return json(200, { ok: true, message_id: result.message_id || null });
+  } catch (error) {
+    return json(502, { error: error instanceof Error ? error.message : "The template could not be sent." });
+  }
 }
 
 async function fetchContacts(token: string) {
