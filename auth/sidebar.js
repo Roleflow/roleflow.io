@@ -15,6 +15,7 @@ if (!drawer || !toggle) {
   const signupOk = document.getElementById("drawer-signup-ok");
   const loginOk = document.getElementById("drawer-login-ok");
   const adminLink = document.getElementById("drawer-admin");
+  const crmLink = document.getElementById("drawer-crm");
   let paintToken = 0;
 
   function setOpen(open) {
@@ -102,6 +103,7 @@ if (!drawer || !toggle) {
       guest.hidden = false;
       member.hidden = true;
       adminLink.hidden = true;
+      if (crmLink) crmLink.hidden = true;
       return;
     }
     guest.hidden = true;
@@ -119,6 +121,7 @@ if (!drawer || !toggle) {
     }
     document.getElementById("drawer-name").textContent = name;
     adminLink.hidden = !isAdmin;
+    if (crmLink) crmLink.hidden = !isAdmin;
   }
 
   if (!isConfigured()) {

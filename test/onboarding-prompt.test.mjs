@@ -215,7 +215,7 @@ assert.match(accessMigration, /private\.signup_settings/);
 assert.match(accessMigration, /enforce_signup_access_code/);
 assert.match(accessMigration, /revoke execute on function private\.enforce_signup_access_code\(\) from public, anon, authenticated/);
 assert.match(accessMigration, /- 'access_code'/);
-assert.doesNotMatch(homepage, /href="\/resources\/"/);
+assert.match(homepage, /href="\/resources\/">Resources</);
 
 const accountPage = fs.readFileSync(path.join(root, "account/index.html"), "utf8");
 assert.match(accountPage, /under 10 minutes/);

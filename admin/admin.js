@@ -1,4 +1,5 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
+import { renderCrm } from "./crm.js";
 
 const SUBMISSION_COLUMNS = "status, step_index, answers, prompt_text, prompt_sections, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
 const SUBMISSION_COLUMNS_TRACKED = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
@@ -115,7 +116,30 @@ if (!isConfigured()) {
       app.append(el("p", { class: "links" }, [el("a", { href: "/account/" }, ["Go to your account"])]));
     } else {
       hello.textContent = "Signed in as " + (user.email || "admin") + ".";
-      await renderDashboard(supabase, user);
+      const tabs = document.getElementById("admin-tabs");
+      const tabClients = document.getElementById("tab-clients");
+      const tabCrm = document.getElementById("tab-crm");
+      tabs.hidden = false;
+      const headerCrm = document.getElementById("nav-crm");
+      if (headerCrm) headerCrm.hidden = false;
+      async function showSection(name) {
+        const crm = name === "crm";
+        tabClients.setAttribute("aria-selected", crm ? "false" : "true");
+        tabCrm.setAttribute("aria-selected", crm ? "true" : "false");
+        const nextHash = crm ? "#crm" : "#clients";
+        if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
+        if (crm) await renderCrm(supabase, user, { app, hello });
+        else {
+          hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+          await renderDashboard(supabase, user);
+        }
+      }
+      tabClients.addEventListener("click", () => { showSection("clients"); });
+      tabCrm.addEventListener("click", () => { showSection("crm"); });
+      window.addEventListener("hashchange", () => {
+        showSection(location.hash === "#crm" ? "crm" : "clients");
+      });
+      await showSection(location.hash === "#crm" ? "crm" : "clients");
     }
   }
 }

@@ -333,6 +333,11 @@ deno_version = 2
 [functions.generate-setter-prompt]
 verify_jwt = true
 
+# tailortalk-sync checks the caller itself. verify_jwt is off so the hourly
+# pg_cron job can send TAILORTALK_CRON_SECRET instead of a user JWT.
+[functions.tailortalk-sync]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

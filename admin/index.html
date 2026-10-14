@@ -3,17 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Client tracking · Roleflow</title>
+<title>Admin · Roleflow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 </head>
 <body>
-<a class="skip" href="#admin-app">Skip to clients</a>
-<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
+<a class="skip" href="#admin-app">Skip to admin</a>
+<nav><div class="in"><a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a><a class="navlink" id="nav-crm" href="/admin/#crm" hidden>CRM</a><button type="button" class="navlink" id="nav-logout" hidden>Log out</button></div></nav>
 <header class="hero"><div class="wrap wide">
   <h1>Client <span class="g">tracking</span></h1>
   <p class="sub" id="admin-hello">Loading clients…</p>
+  <div class="auth-tabs admin-tabs" id="admin-tabs" hidden role="tablist" aria-label="Admin sections">
+    <button type="button" role="tab" id="tab-clients" aria-selected="true" aria-controls="admin-app">Clients</button>
+    <button type="button" role="tab" id="tab-crm" aria-selected="false" aria-controls="admin-app">CRM</button>
+  </div>
 </div></header>
 <main class="wrap wide" id="admin-app"></main>
 <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>

@@ -22,6 +22,8 @@ nav .in{position:relative;max-width:1080px;margin:0 auto;padding:12px 22px;displ
 .brand{display:flex;align-items:center;gap:10px;font:800 1.2rem var(--h);color:inherit;text-decoration:none}
 .brand img{width:34px;height:34px;border-radius:50%}
 .navlink{position:absolute;right:22px;top:50%;transform:translateY(-50%);color:var(--ink);font:600 .95rem var(--b);text-decoration:none;background:none;border:0;cursor:pointer;padding:0}
+#nav-crm{right:108px}
+#nav-crm[hidden]{display:none !important}
 .navlink:hover{color:var(--gold)}
 .btn{display:inline-block;border:0;cursor:pointer;font:600 1.02rem var(--b);color:#fff;background:var(--grad);padding:15px 30px;border-radius:999px;transition:transform .15s,box-shadow .15s;text-decoration:none;text-align:center;line-height:1.3}
 .btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(192,64,154,.45)}
@@ -129,6 +131,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .note-list article{border-top:1px solid var(--line);padding-top:10px}
 @media(max-width:760px){
   .navlink{right:12px;font-size:.85rem}
+  #nav-crm{right:78px}
   .panel,#onboarding .onboard-panel{padding:26px 18px}
   #onboarding .actions{flex-direction:column-reverse;align-items:stretch}
   #onboarding .actions .right{margin-left:0;flex-direction:column}
@@ -139,5 +142,48 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
   #onboarding .save-state{text-align:left}
   .filters{flex-direction:column;align-items:stretch}
   .filters input,.filters select{width:100%}
+}
+.admin-tabs{max-width:420px;margin:22px auto 0}
+.admin-tabs[hidden]{display:none !important}
+.crm{text-align:left;margin-top:22px}
+.crm h2{font-size:clamp(1.45rem,3vw,2.1rem)}
+.crm h3{margin-top:26px}
+.crm-note{margin:8px 0 0}
+.crm-actions,.crm-row-actions{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+.crm-row-actions{margin:0}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:18px 0}
+.kpi{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.kpi b{display:block;font:800 1.45rem var(--h);letter-spacing:-.03em}
+.kpi span{color:var(--mute);font-size:.86rem}
+.crm-scroll{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--bg2)}
+.crm-table{width:100%;border-collapse:collapse}
+.crm-table th,.crm-table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:.95rem}
+.crm-table th{color:var(--mute);font-weight:600}
+.sync-error{color:var(--o);margin:8px 0 0}
+.chart{display:flex;align-items:flex-end;gap:4px;height:150px;margin:12px 0 0;overflow:auto}
+.chart .bar{flex:1 0 18px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:18px}
+.chart .bar i{display:block;width:100%;max-width:22px;border-radius:7px 7px 2px 2px;background:var(--grad);height:var(--h,0%);min-height:2px}
+.chart .bar small{color:var(--mute);font-size:.68rem;margin-top:6px;white-space:nowrap}
+.status-bars{display:grid;gap:8px;margin-top:10px}
+.status-bars .row{display:grid;grid-template-columns:minmax(72px,120px) 1fr 40px;gap:8px;align-items:center}
+.status-bars .track{background:var(--bg);border:1px solid var(--line);border-radius:999px;height:10px;overflow:hidden}
+.status-bars .fill{display:block;height:100%;width:var(--w,0%);background:var(--grad)}
+.crm .panel{max-width:640px;margin-left:0}
+.agent-meta{display:block;font-size:.82rem;margin-top:2px}
+.crm .section-list{display:grid;gap:12px;margin-top:12px}
+.crm .section-block{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.crm .section-block header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.crm .section-block h3{font-size:1.02rem;margin:0}
+.crm .prompt{text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;max-height:220px;overflow:auto;font:400 .92rem/1.5 var(--b);margin:10px 0 0}
+.crm .copy-note{min-height:1.4em;margin:8px 0 0;font-weight:600}
+.crm .copy-note.ok{color:var(--gold)}
+.crm .copy-note.bad{color:var(--o)}
+.crm .version{border-top:1px solid var(--line);padding:10px 0}
+.crm .version summary{cursor:pointer;font-weight:600}
+.crm .version-body{margin-top:10px}
+@media(max-width:760px){
+  .crm-table th,.crm-table td{padding:8px}
+  .status-bars .row{grid-template-columns:72px 1fr 32px}
+  .crm .section-block header{align-items:flex-start;flex-direction:column}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
