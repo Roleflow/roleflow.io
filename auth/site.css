@@ -196,10 +196,21 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .crm .version{border-top:1px solid var(--line);padding:10px 0}
 .crm .version summary{cursor:pointer;font-weight:600}
 .crm .version-body{margin-top:10px}
+.crm-tabs{max-width:none;margin-top:22px}
+.crm-detail-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(240px,.8fr);gap:16px;align-items:start}
+.lead-search{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.lead-search input,.lead-search select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:10px 12px;font:400 .95rem var(--b)}
+.lead-search input{flex:1;min-width:180px}
+.confirm-box{border:1px solid var(--gold);background:var(--bg);border-radius:18px;padding:14px 16px;margin-top:12px;display:grid;gap:10px}
+.confirm-box h3{font-size:1.15rem}
+.crm dl{margin:8px 0 0}
+.crm dt{color:var(--mute);font-size:.82rem;margin-top:10px}
+.crm dd{margin:2px 0 0}
 @media(max-width:760px){
   .crm-table th,.crm-table td{padding:8px}
   .status-bars .row{grid-template-columns:72px 1fr 32px}
   .crm .section-block header{align-items:flex-start;flex-direction:column}
+  .crm-detail-grid{grid-template-columns:1fr}
   .setter-head{align-items:flex-start;flex-direction:column}
   .crm-link{max-width:none}
 }

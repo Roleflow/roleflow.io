@@ -1,5 +1,9 @@
-// Admin CRM. Reads cached TailorTalk rows only. Tokens are saved through
-// the tailortalk-sync function and are never selected here.
+// Admin CRM. Reads cached setter rows. Tokens stay in the edge function.
+import { liveSections } from "../account/setter-model.js";
+
+function shown(message) {
+  return String(message || "").replace(/tailortalk/ig, "the setter service");
+}
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -90,14 +94,14 @@ async function invoke(supabase, body) {
         if (payload && payload.error) message = String(payload.error);
       } catch { /* keep the original message */ }
     }
-    throw new Error(message);
+    throw new Error(shown(message));
   }
-  if (data && data.error) throw new Error(String(data.error));
+  if (data && data.error) throw new Error(shown(data.error));
   return data || {};
 }
 
 export async function renderCrm(supabase, user, { app, hello }) {
-  hello.textContent = "TailorTalk CRM";
+  hello.textContent = "CRM";
   app.innerHTML = "";
   const root = el("div", { class: "crm" });
   const live = el("div", { class: "sr", role: "status", "aria-live": "polite" });
@@ -109,18 +113,25 @@ export async function renderCrm(supabase, user, { app, hello }) {
   let view = { name: "overview" };
   let showArchived = false;
   let paintGeneration = 0;
+  let detailTab = "leads";
+  let leadQuery = "";
+  let stageFilter = "all";
+  let selectedKey = "";
+  let confirmState = null;
+  const templateCache = new Map();
+  const sendCache = new Map();
 
   async function load() {
     const [agentRes, statRes, profileRes] = await Promise.all([
       supabase.from("tailortalk_agents").select("id, tailortalk_agent_id, agent_name, label, profile_id, client_id, channels, prompt_version_id, prompt_updated_at, tailortalk_created_at, archived, last_synced_at, last_sync_error, last_activity_at").order("agent_name"),
-      supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, converted_count, conversion_rate, last_activity_at, leads_per_day"),
+      supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day"),
       supabase.from("profiles").select("id, full_name, email, instagram").order("full_name")
     ]);
     const error = agentRes.error || statRes.error || profileRes.error;
     if (error) {
       root.innerHTML = "";
       const text = missingTable(error)
-        ? "Apply supabase/migrations/20261014160000_tailortalk_crm.sql, supabase/migrations/20261014180000_tailortalk_registry.sql, and supabase/migrations/20261014200000_client_setter.sql in the Supabase SQL editor, then refresh."
+        ? "Apply the CRM migrations in the Supabase SQL editor, then refresh."
         : error.message;
       root.append(el("div", { class: "panel" }, [el("p", {}, [text])]));
       return false;
@@ -196,24 +207,38 @@ export async function renderCrm(supabase, user, { app, hello }) {
     const byStatus = {};
     let total = 0;
     let converted = 0;
+    let sales = 0;
+    let salesKnown = false;
     let last = null;
+    const perDay = new Map();
     agents.filter((agent) => !agent.archived).forEach((agent) => {
       const row = statOf(agent);
       total += num(row?.total_leads);
       converted += num(row?.converted_count);
+      const categories = asObject(row?.by_category);
+      if (Object.keys(categories).length) {
+        salesKnown = true;
+        sales += num(categories.sales);
+      }
       const status = asObject(row?.by_status);
       Object.entries(status).forEach(([key, count]) => {
         byStatus[key] = (byStatus[key] || 0) + num(count);
       });
+      asSeries(row?.leads_per_day).forEach((item) => {
+        perDay.set(item.day, (perDay.get(item.day) || 0) + num(item.count));
+      });
       const activity = row?.last_activity_at || agent.last_activity_at;
       if (activity && (!last || new Date(activity) > new Date(last))) last = activity;
     });
+    const series = Array.from(perDay.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([day, count]) => ({ day, count }));
     return {
       total,
+      leads: salesKnown ? sales : total,
       converted,
       rate: total ? converted / total : null,
       byStatus,
-      last
+      last,
+      series
     };
   }
 
@@ -227,12 +252,13 @@ export async function renderCrm(supabase, user, { app, hello }) {
   function kpiRow(totals, extraStatus) {
     const status = totals.byStatus || {};
     const cards = el("div", { class: "kpi-grid" }, [
-      kpi("Total leads", String(totals.total)),
+      kpi("Conversations", String(totals.total)),
+      kpi("Leads", String(totals.leads == null ? totals.total : totals.leads)),
       kpi("Hot", String(num(status.hot))),
       kpi("Warm", String(num(status.warm))),
       kpi("Cold", String(num(status.cold))),
-      kpi("Converted", String(totals.converted)),
-      kpi("Conversion rate", formatRate(totals.rate, totals.total)),
+      kpi("Booked calls", String(totals.converted)),
+      kpi("Booking rate", formatRate(totals.rate, totals.total)),
       kpi("Last activity", when(totals.last))
     ]);
     if (extraStatus) {
@@ -259,6 +285,30 @@ export async function renderCrm(supabase, user, { app, hello }) {
     return chart;
   }
 
+  function funnel(totals) {
+    const status = totals.byStatus || {};
+    const steps = [
+      ["Cold", num(status.cold)],
+      ["Warm", num(status.warm)],
+      ["Hot", num(status.hot)],
+      ["Booked", num(totals.converted)]
+    ];
+    Object.entries(status).forEach(([key, count]) => {
+      if (key === "hot" || key === "warm" || key === "cold") return;
+      steps.splice(steps.length - 1, 0, [key, num(count)]);
+    });
+    const max = Math.max(1, ...steps.map(([, count]) => count));
+    const wrap = el("div", { class: "status-bars", id: "crm-funnel" });
+    steps.forEach(([key, count]) => {
+      wrap.append(el("div", { class: "row" }, [
+        el("span", {}, [key]),
+        el("div", { class: "track" }, [el("i", { class: "fill", style: "--w:" + Math.round((count / max) * 100) + "%" })]),
+        el("b", {}, [String(count)])
+      ]));
+    });
+    return wrap;
+  }
+
   function statusChart(byStatus) {
     const entries = Object.entries(byStatus);
     if (!entries.length) return el("p", { class: "mute" }, ["No lead statuses yet."]);
@@ -277,7 +327,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
   function sourceBlock(bySource) {
     const entries = Object.entries(bySource);
     if (!entries.length) {
-      return el("p", { class: "mute", id: "crm-no-source" }, ["TailorTalk did not return a source on these leads."]);
+      return el("p", { class: "mute", id: "crm-no-source" }, ["No source was returned for these leads."]);
     }
     return statusChart(bySource);
   }
@@ -299,27 +349,39 @@ export async function renderCrm(supabase, user, { app, hello }) {
       paint();
     });
 
-    root.append(el("h2", {}, ["Overview"]));
+    root.append(el("h2", {}, ["Setters"]));
     root.append(el("p", { class: "mute crm-note" }, [
-      "Agents appear when the TailorTalk registry upsert runs. Sync now reads leads for every agent that is not archived. Message counts are not in the Get Leads response, so they are not shown."
+      "Setters appear after the registry is updated. Sync now reads leads for every setter that is not archived. Message history is not in the lead feed, so it is not shown."
     ]));
     root.append(tools);
     root.append(kpiRow(totals, true));
+    root.append(el("h3", {}, ["Stage mix"]));
+    root.append(funnel(totals));
+    root.append(el("h3", {}, ["Last 7 days"]));
+    const week = totals.series.slice(-7);
+    root.append(week.length ? bars(week, "Conversations per day over the last 7 days") : el("p", { class: "mute" }, ["No daily counts yet."]));
+    root.append(el("h3", {}, ["Last 30 days"]));
+    root.append(totals.series.length ? bars(totals.series, "Conversations per day over the last 30 days", 5) : el("p", { class: "mute" }, ["No daily counts yet."]));
 
     const table = el("table", { class: "crm-table" });
     table.append(el("thead", {}, [el("tr", {}, [
-      "Agent", "Client", "Leads", "Hot", "Warm", "Cold", "Converted", "Rate", "Last activity", ""
+      "Setter", "Client", "Conversations", "Hot", "Warm", "Cold", "Booked", "Rate", "Last activity", ""
     ].map((label) => el("th", { scope: "col" }, [label])))]));
     const body = el("tbody");
     const rows = visibleAgents();
     if (!rows.length) {
-      body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No agents in the registry yet. Run supabase/tailortalk_registry_upsert.sql."])]));
+      body.append(el("tr", {}, [el("td", { colspan: "10" }, ["No setters in the registry yet."])]));
     }
     rows.forEach((agent) => {
       const row = statOf(agent);
       const status = asObject(row?.by_status);
       const open = el("button", { type: "button", class: "btn ghost sm crm-open" }, ["Open"]);
       open.addEventListener("click", () => {
+        detailTab = "leads";
+        leadQuery = "";
+        stageFilter = "all";
+        selectedKey = "";
+        confirmState = null;
         view = { name: "detail", id: agent.id };
         paint();
       });
@@ -333,9 +395,8 @@ export async function renderCrm(supabase, user, { app, hello }) {
       const nameCell = el("td", {}, [
         el("strong", {}, [agentName(agent)]),
         el("span", { class: "mute agent-meta" }, [
-          (agent.tailortalk_agent_id || "No TailorTalk id")
-            + (channelList(agent).length ? " · " + channelList(agent).join(", ") : "")
-            + (agent.archived ? " · archived" : "")
+          (channelList(agent).length ? channelList(agent).join(", ") : "No channel recorded")
+            + (agent.archived ? " · paused" : "")
         ])
       ]);
       body.append(el("tr", {}, [
@@ -351,7 +412,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
         el("td", {}, [actions])
       ]));
       if (agent.last_sync_error) {
-        body.append(el("tr", {}, [el("td", { colspan: "10", class: "sync-error" }, ["Last sync: " + agent.last_sync_error])]));
+        body.append(el("tr", {}, [el("td", { colspan: "10", class: "sync-error" }, ["Last sync: " + shown(agent.last_sync_error)])]));
       }
     });
     table.append(body);
@@ -367,7 +428,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
       paint();
     });
     if (!agent) {
-      root.append(back, el("p", {}, ["New agents show up here after the registry upsert. There is no manual add."]));
+      root.append(back, el("p", {}, ["New setters show up here after the registry is updated. There is no manual add."]));
       return;
     }
     const form = el("form", { class: "auth-form", id: "crm-form" });
@@ -385,10 +446,10 @@ export async function renderCrm(supabase, user, { app, hello }) {
     });
     const msg = el("p", { class: "err", role: "status" });
     const save = el("button", { type: "submit", class: "btn" }, ["Save link"]);
-    form.append(el("p", { class: "mute" }, [agentName(agent) + (agent.tailortalk_agent_id ? " · " + agent.tailortalk_agent_id : "")]));
-    form.append(el("label", {}, ["Onboarding client", client]));
+    form.append(el("p", { class: "mute" }, [agentName(agent)]));
+    form.append(el("label", {}, ["Client account", client]));
     form.append(el("label", {}, [
-      "Replace agent token",
+      "Replace access token",
       token,
       el("span", { class: "hint" }, [
         "Stored in the private schema and not shown again. Leave it blank to keep the current token. The registry upsert is the usual way the token is saved."
@@ -425,16 +486,15 @@ export async function renderCrm(supabase, user, { app, hello }) {
   }
 
   function sectionBlocks(sections, note) {
-    const list = asList(sections).filter((item) => item && (item.node || item.instruction));
-    if (!list.length) return el("p", { class: "mute" }, ["No prompt sections stored yet."]);
+    const slots = liveSections(sections);
+    if (!slots.some((slot) => slot.text)) return el("p", { class: "mute" }, ["No prompt sections stored yet."]);
     const wrap = el("div", { class: "section-list" });
-    list.forEach((item) => {
-      const instruction = item.instruction == null ? "" : String(item.instruction);
+    slots.forEach((slot, index) => {
       const copy = el("button", { type: "button", class: "btn ghost sm" }, ["Copy section"]);
       copy.addEventListener("click", async () => {
         try {
-          await navigator.clipboard.writeText(instruction);
-          note.textContent = "Copied " + (item.node || "section") + ".";
+          await navigator.clipboard.writeText(slot.text || "");
+          note.textContent = "Copied " + slot.title + ".";
           note.className = "copy-note ok";
         } catch {
           note.textContent = "Couldn't copy automatically.";
@@ -442,120 +502,412 @@ export async function renderCrm(supabase, user, { app, hello }) {
         }
       });
       wrap.append(el("article", { class: "section-block" }, [
-        el("header", {}, [el("h3", {}, [item.node || "Section"]), copy]),
-        el("pre", { class: "prompt" }, [instruction || "—"])
+        el("header", {}, [el("h3", {}, [(index + 1) + ". " + slot.title]), copy]),
+        el("pre", { class: "prompt" }, [slot.text || "Not in the live prompt yet."])
       ]));
     });
     return wrap;
   }
 
+  function contactUsable(lead) {
+    const contact = String(lead?.lead_contact || "").trim();
+    return Boolean(contact) && !contact.includes("*");
+  }
+
+  function leadKey(lead) {
+    return String(lead?.external_id || "") + "|" + String(lead?.lead_contact || "") + "|" + String(lead?.lead_name || "");
+  }
+
+  function filteredLeads(leads) {
+    const query = leadQuery.trim().toLowerCase();
+    return leads.filter((lead) => {
+      const stage = String(lead.lead_status || "").toLowerCase();
+      if (stageFilter === "booked" && lead.is_converted !== true) return false;
+      if (stageFilter !== "all" && stageFilter !== "booked" && stage !== stageFilter) return false;
+      if (!query) return true;
+      const haystack = [lead.lead_name, lead.username, lead.lead_contact, lead.lead_status, lead.source].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+  }
+
+  function paintLeadDetail(agent, lead) {
+    const panel = el("div", { class: "panel", id: "crm-lead-detail" });
+    if (!lead) {
+      panel.append(el("p", { class: "mute" }, ["Select a lead to see its stage, last message time, and booked flag."]));
+      return panel;
+    }
+    const usable = contactUsable(lead);
+    panel.append(el("h3", {}, [lead.lead_name || lead.username || "Lead"]));
+    const lines = [
+      ["Username", lead.username ? "@" + String(lead.username).replace(/^@/, "") : "—"],
+      ["Contact", lead.lead_contact || "—"],
+      ["Stage", lead.lead_status || "—"],
+      ["Category", lead.category || "—"],
+      ["Source", lead.source || "—"],
+      ["Last message", when(lead.last_message_time)],
+      ["Joined", when(lead.joined_at)],
+      ["Follow-ups", lead.total_followups == null ? "—" : String(lead.total_followups)],
+      ["Qualified", /^(hot|qualified)$/i.test(String(lead.lead_status || "")) ? "Yes" : "No"],
+      ["Booked", lead.is_converted ? "Yes" : "No"]
+    ];
+    const list = el("dl");
+    lines.forEach(([label, value]) => {
+      list.append(el("dt", {}, [label]), el("dd", {}, [value]));
+    });
+    panel.append(list);
+    panel.append(el("p", { class: "mute", id: "crm-no-history" }, ["Message history is not included in the lead feed."]));
+    const actions = el("div", { class: "crm-actions" });
+    const book = el("button", { type: "button", class: "btn sm", id: "crm-mark-booked" }, ["Mark booked"]);
+    const send = el("button", { type: "button", class: "btn ghost sm", id: "crm-send-template" }, ["Send template"]);
+    if (!usable || lead.is_converted) book.disabled = true;
+    if (!usable) send.disabled = true;
+    if (!usable) panel.append(el("p", { class: "mute" }, ["This contact is hidden, so it can't be updated from here."]));
+    book.addEventListener("click", () => {
+      confirmState = { kind: "booked", lead };
+      paint();
+    });
+    send.addEventListener("click", () => {
+      confirmState = { kind: "template", lead, templateName: "", params: "" };
+      detailTab = "leads";
+      paint();
+    });
+    actions.append(book, send);
+    panel.append(actions);
+    if (confirmState && leadKey(confirmState.lead) === leadKey(lead)) panel.append(confirmBox(agent, lead));
+    return panel;
+  }
+
+  function confirmBox(agent, lead) {
+    const box = el("div", { class: "confirm-box", id: "crm-confirm", role: "dialog", "aria-modal": "true" });
+    const yes = el("button", { type: "button", class: "btn sm", id: "crm-confirm-yes" }, ["Confirm"]);
+    const no = el("button", { type: "button", class: "btn ghost sm", id: "crm-confirm-no" }, ["Cancel"]);
+    const msg = el("p", { class: "err", role: "status" });
+    no.addEventListener("click", () => {
+      confirmState = null;
+      paint();
+    });
+    if (confirmState.kind === "booked") {
+      box.append(el("h3", {}, ["Mark this lead as booked?"]));
+      box.append(el("p", {}, ["This stays booked. It can't be undone from here."]));
+      yes.addEventListener("click", async () => {
+        yes.disabled = true;
+        try {
+          await invoke(supabase, { action: "mark_booked", agent_id: agent.id, contact_id: lead.lead_contact });
+          confirmState = null;
+          live.textContent = "Lead marked booked.";
+          paint();
+        } catch (error) {
+          msg.textContent = error.message;
+          yes.disabled = false;
+        }
+      });
+    } else {
+      const templates = templateCache.get(agent.id) || [];
+      const approved = templates.filter((item) => String(item.template_status).toUpperCase() === "APPROVED");
+      const select = el("select", { id: "crm-template-name" }, [el("option", { value: "" }, ["Choose a template"])]);
+      approved.forEach((item) => select.append(el("option", { value: item.template_name }, [item.template_name])));
+      if (confirmState.templateName) select.value = confirmState.templateName;
+      const params = el("input", { id: "crm-template-params", value: confirmState.params || "", placeholder: "Template values, separated by commas" });
+      box.append(el("h3", {}, ["Send a WhatsApp template?"]));
+      box.append(el("p", {}, ["This sends the template to " + (lead.lead_name || "this lead") + " and can't be recalled."]));
+      if (!templates.length) box.append(el("p", { class: "mute" }, ["Load templates on the Channels tab first. Only approved templates can be sent."]));
+      box.append(el("label", {}, ["Template", select]));
+      box.append(el("label", {}, ["Values", params]));
+      yes.addEventListener("click", async () => {
+        if (!select.value) {
+          msg.textContent = "Choose a template.";
+          return;
+        }
+        yes.disabled = true;
+        const values = params.value.split(",").map((item) => item.trim()).filter(Boolean);
+        try {
+          const result = await invoke(supabase, {
+            action: "send_template",
+            agent_id: agent.id,
+            lead_contact: lead.lead_contact,
+            lead_name: lead.lead_name || "",
+            template_name: select.value,
+            template_params: values
+          });
+          confirmState = null;
+          live.textContent = result.message_id ? "Template sent." : "Template sent.";
+          paint();
+        } catch (error) {
+          msg.textContent = error.message;
+          yes.disabled = false;
+        }
+      });
+    }
+    box.append(el("div", { class: "crm-actions" }, [yes, no]), msg);
+    return box;
+  }
+
   async function paintDetail(generation) {
     const agent = agents.find((item) => item.id === view.id);
     root.innerHTML = "";
-    const back = el("button", { type: "button", class: "btn ghost sm", id: "crm-back" }, ["Back to overview"]);
+    const back = el("button", { type: "button", class: "btn ghost sm", id: "crm-back" }, ["Back to setters"]);
     back.addEventListener("click", () => {
+      confirmState = null;
       view = { name: "overview" };
       paint();
     });
     root.append(back);
     if (!agent) {
-      root.append(el("p", {}, ["That agent is no longer in the cache."]));
+      root.append(el("p", {}, ["That setter is no longer in the cache."]));
       return;
     }
     const row = statOf(agent);
     const byStatus = asObject(row?.by_status);
     const bySource = asObject(row?.by_source);
     const series = asSeries(row?.leads_per_day);
-    const week = series.slice(-7);
+    const categories = asObject(row?.by_category);
+    const salesKnown = Object.keys(categories).length > 0;
     const promptRes = await supabase.from("tailortalk_agents").select("prompt_sections").eq("id", agent.id).maybeSingle();
     const historyRes = await supabase.from("tailortalk_prompt_versions").select("version_id, deployed_at, sections").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
+    const leadsRes = await supabase.from("tailortalk_leads").select("external_id, lead_name, username, lead_contact, lead_status, category, source, last_message_time, joined_at, total_followups, is_converted, converted_at").eq("agent_id", agent.id).order("last_message_time", { ascending: false }).limit(500);
     if (generation !== paintGeneration) return;
+    const leads = leadsRes.data || [];
     root.append(el("h2", {}, [agentName(agent)]));
     root.append(el("p", { class: "mute" }, [
-      (agent.tailortalk_agent_id || "No TailorTalk id")
-        + " · Channels: " + (channelList(agent).length ? channelList(agent).join(", ") : "—")
-        + " · Created " + when(agent.tailortalk_created_at)
-    ]));
-    root.append(el("p", { class: "mute" }, [
-      "Live version " + (agent.prompt_version_id || "—") + " · Updated " + when(agent.prompt_updated_at)
+      (agent.archived ? "Paused" : "Active")
+        + " · Channels: " + (channelList(agent).length ? channelList(agent).join(", ") : "none recorded")
         + " · Linked client: " + clientLabel(profileOf(agent))
     ]));
     const sync = el("button", { type: "button", class: "btn", id: "crm-sync-one" }, ["Sync now"]);
     sync.addEventListener("click", () => runSync(sync, agent.id));
     root.append(el("div", { class: "crm-actions" }, [sync]));
-    if (agent.last_sync_error) root.append(el("p", { class: "sync-error" }, [agent.last_sync_error]));
+    if (agent.last_sync_error) root.append(el("p", { class: "sync-error" }, [shown(agent.last_sync_error)]));
+    root.append(kpiRow({
+      total: num(row?.total_leads),
+      leads: salesKnown ? num(categories.sales) : num(row?.total_leads),
+      converted: num(row?.converted_count),
+      rate: row ? row.conversion_rate : null,
+      byStatus,
+      last: row?.last_activity_at || agent.last_activity_at
+    }, true));
+    root.append(el("h3", {}, ["Stage mix"]));
+    root.append(funnel({ byStatus, converted: num(row?.converted_count) }));
+    root.append(el("h3", {}, ["Last 7 days"]));
+    root.append(series.slice(-7).length ? bars(series.slice(-7), "Conversations per day over the last 7 days") : el("p", { class: "mute" }, ["No daily counts yet."]));
+    root.append(el("h3", {}, ["Last 30 days"]));
+    root.append(series.length ? bars(series, "Conversations per day over the last 30 days", 5) : el("p", { class: "mute" }, ["No daily counts yet."]));
+    root.append(el("h3", {}, ["By source"]));
+    root.append(sourceBlock(bySource));
+
+    const tabs = el("div", { class: "auth-tabs crm-tabs", id: "crm-tabs", role: "tablist" });
+    ["leads", "prompt", "channels", "sends"].forEach((name) => {
+      const labels = { leads: "Leads", prompt: "Prompt", channels: "Channels", sends: "Template sends" };
+      const button = el("button", {
+        type: "button",
+        id: "crm-tab-" + name,
+        role: "tab",
+        "aria-selected": detailTab === name ? "true" : "false"
+      }, [labels[name]]);
+      button.addEventListener("click", () => {
+        detailTab = name;
+        paint();
+      });
+      tabs.append(button);
+    });
+    root.append(tabs);
+    const panel = el("div", { id: "crm-tab-panel" });
+    root.append(panel);
+    if (detailTab === "prompt") panel.append(promptPanel(promptRes, historyRes));
+    else if (detailTab === "channels") panel.append(channelPanel(agent));
+    else if (detailTab === "sends") panel.append(sendsPanel(agent));
+    else panel.append(leadsPanel(agent, leads, leadsRes.error));
+  }
+
+  function leadsPanel(agent, leads, error) {
+    const wrap = el("div", { id: "crm-leads" });
+    if (error) {
+      wrap.append(el("p", { class: "sync-error" }, [shown(error.message)]));
+      return wrap;
+    }
+    const stages = Array.from(new Set(leads.map((lead) => String(lead.lead_status || "").trim()).filter(Boolean))).sort();
+    const search = el("input", { id: "crm-lead-search", type: "search", value: leadQuery, placeholder: "Search name or username" });
+    const filter = el("select", { id: "crm-stage-filter" }, [el("option", { value: "all" }, ["All stages"]), el("option", { value: "booked" }, ["Booked"])]);
+    stages.forEach((stage) => filter.append(el("option", { value: stage.toLowerCase() }, [stage])));
+    filter.value = stageFilter;
+    search.addEventListener("input", () => {
+      leadQuery = search.value;
+      const existing = document.getElementById("crm-lead-results");
+      if (existing) existing.replaceWith(leadResults(agent, leads));
+    });
+    filter.addEventListener("change", () => {
+      stageFilter = filter.value;
+      const existing = document.getElementById("crm-lead-results");
+      if (existing) existing.replaceWith(leadResults(agent, leads));
+    });
+    wrap.append(el("div", { class: "lead-search" }, [search, filter]));
+    wrap.append(leadResults(agent, leads));
+    wrap.append(el("p", { class: "mute" }, ["Showing cached leads, newest message first. Totals above use the full sync."]));
+    return wrap;
+  }
+
+  function leadResults(agent, leads) {
+    const shownLeads = filteredLeads(leads);
+    const wrap = el("div", { class: "crm-detail-grid", id: "crm-lead-results" });
+    if (!shownLeads.length) {
+      wrap.append(el("p", { class: "mute" }, [leads.length ? "No leads match that search." : "No cached leads yet. Use Sync now."]));
+      wrap.append(paintLeadDetail(agent, null));
+      return wrap;
+    }
+    const table = el("table", { class: "crm-table" });
+    table.append(el("thead", {}, [el("tr", {}, ["Name", "Stage", "Last message", "Booked"].map((label) => el("th", { scope: "col" }, [label])))]));
+    const body = el("tbody");
+    if (!shownLeads.some((lead) => leadKey(lead) === selectedKey)) selectedKey = leadKey(shownLeads[0]);
+    shownLeads.forEach((lead) => {
+      const open = el("button", { type: "button", class: "btn ghost sm" }, [lead.lead_name || lead.username || "Lead"]);
+      open.addEventListener("click", () => {
+        selectedKey = leadKey(lead);
+        confirmState = null;
+        const existing = document.getElementById("crm-lead-results");
+        if (existing) existing.replaceWith(leadResults(agent, leads));
+      });
+      body.append(el("tr", {}, [
+        el("td", {}, [open]),
+        el("td", {}, [lead.lead_status || "—"]),
+        el("td", {}, [when(lead.last_message_time)]),
+        el("td", {}, [lead.is_converted ? "Yes" : "No"])
+      ]));
+    });
+    table.append(body);
+    const selected = shownLeads.find((lead) => leadKey(lead) === selectedKey) || shownLeads[0];
+    wrap.append(el("div", { class: "crm-scroll" }, [table]), paintLeadDetail(agent, selected));
+    return wrap;
+  }
+
+  function promptPanel(promptRes, historyRes) {
+    const wrap = el("div", { id: "crm-prompt" });
     const copyNote = el("p", { class: "copy-note", role: "status" });
-    root.append(el("h3", {}, ["Live prompt"]));
-    if (promptRes.error) root.append(el("p", { class: "sync-error" }, [promptRes.error.message]));
-    else root.append(sectionBlocks(promptRes.data?.prompt_sections, copyNote));
-    root.append(copyNote);
-    root.append(el("h3", {}, ["Prompt version history"]));
-    if (historyRes.error) root.append(el("p", { class: "sync-error" }, [historyRes.error.message]));
-    else if (!(historyRes.data || []).length) root.append(el("p", { class: "mute" }, ["No earlier version has been recorded."]));
+    wrap.append(el("h3", {}, ["Live prompt"]));
+    wrap.append(el("p", { class: "mute" }, ["Read only. The connected account has no way to edit or publish the prompt from here."]));
+    if (promptRes.error) wrap.append(el("p", { class: "sync-error" }, [shown(promptRes.error.message)]));
+    else wrap.append(sectionBlocks(promptRes.data?.prompt_sections, copyNote));
+    wrap.append(copyNote);
+    wrap.append(el("h3", {}, ["Prompt version history"]));
+    if (historyRes.error) wrap.append(el("p", { class: "sync-error" }, [shown(historyRes.error.message)]));
+    else if (!(historyRes.data || []).length) wrap.append(el("p", { class: "mute" }, ["No earlier version has been recorded."]));
     else {
       const history = el("div", { class: "version-list" });
       historyRes.data.forEach((version) => {
         const body = el("div", { class: "version-body" });
         body.append(sectionBlocks(version.sections, copyNote));
         const details = el("details", { class: "version" });
-        details.append(el("summary", {}, [
-          (version.version_id || "Version") + " · " + when(version.deployed_at)
-        ]));
+        details.append(el("summary", {}, [(version.version_id || "Version") + " · " + when(version.deployed_at)]));
         details.append(body);
         history.append(details);
       });
-      root.append(history);
+      wrap.append(history);
     }
-    root.append(el("h3", {}, ["Leads and stats"]));
-    root.append(kpiRow({
-      total: num(row?.total_leads),
-      converted: num(row?.converted_count),
-      rate: row ? row.conversion_rate : null,
-      byStatus,
-      last: row?.last_activity_at || agent.last_activity_at
-    }, true));
+    return wrap;
+  }
 
-    root.append(el("h3", {}, ["Leads by status"]));
-    root.append(statusChart(byStatus));
-    root.append(el("h3", {}, ["Leads by source"]));
-    root.append(sourceBlock(bySource));
-    root.append(el("h3", {}, ["Leads per day, last 7 days"]));
-    root.append(week.length ? bars(week, "Leads per day over the last 7 days") : el("p", { class: "mute" }, ["No daily series yet."]));
-    root.append(el("h3", {}, ["Leads per day, last 30 days"]));
-    root.append(series.length ? bars(series, "Leads per day over the last 30 days", 5) : el("p", { class: "mute" }, ["No daily series yet."]));
+  function channelPanel(agent) {
+    const wrap = el("div", { id: "crm-channels" });
+    const channels = channelList(agent);
+    wrap.append(el("h3", {}, ["Recorded channels"]));
+    wrap.append(el("p", {}, [channels.length ? channels.join(", ") : "No channel list is stored for this setter."]));
+    wrap.append(el("h3", {}, ["Settings on file"]));
+    const settings = el("dl");
+    [
+      ["Status", agent.archived ? "Paused" : "Active"],
+      ["Created", when(agent.tailortalk_created_at)],
+      ["Prompt updated", when(agent.prompt_updated_at)],
+      ["Live version", agent.prompt_version_id || "—"],
+      ["Linked client", clientLabel(profileOf(agent))]
+    ].forEach(([label, value]) => settings.append(el("dt", {}, [label]), el("dd", {}, [value])));
+    wrap.append(settings);
+    wrap.append(el("p", { class: "mute" }, ["Follow-ups, escalation, hours, and channel logins are not available from the connected account."]));
+    const load = el("button", { type: "button", class: "btn sm", id: "crm-load-templates" }, ["Load WhatsApp templates"]);
+    const slot = el("div", { id: "crm-templates" });
+    load.addEventListener("click", () => loadTemplates(agent, load, slot));
+    wrap.append(el("h3", {}, ["WhatsApp templates"]));
+    wrap.append(el("div", { class: "crm-actions" }, [load]), slot);
+    if (templateCache.has(agent.id)) slot.append(templateTable(templateCache.get(agent.id)));
+    return wrap;
+  }
 
-    const leadsRes = await supabase.from("tailortalk_leads").select("lead_name, lead_contact, lead_status, category, source, last_message_time, total_followups, is_converted").eq("agent_id", agent.id).order("last_message_time", { ascending: false }).limit(100);
-    if (generation !== paintGeneration) return;
-    root.append(el("h3", {}, ["Leads"]));
-    if (leadsRes.error) {
-      root.append(el("p", { class: "sync-error" }, [leadsRes.error.message]));
-      return;
-    }
-    const leads = leadsRes.data || [];
-    if (!leads.length) {
-      root.append(el("p", { class: "mute" }, ["No cached leads. Use Sync now after the token is saved."]));
-      return;
-    }
+  function templateTable(templates) {
+    if (!templates.length) return el("p", { class: "mute" }, ["No templates were returned."]);
     const table = el("table", { class: "crm-table" });
-    table.append(el("thead", {}, [el("tr", {}, [
-      "Name", "Contact", "Status", "Category", "Source", "Last message", "Follow-ups", "Converted"
-    ].map((label) => el("th", { scope: "col" }, [label])))]));
+    table.append(el("thead", {}, [el("tr", {}, ["Template", "Status", "Type", "Language"].map((label) => el("th", { scope: "col" }, [label])))]));
     const body = el("tbody");
-    leads.forEach((lead) => {
+    templates.forEach((item) => {
       body.append(el("tr", {}, [
-        el("td", {}, [lead.lead_name || "—"]),
-        el("td", {}, [lead.lead_contact || "—"]),
-        el("td", {}, [lead.lead_status || "—"]),
-        el("td", {}, [lead.category || "—"]),
-        el("td", {}, [lead.source || "—"]),
-        el("td", {}, [when(lead.last_message_time)]),
-        el("td", {}, [lead.total_followups == null ? "—" : String(lead.total_followups)]),
-        el("td", {}, [lead.is_converted ? "Yes" : "No"])
+        el("td", {}, [item.template_name || "—"]),
+        el("td", {}, [item.template_status || "—"]),
+        el("td", {}, [item.template_type || "—"]),
+        el("td", {}, [item.language || "—"])
       ]));
     });
     table.append(body);
-    root.append(el("p", { class: "mute" }, ["Showing the " + leads.length + " most recent cached leads. Totals above use the full sync."]));
-    root.append(el("div", { class: "crm-scroll" }, [table]));
+    return el("div", { class: "crm-scroll" }, [table]);
+  }
+
+  async function loadTemplates(agent, button, slot) {
+    button.disabled = true;
+    live.textContent = "Loading templates…";
+    try {
+      const result = await invoke(supabase, { action: "templates", agent_id: agent.id });
+      templateCache.set(agent.id, result.templates || []);
+      slot.innerHTML = "";
+      slot.append(templateTable(result.templates || []));
+      live.textContent = "Templates loaded.";
+    } catch (error) {
+      live.textContent = error.message;
+      slot.innerHTML = "";
+      slot.append(el("p", { class: "sync-error" }, [error.message]));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function sendsPanel(agent) {
+    const wrap = el("div", { id: "crm-sends" });
+    wrap.append(el("p", { class: "mute" }, ["These are WhatsApp template messages sent through the API. Bulk campaigns sent outside Roleflow are not included."]));
+    const load = el("button", { type: "button", class: "btn sm", id: "crm-load-sends" }, ["Load template sends"]);
+    const slot = el("div", { id: "crm-send-list" });
+    load.addEventListener("click", () => loadSends(agent, load, slot));
+    wrap.append(el("div", { class: "crm-actions" }, [load]), slot);
+    if (sendCache.has(agent.id)) slot.append(sendsTable(sendCache.get(agent.id)));
+    return wrap;
+  }
+
+  function sendsTable(logs) {
+    if (!logs.length) return el("p", { class: "mute" }, ["No template sends were returned."]);
+    const table = el("table", { class: "crm-table" });
+    table.append(el("thead", {}, [el("tr", {}, ["Template", "Contact", "Status", "Error"].map((label) => el("th", { scope: "col" }, [label])))]));
+    const body = el("tbody");
+    logs.forEach((item) => {
+      body.append(el("tr", {}, [
+        el("td", {}, [item.template_name || "—"]),
+        el("td", {}, [item.contact_number || "—"]),
+        el("td", {}, [item.status || "—"]),
+        el("td", {}, [item.error || "—"])
+      ]));
+    });
+    table.append(body);
+    return el("div", { class: "crm-scroll" }, [table]);
+  }
+
+  async function loadSends(agent, button, slot) {
+    button.disabled = true;
+    live.textContent = "Loading template sends…";
+    try {
+      const result = await invoke(supabase, { action: "template_sends", agent_id: agent.id });
+      sendCache.set(agent.id, result.logs || []);
+      slot.innerHTML = "";
+      slot.append(sendsTable(result.logs || []));
+      live.textContent = "Template sends loaded.";
+    } catch (error) {
+      live.textContent = error.message;
+      slot.innerHTML = "";
+      slot.append(el("p", { class: "sync-error" }, [error.message]));
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function runSync(button, agentId) {
