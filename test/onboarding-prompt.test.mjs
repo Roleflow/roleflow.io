@@ -42,6 +42,18 @@ assert.equal(fields.length, 10);
 assert.equal(fields.filter((field) => field.required).length, 9);
 assert.equal(Form.isRequired(Form.getField(config, "sourceMaterial"), {}), false);
 assert.equal(Form.getField(config, "sourceMaterial").file, true);
+assert.equal(config.TAILORTALK_SECTIONS.length, 9);
+assert.deepEqual(Array.from(config.TAILORTALK_SECTIONS, (item) => item.title), [
+  "HIGH PRIORITY RULE",
+  "IDENTITY & MISSION",
+  "NON-NEGOTIABLES",
+  "STYLE, FORMATTING & TONE",
+  "CONTEXT & OUTREACH",
+  "QUALIFICATION LOGIC",
+  "LINK ASSETS",
+  "WORKFLOW LOGIC",
+  "OBJECTION HANDLING"
+]);
 assert.deepEqual(Array.from(config.PROMPT_SECTIONS, (item) => item.title), [
   "IDENTITY & MISSION",
   "NON-NEGOTIABLES",
@@ -217,19 +229,35 @@ assert.match(appJs, /account\.generate/);
 assert.doesNotMatch(appJs, /ensurePrompt/);
 const adminJs = fs.readFileSync(path.join(root, "admin/admin.js"), "utf8");
 assert.match(adminJs, /Regenerate/);
+assert.match(adminJs, /Copy section/);
+assert.match(adminJs, /TAILORTALK_SECTIONS/);
 assert.match(adminJs, /user_id: profile\.id/);
 const promptMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261014120000_prompt_generation.sql"), "utf8");
 assert.match(promptMigration, /generation_status/);
 assert.match(promptMigration, /email_status/);
 assert.match(promptMigration, /revoke execute on function public\.guard_onboarding_update\(\) from public, anon, authenticated/);
+const sectionsMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261014140000_prompt_sections.sql"), "utf8");
+assert.match(sectionsMigration, /prompt_sections jsonb/);
+assert.match(sectionsMigration, /new\.prompt_sections = old\.prompt_sections/);
+assert.match(sectionsMigration, /revoke execute on function public\.guard_onboarding_update\(\) from public, anon, authenticated/);
 const fn = fs.readFileSync(path.join(root, "supabase/functions/generate-setter-prompt/index.ts"), "utf8");
-assert.match(fn, /OPENAI_API_KEY/);
+assert.match(fn, /XAI_API_KEY/);
+assert.match(fn, /https:\/\/api\.x\.ai\/v1\/chat\/completions/);
+assert.match(fn, /grok-4\.7/);
+assert.match(fn, /json_schema/);
 assert.match(fn, /RESEND_API_KEY/);
 assert.match(fn, /RESEND_FROM/);
 assert.match(fn, /diego@roleflow\.io/);
 assert.match(fn, /New DM Setter prompt: /);
 assert.match(fn, /example-thomas-miller\.md/);
+assert.match(fn, /prompt_sections/);
+assert.doesNotMatch(fn, /OPENAI_API_KEY/);
+assert.doesNotMatch(fn, /api\.openai\.com/);
 assert.doesNotMatch(fn, /ANTHROPIC_API_KEY/);
+config.TAILORTALK_SECTIONS.forEach((section) => {
+  assert.ok(fn.includes(section.id), "function is missing section " + section.id);
+  assert.ok(fn.includes(section.title), "function is missing heading " + section.title);
+});
 for (const line of config.HIGH_PRIORITY_RULES.split("\n")) {
   assert.ok(fn.includes(line), "function is missing a high priority rule");
 }

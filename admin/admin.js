@@ -1,5 +1,9 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 
+const SUBMISSION_COLUMNS = "status, step_index, answers, prompt_text, prompt_sections, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
+const SUBMISSION_COLUMNS_TRACKED = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
+const SUBMISSION_COLUMNS_BASE = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at";
+
 const hello = document.getElementById("admin-hello");
 const app = document.getElementById("admin-app");
 const logoutBtn = document.getElementById("nav-logout");
@@ -31,6 +35,21 @@ function submissionOf(profile) {
   const raw = profile.onboarding_submissions;
   if (Array.isArray(raw)) return raw[0] || null;
   return raw || null;
+}
+
+function sectionMap(submission) {
+  const raw = submission?.prompt_sections;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function answersOf(submission) {
@@ -101,20 +120,18 @@ if (!isConfigured()) {
   }
 }
 
-const SUBMISSION_COLUMNS = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at, generation_status, generation_error, email_status, email_error, prompt_generated_at";
-const SUBMISSION_COLUMNS_BASE = "status, step_index, answers, prompt_text, submitted_at, last_activity_at, updated_at";
-
 async function loadClients(supabase) {
-  const full = await supabase.from("profiles").select(`
-    id, full_name, email, instagram, created_at,
-    onboarding_submissions ( ${SUBMISSION_COLUMNS} )
-  `).order("created_at", { ascending: false });
-  if (!full.error) return full;
-  if (!/schema cache|PGRST204|generation_status|email_status/i.test(full.error.message || "")) return full;
-  return supabase.from("profiles").select(`
-    id, full_name, email, instagram, created_at,
-    onboarding_submissions ( ${SUBMISSION_COLUMNS_BASE} )
-  `).order("created_at", { ascending: false });
+  const columns = [SUBMISSION_COLUMNS, SUBMISSION_COLUMNS_TRACKED, SUBMISSION_COLUMNS_BASE];
+  let last = null;
+  for (const columnList of columns) {
+    last = await supabase.from("profiles").select(`
+      id, full_name, email, instagram, created_at,
+      onboarding_submissions ( ${columnList} )
+    `).order("created_at", { ascending: false });
+    if (!last.error) return last;
+    if (!/schema cache|PGRST204|prompt_sections|generation_status|email_status|column/i.test(last.error.message || "")) return last;
+  }
+  return last;
 }
 
 async function renderDashboard(supabase, user) {
@@ -329,6 +346,7 @@ async function renderDashboard(supabase, user) {
       const payload = invoked.data || {};
       if (submission) {
         submission.prompt_text = payload.prompt_text || submission.prompt_text;
+        submission.prompt_sections = payload.prompt_sections || submission.prompt_sections;
         submission.generation_status = payload.generation_status || "ready";
         submission.generation_error = payload.generation_error || "";
         submission.email_status = payload.email_status || "";
@@ -342,6 +360,27 @@ async function renderDashboard(supabase, user) {
     });
     panel.append(el("div", { class: "toolbar" }, [regenerate]));
     panel.append(regenMsg);
+    const sections = sectionMap(submission);
+    const sectionList = globalThis.ROLEFLOW_ONBOARDING_CONFIG?.TAILORTALK_SECTIONS || [];
+    if (sectionList.length && Object.keys(sections).length) {
+      panel.append(el("p", { class: "step-desc" }, ["Copy one section at a time into Tailortalk."]));
+      sectionList.forEach((section) => {
+        const text = String(sections[section.id] || "").trim();
+        const block = el("section", { class: "section-block" });
+        block.append(el("h3", {}, [section.title]));
+        const note = el("p", { class: "copy-note", role: "status" });
+        const copy = el("button", { type: "button", class: "btn" }, ["Copy section"]);
+        copy.addEventListener("click", async () => {
+          const ok = await copyText(text);
+          note.textContent = ok ? "Copied. Paste this section into Tailortalk." : "Couldn't copy automatically.";
+          note.className = ok ? "copy-note ok" : "copy-note bad";
+        });
+        block.append(el("div", { class: "toolbar" }, [copy]));
+        block.append(note);
+        block.append(el("pre", { class: "prompt", tabindex: "0" }, [text || "This section was not stored."]));
+        panel.append(block);
+      });
+    }
     if (submission?.prompt_text) {
       const pre = el("pre", { class: "prompt", id: "admin-prompt", tabindex: "0" }, [submission.prompt_text]);
       const copy = el("button", { type: "button", class: "btn" }, ["Copy prompt"]);

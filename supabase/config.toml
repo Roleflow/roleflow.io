@@ -328,7 +328,7 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
-# generate-setter-prompt reads OPENAI_API_KEY, optional OPENAI_MODEL,
+# generate-setter-prompt reads XAI_API_KEY, optional XAI_MODEL (default grok-4.7),
 # RESEND_API_KEY, and RESEND_FROM from function secrets. verify_jwt stays on.
 [functions.generate-setter-prompt]
 verify_jwt = true

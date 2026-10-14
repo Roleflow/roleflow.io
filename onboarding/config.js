@@ -10,8 +10,9 @@
    ten minutes. Progress still saves to the account after each step.
 
    The Tailortalk prompt itself is written by the generate-setter-prompt
-   edge function (LLM + the Thomas Miller example). This file does not call
-   the model.
+   edge function (xAI Grok, model grok-4.7, plus the Thomas Miller example).
+   This file does not call the model. TAILORTALK_SECTIONS is the nine blocks
+   Diego pastes into Tailortalk, in order. The first block is these rules.
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -36,6 +37,12 @@
     { id: "workflow", number: 8, title: "WORKFLOW LOGIC" },
     { id: "objections", number: 9, title: "OBJECTION HANDLING" }
   ];
+
+  var TAILORTALK_SECTIONS = [
+    { id: "high_priority_rule", title: "HIGH PRIORITY RULE" }
+  ].concat(PROMPT_SECTIONS.map(function (item) {
+    return { id: item.id, title: item.title };
+  }));
 
   var QUESTIONS = [
     {
@@ -191,6 +198,7 @@
     DIEGO_EMAIL: "diego@roleflow.io",
     HIGH_PRIORITY_RULES: HIGH_PRIORITY_RULES,
     PROMPT_SECTIONS: PROMPT_SECTIONS,
+    TAILORTALK_SECTIONS: TAILORTALK_SECTIONS,
     QUESTIONS: QUESTIONS
   };
 })(globalThis);
