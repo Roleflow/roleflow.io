@@ -22,6 +22,7 @@ assert.deepEqual(stats.by_status, { hot: 1, warm: 1, cold: 1 });
 assert.deepEqual(stats.by_source, { instagram_dm: 1, whatsapp_dm: 1 });
 assert.equal(stats.converted_count, 1);
 assert.equal(stats.conversion_rate, 0.25);
+assert.deepEqual(stats.by_category, {});
 assert.equal(stats.last_activity_at, "2026-10-14T01:00:00.000Z");
 assert.equal(stats.leads_per_day.length, 30);
 assert.equal(stats.leads_per_day[0].day, "2026-09-15");
@@ -60,6 +61,10 @@ assert.match(fn, /JSON\.stringify\(payload\)/);
 assert.match(fn, /TAILORTALK_TOKEN_KEY/);
 assert.match(fn, /TAILORTALK_CRON_SECRET/);
 assert.match(fn, /eq\("archived", false\)/);
+assert.match(fn, /client_id: clientId/);
+assert.match(fn, /username: usernameOf\(lead\)/);
+assert.match(fn, /by_category: stats\.by_category/);
+assert.doesNotMatch(fn, /username:\s*name/);
 assert.doesNotMatch(fn, /service\.tailortalk\.ai/);
 assert.doesNotMatch(fn, /message_count/);
 
@@ -91,6 +96,8 @@ assert.match(read("admin/admin.js"), /renderCrm/);
 assert.match(read("admin/crm.js"), /TailorTalk did not return a source on these leads/);
 assert.match(read("admin/crm.js"), /Copy section/);
 assert.match(read("admin/crm.js"), /Prompt version history/);
+assert.match(read("admin/crm.js"), /id: "crm-link-" \+ agent\.id/);
+assert.match(read("admin/crm.js"), /client_id: select\.value \|\| null/);
 assert.doesNotMatch(read("admin/crm.js"), /token_encrypted/);
 assert.doesNotMatch(read("admin/crm.js"), /access_token/);
 assert.doesNotMatch(read("admin/crm.js"), /message_count/);
@@ -110,11 +117,16 @@ const migrationNames = [
   "20261014120000_prompt_generation.sql",
   "20261014140000_prompt_sections.sql",
   "20261014160000_tailortalk_crm.sql",
-  "20261014180000_tailortalk_registry.sql"
+  "20261014180000_tailortalk_registry.sql",
+  "20261014200000_client_setter.sql"
 ];
 assert.deepEqual(
   migrationNames,
   migrationNames.slice().sort()
+);
+assert.deepEqual(
+  fs.readdirSync(path.join(root, "supabase/migrations")).filter((name) => name.endsWith(".sql")).sort(),
+  migrationNames
 );
 
 console.log("tailortalk crm tests passed");

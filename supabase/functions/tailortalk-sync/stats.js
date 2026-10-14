@@ -12,6 +12,7 @@ export function computeStats(leads, now = new Date()) {
   const index = new Map(series.map((item, at) => [item.day, at]));
   const byStatus = {};
   const bySource = {};
+  const byCategory = {};
   let converted = 0;
   let lastMs = null;
 
@@ -20,6 +21,8 @@ export function computeStats(leads, now = new Date()) {
     if (status) byStatus[status] = (byStatus[status] || 0) + 1;
     const source = String(lead.source || lead.lead_source || "").trim();
     if (source) bySource[source] = (bySource[source] || 0) + 1;
+    const category = String(lead.category || "").trim().toLowerCase();
+    if (category) byCategory[category] = (byCategory[category] || 0) + 1;
     if (lead.is_converted === true) converted += 1;
     const activity = timeOf(lead.last_message_time);
     if (activity != null && (lastMs == null || activity > lastMs)) lastMs = activity;
@@ -34,6 +37,7 @@ export function computeStats(leads, now = new Date()) {
     total_leads: total,
     by_status: byStatus,
     by_source: bySource,
+    by_category: byCategory,
     converted_count: converted,
     conversion_rate: total ? Math.round((converted / total) * 10000) / 10000 : null,
     last_activity_at: lastMs == null ? null : new Date(lastMs).toISOString(),
