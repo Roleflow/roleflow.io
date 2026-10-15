@@ -51,6 +51,10 @@ assert.match(read("auth/site.css"), /\.app-nav a\[aria-current=page\]/);
 
 const homepage = read("index.html");
 assert.match(homepage, /id="menu-toggle" href="\/signup\/">Access/);
+assert.match(homepage, /class="vsl"/);
+assert.match(homepage, /data-src="https:\/\/share\.descript\.com\/embed\/XJIQMjM0Q1N"/);
+assert.match(homepage, /loading="lazy"/);
+assert.match(read("vercel.json"), /frame-src 'self' https:\/\/share\.descript\.com/);
 assert.doesNotMatch(homepage, />Menu</);
 assert.match(homepage, /<footer><a href="\/resources\/"/);
 assert.match(read("auth/sidebar.js"), /tagName === "A"/);
