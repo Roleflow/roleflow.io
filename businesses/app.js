@@ -107,7 +107,7 @@ function missingRelation(error) {
 
 function parseRoute() {
   const raw = decodeURIComponent(window.location.hash.replace(/^#/, ""));
-  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(leads|workflow|stats|campaigns)$/i.exec(raw);
+  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(leads|workflow|stats|campaigns|setup)$/i.exec(raw);
   if (!match) return { kind: "grid" };
   return { kind: "detail", id: match[1], section: match[2].toLowerCase() };
 }
@@ -302,9 +302,6 @@ async function boot(supabase, user) {
   if (isAdmin) {
     nav.append(el("nav", { class: "app-nav", id: "admin-links", "aria-label": "Admin" }, [
       el("a", { href: "/businesses/" }, ["Businesses"]),
-      el("a", { href: "/admin/#clients" }, ["Clients"]),
-      el("a", { href: "/admin/#publish" }, ["Publish queue"]),
-      el("a", { href: "/admin/#crm" }, ["CRM/Insights"]),
       el("a", { href: "/account/#profile" }, ["Your account"])
     ]));
     markNav();
@@ -332,7 +329,7 @@ async function boot(supabase, user) {
       ? "Apply the businesses migration, then refresh."
       : scrub(agentsRes.error.message);
     showState("Your businesses could not be loaded", message);
-    paintSide(user, [], null);
+    paintSide(user, [], null, isAdmin);
     return;
   }
 
@@ -344,20 +341,35 @@ async function boot(supabase, user) {
   (statsRes.data || []).forEach((row) => statsById.set(row.agent_id, row));
   const agents = agentsRes.data || [];
   const statsError = statsRes.error ? scrub(statsRes.error.message) : "";
+  const pendingIds = new Set();
+  if (isAdmin) {
+    const pendingRes = await supabase.from("onboarding_submissions").select("user_id, publish_agent_id, publish_status").eq("publish_status", "pending");
+    if (!pendingRes.error) {
+      (pendingRes.data || []).forEach((row) => {
+        if (row.publish_agent_id) pendingIds.add(row.publish_agent_id);
+        const linked = agents.find((agent) => agent.client_id && agent.client_id === row.user_id);
+        if (linked) pendingIds.add(linked.id);
+      });
+    }
+  }
 
   function paint() {
     const route = parseRoute();
     hideBoot();
-    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError);
+    if (route.kind === "detail" && route.section === "setup" && !isAdmin) {
+      go("#" + route.id + "/leads");
+      return;
+    }
+    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds);
     else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById);
-    paintSide(user, agents, route.kind === "detail" ? route : null);
+    paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin);
   }
 
   window.addEventListener("hashchange", paint);
   paint();
 }
 
-function paintSide(user, agents, route) {
+function paintSide(user, agents, route, isAdmin) {
   const existing = document.getElementById("biz-switch");
   if (existing) existing.remove();
   const block = el("div", { id: "biz-switch" });
@@ -380,7 +392,8 @@ function paintSide(user, agents, route) {
     select.addEventListener("change", () => go("#" + select.value + "/" + route.section));
     label.append(select);
     block.append(label);
-    DETAIL_TABS.forEach(([id, title]) => {
+    const tabs = isAdmin ? DETAIL_TABS.concat([["setup", "Setup"]]) : DETAIL_TABS;
+    tabs.forEach(([id, title]) => {
       const link = el("a", { href: "#" + route.id + "/" + id }, [title]);
       if (route.section === id) link.setAttribute("aria-current", "page");
       link.addEventListener("click", (event) => {
@@ -400,7 +413,7 @@ function paintSide(user, agents, route) {
   else nav.prepend(block);
 }
 
-function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError) {
+function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds) {
   heading.innerHTML = isAdmin ? 'Businesses' : 'Your <span class="g">businesses</span>';
   document.title = isAdmin ? "Businesses · Roleflow" : "Your businesses · Roleflow";
   const owned = agents.some((agent) => agent.client_id === user.id);
@@ -435,16 +448,20 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
     ]);
     const open = el("span", { class: "ext", "aria-hidden": "true" });
     open.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" d="M14 5h5v5M19 5l-9 9"/><path fill="none" stroke="currentColor" stroke-width="2" d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5"/></svg>';
-    card.append(
+    const bits = [
       open,
       status,
       el("h2", { text: agent.agent_name || "AI Setter" }),
-      el("p", { class: "card-client", text: clientLine(agent, peopleById) }),
+      el("p", { class: "card-client", text: clientLine(agent, peopleById) })
+    ];
+    if (isAdmin && pendingIds.has(agent.id)) bits.push(el("p", { class: "pending-flag", text: "Pending publish" }));
+    bits.push(
       el("p", { class: "mute", text: createdAgo(agent.created_at) }),
       sparkline(week.days),
       el("p", { class: "lead-count", text: String(shown) }),
       el("p", { class: "mute", text: Number.isFinite(total) ? "Conversations in the sync" : "Leads in the last 7 days" })
     );
+    card.append(...bits);
     grid.append(card);
   });
   if (!isAdmin) grid.append(addCard(supabase, user, owned));
@@ -513,9 +530,10 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin, pe
     el("p", { text: "Loading…" })
   ]));
   if (route.section === "leads") await paintLeads(supabase, agent.id, statsById.get(agent.id));
-  else if (route.section === "workflow") await paintWorkflow(supabase, agent);
+  else if (route.section === "workflow") await paintWorkflow(supabase, agent, isAdmin);
   else if (route.section === "stats") await paintStats(supabase, agent, statsById.get(agent.id));
-  else paintCampaigns(isAdmin);
+  else if (route.section === "setup") await paintSetup(supabase, agent, peopleById);
+  else await paintCampaigns(supabase, agent, isAdmin);
 }
 
 async function paintLeads(supabase, agentId, cached) {
@@ -625,7 +643,70 @@ function paintPager(pager, page, pages, goPage) {
   pager.append(prev, el("span", { text: (page + 1) + " / " + pages }), next);
 }
 
-async function paintWorkflow(supabase, agent) {
+async function paintSetup(supabase, agent, peopleById) {
+  app.innerHTML = "";
+  const panel = el("section", { class: "panel", id: "agent-setup" });
+  panel.append(el("h2", { text: "Setup" }));
+  panel.append(el("p", { text: "Link this business to a client account. One account links to one business." }));
+  const select = el("select", {
+    class: "client-link",
+    id: "agent-client-link",
+    "aria-label": "Link this business to a client account"
+  }, [el("option", { value: "", text: "Not linked" })]);
+  const people = Array.from(peopleById.values()).sort((a, b) => personName(a).localeCompare(personName(b)));
+  people.forEach((person) => {
+    const option = el("option", { value: person.id, text: personName(person) });
+    if (agent.client_id === person.id) option.selected = true;
+    select.append(option);
+  });
+  if (!people.length) {
+    panel.append(el("p", { class: "err", text: "Client accounts could not be loaded." }));
+  }
+  const note = el("p", { class: "mute", id: "setup-note" });
+  select.addEventListener("change", async () => {
+    const previous = agent.client_id || "";
+    select.disabled = true;
+    note.textContent = "Saving…";
+    try {
+      const { saveAgentLink } = await import("../admin/crm.js");
+      await saveAgentLink(supabase, agent.id, select.value || null);
+      toast("Client link saved.");
+      window.location.reload();
+    } catch (error) {
+      select.value = previous;
+      select.disabled = false;
+      note.textContent = scrub(error.message || "The link could not be saved.");
+      toast(note.textContent, "bad");
+    }
+  });
+  const sync = el("button", { type: "button", class: "btn", id: "sync-business" }, ["Sync now"]);
+  sync.addEventListener("click", async () => {
+    sync.disabled = true;
+    note.textContent = "Syncing…";
+    try {
+      const { syncAgent } = await import("../admin/crm.js");
+      const result = await syncAgent(supabase, agent.id);
+      const failed = (result.results || []).filter((item) => item.error);
+      const message = failed.length ? failed.map((item) => scrub(item.error)).join(" ") : "Sync finished.";
+      note.textContent = message;
+      toast(message, failed.length ? "bad" : undefined);
+      sync.disabled = false;
+      if (!failed.length) window.location.reload();
+    } catch (error) {
+      sync.disabled = false;
+      note.textContent = scrub(error.message || "Sync failed.");
+      toast(note.textContent, "bad");
+    }
+  });
+  panel.append(select, note, el("div", { class: "toolbar" }, [sync]));
+  app.append(panel);
+}
+
+function personName(person) {
+  return person.full_name || person.business_name || person.email || "Client";
+}
+
+async function paintWorkflow(supabase, agent, isAdmin) {
   const versionsRes = await supabase.from("client_prompt_versions").select("agent_id, version_id, deployed_at, sections, recorded_at").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
   app.innerHTML = "";
   let showing = agent.prompt_sections;
@@ -644,6 +725,12 @@ async function paintWorkflow(supabase, agent) {
     el("p", { text: "Test chat available in admin." })
   ]);
   app.append(tools, host, test);
+  if (isAdmin) {
+    const slot = el("div", { id: "publish-slot" });
+    app.append(slot);
+    const { mountPublish } = await import("../admin/publish.js");
+    await mountPublish(supabase, agent, slot);
+  }
   if (versionsRes.error && !missingRelation(versionsRes.error)) {
     app.append(el("p", { class: "err", text: scrub(versionsRes.error.message) }));
   } else if (versionsRes.error) {
@@ -786,16 +873,48 @@ function tally(rows, pick) {
   return out;
 }
 
-function paintCampaigns(isAdmin) {
+async function paintCampaigns(supabase, agent, isAdmin) {
   app.innerHTML = "";
   const panel = el("div", { class: "state", id: "campaigns-empty" }, [
     el("h2", { text: "No campaign feed" }),
     el("p", { text: "Broadcasts are not included in the synced business data, so this page does not invent them." })
   ]);
-  if (isAdmin) {
-    panel.append(el("p", {}, [
-      el("a", { href: "/admin/#crm" }, ["Template sends are on the CRM desk."])
-    ]));
-  }
   app.append(panel);
+  if (!isAdmin) return;
+  const tools = el("section", { class: "panel", id: "template-sends" });
+  tools.append(el("h3", { text: "Template sends" }));
+  tools.append(el("p", { class: "mute", text: "WhatsApp template messages sent through the API for this business. Broadcasts are not included." }));
+  const button = el("button", { type: "button", class: "btn sm", id: "load-template-sends" }, ["Load template sends"]);
+  const slot = el("div", { id: "template-send-list" });
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    slot.innerHTML = "";
+    try {
+      const { loadTemplateSends } = await import("../admin/crm.js");
+      const result = await loadTemplateSends(supabase, agent.id);
+      const logs = result.logs || [];
+      if (!logs.length) {
+        slot.append(el("p", { class: "mute", text: "No template sends were returned." }));
+      } else {
+        const table = el("table", { class: "crm-table" });
+        table.append(el("thead", {}, [el("tr", {}, ["Template", "Contact", "Status", "Error"].map((label) => el("th", { text: label })))]));
+        const body = el("tbody");
+        logs.forEach((item) => {
+          body.append(el("tr", {}, [
+            el("td", { text: item.template_name || "—" }),
+            el("td", { text: item.contact_number || "—" }),
+            el("td", { text: item.status || "—" }),
+            el("td", { text: item.error || "—" })
+          ]));
+        });
+        table.append(body);
+        slot.append(el("div", { class: "crm-scroll" }, [table]));
+      }
+    } catch (error) {
+      slot.append(el("p", { class: "err", text: scrub(error.message || "Template sends could not be loaded.") }));
+    }
+    button.disabled = false;
+  });
+  tools.append(el("div", { class: "toolbar" }, [button]), slot);
+  app.append(tools);
 }

@@ -39,7 +39,7 @@ export function safeNext(raw) {
 
 export async function destinationAfterLogin(supabase, next) {
   const target = safeNext(next);
-  const home = target === "/account/" || target === "/account" || target === "/admin/" || target === "/admin" || target === "/admin/#clients";
+  const home = target === "/account/" || target === "/account" || target === "/admin/" || target === "/admin" || target.startsWith("/admin/") || target.startsWith("/admin#");
   if (!home || !supabase) return target;
   const { data } = await supabase.auth.getUser();
   const id = data.user?.id;

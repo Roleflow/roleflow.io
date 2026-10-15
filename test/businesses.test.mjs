@@ -79,8 +79,11 @@ assert.match(app, /liveSections/);
 assert.match(app, /client_ai_setters/);
 assert.match(app, /client_ai_setter_stats/);
 assert.match(app, /client_ai_setter_leads/);
-assert.match(app, /CRM\/Insights/);
-assert.match(app, /#publish/);
+assert.match(app, /id: "admin-links"/);
+assert.match(app, /agent-client-link/);
+assert.match(app, /Pending publish/);
+assert.match(app, /\["setup", "Setup"\]/);
+assert.doesNotMatch(app, /CRM\/Insights|#clients|#publish|Publish queue/);
 assert.doesNotMatch(app, /from\("client_ai_setters"\)[\s\S]{0,180}\.eq\("client_id"/);
 
 const signup = read("signup/index.html");
@@ -98,8 +101,11 @@ assert.match(fn, /match_client_agent/);
 assert.doesNotMatch(fn, /update_workflow|send_test_message|get_test_chat/);
 assert.match(read("account/account.js"), /\/businesses\//);
 assert.match(read("onboarding/app.js"), /location\.assign\("\/businesses\/"\)/);
-assert.match(read("admin/admin.js"), /publish_status", "pending"|publish_status", "pending"/);
-assert.match(read("admin/admin.js"), /Mark published/);
+assert.match(read("admin/publish.js"), /publish_status === "pending"/);
+assert.match(read("admin/publish.js"), /Mark published/);
+assert.match(read("admin/admin.js"), /location\.replace\("\/businesses\/"\)/);
+assert.match(read("account/index.html"), /href="\/businesses\/"/);
+assert.doesNotMatch(read("account/index.html"), /#clients|#publish|CRM\/Insights/);
 assert.match(read("index.html"), /id="menu-toggle" href="\/signup\/">Access/);
 
 console.log("businesses tests passed");

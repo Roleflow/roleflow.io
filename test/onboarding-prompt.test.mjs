@@ -227,7 +227,7 @@ const appJs = fs.readFileSync(path.join(root, "onboarding/app.js"), "utf8");
 assert.match(appJs, /roleflow\.onboarding\.v2/);
 assert.match(appJs, /account\.generate/);
 assert.doesNotMatch(appJs, /ensurePrompt/);
-const adminJs = fs.readFileSync(path.join(root, "admin/admin.js"), "utf8");
+const adminJs = fs.readFileSync(path.join(root, "admin/publish.js"), "utf8");
 assert.match(adminJs, /Regenerate/);
 assert.match(adminJs, /Copy section/);
 assert.match(adminJs, /TAILORTALK_SECTIONS/);
