@@ -871,7 +871,7 @@
           return;
         }
         notify("Your setter prompt is ready.");
-        showPromptStep();
+        window.location.assign("/businesses/");
       }, function (error) {
         state.generating = false;
         state.accountStatus = "submitted";

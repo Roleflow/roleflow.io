@@ -11,31 +11,32 @@
 </head>
 <body class="app">
 <a class="skip" id="skip-link" href="#signup-form">Skip to the form</a>
-<div class="app-shell">
-  <aside class="app-side" id="app-side">
+<div class="auth-split">
+  <section class="proof-pane" id="proof" tabindex="0" aria-roledescription="carousel" aria-label="Client proof placeholders">
+    <p class="proof-kicker">Client proof</p>
+    <div class="proof-card">
+      <p class="mute" id="proof-slot">Placeholder 1 of 3</p>
+      <blockquote id="proof-quote">[TESTIMONIAL — Diego to fill in]</blockquote>
+      <p class="proof-name" id="proof-name">[CLIENT NAME]</p>
+      <p class="mute" id="proof-detail">[ROLE OR RESULT — Diego to fill in]</p>
+    </div>
+    <div class="proof-controls">
+      <button type="button" class="btn ghost sm" id="proof-prev">Previous</button>
+      <button type="button" class="btn ghost sm" id="proof-next">Next</button>
+    </div>
+    <p class="proof-note">Placeholder slots for Diego to fill in. These are not client quotes.</p>
+  </section>
+  <section class="form-pane">
     <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
-    <p class="side-kicker">Account</p>
-    <nav class="app-nav" aria-label="Account access">
-      <a href="/signup/">Sign up</a>
-      <a href="/signup/?mode=login">Log in</a>
-      <a href="/reset/">Reset password</a>
-    </nav>
-    <p class="side-note">Qualified clients start here. Answers stay on the account, so you can finish on any device.</p>
-  </aside>
-  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
-  <div class="app-main">
-    <header class="app-top">
-      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
-      <div>
-        <h1 id="page-heading">Create your <span class="g">account</span></h1>
-        <p class="sub" id="page-sub">This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.</p>
-      </div>
-    </header>
-    <main class="wrap auth-main" id="main"><div class="panel">
+    <h1 id="page-heading">Create your <span class="g">account</span></h1>
+    <p class="sub" id="page-sub">This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.</p>
+    <div class="panel">
       <div class="auth-tabs" role="tablist" aria-label="Account">
         <button type="button" id="tab-signup" role="tab" aria-selected="true" aria-controls="signup-form" tabindex="0">Sign up</button>
         <button type="button" id="tab-login" role="tab" aria-selected="false" aria-controls="login-form" tabindex="-1">Log in</button>
       </div>
+      <button type="button" class="btn ghost google-btn" id="google-btn" disabled>Continue with Google</button>
+      <p class="google-note" id="google-note">Google sign-in stays off until it is turned on for this project.</p>
       <form id="signup-form" class="auth-form" role="tabpanel" aria-labelledby="tab-signup">
         <label>Your name<input id="name" name="name" type="text" autocomplete="name" required></label>
         <label>Email<input id="email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
@@ -56,9 +57,9 @@
         <button class="btn ghost" id="magic-btn" type="button">Email me a sign-in link</button>
         <p class="links"><a href="/reset/">Forgot password</a></p>
       </form>
-    </div></main>
-    <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
-  </div>
+    </div>
+    <p class="links"><a href="/">Back to the homepage</a> · <a href="/resources/">Resources</a></p>
+  </section>
 </div>
 <div id="toasts" class="toast-stack" aria-live="polite"></div>
 <script src="/supabase/config.js" defer></script>

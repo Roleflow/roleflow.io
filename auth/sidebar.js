@@ -66,7 +66,8 @@ if (!drawer || !toggle) {
     showPanel(which);
   }
 
-  toggle.addEventListener("click", () => setOpen(drawer.hidden));
+  const accessLink = toggle.tagName === "A";
+  if (!accessLink) toggle.addEventListener("click", () => setOpen(drawer.hidden));
   document.getElementById("drawer-close").addEventListener("click", () => setOpen(false));
   backdrop.addEventListener("click", () => setOpen(false));
   document.addEventListener("keydown", (event) => {
@@ -83,12 +84,17 @@ if (!drawer || !toggle) {
     });
   });
   window.addEventListener("hashchange", () => {
+    if (accessLink && wantsLogin()) {
+      window.location.replace("/signup/?mode=login");
+      return;
+    }
     const mode = wantsLogin() ? "login" : "signup";
     showPanel(mode);
     if (mode === "login") setOpen(true);
   });
   showPanel(wantsLogin() ? "login" : "signup");
-  if (wantsLogin()) setOpen(true);
+  if (accessLink && wantsLogin()) window.location.replace("/signup/?mode=login");
+  else if (wantsLogin()) setOpen(true);
   document.getElementById("drawer-logout").addEventListener("click", logout);
 
   function normalizeHandle(value) {

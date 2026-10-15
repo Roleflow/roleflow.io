@@ -32,6 +32,10 @@ export function markNav() {
     } else if (linkPath.endsWith("/admin")) {
       if (url.hash === "#crm") on = path.endsWith("/admin") && hash === "#crm";
       else on = path.endsWith("/admin") && hash !== "#crm";
+    } else if (linkPath.endsWith("/businesses")) {
+      const href = link.getAttribute("href") || "";
+      const hash = location.hash;
+      on = path.endsWith("/businesses") && href.startsWith("/businesses") && (hash === "" || hash === "#" || hash === "#list");
     } else if (linkPath.endsWith("/account")) {
       if (url.hash === "#onboarding") on = path.endsWith("/account") && hash.startsWith("#onboarding");
       else if (url.hash === "#setter") on = path.endsWith("/account") && !hash.startsWith("#onboarding");
