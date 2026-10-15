@@ -1,6 +1,6 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
-import { bindShell, markNav, toast } from "../auth/ui.js";
+import { bindShell, toast } from "../auth/ui.js";
 import { renderSetter } from "./setter.js";
 
 bindShell();
@@ -131,14 +131,6 @@ if (arriving.type === "recovery") {
           hideBoot();
           section.hidden = false;
           if (setter) setter.hidden = false;
-          const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
-          if (adminRes.data) {
-            ["nav-admin", "nav-publish", "nav-admin-crm"].forEach((id) => {
-              const link = document.getElementById(id);
-              if (link) link.hidden = false;
-            });
-            markNav();
-          }
           renderSetter(supabase, user.id, document.getElementById("setter-app")).catch(() => {
             const root = document.getElementById("setter-app");
             if (root && !root.childElementCount) {

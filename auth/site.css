@@ -313,6 +313,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .biz-card.add{border-style:dashed;border-color:var(--gold)}
 .biz-card h2{font-size:1.35rem}
 .card-client{font-weight:600}
+.pending-flag{color:var(--gold);font-weight:600}
 .client-link{width:100%;min-height:44px;margin-top:8px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:8px 10px;font:400 .95rem var(--b)}
 .biz-card form{display:grid;gap:10px}
 .biz-card input,.switcher select{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font:400 1rem var(--b);min-height:44px}

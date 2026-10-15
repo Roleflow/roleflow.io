@@ -93,6 +93,14 @@ export async function saveAgentLink(supabase, agentId, clientId) {
   });
 }
 
+export function syncAgent(supabase, agentId) {
+  return invoke(supabase, { action: "sync", agent_id: agentId || undefined });
+}
+
+export function loadTemplateSends(supabase, agentId) {
+  return invoke(supabase, { action: "template_sends", agent_id: agentId });
+}
+
 async function invoke(supabase, body) {
   const { data, error } = await supabase.functions.invoke("tailortalk-sync", { body });
   if (error) {
