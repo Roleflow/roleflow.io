@@ -14,6 +14,15 @@
   ],
   "headers": [
     {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-src 'self' https://share.descript.com"
+        }
+      ]
+    },
+    {
       "source": "/(account|admin|reset)(.*)",
       "headers": [
         {
