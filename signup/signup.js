@@ -1,4 +1,4 @@
-import { getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
+import { destinationAfterLogin, getSupabase, isConfigured, originPath } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
 import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
@@ -9,16 +9,51 @@ const proofPane = document.getElementById("proof");
 const proofQuote = document.getElementById("proof-quote");
 const proofName = document.getElementById("proof-name");
 const proofDetail = document.getElementById("proof-detail");
-const proofSlot = document.getElementById("proof-slot");
+const proofPortrait = document.getElementById("proof-portrait");
+const proofStars = document.getElementById("proof-stars-label");
+const proofLogos = document.getElementById("proof-logos");
+const proofCounter = document.getElementById("proof-counter");
+const proofDots = document.getElementById("proof-dots");
 let proofIndex = 0;
 let proofTimer = 0;
+
+if (proofDots) {
+  PROOF_SLOTS.forEach((_, index) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "proof-dot";
+    dot.setAttribute("aria-label", "Placeholder " + (index + 1));
+    dot.addEventListener("click", () => {
+      proofIndex = index;
+      paintProof();
+    });
+    proofDots.append(dot);
+  });
+}
 
 function paintProof() {
   const slot = PROOF_SLOTS[proofIndex] || PROOF_SLOTS[0];
   if (proofQuote) proofQuote.textContent = slot.quote;
   if (proofName) proofName.textContent = slot.name;
   if (proofDetail) proofDetail.textContent = slot.detail;
-  if (proofSlot) proofSlot.textContent = "Placeholder " + (proofIndex + 1) + " of " + PROOF_SLOTS.length;
+  if (proofPortrait) proofPortrait.textContent = slot.portrait;
+  if (proofStars) proofStars.textContent = slot.stars;
+  if (proofCounter) proofCounter.textContent = (proofIndex + 1) + " / " + PROOF_SLOTS.length;
+  if (proofLogos) {
+    proofLogos.innerHTML = "";
+    (slot.logos || []).forEach((logo) => {
+      const item = document.createElement("p");
+      item.className = "logo-slot";
+      item.textContent = logo;
+      proofLogos.append(item);
+    });
+  }
+  if (proofDots) {
+    [...proofDots.children].forEach((dot, index) => {
+      if (index === proofIndex) dot.setAttribute("aria-current", "true");
+      else dot.removeAttribute("aria-current");
+    });
+  }
 }
 
 function moveProof(direction) {
@@ -190,7 +225,7 @@ if (!isConfigured()) {
     if (resolved.session) {
       clearAuthParams();
       clearCallbackMemory();
-      window.location.replace(safeNext(params.get("next")));
+      window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
     } else {
       if (resolved.errorMessage) {
         showTab("login");
@@ -252,7 +287,7 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         setBusy(button, false);
         if (error) return showLoginError(friendlyAuthError(error));
-        window.location.replace(safeNext(params.get("next")));
+        window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
       });
 
       document.getElementById("magic-btn").addEventListener("click", async () => {

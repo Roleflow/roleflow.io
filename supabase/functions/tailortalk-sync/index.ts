@@ -33,6 +33,7 @@
 // Error text returned to the browser has the provider name removed.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { usernameOf } from "./lead.js";
 import { computeStats } from "./stats.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
@@ -243,24 +244,13 @@ async function syncOne(service: ReturnType<typeof createClient>, agent: { id: st
   const syncedAt = new Date().toISOString();
   try {
     const leads = await fetchLeads(token);
-    const contacts = await fetchContacts(token);
-    const names = contactNames(contacts);
+    const loadedContacts = await loadContacts(token);
+    const names = contactNames(loadedContacts.rows);
     const leadRows = dedupe(leads.map((lead) => mapLead(agent.id, lead, names, syncedAt)), "external_id");
-    const contactRows = dedupe(contacts.filter((item) => item.phone_number && item.created_at).map((item) => ({
-      agent_id: agent.id,
-      phone_number: String(item.phone_number),
-      created_at_remote: stamp(item.created_at),
-      name: textOrNull(item.name),
-      updated_at_remote: stamp(item.updated_at),
-      synced_at: syncedAt
-    })).filter((item) => item.created_at_remote), "phone_number", "created_at_remote");
 
     await upsertChunks(service, "tailortalk_leads", leadRows, "agent_id,external_id");
-    await upsertChunks(service, "tailortalk_contacts", contactRows, "agent_id,phone_number,created_at_remote");
     const staleLeads = await service.from("tailortalk_leads").delete().eq("agent_id", agent.id).lt("synced_at", syncedAt);
     if (staleLeads.error) throw new Error(staleLeads.error.message);
-    const staleContacts = await service.from("tailortalk_contacts").delete().eq("agent_id", agent.id).lt("synced_at", syncedAt);
-    if (staleContacts.error) throw new Error(staleContacts.error.message);
 
     const stats = computeStats(leads);
     const saved = await service.from("tailortalk_agent_stats").upsert({
@@ -283,7 +273,13 @@ async function syncOne(service: ReturnType<typeof createClient>, agent: { id: st
       updated_at: syncedAt
     }).eq("id", agent.id);
     if (marked.error) throw new Error(marked.error.message);
-    return { id: agent.id, label: agent.agent_name || agent.label, total_leads: stats.total_leads };
+    if (loadedContacts.ok) await saveContacts(service, agent.id, loadedContacts.rows, syncedAt);
+    return {
+      id: agent.id,
+      label: agent.agent_name || agent.label,
+      total_leads: stats.total_leads,
+      contacts: loadedContacts.ok ? "saved" : "skipped"
+    };
   } catch (error) {
     return fail(service, agent, error instanceof Error ? error.message : "Sync failed.");
   }
@@ -319,8 +315,12 @@ function leadsFrom(payload) {
 }
 
 function contactsFrom(payload) {
-  const contacts = payload?.contacts;
-  if (!Array.isArray(contacts)) throw new Error("The contact response had no contacts array.");
+  const contacts = payload?.contacts ?? payload?.data?.contacts;
+  if (!Array.isArray(contacts)) {
+    const error = new Error("contacts-unavailable");
+    error.skipContacts = true;
+    throw error;
+  }
   return contacts;
 }
 
@@ -460,6 +460,32 @@ async function sendTemplate(service: ReturnType<typeof createClient>, body: Reco
   }
 }
 
+async function loadContacts(token: string) {
+  try {
+    const rows = await fetchContacts(token);
+    return { ok: true, rows };
+  } catch {
+    return { ok: false, rows: [] };
+  }
+}
+
+async function saveContacts(service, agentId, contacts, syncedAt) {
+  try {
+    const contactRows = dedupe(contacts.filter((item) => item.phone_number && item.created_at).map((item) => ({
+      agent_id: agentId,
+      phone_number: String(item.phone_number),
+      created_at_remote: stamp(item.created_at),
+      name: textOrNull(item.name),
+      updated_at_remote: stamp(item.updated_at),
+      synced_at: syncedAt
+    })).filter((item) => item.created_at_remote), "phone_number", "created_at_remote");
+    await upsertChunks(service, "tailortalk_contacts", contactRows, "agent_id,phone_number,created_at_remote");
+    await service.from("tailortalk_contacts").delete().eq("agent_id", agentId).lt("synced_at", syncedAt);
+  } catch {
+    /* Contacts are optional. A contact write never removes leads or stats. */
+  }
+}
+
 async function fetchContacts(token: string) {
   return paginate(token, CONTACTS_URL, 500, contactsFrom, (item) => item?.phone_number && item?.created_at ? String(item.phone_number) + "\0" + String(item.created_at) : "", (item) => item?.created_at || "");
 }
@@ -532,12 +558,6 @@ function mapLead(agentId, lead, names, syncedAt) {
     username: usernameOf(lead),
     synced_at: syncedAt
   };
-}
-
-function usernameOf(lead) {
-  const raw = lead?.username || lead?.instagram_username || lead?.ig_username || lead?.instagram_handle || lead?.handle;
-  const text = textOrNull(raw);
-  return text ? text.replace(/^@+/, "") : null;
 }
 
 function textOrNull(value) {

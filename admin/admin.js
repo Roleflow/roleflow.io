@@ -1,7 +1,7 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
-import { renderCrm } from "./crm.js";
+import { renderCrm, saveAgentLink } from "./crm.js";
 
 bindShell();
 
@@ -218,31 +218,42 @@ if (arriving.type === "recovery") {
     } else {
       hello.textContent = "Signed in as " + (user.email || "admin") + ".";
       hideBoot();
-      const tabs = document.getElementById("admin-tabs");
-      const tabClients = document.getElementById("tab-clients");
-      const tabCrm = document.getElementById("tab-crm");
-      tabs.hidden = false;
       const headerCrm = document.getElementById("nav-crm");
       if (headerCrm) headerCrm.hidden = false;
+      const title = document.getElementById("admin-title");
       markNav();
-      async function showSection(name) {
-        const crm = name === "crm";
-        tabClients.setAttribute("aria-selected", crm ? "false" : "true");
-        tabCrm.setAttribute("aria-selected", crm ? "true" : "false");
-        const nextHash = crm ? "#crm" : "#clients";
-        if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
-        if (crm) await renderCrm(supabase, user, { app, hello });
-        else {
-          hello.textContent = "Signed in as " + (user.email || "admin") + ".";
-          await renderDashboard(supabase, user);
-        }
+      function sectionName() {
+        if (location.hash === "#publish") return "publish";
+        if (location.hash === "#crm" || location.hash === "#insights") return "crm";
+        if (location.hash === "#clients") return "clients";
+        return "home";
       }
-      tabClients.addEventListener("click", () => { showSection("clients"); });
-      tabCrm.addEventListener("click", () => { showSection("crm"); });
-      window.addEventListener("hashchange", () => {
-        showSection(location.hash === "#crm" ? "crm" : "clients");
-      });
-      await showSection(location.hash === "#crm" ? "crm" : "clients");
+      async function showSection(name) {
+        if (name === "home") {
+          window.location.replace("/businesses/");
+          return;
+        }
+        const nextHash = name === "crm" ? "#crm" : name === "publish" ? "#publish" : "#clients";
+        if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
+        markNav();
+        if (name === "crm") {
+          if (title) title.textContent = "CRM/Insights";
+          hello.textContent = "Combined picture across every setter. Leads, workflow, and stats open from Businesses.";
+          await renderCrm(supabase, user, { app, hello });
+          return;
+        }
+        if (name === "publish") {
+          if (title) title.textContent = "Publish queue";
+          hello.textContent = "Prompts waiting for you to publish from the connector.";
+          await renderPublish(supabase);
+          return;
+        }
+        if (title) title.textContent = "Clients";
+        hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+        await renderDashboard(supabase, user);
+      }
+      window.addEventListener("hashchange", () => { showSection(sectionName()); });
+      await showSection(sectionName());
     }
   }
 }
@@ -261,14 +272,56 @@ async function loadClients(supabase) {
   return last;
 }
 
+async function renderPublish(supabase) {
+  const { data, error } = await loadClients(supabase);
+  app.innerHTML = "";
+  if (error) {
+    showMessage(error.message);
+    return;
+  }
+  const host = el("div", { id: "publish-queue" });
+  const refresh = async () => {
+    host.innerHTML = "";
+    host.append(paintPublishQueue(supabase, data || [], await loadPublishQueue(supabase), refresh));
+  };
+  app.append(host);
+  await refresh();
+}
+
+async function loadAgents(supabase) {
+  const result = await supabase.from("tailortalk_agents").select("id, agent_name, label, client_id, profile_id, archived").order("agent_name");
+  if (result.error && /schema cache|does not exist|PGRST205|PGRST204/i.test(result.error.message || "")) {
+    return { missing: true, rows: [] };
+  }
+  if (result.error) return { error: result.error.message, rows: [] };
+  return { rows: result.data || [] };
+}
+
+function linkedAgent(agents, profileId) {
+  return (agents || []).find((agent) => agent.client_id === profileId || agent.profile_id === profileId) || null;
+}
+
+function agentLabel(agent) {
+  return agent.agent_name || agent.label || "Business";
+}
+
+function promptLabel(submission) {
+  const sections = submission?.prompt_sections;
+  const hasSections = sections && typeof sections === "object" && !Array.isArray(sections) && Object.keys(sections).length > 0;
+  if (submission?.prompt_text || hasSections) return "Prompt stored";
+  if (submission?.generation_status === "failed") return "Prompt failed";
+  return "No prompt yet";
+}
+
 async function renderDashboard(supabase, user) {
-  let refreshQueue = async () => {};
   const { data, error } = await loadClients(supabase);
   if (error) {
     showMessage(error.message);
     return;
   }
   const clients = data || [];
+  const agentResult = await loadAgents(supabase);
+  let agents = agentResult.rows || [];
   let filter = "";
   let query = "";
   let selected = clients[0]?.id || "";
@@ -326,15 +379,19 @@ async function renderDashboard(supabase, user) {
     }
     rows.forEach((profile) => {
       const submission = submissionOf(profile);
+      const linked = linkedAgent(agents, profile.id);
       const card = el("article", { class: "client" }, [
         el("header", {}, [
           el("h3", {}, [displayName(profile)]),
           el("span", { class: "badge" }, [statusText(submission)])
         ]),
-        el("p", {}, [businessName(profile) + " · " + (profile.instagram || "No Instagram")]),
+        el("p", {}, ["Onboarding · " + statusText(submission)]),
+        el("p", {}, ["Business · " + (linked ? agentLabel(linked) : "Not linked")]),
+        el("p", {}, ["Prompt · " + promptLabel(submission)]),
         el("p", {}, [profile.email || "No email"]),
         el("p", {}, ["Signed up " + when(profile.created_at) + " · Last activity " + when(submission?.last_activity_at)])
       ]);
+      card.append(businessSelect(profile, linked));
       const button = el("button", { type: "button", class: "btn ghost sm" }, [selected === profile.id ? "Viewing" : "View"]);
       button.addEventListener("click", () => {
         selected = profile.id;
@@ -353,8 +410,17 @@ async function renderDashboard(supabase, user) {
     const submission = submissionOf(profile);
     const answers = answersOf(submission);
     const panel = el("div", { class: "panel" });
+    const linked = linkedAgent(agents, profile.id);
     panel.append(el("h2", { id: "detail-title", tabindex: "-1" }, [displayName(profile)]));
-    panel.append(el("p", { class: "step-desc" }, [statusText(submission)]));
+    panel.append(el("p", { class: "step-desc" }, [
+      statusText(submission) + " · " + promptLabel(submission) + " · " + (linked ? agentLabel(linked) : "Not linked")
+    ]));
+    panel.append(businessSelect(profile, linked));
+    if (linked) {
+      panel.append(el("p", { class: "links" }, [
+        el("a", { href: "/businesses/#" + linked.id + "/leads" }, ["Open " + agentLabel(linked)])
+      ]));
+    }
 
     const statusForm = el("form", { class: "auth-form" });
     const select = el("select", { id: "detail-status", "aria-label": "Onboarding status" });
@@ -487,7 +553,6 @@ async function renderDashboard(supabase, user) {
       }
       live.textContent = "Prompt regenerated for " + displayName(profile) + ".";
       paintDetail();
-      refreshQueue();
     });
     panel.append(el("div", { class: "toolbar" }, [regenerate]));
     panel.append(regenMsg);
@@ -563,16 +628,46 @@ async function renderDashboard(supabase, user) {
     paint();
   });
 
-  const queueHost = el("div", { id: "publish-queue" });
-  refreshQueue = async () => {
-    queueHost.innerHTML = "";
-    const result = await loadPublishQueue(supabase);
-    queueHost.append(paintPublishQueue(supabase, clients, result, refreshQueue));
-  };
-  await refreshQueue();
+  function businessSelect(profile, linked) {
+    const select = el("select", {
+      class: "client-link",
+      id: "client-link-" + profile.id,
+      "aria-label": "Link a business to " + displayName(profile)
+    }, [el("option", { value: "" }, ["Not linked"])]);
+    if (agentResult.missing) {
+      select.append(el("option", { value: "", disabled: true }, ["Business list is not available yet"]));
+    } else if (agentResult.error) {
+      select.append(el("option", { value: "", disabled: true }, ["Business list could not be loaded"]));
+    }
+    agents.filter((agent) => !agent.archived || agent.id === linked?.id).forEach((agent) => {
+      const option = el("option", { value: agent.id }, [agentLabel(agent)]);
+      if (linked && agent.id === linked.id) option.selected = true;
+      select.append(option);
+    });
+    select.addEventListener("change", async () => {
+      const previous = linked ? linked.id : "";
+      select.disabled = true;
+      try {
+        if (!select.value) {
+          if (previous) await saveAgentLink(supabase, previous, null);
+        } else {
+          await saveAgentLink(supabase, select.value, profile.id);
+        }
+        const next = await loadAgents(supabase);
+        agents = next.rows || agents;
+        toast("Business link saved.");
+        paint();
+      } catch (linkError) {
+        select.value = previous;
+        select.disabled = false;
+        toast(linkError.message || "The link could not be saved.", "bad");
+      }
+    });
+    return select;
+  }
 
   app.innerHTML = "";
-  app.append(queueHost);
+  if (agentResult.error) app.append(el("p", { class: "err" }, [quiet(agentResult.error)]));
   app.append(counts);
   app.append(el("div", { class: "filters" }, [search, statusSelect]));
   app.append(list);

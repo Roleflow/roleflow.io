@@ -1,4 +1,4 @@
-import { getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
+import { destinationAfterLogin, getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, setBusy, toast } from "../auth/ui.js";
 
@@ -42,7 +42,7 @@ if (!isConfigured()) {
     if (resolved.session) {
       clearAuthParams();
       clearCallbackMemory();
-      window.location.replace(next);
+      window.location.replace(await destinationAfterLogin(supabase, next));
     } else if (resolved.errorMessage) {
       errorEl.textContent = resolved.errorMessage;
       toast(resolved.errorMessage, "bad");
@@ -63,7 +63,7 @@ if (!isConfigured()) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       setBusy(button, false);
       if (error) return showError(friendlyAuthError(error));
-      window.location.replace(next);
+      window.location.replace(await destinationAfterLogin(supabase, next));
     });
 
     document.getElementById("magic-btn").addEventListener("click", async () => {

@@ -49,27 +49,85 @@ export function stageChip(stage) {
   return "other";
 }
 
+export function categoryTone(category) {
+  const key = String(category || "").trim().toLowerCase();
+  if (key === "sales" || key === "support") return key;
+  return "other";
+}
+
+export function initials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function withinDays(iso, days, now = new Date()) {
+  if (!days) return true;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return false;
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (days - 1));
+  return then >= start;
+}
+
+export function seriesTotal(series) {
+  return (Array.isArray(series) ? series : []).reduce((sum, item) => sum + (Number(item && item.count) || 0), 0);
+}
+
+export function activitySeries(leads, days, now = new Date()) {
+  const span = days || 30;
+  const counts = new Map();
+  (leads || []).forEach((lead) => {
+    const then = new Date(lead && lead.last_message_time).getTime();
+    if (Number.isNaN(then)) return;
+    const key = new Date(then).toISOString().slice(0, 10);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const out = [];
+  for (let offset = span - 1; offset >= 0; offset -= 1) {
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset));
+    const key = day.toISOString().slice(0, 10);
+    out.push({ day: key, count: counts.get(key) || 0 });
+  }
+  return out;
+}
+
+export function windowSeries(series, days, now = new Date()) {
+  const rows = Array.isArray(series) ? series : [];
+  if (!days) {
+    return rows
+      .map((item) => {
+        const count = Number(item && item.count);
+        return { day: String(item && item.day || "").slice(0, 10), count: Number.isFinite(count) ? count : 0 };
+      })
+      .filter((item) => item.day)
+      .sort((a, b) => a.day.localeCompare(b.day));
+  }
+  const out = [];
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset));
+    const key = day.toISOString().slice(0, 10);
+    const found = rows.find((item) => String(item.day || "").slice(0, 10) === key);
+    const count = Number(found && found.count);
+    out.push({ day: key, count: Number.isFinite(count) ? count : 0 });
+  }
+  return out;
+}
+
 export function scrub(message) {
   return String(message || "").replace(/tailortalk|zerochats/ig, "the setter service");
 }
 
-export const PROOF_SLOTS = [
-  {
-    quote: "[TESTIMONIAL — Diego to fill in]",
-    name: "[CLIENT NAME]",
-    detail: "[ROLE OR RESULT — Diego to fill in]"
-  },
-  {
-    quote: "[TESTIMONIAL — Diego to fill in]",
-    name: "[CLIENT NAME]",
-    detail: "[ROLE OR RESULT — Diego to fill in]"
-  },
-  {
-    quote: "[TESTIMONIAL — Diego to fill in]",
-    name: "[CLIENT NAME]",
-    detail: "[ROLE OR RESULT — Diego to fill in]"
-  }
-];
+const PROOF_PLACEHOLDER = {
+  quote: "[TESTIMONIAL — Diego to fill in]",
+  name: "[CLIENT NAME]",
+  detail: "[ROLE OR RESULT — Diego to fill in]",
+  portrait: "[PORTRAIT — Diego to fill in]",
+  stars: "[STARS — Diego to fill in]",
+  logos: ["[LOGO — Diego to fill in]", "[LOGO — Diego to fill in]", "[LOGO — Diego to fill in]"]
+};
+
+export const PROOF_SLOTS = [PROOF_PLACEHOLDER, PROOF_PLACEHOLDER, PROOF_PLACEHOLDER];
 
 export function nextProof(index, length, direction) {
   const size = length || 1;

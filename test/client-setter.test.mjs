@@ -31,6 +31,17 @@ assert.equal(sections[0].text, "Check the sheet first.");
 assert.equal(sections[8].text, "Price means the call is free.");
 assert.equal(sections.filter((section) => section.text).length, 9);
 
+const cachedNodes = liveSections([
+  { node: "Highest Priority Rule", instruction: "Check the sheet." },
+  { node: "The Role", instruction: "You are the setter." },
+  { node: "Non Negotiable Rules", instruction: "Do not invent a price." },
+  { node: "Follow up rules", instruction: "Wait a day." }
+]);
+assert.match(cachedNodes.find((section) => section.id === "high_priority_rule").text, /Check the sheet/);
+assert.match(cachedNodes.find((section) => section.id === "identity").text, /setter/);
+assert.match(cachedNodes.find((section) => section.id === "nonnegotiables").text, /price/);
+assert.match(cachedNodes.find((section) => section.id === "workflow").text, /Wait a day/);
+
 const fromObject = liveSections({ high_priority_rule: "Rule text", workflow: "Steps" });
 assert.equal(fromObject[0].text, "Rule text");
 assert.equal(fromObject.find((section) => section.id === "workflow").text, "Steps");

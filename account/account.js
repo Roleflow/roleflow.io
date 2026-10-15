@@ -69,6 +69,10 @@ if (arriving.type === "recovery") {
         showGate(profileRes.error.message);
       } else {
         profile = profileRes.data;
+        const adminPeek = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
+        if (adminPeek.data && !window.location.hash) {
+          window.location.replace("/businesses/");
+        } else {
         if (!profile) {
           const created = await supabase.from("profiles").insert({
             id: user.id,
@@ -129,10 +133,10 @@ if (arriving.type === "recovery") {
           if (setter) setter.hidden = false;
           const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
           if (adminRes.data) {
-            const navAdmin = document.getElementById("nav-admin");
-            const navCrm = document.getElementById("nav-admin-crm");
-            if (navAdmin) navAdmin.hidden = false;
-            if (navCrm) navCrm.hidden = false;
+            ["nav-admin", "nav-publish", "nav-admin-crm"].forEach((id) => {
+              const link = document.getElementById(id);
+              if (link) link.hidden = false;
+            });
             markNav();
           }
           renderSetter(supabase, user.id, document.getElementById("setter-app")).catch(() => {
@@ -150,6 +154,7 @@ if (arriving.type === "recovery") {
           script.src = "/onboarding/app.js";
           document.body.append(script);
           }
+        }
         }
       }
     }
