@@ -13,14 +13,14 @@ export const SETTER_SECTIONS = [
 ];
 
 const MATCHERS = [
-  ["high_priority_rule", /high\s*priority/],
-  ["nonnegotiables", /non[-\s]?negotiable/],
+  ["high_priority_rule", /high\w*[\s_-]*priority/],
+  ["nonnegotiables", /non[-_\s]?negotiable|guardrail/],
   ["qualification", /qualif/],
   ["objections", /objection/],
-  ["workflow", /workflow/],
-  ["identity", /identity|mission|persona/],
-  ["style", /style|formatting|\btone\b/],
-  ["context", /context|outreach/],
+  ["workflow", /workflow|conversation[\s_-]*(flow|logic)|follow[\s_-]*up|route[\s_-]*template|verification|comment response/],
+  ["identity", /identity|mission|persona|\brole\b/],
+  ["style", /style|format|\btone\b/],
+  ["context", /context|outreach|knowledge/],
   ["links", /\blinks?\b|assets/]
 ];
 

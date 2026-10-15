@@ -30,16 +30,17 @@ export function markNav() {
     } else if (linkPath.endsWith("/reset")) {
       on = path.endsWith("/reset");
     } else if (linkPath.endsWith("/admin")) {
-      if (url.hash === "#crm") on = path.endsWith("/admin") && hash === "#crm";
-      else on = path.endsWith("/admin") && hash !== "#crm";
+      if (url.hash === "#crm" || url.hash === "#insights") on = path.endsWith("/admin") && (hash === "#crm" || hash === "#insights");
+      else if (url.hash === "#publish") on = path.endsWith("/admin") && hash === "#publish";
+      else if (url.hash === "#clients") on = path.endsWith("/admin") && hash === "#clients";
+      else on = path.endsWith("/admin") && hash !== "#crm" && hash !== "#insights" && hash !== "#publish" && hash !== "#clients";
     } else if (linkPath.endsWith("/businesses")) {
-      const href = link.getAttribute("href") || "";
-      const hash = location.hash;
-      on = path.endsWith("/businesses") && href.startsWith("/businesses") && (hash === "" || hash === "#" || hash === "#list");
+      on = path.endsWith("/businesses");
     } else if (linkPath.endsWith("/account")) {
       if (url.hash === "#onboarding") on = path.endsWith("/account") && hash.startsWith("#onboarding");
-      else if (url.hash === "#setter") on = path.endsWith("/account") && !hash.startsWith("#onboarding");
-      else on = path.endsWith("/account");
+      else if (url.hash === "#setter") on = path.endsWith("/account") && hash.startsWith("#setter");
+      else if (url.hash === "#profile") on = path.endsWith("/account") && (hash === "#profile" || hash === "");
+      else on = path.endsWith("/account") && !hash.startsWith("#onboarding") && !hash.startsWith("#setter");
     }
     if (on) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");

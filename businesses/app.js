@@ -1,7 +1,8 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
-import { categoryTone, createdAgo, initials, last7, scrub, stageChip, windowSeries, withinDays } from "./model.js";
+import { liveSections } from "../account/setter-model.js";
+import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 
 bindShell();
 
@@ -26,6 +27,13 @@ const DETAIL_TABS = [
 
 const COLORS = ["#E8B04A", "#C0409A", "#FF8A3D", "#7B4DFF", "#9AA6C6", "#3DDC97"];
 const LEAD_PAGE = 8;
+const STATUS_LABELS = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  submitted: "Submitted",
+  integrated: "Integrated",
+  live: "Live"
+};
 
 const heading = document.getElementById("page-heading");
 const sub = document.getElementById("page-sub");
@@ -155,6 +163,21 @@ function sparkline(days) {
   return svg;
 }
 
+function submissionOf(person) {
+  const raw = person && person.onboarding_submissions;
+  if (Array.isArray(raw)) return raw[0] || null;
+  return raw || null;
+}
+
+function clientLine(agent, peopleById) {
+  if (!agent || !agent.client_id) return "Not linked";
+  const person = peopleById && peopleById.get(agent.client_id);
+  if (!person) return "Linked client";
+  const name = person.full_name || person.business_name || person.email || "Linked client";
+  const status = STATUS_LABELS[submissionOf(person)?.status] || "Not started";
+  return name + " · " + status;
+}
+
 function entriesOf(counts) {
   return Object.entries(asObject(counts)).filter(([key, count]) => String(key).trim() && Number(count) > 0);
 }
@@ -277,11 +300,26 @@ async function boot(supabase, user) {
   const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
   const isAdmin = Boolean(adminRes.data);
   if (isAdmin) {
-    nav.append(el("nav", { class: "app-nav", "aria-label": "Admin" }, [
-      el("a", { href: "/admin/" }, ["Clients"]),
-      el("a", { href: "/admin/#crm" }, ["CRM"])
+    nav.append(el("nav", { class: "app-nav", id: "admin-links", "aria-label": "Admin" }, [
+      el("a", { href: "/businesses/" }, ["Businesses"]),
+      el("a", { href: "/admin/#clients" }, ["Clients"]),
+      el("a", { href: "/admin/#publish" }, ["Publish queue"]),
+      el("a", { href: "/admin/#crm" }, ["CRM/Insights"]),
+      el("a", { href: "/account/#profile" }, ["Your account"])
     ]));
     markNav();
+  }
+
+  const peopleById = new Map();
+  let peopleRes = await supabase.from("profiles").select("id, full_name, email, business_name, onboarding_submissions(status)");
+  if (peopleRes.error) {
+    peopleRes = await supabase.from("profiles").select("id, full_name, email, onboarding_submissions(status)");
+  }
+  if (peopleRes.error) {
+    peopleRes = await supabase.from("profiles").select("id, full_name, email");
+  }
+  if (!peopleRes.error) {
+    (peopleRes.data || []).forEach((person) => peopleById.set(person.id, person));
   }
 
   let agentsRes = await supabase.from("client_ai_setters").select("id, client_id, agent_name, status, prompt_sections, prompt_updated_at, last_activity_at, created_at");
@@ -298,16 +336,20 @@ async function boot(supabase, user) {
     return;
   }
 
-  const statsRes = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day");
+  let statsRes = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day");
+  if (missingColumn(statsRes.error)) {
+    statsRes = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, converted_count, conversion_rate, last_activity_at, leads_per_day");
+  }
   const statsById = new Map();
   (statsRes.data || []).forEach((row) => statsById.set(row.agent_id, row));
   const agents = agentsRes.data || [];
+  const statsError = statsRes.error ? scrub(statsRes.error.message) : "";
 
   function paint() {
     const route = parseRoute();
     hideBoot();
-    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById);
-    else paintDetail(supabase, user, agents, statsById, route, isAdmin);
+    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError);
+    else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById);
     paintSide(user, agents, route.kind === "detail" ? route : null);
   }
 
@@ -349,29 +391,38 @@ function paintSide(user, agents, route) {
     });
   }
   block.append(links);
-  const onboarding = el("a", { href: "/account/#onboarding" }, ["Edit onboarding"]);
-  links.append(onboarding);
-  nav.prepend(block);
+  if (!document.getElementById("admin-links")) {
+    const onboarding = el("a", { href: "/account/#onboarding" }, ["Edit onboarding"]);
+    links.append(onboarding);
+  }
+  const adminLinks = document.getElementById("admin-links");
+  if (adminLinks) adminLinks.after(block);
+  else nav.prepend(block);
 }
 
-function paintGrid(supabase, user, agents, statsById) {
-  heading.innerHTML = 'Your <span class="g">businesses</span>';
-  document.title = "Your businesses · Roleflow";
+function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError) {
+  heading.innerHTML = isAdmin ? 'Businesses' : 'Your <span class="g">businesses</span>';
+  document.title = isAdmin ? "Businesses · Roleflow" : "Your businesses · Roleflow";
   const owned = agents.some((agent) => agent.client_id === user.id);
   sub.textContent = agents.length
-    ? "Each card is a business linked to an account."
-    : "No business is linked to this account yet.";
+    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : "Each card opens leads, workflow, stats, and campaigns.")
+    : (isAdmin ? "No setters are in the cache yet." : "No business is linked to this account yet.");
   app.innerHTML = "";
+  if (statsError) {
+    app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
+  }
   const grid = el("div", { class: "biz-grid" });
   if (!agents.length) {
     grid.append(el("div", { class: "state" }, [
       el("h2", { text: "No businesses yet" }),
-      el("p", { text: "Add the business name, or wait until an admin links one." })
+      el("p", { text: isAdmin ? "Setters show here after they are in the cache, even before a client is linked." : "Add the business name, or wait until an admin links one." })
     ]));
   }
   agents.forEach((agent) => {
     const stats = statsById.get(agent.id) || {};
     const week = last7(asSeries(stats.leads_per_day));
+    const total = Number(stats.total_leads);
+    const shown = Number.isFinite(total) ? total : week.total;
     const active = agent.status !== "paused";
     const card = el("a", { class: "biz-card", href: "#" + agent.id + "/leads" });
     card.addEventListener("click", (event) => {
@@ -388,14 +439,15 @@ function paintGrid(supabase, user, agents, statsById) {
       open,
       status,
       el("h2", { text: agent.agent_name || "AI Setter" }),
+      el("p", { class: "card-client", text: clientLine(agent, peopleById) }),
       el("p", { class: "mute", text: createdAgo(agent.created_at) }),
       sparkline(week.days),
-      el("p", { class: "lead-count", text: String(week.total) }),
-      el("p", { class: "mute", text: "Leads in the last 7 days" })
+      el("p", { class: "lead-count", text: String(shown) }),
+      el("p", { class: "mute", text: Number.isFinite(total) ? "Conversations in the sync" : "Leads in the last 7 days" })
     );
     grid.append(card);
   });
-  grid.append(addCard(supabase, user, owned));
+  if (!isAdmin) grid.append(addCard(supabase, user, owned));
   app.append(grid);
 }
 
@@ -438,7 +490,7 @@ function addCard(supabase, user, owned) {
   return card;
 }
 
-async function paintDetail(supabase, user, agents, statsById, route, isAdmin) {
+async function paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById) {
   const agent = agents.find((item) => item.id === route.id);
   if (!agent) {
     heading.textContent = "Business";
@@ -453,19 +505,20 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin) {
   }
   heading.textContent = agent.agent_name || "AI Setter";
   document.title = (agent.agent_name || "Business") + " · Roleflow";
-  sub.textContent = DETAIL_TABS.find(([id]) => id === route.section)?.[1] || "";
+  const tab = DETAIL_TABS.find(([id]) => id === route.section)?.[1] || "";
+  sub.textContent = clientLine(agent, peopleById) + (tab ? " · " + tab : "");
   app.innerHTML = "";
   app.append(el("div", { class: "state", id: "section-loading", role: "status" }, [
     el("span", { class: "skel" }),
     el("p", { text: "Loading…" })
   ]));
-  if (route.section === "leads") await paintLeads(supabase, agent.id);
+  if (route.section === "leads") await paintLeads(supabase, agent.id, statsById.get(agent.id));
   else if (route.section === "workflow") await paintWorkflow(supabase, agent);
   else if (route.section === "stats") await paintStats(supabase, agent, statsById.get(agent.id));
   else paintCampaigns(isAdmin);
 }
 
-async function paintLeads(supabase, agentId) {
+async function paintLeads(supabase, agentId, cached) {
   let result = await supabase.from("client_ai_setter_leads").select("agent_id, lead_name, username, stage, last_message_time, is_converted, category, lead_contact").eq("agent_id", agentId).order("last_message_time", { ascending: false }).limit(500);
   if (missingColumn(result.error)) {
     result = await supabase.from("client_ai_setter_leads").select("agent_id, lead_name, username, stage, last_message_time, is_converted, category").eq("agent_id", agentId).order("last_message_time", { ascending: false }).limit(500);
@@ -507,7 +560,11 @@ async function paintLeads(supabase, agentId) {
     body.innerHTML = "";
     count.textContent = rows.length + " of " + leads.length + (leads.length >= 500 ? "+" : "") + " leads";
     if (!leads.length) {
-      body.append(el("tr", {}, [el("td", { colspan: "5", text: "No leads in the last sync." })]));
+      const total = Number(cached && cached.total_leads);
+      const empty = Number.isFinite(total) && total > 0
+        ? "The sync counted " + total + " conversations, but no lead rows were returned."
+        : "No leads in the last sync.";
+      body.append(el("tr", {}, [el("td", { colspan: "5", text: empty })]));
     } else if (!rows.length) {
       body.append(el("tr", {}, [el("td", { colspan: "5", text: "No leads match this search." })]));
     } else {
@@ -548,6 +605,11 @@ function leadRow(lead) {
   ]);
 }
 
+function sectionText(raw, id) {
+  const slot = liveSections(raw).find((item) => item.id === id);
+  return slot && slot.text ? String(slot.text).trim() : "";
+}
+
 function hashCode(value) {
   return String(value || "?").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
 }
@@ -566,8 +628,7 @@ function paintPager(pager, page, pages, goPage) {
 async function paintWorkflow(supabase, agent) {
   const versionsRes = await supabase.from("client_prompt_versions").select("agent_id, version_id, deployed_at, sections, recorded_at").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
   app.innerHTML = "";
-  const current = asObject(agent.prompt_sections);
-  let showing = current;
+  let showing = agent.prompt_sections;
   let showingLabel = agent.prompt_updated_at ? "Current · " + when(agent.prompt_updated_at) : "Current";
   const tools = el("div", { class: "crm-tools" });
   const select = el("select", { id: "version-select", "aria-label": "Prompt version" });
@@ -593,7 +654,7 @@ async function paintWorkflow(supabase, agent) {
 
   function draw() {
     host.innerHTML = "";
-    const hasAny = SECTIONS.some((section) => String(showing[section.id] || "").trim());
+    const hasAny = SECTIONS.some((section) => sectionText(showing, section.id));
     if (!hasAny) {
       host.append(el("div", { class: "state" }, [
         el("h2", { text: "No prompt stored" }),
@@ -617,7 +678,7 @@ async function paintWorkflow(supabase, agent) {
       rail.append(button);
     });
     const section = SECTIONS[sectionIndex];
-    const text = String(showing[section.id] || "").trim();
+    const text = sectionText(showing, section.id);
     const body = el("section", { class: "section-block", id: "workflow-body" }, [
       el("p", { class: "mute", text: showingLabel }),
       el("h3", { text: (sectionIndex + 1) + ". " + section.title }),
@@ -629,11 +690,11 @@ async function paintWorkflow(supabase, agent) {
 
   select.addEventListener("change", () => {
     if (select.value === "") {
-      showing = current;
+      showing = agent.prompt_sections;
       showingLabel = agent.prompt_updated_at ? "Current · " + when(agent.prompt_updated_at) : "Current";
     } else {
       const version = versions[Number(select.value)];
-      showing = asObject(version && version.sections);
+      showing = version && version.sections;
       showingLabel = "Version " + (version.version_id || "") + " · " + when(version.deployed_at || version.recorded_at);
     }
     sectionIndex = 0;
@@ -665,34 +726,51 @@ async function paintStats(supabase, agent, cached) {
     const days = range === "all" ? 0 : Number(range);
     const rows = range === "all" ? leads : leads.filter((lead) => withinDays(lead.last_message_time, days));
     const converted = rows.filter((lead) => lead.is_converted === true).length;
-    const conversations = range === "all" && Number.isFinite(Number(stats.total_leads)) ? Number(stats.total_leads) : rows.length;
+    const cachedTotal = Number(stats.total_leads);
+    const hasCache = Number.isFinite(cachedTotal);
+    const windowEmpty = range !== "all" && !rows.length;
+    const conversations = range === "all" || windowEmpty
+      ? (hasCache ? cachedTotal : rows.length)
+      : rows.length;
     const people = rows.length >= 500 && conversations > rows.length ? rows.length + "+" : String(rows.length);
-    const rate = range === "all" ? rateLabel(stats.conversion_rate, stats.total_leads) : rateLabel(rows.length ? converted / rows.length : null, rows.length);
+    const rate = (range === "all" || windowEmpty) && hasCache
+      ? rateLabel(stats.conversion_rate, stats.total_leads)
+      : rateLabel(rows.length ? converted / rows.length : null, rows.length);
     kpis.innerHTML = "";
     [
       ["Conversations", String(conversations)],
       ["People", people],
-      ["Converted", range === "all" && stats.converted_count != null && !rows.length ? String(stats.converted_count) : String(converted)],
+      ["Converted", (range === "all" || windowEmpty) && stats.converted_count != null && !rows.length ? String(stats.converted_count) : String(converted)],
       ["Conversion rate", rate]
     ].forEach(([label, value]) => {
       kpis.append(el("div", { class: "kpi" }, [el("b", { text: value }), el("span", { text: label })]));
     });
     charts.innerHTML = "";
-    if (!cached && !rows.length) {
+    if (!cached && !rows.length && !hasCache) {
       charts.append(el("p", { class: "mute", text: "Stats will show after the next sync." }));
       return;
     }
+    if (windowEmpty && hasCache) {
+      charts.append(el("p", { class: "mute", text: "No messages in this range. Showing the full sync (" + cachedTotal + " conversations)." }));
+    } else if (range !== "all" && hasCache) {
+      charts.append(el("p", { class: "mute", text: "Full sync: " + cachedTotal + " conversations." }));
+    }
     const byCategory = tally(rows, (lead) => lead.category);
     const byStatus = tally(rows, (lead) => lead.stage);
-    const categoryCounts = rows.length ? byCategory : (range === "all" ? stats.by_category : {});
-    const statusCounts = rows.length ? byStatus : (range === "all" ? stats.by_status : {});
+    const categoryCounts = rows.length ? byCategory : (hasCache ? stats.by_category : {});
+    const statusCounts = rows.length ? byStatus : (hasCache ? stats.by_status : {});
     charts.append(donut("Chats by category", categoryCounts));
     charts.append(donut("Lead status", statusCounts));
     charts.append(sourceBars(stats.by_source));
     if (range !== "all") {
       charts.append(el("p", { class: "mute source-note", text: "Lead source is stored as an all-time total, so that chart stays on the full sync." }));
     }
-    charts.append(dayChart(windowSeries(asSeries(stats.leads_per_day), days || 0)));
+    const stored = asSeries(stats.leads_per_day);
+    const daily = seriesTotal(stored) > 0 ? windowSeries(stored, days || 0) : activitySeries(leads, days || 30);
+    if (seriesTotal(stored) === 0 && leads.length) {
+      charts.append(el("p", { class: "mute", text: "Chats per day use cached last-message times. The stored join series is empty." }));
+    }
+    charts.append(dayChart(daily));
   }
   app.append(charts);
   paint(range);

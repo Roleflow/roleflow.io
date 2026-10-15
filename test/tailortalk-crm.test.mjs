@@ -96,8 +96,8 @@ assert.match(toml, /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
 assert.doesNotMatch(toml, /<<<<<<<|>>>>>>>/);
 
 const adminPage = read("admin/index.html");
-assert.match(adminPage, /id="tab-crm"/);
-assert.match(adminPage, /id="admin-tabs" hidden/);
+assert.match(adminPage, /href="\/admin\/#clients">Clients/);
+assert.match(adminPage, /href="\/admin\/#publish">Publish queue/);
 assert.match(read("auth/site.css"), /\.admin-tabs\[hidden\]\{display:none !important\}/);
 assert.match(read("admin/admin.js"), /renderCrm/);
 assert.match(read("admin/crm.js"), /No source was returned for these leads/);
@@ -125,7 +125,7 @@ assert.match(homepage, /id="drawer-crm" href="\/admin\/#crm" hidden>CRM</);
 assert.match(homepage, /id="drawer-admin" href="\/admin\/" hidden>Client tracking</);
 assert.match(homepage, /href="\/resources\/">Resources</);
 assert.match(read("auth/sidebar.js"), /crmLink\.hidden = !isAdmin/);
-assert.match(read("admin/index.html"), /id="nav-crm" href="\/admin\/#crm" hidden>CRM</);
+assert.match(read("admin/index.html"), /id="nav-crm" href="\/admin\/#crm" hidden>CRM\/Insights</);
 assert.match(read("admin/admin.js"), /headerCrm\.hidden = false/);
 const migrationNames = [
   "20261010120000_roleflow_accounts.sql",

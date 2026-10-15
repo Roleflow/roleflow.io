@@ -70,6 +70,28 @@ export function withinDays(iso, days, now = new Date()) {
   return then >= start;
 }
 
+export function seriesTotal(series) {
+  return (Array.isArray(series) ? series : []).reduce((sum, item) => sum + (Number(item && item.count) || 0), 0);
+}
+
+export function activitySeries(leads, days, now = new Date()) {
+  const span = days || 30;
+  const counts = new Map();
+  (leads || []).forEach((lead) => {
+    const then = new Date(lead && lead.last_message_time).getTime();
+    if (Number.isNaN(then)) return;
+    const key = new Date(then).toISOString().slice(0, 10);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const out = [];
+  for (let offset = span - 1; offset >= 0; offset -= 1) {
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset));
+    const key = day.toISOString().slice(0, 10);
+    out.push({ day: key, count: counts.get(key) || 0 });
+  }
+  return out;
+}
+
 export function windowSeries(series, days, now = new Date()) {
   const rows = Array.isArray(series) ? series : [];
   if (!days) {

@@ -73,6 +73,15 @@ assert.match(read("signup/index.html"), /href="\/terms\/"/);
 assert.match(read("privacy/index.html"), /Diego to review/);
 assert.match(read("terms/index.html"), /Diego to review/);
 assert.match(app, /No campaign feed/);
+assert.match(app, /Conversations in the sync/);
+assert.match(app, /Not linked/);
+assert.match(app, /liveSections/);
+assert.match(app, /client_ai_setters/);
+assert.match(app, /client_ai_setter_stats/);
+assert.match(app, /client_ai_setter_leads/);
+assert.match(app, /CRM\/Insights/);
+assert.match(app, /#publish/);
+assert.doesNotMatch(app, /from\("client_ai_setters"\)[\s\S]{0,180}\.eq\("client_id"/);
 
 const signup = read("signup/index.html");
 assert.match(signup, /id="google-btn" disabled/);

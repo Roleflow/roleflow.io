@@ -1,4 +1,4 @@
-import { getSupabase, isConfigured, logout, originPath, signupErrorMessage } from "./supabase.js";
+import { destinationAfterLogin, getSupabase, isConfigured, logout, originPath, signupErrorMessage } from "./supabase.js";
 
 const drawer = document.getElementById("site-drawer");
 const toggle = document.getElementById("menu-toggle");
@@ -196,7 +196,7 @@ if (!drawer || !toggle) {
         loginError.textContent = error.message;
         return;
       }
-      window.location.replace("/account/");
+      window.location.replace(await destinationAfterLogin(supabase, "/account/"));
     });
 
     document.getElementById("drawer-magic").addEventListener("click", async () => {
