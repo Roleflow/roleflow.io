@@ -1,0 +1,5 @@
+supabase/migrations
+supabase/functions
+supabase/.temp
+test
+docs

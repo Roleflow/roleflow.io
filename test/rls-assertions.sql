@@ -103,3 +103,101 @@ begin
   end;
   reset role;
 end $$;
+
+-- Applications tracker: clients and anon cannot read or write. Admins can.
+do $$
+declare
+  n int;
+begin
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  execute 'set local role authenticated';
+  select count(*) into n from public.setter_applications;
+  if n <> 0 then
+    raise exception 'client A saw % applications, expected 0', n;
+  end if;
+  begin
+    insert into public.setter_applications (offer, owner) values ('Stolen offer', 'Stolen');
+    raise exception 'client A inserted an application';
+  exception
+    when others then
+      if sqlerrm = 'client A inserted an application' then
+        raise;
+      end if;
+  end;
+  update public.setter_applications set notes = 'stolen' where owner = 'Melisa Estrada';
+  if found then
+    raise exception 'client A updated an application';
+  end if;
+  reset role;
+
+  execute 'set local role anon';
+  begin
+    perform 1 from public.setter_applications;
+    raise exception 'anon read applications';
+  exception
+    when others then
+      if sqlerrm = 'anon read applications' then
+        raise;
+      end if;
+      if sqlerrm not like '%permission denied%' then
+        raise;
+      end if;
+  end;
+  reset role;
+
+  perform set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
+  execute 'set local role authenticated';
+  select count(*) into n from public.setter_applications;
+  if n <> 13 then
+    raise exception 'admin saw % applications, expected 13', n;
+  end if;
+  select count(*) into n from public.setter_applications
+    where owner = 'Melisa Estrada'
+      and stage = 'Sent'
+      and channel = 'IG DM'
+      and instagram = '@melisaestraday'
+      and date_sent = date '2026-10-14'
+      and video_url = 'https://share.descript.com/view/EQKsq9fa7Jh';
+  if n <> 1 then
+    raise exception 'Melisa Estrada was not marked sent';
+  end if;
+  select count(*) into n from public.setter_applications
+    where owner = 'Jimmy Evans'
+      and stage = 'Not sent'
+      and offer = 'Stock trading'
+      and instagram = '@stocknavigators'
+      and video_url = 'https://share.descript.com/view/ESvdUvydBxh'
+      and notes = 'IG @stocknavigators has DMs off; recruiter ian@dmsetting.com';
+  if n <> 1 then
+    raise exception 'Jimmy Evans was not seeded as not sent';
+  end if;
+  if exists (
+    select 1 from public.setter_applications
+    where offer ilike '%atelium%'
+      or niche ilike '%atelium%'
+      or owner ilike '%schemionek%'
+      or owner ilike '%atelium%'
+  ) then
+    raise exception 'Atelium Academy was seeded';
+  end if;
+  update public.setter_applications
+    set follow_up_date = date '2026-10-20'
+    where owner = 'Melisa Estrada';
+  if not found then
+    raise exception 'admin could not update an application';
+  end if;
+  reset role;
+
+  perform set_config('request.jwt.claim.sub', '', true);
+  execute 'set local role anon';
+  begin
+    perform 1 from public.setter_applications;
+    raise exception 'logged-out role read applications';
+  exception
+    when others then
+      if sqlerrm = 'logged-out role read applications' then
+        raise;
+      end if;
+  end;
+  reset role;
+end $$;

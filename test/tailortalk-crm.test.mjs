@@ -134,7 +134,8 @@ const migrationNames = [
   "20261014140000_prompt_sections.sql",
   "20261014160000_tailortalk_crm.sql",
   "20261014180000_tailortalk_registry.sql",
-  "20261014200000_client_setter.sql"
+  "20261014200000_client_setter.sql",
+  "20261015120000_setter_applications.sql"
 ];
 assert.deepEqual(
   migrationNames,

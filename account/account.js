@@ -126,8 +126,10 @@ if (arriving.type === "recovery") {
           if (adminRes.data) {
             const navAdmin = document.getElementById("nav-admin");
             const navCrm = document.getElementById("nav-admin-crm");
+            const navApplications = document.getElementById("nav-admin-applications");
             if (navAdmin) navAdmin.hidden = false;
             if (navCrm) navCrm.hidden = false;
+            if (navApplications) navApplications.hidden = false;
             markNav();
           }
           renderSetter(supabase, user.id, document.getElementById("setter-app")).catch(() => {
