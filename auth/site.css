@@ -143,8 +143,10 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
   .filters{flex-direction:column;align-items:stretch}
   .filters input,.filters select{width:100%}
 }
-.admin-tabs{max-width:420px;margin:22px auto 0}
+.admin-tabs{max-width:760px;margin:22px auto 0;flex-wrap:wrap}
+.admin-tabs button{flex:1 1 140px}
 .admin-tabs[hidden]{display:none !important}
+.wrap.sheet-wide{max-width:none}
 #setter[hidden]{display:none !important}
 #setter{padding:12px 0 8px}
 #setter .sub{margin-bottom:8px}
@@ -275,4 +277,35 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
   .stepper li{flex-basis:140px}
   .toast-stack{left:16px;right:16px;width:auto}
 }
+.tracker{margin-top:8px}
+.tracker h2{margin-top:18px}
+.tracker-status{color:var(--mute);margin:0 0 10px;font-size:.92rem}
+.sheet-scroll{max-height:min(72vh,760px)}
+.sheet-table{min-width:1680px}
+.sheet-table th,.sheet-table td{min-width:128px;vertical-align:middle}
+.sheet-table td.notes,.sheet-table th.notes{min-width:240px}
+.sheet-table th button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0;text-align:left}
+.sheet-table th button:hover{color:var(--gold)}
+.sheet-table td.sheet-actions,.sheet-table th.sheet-actions{min-width:108px;position:sticky;right:0;background:#15203a;z-index:1}
+.sheet-table thead th.sheet-actions{z-index:2}
+.sheet-cell{display:flex;align-items:center;gap:6px;min-width:0}
+.sheet-cell input,.sheet-cell select,.sheet-cell textarea{width:100%;min-width:0;background:transparent;color:var(--ink);border:1px solid transparent;border-radius:8px;padding:6px 8px;font:400 .92rem/1.4 var(--b)}
+.sheet-cell textarea{min-height:52px;resize:vertical}
+.sheet-cell input:hover,.sheet-cell select:hover,.sheet-cell textarea:hover{border-color:var(--line)}
+.sheet-cell input:focus,.sheet-cell select:focus,.sheet-cell textarea:focus{outline:none;border-color:var(--m);background:var(--bg)}
+.sheet-table select[data-stage="Sent"]{color:var(--gold)}
+.sheet-table select[data-stage="Replied"],.sheet-table select[data-stage="Call booked"]{color:#d7c4ff}
+.sheet-table select[data-stage="Hired"]{color:#9ddeaf}
+.sheet-table select[data-stage="Rejected"],.sheet-table select[data-stage="No response"]{color:var(--mute)}
+.sheet-table td.overdue{background:rgba(255,138,61,.16);box-shadow:inset 3px 0 0 var(--o)}
+.sheet-table td.overdue input{color:var(--o);font-weight:600}
+.overdue-tag{flex:none;color:#0A1226;background:var(--o);border-radius:999px;padding:2px 7px;font:700 .72rem var(--b);letter-spacing:.02em}
+.cell-link{flex:none;font-size:.82rem;font-weight:600}
+.cell-link[hidden]{display:none !important}
+.row-delete{background:none;border:1px solid var(--line);color:var(--mute);border-radius:999px;padding:6px 10px;font:600 .78rem var(--b);cursor:pointer}
+.row-delete + .row-delete{margin-left:6px}
+.row-delete.confirm{border-color:var(--o);color:var(--o)}
+.overdue-filter{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font:600 .92rem var(--b);min-height:44px}
+.overdue-filter input{accent-color:var(--o);width:1.05rem;height:1.05rem}
+.sheet-empty{color:var(--mute);text-align:left;white-space:normal}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

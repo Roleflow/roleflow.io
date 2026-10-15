@@ -31,7 +31,8 @@ export function markNav() {
       on = path.endsWith("/reset");
     } else if (linkPath.endsWith("/admin")) {
       if (url.hash === "#crm") on = path.endsWith("/admin") && hash === "#crm";
-      else on = path.endsWith("/admin") && hash !== "#crm";
+      else if (url.hash === "#applications") on = path.endsWith("/admin") && hash === "#applications";
+      else on = path.endsWith("/admin") && hash !== "#crm" && hash !== "#applications";
     } else if (linkPath.endsWith("/account")) {
       if (url.hash === "#onboarding") on = path.endsWith("/account") && hash.startsWith("#onboarding");
       else if (url.hash === "#setter") on = path.endsWith("/account") && !hash.startsWith("#onboarding");

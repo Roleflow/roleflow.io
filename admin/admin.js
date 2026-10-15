@@ -1,6 +1,7 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
+import { renderApplications } from "./applications.js";
 import { renderCrm } from "./crm.js";
 
 bindShell();
@@ -142,28 +143,50 @@ if (arriving.type === "recovery") {
       const tabs = document.getElementById("admin-tabs");
       const tabClients = document.getElementById("tab-clients");
       const tabCrm = document.getElementById("tab-crm");
+      const tabApplications = document.getElementById("tab-applications");
       tabs.hidden = false;
       const headerCrm = document.getElementById("nav-crm");
+      const headerApplications = document.getElementById("nav-applications");
       if (headerCrm) headerCrm.hidden = false;
+      if (headerApplications) headerApplications.hidden = false;
       markNav();
+      let generation = 0;
+      let stopApplications = () => {};
+      function sectionFromHash() {
+        if (location.hash === "#crm") return "crm";
+        if (location.hash === "#applications") return "applications";
+        return "clients";
+      }
       async function showSection(name) {
+        const token = ++generation;
+        stopApplications();
+        stopApplications = () => {};
+        const isCurrent = () => token === generation;
         const crm = name === "crm";
-        tabClients.setAttribute("aria-selected", crm ? "false" : "true");
+        const applications = name === "applications";
+        tabClients.setAttribute("aria-selected", !crm && !applications ? "true" : "false");
         tabCrm.setAttribute("aria-selected", crm ? "true" : "false");
-        const nextHash = crm ? "#crm" : "#clients";
+        if (tabApplications) tabApplications.setAttribute("aria-selected", applications ? "true" : "false");
+        const nextHash = applications ? "#applications" : crm ? "#crm" : "#clients";
         if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
-        if (crm) await renderCrm(supabase, user, { app, hello });
-        else {
+        document.getElementById("main")?.classList.toggle("sheet-wide", applications);
+        if (applications) {
+          const stop = await renderApplications(supabase, user, { app, hello, isCurrent });
+          if (!isCurrent()) stop();
+          else stopApplications = stop;
+        } else if (crm) {
+          if (isCurrent()) await renderCrm(supabase, user, { app, hello });
+        } else if (isCurrent()) {
           hello.textContent = "Signed in as " + (user.email || "admin") + ".";
           await renderDashboard(supabase, user);
         }
+        if (isCurrent()) markNav();
       }
       tabClients.addEventListener("click", () => { showSection("clients"); });
       tabCrm.addEventListener("click", () => { showSection("crm"); });
-      window.addEventListener("hashchange", () => {
-        showSection(location.hash === "#crm" ? "crm" : "clients");
-      });
-      await showSection(location.hash === "#crm" ? "crm" : "clients");
+      tabApplications?.addEventListener("click", () => { showSection("applications"); });
+      window.addEventListener("hashchange", () => { showSection(sectionFromHash()); });
+      await showSection(sectionFromHash());
     }
   }
 }

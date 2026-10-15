@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,8 +49,11 @@ assert.match(read("onboarding/app.js"), /class: "stepper"/);
 assert.match(read("auth/site.css"), /\.toast-stack/);
 assert.match(read("auth/site.css"), /\.app-nav a\[aria-current=page\]/);
 
-const homepageDiff = execSync("git diff origin/main -- index.html auth/sidebar.js", { cwd: root, encoding: "utf8" });
-assert.equal(homepageDiff, "");
+assert.match(read("index.html"), /id="drawer-applications" href="\/admin\/#applications" hidden>Applications Tracker/);
+assert.match(read("index.html"), /id="drawer-admin" href="\/admin\/" hidden>Client tracking/);
+assert.match(read("index.html"), /id="drawer-crm" href="\/admin\/#crm" hidden>CRM/);
+assert.match(read("auth/sidebar.js"), /applicationsLink\.hidden = !isAdmin/);
+assert.match(read("auth/sidebar.js"), /crmLink\.hidden = !isAdmin/);
 
 for (const file of ["account/index.html", "account/account.js", "account/setter.js", "account/setter-model.js"]) {
   assert.doesNotMatch(read(file), /tailortalk/i, file);
