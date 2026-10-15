@@ -180,9 +180,21 @@ Deno.serve(async (req) => {
     prompt
   });
 
+  let publishAgentId: string | null = null;
+  try {
+    const matched = await admin.rpc("match_client_agent", { p_user_id: target });
+    if (!matched.error && matched.data) publishAgentId = String(matched.data);
+  } catch (_matchError) {
+    publishAgentId = null;
+  }
+
   await writeRow(admin, target, {
     email_status: mailed.ok ? "sent" : "failed",
-    email_error: mailed.ok ? null : mailed.error
+    email_error: mailed.ok ? null : mailed.error,
+    publish_status: "pending",
+    publish_error: null,
+    publish_requested_at: generatedAt,
+    ...(publishAgentId ? { publish_agent_id: publishAgentId } : {})
   });
 
   return json(200, {
@@ -191,6 +203,7 @@ Deno.serve(async (req) => {
     generation_status: "ready",
     email_status: mailed.ok ? "sent" : "failed",
     email_error: mailed.ok ? null : mailed.error,
+    publish_status: "pending",
     submitted_at: submission.submitted_at || generatedAt,
     prompt_generated_at: generatedAt
   });

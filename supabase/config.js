@@ -8,6 +8,7 @@
   "use strict";
   root.ROLEFLOW_SUPABASE = {
     SUPABASE_URL: "https://xrsipofgofvjiskmsgij.supabase.co",
-    SUPABASE_ANON_KEY: "sb_publishable_cpD_4fx1gwQBvUNQfgVlwg_LuAiCb1Y"
+    SUPABASE_ANON_KEY: "sb_publishable_cpD_4fx1gwQBvUNQfgVlwg_LuAiCb1Y",
+    GOOGLE_AUTH: false
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);

@@ -87,6 +87,11 @@ if (arriving.type === "recovery") {
             const inserted = await supabase.from("onboarding_submissions").insert({ user_id: user.id }).select("*").single();
             submission = inserted.data;
           }
+          const statusNow = submission?.status || "not_started";
+          const leaveForBusinesses = (statusNow === "submitted" || statusNow === "integrated" || statusNow === "live") && !window.location.hash.startsWith("#onboarding");
+          if (leaveForBusinesses) {
+            window.location.replace("/businesses/");
+          } else {
           const name = profile?.full_name || user.user_metadata?.full_name || "";
           hello.textContent = name ? "Signed in as " + name + "." : "Signed in as " + (user.email || "your account") + ".";
           const answers = submission && submission.answers && typeof submission.answers === "object" ? submission.answers : {};
@@ -144,6 +149,7 @@ if (arriving.type === "recovery") {
           const script = document.createElement("script");
           script.src = "/onboarding/app.js";
           document.body.append(script);
+          }
         }
       }
     }

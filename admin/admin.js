@@ -94,6 +94,85 @@ function displayName(profile) {
   return profile.full_name || answersOf(submissionOf(profile)).clientName || "Unnamed client";
 }
 
+function quiet(message) {
+  return String(message || "").replace(/tailortalk|zerochats/ig, "the setter service");
+}
+
+async function loadPublishQueue(supabase) {
+  const result = await supabase.from("onboarding_submissions").select("user_id, publish_status, publish_error, publish_agent_id, publish_requested_at, prompt_sections, answers").eq("publish_status", "pending");
+  if (result.error && /schema cache|PGRST204|column|does not exist|PGRST205/i.test(result.error.message || "")) {
+    return { missing: true, rows: [] };
+  }
+  if (result.error) return { error: result.error.message, rows: [] };
+  return { rows: result.data || [] };
+}
+
+function paintPublishQueue(supabase, clients, result, refresh) {
+  const wrap = el("section", { class: "panel", id: "publish-queue-panel" });
+  wrap.append(el("h2", {}, ["Publish queue"]));
+  if (result.missing) {
+    wrap.append(el("p", {}, ["Apply the businesses migration, then refresh."]));
+    return wrap;
+  }
+  if (result.error) {
+    wrap.append(el("p", { class: "err" }, [quiet(result.error)]));
+    return wrap;
+  }
+  const rows = result.rows || [];
+  if (!rows.length) {
+    wrap.append(el("p", { class: "mute" }, ["Nothing is waiting to publish."]));
+    return wrap;
+  }
+  wrap.append(el("p", { class: "step-desc" }, ["These prompts are saved and emailed. Publish each one from the connector, then mark it published."]));
+  const sectionList = globalThis.ROLEFLOW_ONBOARDING_CONFIG?.TAILORTALK_SECTIONS || [];
+  rows.forEach((row) => {
+    const profile = clients.find((item) => item.id === row.user_id) || {};
+    const answers = row.answers && typeof row.answers === "object" ? row.answers : {};
+    const name = profile.full_name || answers.clientName || "Unnamed client";
+    const card = el("article", { class: "section-block" });
+    card.append(el("h3", {}, [name]));
+    card.append(el("p", {}, [profile.email || "No email"]));
+    const matched = row.publish_agent_id ? "Matched to a business." : "Not matched to a business yet.";
+    card.append(el("p", { class: "mute" }, [matched + " Requested " + when(row.publish_requested_at) + "."]));
+    if (row.publish_error) card.append(el("p", { class: "err" }, [quiet(row.publish_error)]));
+    const sections = row.prompt_sections && typeof row.prompt_sections === "object" ? row.prompt_sections : {};
+    sectionList.forEach((section) => {
+      const text = String(sections[section.id] || "").trim();
+      const block = el("section", { class: "section-block" });
+      block.append(el("h3", {}, [section.title]));
+      const note = el("p", { class: "copy-note", role: "status" });
+      const copy = el("button", { type: "button", class: "btn ghost sm" }, ["Copy section"]);
+      copy.addEventListener("click", async () => {
+        const ok = await copyText(text);
+        note.textContent = ok ? "Copied." : "Couldn't copy automatically.";
+        if (ok) toast("Section copied.");
+      });
+      block.append(el("div", { class: "toolbar" }, [copy]));
+      block.append(note);
+      block.append(el("pre", { class: "prompt" }, [text || "Not stored."]));
+      card.append(block);
+    });
+    const mark = el("button", { type: "button", class: "btn", id: "mark-published-" + row.user_id }, ["Mark published"]);
+    mark.addEventListener("click", async () => {
+      mark.disabled = true;
+      const updated = await supabase.from("onboarding_submissions").update({
+        publish_status: "published",
+        publish_error: null
+      }).eq("user_id", row.user_id);
+      mark.disabled = false;
+      if (updated.error) {
+        toast(quiet(updated.error.message), "bad");
+        return;
+      }
+      toast("Marked published.");
+      refresh();
+    });
+    card.append(mark);
+    wrap.append(card);
+  });
+  return wrap;
+}
+
 function hideBoot() {
   const boot = document.getElementById("boot-state");
   if (boot) boot.hidden = true;
@@ -183,6 +262,7 @@ async function loadClients(supabase) {
 }
 
 async function renderDashboard(supabase, user) {
+  let refreshQueue = async () => {};
   const { data, error } = await loadClients(supabase);
   if (error) {
     showMessage(error.message);
@@ -407,6 +487,7 @@ async function renderDashboard(supabase, user) {
       }
       live.textContent = "Prompt regenerated for " + displayName(profile) + ".";
       paintDetail();
+      refreshQueue();
     });
     panel.append(el("div", { class: "toolbar" }, [regenerate]));
     panel.append(regenMsg);
@@ -482,7 +563,16 @@ async function renderDashboard(supabase, user) {
     paint();
   });
 
+  const queueHost = el("div", { id: "publish-queue" });
+  refreshQueue = async () => {
+    queueHost.innerHTML = "";
+    const result = await loadPublishQueue(supabase);
+    queueHost.append(paintPublishQueue(supabase, clients, result, refreshQueue));
+  };
+  await refreshQueue();
+
   app.innerHTML = "";
+  app.append(queueHost);
   app.append(counts);
   app.append(el("div", { class: "filters" }, [search, statusSelect]));
   app.append(list);

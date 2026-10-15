@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your businesses · Roleflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+</head>
+<body class="app">
+<a class="skip" href="#biz-app">Skip to your businesses</a>
+<div class="app-shell">
+  <aside class="app-side" id="app-side">
+    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+    <p class="side-kicker">Businesses</p>
+    <div id="biz-nav"></div>
+    <div class="side-foot">
+      <div class="user-chip" id="user-chip" hidden>
+        <strong id="user-name">Account</strong>
+        <span id="user-email"></span>
+      </div>
+      <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
+    </div>
+  </aside>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <div class="app-main">
+    <header class="app-top">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
+      <div>
+        <h1 id="page-heading">Your <span class="g">businesses</span></h1>
+        <p class="hello" id="page-sub">Loading…</p>
+      </div>
+    </header>
+    <main class="wrap wide biz-main" id="main">
+      <div id="boot-state" class="state" role="status">
+        <span class="skel"></span>
+        <span class="skel short"></span>
+        <p>Loading your businesses…</p>
+      </div>
+      <div id="biz-app"></div>
+    </main>
+    <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+  </div>
+</div>
+<div id="toasts" class="toast-stack" aria-live="polite"></div>
+<script src="/supabase/config.js" defer></script>
+<script type="module" src="/businesses/app.js"></script>
+</body>
+</html>

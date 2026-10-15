@@ -1,8 +1,58 @@
 import { getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
+import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
 
 bindShell();
+
+const proofPane = document.getElementById("proof");
+const proofQuote = document.getElementById("proof-quote");
+const proofName = document.getElementById("proof-name");
+const proofDetail = document.getElementById("proof-detail");
+const proofSlot = document.getElementById("proof-slot");
+let proofIndex = 0;
+let proofTimer = 0;
+
+function paintProof() {
+  const slot = PROOF_SLOTS[proofIndex] || PROOF_SLOTS[0];
+  if (proofQuote) proofQuote.textContent = slot.quote;
+  if (proofName) proofName.textContent = slot.name;
+  if (proofDetail) proofDetail.textContent = slot.detail;
+  if (proofSlot) proofSlot.textContent = "Placeholder " + (proofIndex + 1) + " of " + PROOF_SLOTS.length;
+}
+
+function moveProof(direction) {
+  proofIndex = nextProof(proofIndex, PROOF_SLOTS.length, direction);
+  paintProof();
+}
+
+function armProof() {
+  window.clearInterval(proofTimer);
+  if (!proofPane) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || proofPane.matches(":hover") || proofPane.contains(document.activeElement)) return;
+  proofTimer = window.setInterval(() => moveProof(1), 7000);
+}
+
+if (proofPane) {
+  paintProof();
+  document.getElementById("proof-prev").addEventListener("click", () => moveProof(-1));
+  document.getElementById("proof-next").addEventListener("click", () => moveProof(1));
+  proofPane.addEventListener("mouseenter", () => window.clearInterval(proofTimer));
+  proofPane.addEventListener("mouseleave", armProof);
+  proofPane.addEventListener("focusin", () => window.clearInterval(proofTimer));
+  proofPane.addEventListener("focusout", armProof);
+  proofPane.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveProof(1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveProof(-1);
+    }
+  });
+  armProof();
+}
 
 const form = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
@@ -107,17 +157,35 @@ if (notice) {
   clearAuthParams();
 }
 
+const googleBtn = document.getElementById("google-btn");
+const googleNote = document.getElementById("google-note");
+const googleOn = globalThis.ROLEFLOW_SUPABASE && globalThis.ROLEFLOW_SUPABASE.GOOGLE_AUTH === true;
+
 if (!isConfigured()) {
   showError("Add SUPABASE_URL and SUPABASE_ANON_KEY in supabase/config.js before accounts can be created.");
   form.querySelector("button").disabled = true;
   document.getElementById("login-btn").disabled = true;
   document.getElementById("magic-btn").disabled = true;
+  if (googleBtn) googleBtn.disabled = true;
 } else {
   const callback = rememberCallback(window.location.href);
   if (callback.type === "recovery") {
     window.location.replace("/reset/" + window.location.hash);
   } else {
     const supabase = getSupabase();
+    if (googleBtn && googleOn) {
+      googleBtn.disabled = false;
+      if (googleNote) googleNote.textContent = "Continues with the Google account on this device.";
+      googleBtn.addEventListener("click", async () => {
+        setBusy(googleBtn, true, "Opening Google…");
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: originPath("/account/") }
+        });
+        setBusy(googleBtn, false);
+        if (error) showLoginError(friendlyAuthError(error));
+      });
+    }
     const resolved = await resolveSession(supabase, window.location.href);
     if (resolved.session) {
       clearAuthParams();
