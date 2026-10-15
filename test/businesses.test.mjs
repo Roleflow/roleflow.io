@@ -36,7 +36,11 @@ assert.match(createdAgo(new Date(Date.now() - 86400000 * 3).toISOString(), Date.
 assert.equal(PROOF_SLOTS.length, 3);
 PROOF_SLOTS.forEach((slot) => {
   assert.match(slot.quote, /\[TESTIMONIAL/);
-  assert.doesNotMatch(slot.quote, /love|amazing|best/i);
+  assert.match(slot.portrait, /\[PORTRAIT/);
+  assert.match(slot.stars, /\[STARS/);
+  assert.equal(slot.logos.length, 3);
+  assert.match(slot.logos[0], /\[LOGO/);
+  assert.doesNotMatch(JSON.stringify(slot), /love|amazing|best|5 stars/i);
 });
 assert.equal(nextProof(2, 3, 1), 0);
 
@@ -58,7 +62,16 @@ assert.match(page, /id="user-chip"/);
 assert.match(app, /AI active/);
 assert.match(app, /Add business/);
 assert.match(app, /link_business/);
-assert.match(app, /Test chat/);
+assert.match(app, /Test chat available in admin/);
+assert.match(app, /id: "lead-pager"|id="lead-pager"/);
+assert.match(app, /range-control/);
+assert.match(app, /class: "ext"/);
+assert.match(app, /section-rail/);
+assert.match(read("signup/index.html"), /class="or-divider"/);
+assert.match(read("signup/index.html"), /href="\/privacy\/"/);
+assert.match(read("signup/index.html"), /href="\/terms\/"/);
+assert.match(read("privacy/index.html"), /Diego to review/);
+assert.match(read("terms/index.html"), /Diego to review/);
 assert.match(app, /No campaign feed/);
 
 const signup = read("signup/index.html");

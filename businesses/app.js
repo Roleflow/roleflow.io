@@ -1,7 +1,7 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
-import { createdAgo, last7, scrub, stageChip } from "./model.js";
+import { categoryTone, createdAgo, initials, last7, scrub, stageChip, windowSeries, withinDays } from "./model.js";
 
 bindShell();
 
@@ -25,6 +25,7 @@ const DETAIL_TABS = [
 ];
 
 const COLORS = ["#E8B04A", "#C0409A", "#FF8A3D", "#7B4DFF", "#9AA6C6", "#3DDC97"];
+const LEAD_PAGE = 8;
 
 const heading = document.getElementById("page-heading");
 const sub = document.getElementById("page-sub");
@@ -177,9 +178,11 @@ function donut(title, counts) {
   ring.style.background = "conic-gradient(" + stops.join(", ") + ")";
   const legend = el("ul", { class: "legend" });
   entries.forEach(([key, count], index) => {
+    const pct = Math.round((Number(count) / total) * 100);
     const item = el("li", {}, [
       el("i", { class: "swatch" }),
-      key + " · " + count
+      el("span", { class: "legend-name", text: key }),
+      el("b", { class: "legend-pct", text: pct + "%" })
     ]);
     item.querySelector(".swatch").style.background = COLORS[index % COLORS.length];
     legend.append(item);
@@ -379,7 +382,10 @@ function paintGrid(supabase, user, agents, statsById) {
       el("i", { class: active ? "dot on" : "dot" }),
       active ? "AI active" : "Paused"
     ]);
+    const open = el("span", { class: "ext", "aria-hidden": "true" });
+    open.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" d="M14 5h5v5M19 5l-9 9"/><path fill="none" stroke="currentColor" stroke-width="2" d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5"/></svg>';
     card.append(
+      open,
       status,
       el("h2", { text: agent.agent_name || "AI Setter" }),
       el("p", { class: "mute", text: createdAgo(agent.created_at) }),
@@ -483,8 +489,10 @@ async function paintLeads(supabase, agentId) {
   const body = el("tbody");
   table.append(body);
   scroller.append(table);
+  const pager = el("nav", { class: "pager", id: "lead-pager", "aria-label": "Lead pages" });
   const caption = el("p", { class: "mute", text: "The time of the last message. Message text is not in the synced data." });
-  app.append(tools, scroller, caption);
+  app.append(tools, scroller, pager, caption);
+  let page = 0;
 
   function draw() {
     const query = search.value.trim().toLowerCase();
@@ -492,33 +500,67 @@ async function paintLeads(supabase, agentId) {
       if (!query) return true;
       return [lead.lead_name, contactLabel(lead), lead.stage, lead.category, when(lead.last_message_time)].join(" ").toLowerCase().includes(query);
     });
+    const pages = Math.max(1, Math.ceil(rows.length / LEAD_PAGE));
+    if (page > pages - 1) page = pages - 1;
+    if (page < 0) page = 0;
+    const slice = rows.slice(page * LEAD_PAGE, page * LEAD_PAGE + LEAD_PAGE);
     body.innerHTML = "";
     count.textContent = rows.length + " of " + leads.length + (leads.length >= 500 ? "+" : "") + " leads";
     if (!leads.length) {
       body.append(el("tr", {}, [el("td", { colspan: "5", text: "No leads in the last sync." })]));
-      return;
-    }
-    if (!rows.length) {
+    } else if (!rows.length) {
       body.append(el("tr", {}, [el("td", { colspan: "5", text: "No leads match this search." })]));
-      return;
+    } else {
+      slice.forEach((lead) => body.append(leadRow(lead)));
     }
-    rows.forEach((lead) => {
-      const tone = stageChip(lead.stage);
-      const raw = String(lead.stage || "").trim();
-      const label = tone === "other"
-        ? (raw || "Unknown")
-        : raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-      body.append(el("tr", {}, [
-        el("td", { text: lead.lead_name || "—" }),
-        el("td", { text: contactLabel(lead) }),
-        el("td", {}, [el("span", { class: "chip " + tone, text: label })]),
-        el("td", { text: lead.category || "—" }),
-        el("td", { text: when(lead.last_message_time) })
-      ]));
+    paintPager(pager, page, rows.length ? pages : 1, (next) => {
+      page = next;
+      draw();
     });
   }
-  search.addEventListener("input", draw);
+  search.addEventListener("input", () => {
+    page = 0;
+    draw();
+  });
   draw();
+}
+
+function leadRow(lead) {
+  const tone = stageChip(lead.stage);
+  const raw = String(lead.stage || "").trim();
+  const label = tone === "other"
+    ? (raw || "Unknown")
+    : raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  const category = String(lead.category || "").trim();
+  const who = el("td", { class: "who" }, [
+    el("span", { class: "avatar", "aria-hidden": "true", text: initials(lead.lead_name) }),
+    lead.lead_name || "—"
+  ]);
+  who.querySelector(".avatar").style.background = COLORS[Math.abs(hashCode(lead.lead_name)) % 4];
+  return el("tr", {}, [
+    who,
+    el("td", { text: contactLabel(lead) }),
+    el("td", {}, [el("span", { class: "chip " + tone, text: label })]),
+    el("td", {}, [category
+      ? el("span", { class: "chip " + categoryTone(category), text: category.charAt(0).toUpperCase() + category.slice(1) })
+      : "—"]),
+    el("td", { text: when(lead.last_message_time) })
+  ]);
+}
+
+function hashCode(value) {
+  return String(value || "?").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function paintPager(pager, page, pages, goPage) {
+  pager.innerHTML = "";
+  const prev = el("button", { type: "button", class: "btn ghost sm" }, ["Previous"]);
+  const next = el("button", { type: "button", class: "btn ghost sm" }, ["Next"]);
+  prev.disabled = page <= 0;
+  next.disabled = page >= pages - 1;
+  prev.addEventListener("click", () => goPage(page - 1));
+  next.addEventListener("click", () => goPage(page + 1));
+  pager.append(prev, el("span", { text: (page + 1) + " / " + pages }), next);
 }
 
 async function paintWorkflow(supabase, agent) {
@@ -538,7 +580,7 @@ async function paintWorkflow(supabase, agent) {
   const host = el("div", { id: "workflow-sections" });
   const test = el("section", { class: "panel", id: "test-chat" }, [
     el("h3", { text: "Test chat" }),
-    el("p", { text: "A test conversation is not available on this page. The public API can read leads and send approved templates. It cannot open a test chat. That stays on the connector." })
+    el("p", { text: "Test chat available in admin." })
   ]);
   app.append(tools, host, test);
   if (versionsRes.error && !missingRelation(versionsRes.error)) {
@@ -546,6 +588,8 @@ async function paintWorkflow(supabase, agent) {
   } else if (versionsRes.error) {
     app.append(el("p", { class: "mute", text: "Version history will show after the businesses migration is applied." }));
   }
+
+  let sectionIndex = 0;
 
   function draw() {
     host.innerHTML = "";
@@ -557,14 +601,30 @@ async function paintWorkflow(supabase, agent) {
       ]));
       return;
     }
-    host.append(el("p", { class: "mute", text: showingLabel }));
-    SECTIONS.forEach((section) => {
-      const text = String(showing[section.id] || "").trim();
-      const block = el("section", { class: "section-block" });
-      block.append(el("h3", { text: section.title }));
-      block.append(el("pre", { class: "prompt", text: text || "Not stored." }));
-      host.append(block);
+    if (sectionIndex > SECTIONS.length - 1) sectionIndex = 0;
+    const layout = el("div", { class: "workflow-layout" });
+    const rail = el("nav", { class: "section-rail", "aria-label": "Prompt sections" });
+    SECTIONS.forEach((section, index) => {
+      const button = el("button", { type: "button" }, [
+        el("b", { text: String(index + 1) }),
+        section.title
+      ]);
+      if (index === sectionIndex) button.setAttribute("aria-current", "true");
+      button.addEventListener("click", () => {
+        sectionIndex = index;
+        draw();
+      });
+      rail.append(button);
     });
+    const section = SECTIONS[sectionIndex];
+    const text = String(showing[section.id] || "").trim();
+    const body = el("section", { class: "section-block", id: "workflow-body" }, [
+      el("p", { class: "mute", text: showingLabel }),
+      el("h3", { text: (sectionIndex + 1) + ". " + section.title }),
+      el("pre", { class: "prompt", text: text || "Not stored." })
+    ]);
+    layout.append(rail, body);
+    host.append(layout);
   }
 
   select.addEventListener("change", () => {
@@ -576,6 +636,7 @@ async function paintWorkflow(supabase, agent) {
       showing = asObject(version && version.sections);
       showingLabel = "Version " + (version.version_id || "") + " · " + when(version.deployed_at || version.recorded_at);
     }
+    sectionIndex = 0;
     draw();
   });
   draw();
@@ -583,32 +644,68 @@ async function paintWorkflow(supabase, agent) {
 
 async function paintStats(supabase, agent, cached) {
   const stats = cached || {};
-  let leadsRes = await supabase.from("client_ai_setter_leads").select("agent_id", { count: "exact", head: true }).eq("agent_id", agent.id);
-  if (leadsRes.error) leadsRes = { count: null, error: leadsRes.error };
+  let leadsRes = await supabase.from("client_ai_setter_leads").select("agent_id, stage, last_message_time, is_converted, category").eq("agent_id", agent.id).limit(500);
+  if (leadsRes.error) leadsRes = { data: null, error: leadsRes.error };
   app.innerHTML = "";
-  const conversations = Number(stats.total_leads);
-  const people = Number.isFinite(Number(leadsRes.count)) ? Number(leadsRes.count) : null;
-  const peopleLabel = people == null ? "—" : (people >= 500 && conversations > people ? people + "+" : String(people));
-  const kpis = el("div", { class: "kpi-grid", role: "group", "aria-label": "Business stats" });
-  [
-    ["Conversations", Number.isFinite(conversations) ? String(conversations) : "—"],
-    ["People", peopleLabel],
-    ["Converted", stats.converted_count == null ? "—" : String(stats.converted_count)],
-    ["Conversion rate", rateLabel(stats.conversion_rate, stats.total_leads)]
-  ].forEach(([label, value]) => {
-    kpis.append(el("div", { class: "kpi" }, [el("b", { text: value }), el("span", { text: label })]));
-  });
-  app.append(kpis);
-  if (!cached) {
-    app.append(el("p", { class: "mute", text: "Stats will show after the next sync." }));
-    return;
-  }
+  const leads = leadsRes.data || [];
+  const ranges = el("div", { class: "ranges", id: "range-control", role: "radiogroup", "aria-label": "Date range" });
   const charts = el("div", { class: "chart-grid" });
-  charts.append(donut("Chats by category", stats.by_category));
-  charts.append(donut("Lead status", stats.by_status));
-  charts.append(sourceBars(stats.by_source));
-  charts.append(dayChart(stats.leads_per_day));
+  const kpis = el("div", { class: "kpi-grid", role: "group", "aria-label": "Business stats" });
+  app.append(ranges, kpis);
+  let range = "30";
+
+  function paint(next) {
+    range = next;
+    ranges.innerHTML = "";
+    [["7", "7 days"], ["30", "30 days"], ["90", "90 days"], ["all", "All"]].forEach(([value, label]) => {
+      const button = el("button", { type: "button", role: "radio", "aria-checked": range === value ? "true" : "false" }, [label]);
+      button.addEventListener("click", () => paint(value));
+      ranges.append(button);
+    });
+    const days = range === "all" ? 0 : Number(range);
+    const rows = range === "all" ? leads : leads.filter((lead) => withinDays(lead.last_message_time, days));
+    const converted = rows.filter((lead) => lead.is_converted === true).length;
+    const conversations = range === "all" && Number.isFinite(Number(stats.total_leads)) ? Number(stats.total_leads) : rows.length;
+    const people = rows.length >= 500 && conversations > rows.length ? rows.length + "+" : String(rows.length);
+    const rate = range === "all" ? rateLabel(stats.conversion_rate, stats.total_leads) : rateLabel(rows.length ? converted / rows.length : null, rows.length);
+    kpis.innerHTML = "";
+    [
+      ["Conversations", String(conversations)],
+      ["People", people],
+      ["Converted", range === "all" && stats.converted_count != null && !rows.length ? String(stats.converted_count) : String(converted)],
+      ["Conversion rate", rate]
+    ].forEach(([label, value]) => {
+      kpis.append(el("div", { class: "kpi" }, [el("b", { text: value }), el("span", { text: label })]));
+    });
+    charts.innerHTML = "";
+    if (!cached && !rows.length) {
+      charts.append(el("p", { class: "mute", text: "Stats will show after the next sync." }));
+      return;
+    }
+    const byCategory = tally(rows, (lead) => lead.category);
+    const byStatus = tally(rows, (lead) => lead.stage);
+    const categoryCounts = rows.length ? byCategory : (range === "all" ? stats.by_category : {});
+    const statusCounts = rows.length ? byStatus : (range === "all" ? stats.by_status : {});
+    charts.append(donut("Chats by category", categoryCounts));
+    charts.append(donut("Lead status", statusCounts));
+    charts.append(sourceBars(stats.by_source));
+    if (range !== "all") {
+      charts.append(el("p", { class: "mute source-note", text: "Lead source is stored as an all-time total, so that chart stays on the full sync." }));
+    }
+    charts.append(dayChart(windowSeries(asSeries(stats.leads_per_day), days || 0)));
+  }
   app.append(charts);
+  paint(range);
+}
+
+function tally(rows, pick) {
+  const out = {};
+  rows.forEach((row) => {
+    const key = String(pick(row) || "").trim();
+    if (!key) return;
+    out[key] = (out[key] || 0) + 1;
+  });
+  return out;
 }
 
 function paintCampaigns(isAdmin) {
