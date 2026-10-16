@@ -600,9 +600,10 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin, pe
   const tab = DETAIL_TABS.find(([id]) => id === route.section)?.[1] || "";
   sub.textContent = clientLine(agent, peopleById) + (tab ? " · " + tab : "");
   app.innerHTML = "";
-  app.append(el("div", { class: "state", id: "section-loading", role: "status" }, [
+  app.append(el("div", { class: "state", id: "section-loading", role: "status", "aria-busy": "true" }, [
     el("span", { class: "skel" }),
-    el("p", { text: "Loading…" })
+    el("span", { class: "skel short" }),
+    el("span", { class: "skel" })
   ]));
   const editable = canEditBusiness(agent, isAdmin, roles, user);
   if (route.section === "leads") await paintLeads(supabase, agent.id, statsById.get(agent.id));

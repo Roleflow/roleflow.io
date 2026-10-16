@@ -170,6 +170,11 @@ assert.match(read("businesses/workforce.js"), /Outreach Agent/);
 assert.match(read("businesses/workforce.js"), /Follow Up Agent/);
 assert.match(read("businesses/workforce.js"), /Setting Agent/);
 assert.match(read("businesses/workforce.js"), /New-follower messages/);
+assert.match(read("businesses/workforce.js"), /showModal/);
+assert.match(read("businesses/workforce.js"), /class="robot /);
 assert.match(read("auth/site.css"), /office-floor/);
+assert.match(read("auth/site.css"), /robot-arm/);
+assert.doesNotMatch(read("businesses/index.html"), /Loading/);
+assert.doesNotMatch(read("businesses/app.js"), /Loading/);
 
 console.log("businesses tests passed");
