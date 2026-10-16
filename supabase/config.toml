@@ -338,11 +338,6 @@ verify_jwt = true
 [functions.tailortalk-sync]
 verify_jwt = false
 
-# prompt-simulator reads XAI_API_KEY and optional XAI_MODEL. It does not call
-# the setter service. verify_jwt stays on.
-[functions.prompt-simulator]
-verify_jwt = true
-
 # business-members sends invite email with RESEND_API_KEY and RESEND_FROM.
 [functions.business-members]
 verify_jwt = true

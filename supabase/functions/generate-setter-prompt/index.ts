@@ -18,8 +18,8 @@
 // A missing section does not send the email.
 //
 // Injected by Supabase: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
-// verify_jwt stays on. The caller is the signed-in client, or an admin
-// regenerating with { "user_id": "<client uuid>" }.
+// verify_jwt stays on. The caller is the signed-in client, an invited editor
+// of that client's business, or an admin regenerating with { "user_id": "<client uuid>" }.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 
@@ -82,7 +82,16 @@ Deno.serve(async (req) => {
 
   if (target !== caller.id) {
     const { data: adminRow } = await admin.from("admins").select("user_id").eq("user_id", caller.id).maybeSingle();
-    if (!adminRow) return json(403, { error: "Only the client or a Roleflow admin can generate this prompt." });
+    if (!adminRow) {
+      const linked = await admin.from("tailortalk_agents").select("id").eq("client_id", target);
+      if (linked.error) return json(500, { error: "The prompt could not be checked." });
+      let editor = false;
+      for (const agent of linked.data || []) {
+        const allowed = await userClient.rpc("can_edit_business", { p_agent: agent.id });
+        if (allowed.data) editor = true;
+      }
+      if (!editor) return json(403, { error: "Only the client, an editor, or a Roleflow admin can generate this prompt." });
+    }
   }
 
   const { data: profile, error: profileError } = await admin.from("profiles").select("id, full_name, email, instagram").eq("id", target).maybeSingle();

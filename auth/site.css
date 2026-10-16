@@ -344,15 +344,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .ranges{display:flex;flex-wrap:wrap;gap:8px}
 .ranges button{min-height:44px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:8px 14px;font:600 .9rem var(--b);cursor:pointer}
 .ranges button[aria-checked=true]{border-color:var(--m);background:rgba(192,64,154,.18)}
-.workflow-stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px);gap:14px;align-items:start}
 .workflow-layout{display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:14px;align-items:start}
-.sim-panel{background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:14px;display:grid;gap:10px;align-content:start;min-height:420px}
-.sim-log{display:grid;gap:8px;max-height:380px;overflow:auto;align-content:start}
-.sim-bubble{border-radius:16px;padding:10px 12px;margin:0;white-space:pre-wrap}
-.sim-bubble.user{background:rgba(232,176,74,.16)}
-.sim-bubble.assistant{background:var(--bg);border:1px solid var(--line)}
-.sim-form{display:grid;gap:8px}
-.sim-form textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:10px 12px;font:400 .95rem var(--b);resize:vertical}
 .member-row{display:grid;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
 .section-rail{display:grid;gap:6px}
 .section-rail button{display:flex;gap:8px;align-items:center;text-align:left;background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:10px 12px;font:600 .82rem var(--b);cursor:pointer}
@@ -379,7 +371,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
   .proof-pane{border-right:0;border-bottom:1px solid var(--line);padding:28px 18px}
   .form-pane{order:-1;padding:28px 18px 18px}
   .biz-arrow{display:none}
-  .workflow-stage,.workflow-layout{grid-template-columns:1fr}
+  .workflow-layout{grid-template-columns:1fr}
   .section-rail{display:flex;overflow:auto;padding-bottom:4px}
   .section-rail button{flex:none}
 }

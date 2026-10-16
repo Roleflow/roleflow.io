@@ -4,7 +4,6 @@ import { bindShell, markNav, toast } from "../auth/ui.js";
 import { liveSections } from "../account/setter-model.js";
 import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 import { mountMembers } from "./members.js";
-import { mountSimulator } from "./simulator.js";
 
 bindShell();
 
@@ -388,11 +387,9 @@ function canManage(agentId, isAdmin, agents, roles, user) {
   return roles.get(agentId) === "owner";
 }
 
-function canSimulate(agent, isAdmin, roles, user) {
-  if (!agent) return false;
-  if (isAdmin || agent.client_id === user.id) return true;
-  const role = roles.get(agent.id);
-  return role === "editor" || role === "owner";
+function isEditor(agent, isAdmin, roles, user) {
+  if (!agent || isAdmin || agent.client_id === user.id) return false;
+  return roles.get(agent.id) === "editor";
 }
 
 function tabsFor(route, isAdmin, agents, roles, user) {
@@ -598,7 +595,7 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin, pe
     el("p", { text: "Loading…" })
   ]));
   if (route.section === "leads") await paintLeads(supabase, agent.id, statsById.get(agent.id));
-  else if (route.section === "workflow") await paintWorkflow(supabase, agent, isAdmin, canSimulate(agent, isAdmin, roles, user));
+  else if (route.section === "workflow") await paintWorkflow(supabase, agent, isAdmin, isEditor(agent, isAdmin, roles, user));
   else if (route.section === "stats") await paintStats(supabase, agent, statsById.get(agent.id));
   else if (route.section === "setup") await paintSetup(supabase, agent, peopleById);
   else await paintMembers(supabase, agent);
@@ -779,7 +776,7 @@ async function paintMembers(supabase, agent) {
   await mountMembers(supabase, agent, app);
 }
 
-async function paintWorkflow(supabase, agent, isAdmin, simulate) {
+async function paintWorkflow(supabase, agent, isAdmin, editor) {
   const versionsRes = await supabase.from("client_prompt_versions").select("agent_id, version_id, deployed_at, sections, recorded_at").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
   app.innerHTML = "";
   let showing = agent.prompt_sections;
@@ -793,25 +790,41 @@ async function paintWorkflow(supabase, agent, isAdmin, simulate) {
   });
   tools.append(select);
   const host = el("div", { id: "workflow-sections" });
-  const stage = el("div", { class: "workflow-stage" });
-  const sim = el("div", { id: "sim-slot" });
-  if (simulate) {
-    stage.append(host, sim);
-    mountSimulator(supabase, agent, sim);
-  } else {
-    stage.append(host);
-    sim.append(el("section", { class: "sim-panel", id: "simulator" }, [
-      el("h3", { text: "Simulation using the live prompt" }),
-      el("p", { text: "Simulation is available to editors." })
-    ]));
-    stage.append(sim);
-  }
-  app.append(tools, stage);
+  app.append(tools, host);
   if (isAdmin) {
     const slot = el("div", { id: "publish-slot" });
     app.append(slot);
     const { mountPublish } = await import("../admin/publish.js");
     await mountPublish(supabase, agent, slot);
+  } else if (editor && agent.client_id) {
+    const panel = el("section", { class: "panel", id: "editor-regenerate" });
+    panel.append(el("h3", { text: "Prompt" }));
+    panel.append(el("p", { text: "Regenerate uses the saved onboarding answers for this business." }));
+    const note = el("p", { class: "err", role: "status" });
+    const button = el("button", { class: "btn ghost", type: "button", id: "editor-regenerate-btn" }, ["Regenerate"]);
+    button.addEventListener("click", async () => {
+      note.textContent = "";
+      button.disabled = true;
+      const invoked = await supabase.functions.invoke("generate-setter-prompt", { body: { user_id: agent.client_id } });
+      button.disabled = false;
+      if (invoked.error) {
+        let message = invoked.error.message || "Regenerate failed.";
+        const context = invoked.error.context;
+        if (context && typeof context.json === "function") {
+          try {
+            const payload = await context.json();
+            if (payload && payload.error) message = String(payload.error);
+          } catch (_read) { /* keep the status text */ }
+        }
+        note.textContent = scrub(message);
+        toast(note.textContent, "bad");
+        return;
+      }
+      toast("Prompt regenerated.");
+      window.location.reload();
+    });
+    panel.append(button, note);
+    app.append(panel);
   }
   if (versionsRes.error && !missingRelation(versionsRes.error)) {
     app.append(el("p", { class: "err", text: scrub(versionsRes.error.message) }));

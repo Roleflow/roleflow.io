@@ -1,4 +1,4 @@
--- Business members, invite bypass, and simulator sessions.
+-- Business members and invite bypass.
 -- Apply after 20261015120000_businesses.sql.
 -- Does not deploy an edge function and does not store agent tokens.
 --
@@ -75,24 +75,10 @@ revoke all on function public.business_invite_clear(uuid) from public, anon, aut
 grant execute on function public.business_invite_put(uuid, text, timestamptz) to service_role;
 grant execute on function public.business_invite_clear(uuid) to service_role;
 
-create table if not exists public.simulator_sessions (
-  id uuid primary key default gen_random_uuid(),
-  agent_id uuid not null references public.tailortalk_agents (id) on delete cascade,
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  messages jsonb not null default '[]'::jsonb,
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists simulator_sessions_user_idx
-  on public.simulator_sessions (user_id, agent_id, updated_at desc);
-
 alter table public.business_members enable row level security;
-alter table public.simulator_sessions enable row level security;
 
 revoke all on table public.business_members from public, anon;
-revoke all on table public.simulator_sessions from public, anon;
 grant select on table public.business_members to authenticated;
-grant select on table public.simulator_sessions to authenticated;
 
 create or replace function public.can_read_business(p_agent uuid)
 returns boolean
@@ -183,11 +169,6 @@ drop policy if exists business_members_select on public.business_members;
 create policy business_members_select on public.business_members
   for select to authenticated
   using (public.can_manage_members(agent_id) or user_id = auth.uid());
-
-drop policy if exists simulator_sessions_select on public.simulator_sessions;
-create policy simulator_sessions_select on public.simulator_sessions
-  for select to authenticated
-  using (user_id = auth.uid() and public.can_edit_business(agent_id));
 
 create or replace view public.client_ai_setters
 with (security_invoker = true) as

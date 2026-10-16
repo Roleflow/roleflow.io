@@ -44,7 +44,7 @@ export async function mountMembers(supabase, agent, host) {
   host.innerHTML = "";
   const panel = el("section", { class: "panel", id: "members" });
   panel.append(el("h2", { text: "Members" }));
-  panel.append(el("p", { text: "Viewer can see stats, leads, and the workflow. Editor can also regenerate the prompt and use the simulation." }));
+  panel.append(el("p", { text: "Viewer can see stats, leads, and the workflow. Editor can also regenerate the prompt." }));
   const list = el("div", { id: "member-list" });
   const note = el("p", { class: "err", id: "member-note", role: "status" });
   const form = el("form", { class: "auth-form", id: "invite-form" });

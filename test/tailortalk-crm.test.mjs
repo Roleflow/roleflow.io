@@ -110,7 +110,7 @@ assert.doesNotMatch(upsertSql, /[0-9a-f]{40,}/i);
 const toml = read("supabase/config.toml");
 assert.match(toml, /\[functions\.generate-setter-prompt\]\nverify_jwt = true/);
 assert.match(toml, /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
-assert.match(toml, /\[functions\.prompt-simulator\]\nverify_jwt = true/);
+assert.doesNotMatch(toml, /prompt-simulator/);
 assert.match(toml, /\[functions\.business-members\]\nverify_jwt = true/);
 assert.doesNotMatch(toml, /<<<<<<<|>>>>>>>/);
 
