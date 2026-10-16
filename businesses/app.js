@@ -3,7 +3,9 @@ import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession 
 import { bindShell, markNav, toast } from "../auth/ui.js";
 import { liveSections } from "../account/setter-model.js";
 import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
+import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
+import { mountWorkforce } from "./workforce.js";
 
 bindShell();
 
@@ -22,6 +24,8 @@ const SECTIONS = [
 const DETAIL_TABS = [
   ["leads", "Leads"],
   ["workflow", "Workflow"],
+  ["workforce", "Workforce"],
+  ["assets", "Assets"],
   ["stats", "Stats"]
 ];
 
@@ -107,7 +111,7 @@ function missingRelation(error) {
 
 function parseRoute() {
   const raw = decodeURIComponent(window.location.hash.replace(/^#/, ""));
-  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(leads|workflow|stats|setup|members)$/i.exec(raw);
+  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(leads|workflow|workforce|assets|stats|setup|members)$/i.exec(raw);
   if (!match) return { kind: "grid" };
   return { kind: "detail", id: match[1], section: match[2].toLowerCase() };
 }
@@ -387,6 +391,12 @@ function canManage(agentId, isAdmin, agents, roles, user) {
   return roles.get(agentId) === "owner";
 }
 
+function canEditBusiness(agent, isAdmin, roles, user) {
+  if (!agent) return false;
+  if (isAdmin || agent.client_id === user.id) return true;
+  return roles.get(agent.id) === "editor";
+}
+
 function isEditor(agent, isAdmin, roles, user) {
   if (!agent || isAdmin || agent.client_id === user.id) return false;
   return roles.get(agent.id) === "editor";
@@ -448,7 +458,7 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
   document.title = isAdmin ? "Businesses · Roleflow" : "Your businesses · Roleflow";
   const owned = agents.some((agent) => agent.client_id === user.id);
   sub.textContent = agents.length
-    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : "Each card opens leads, workflow, and stats.")
+    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : "Each card opens leads, workflow, workforce, and assets.")
     : (isAdmin ? "No setters are in the cache yet." : "No business is linked to this account yet.");
   app.innerHTML = "";
   if (statsError) {
@@ -594,8 +604,11 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin, pe
     el("span", { class: "skel" }),
     el("p", { text: "Loading…" })
   ]));
+  const editable = canEditBusiness(agent, isAdmin, roles, user);
   if (route.section === "leads") await paintLeads(supabase, agent.id, statsById.get(agent.id));
   else if (route.section === "workflow") await paintWorkflow(supabase, agent, isAdmin, isEditor(agent, isAdmin, roles, user));
+  else if (route.section === "workforce") await paintWorkforce(supabase, agent, editable, statsById.get(agent.id));
+  else if (route.section === "assets") await paintAssets(supabase, agent, editable, user.id);
   else if (route.section === "stats") await paintStats(supabase, agent, statsById.get(agent.id));
   else if (route.section === "setup") await paintSetup(supabase, agent, peopleById);
   else await paintMembers(supabase, agent);
@@ -769,6 +782,16 @@ async function paintSetup(supabase, agent, peopleById) {
 
 function personName(person) {
   return person.full_name || person.business_name || person.email || "Client";
+}
+
+async function paintWorkforce(supabase, agent, canEdit, stats) {
+  app.innerHTML = "";
+  await mountWorkforce(supabase, agent, app, canEdit, stats);
+}
+
+async function paintAssets(supabase, agent, canEdit, userId) {
+  app.innerHTML = "";
+  await mountAssets(supabase, agent, app, canEdit, userId);
 }
 
 async function paintMembers(supabase, agent) {

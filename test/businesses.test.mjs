@@ -65,6 +65,8 @@ assert.match(app, /link_business/);
 assert.doesNotMatch(app, /Simulation|simulator|prompt-simulator|emulator|test chat/i);
 assert.match(app, /class: "biz-row"/);
 assert.match(app, /\["members", "Members"\]/);
+assert.match(app, /\["workflow", "Workflow"\],\n  \["workforce", "Workforce"\],\n  \["assets", "Assets"\]/);
+assert.match(app, /leads\|workflow\|workforce\|assets\|stats\|setup\|members/);
 assert.match(app, /id: "lead-pager"|id="lead-pager"/);
 assert.match(app, /range-control/);
 assert.match(app, /class: "ext"/);
@@ -136,5 +138,38 @@ assert.match(read("supabase/functions/business-members/index.ts"), /signup\/\?in
 assert.match(read("signup/signup.js"), /preview_invite/);
 assert.match(read("signup/signup.js"), /accept_invite/);
 assert.match(read("signup/index.html"), /id="access-code"/);
+
+const assetsSql = read("supabase/migrations/20261016140000_business_assets.sql");
+assert.match(assetsSql, /create table if not exists public\.business_assets/);
+assert.match(assetsSql, /create table if not exists public\.business_workforce/);
+assert.match(assetsSql, /business-assets/);
+assert.match(assetsSql, /public = false|set public = false/);
+assert.match(assetsSql, /business_assets_select/);
+assert.match(assetsSql, /business_assets_insert/);
+assert.match(assetsSql, /business_assets_update/);
+assert.match(assetsSql, /business_assets_delete/);
+assert.match(assetsSql, /business_workforce_select/);
+assert.match(assetsSql, /business_assets_storage_read/);
+assert.match(assetsSql, /business_assets_storage_insert/);
+assert.match(assetsSql, /business_assets_storage_delete/);
+assert.match(assetsSql, /create or replace view public\.business_agent_assets/);
+assert.match(assetsSql, /security_invoker = true/);
+assert.match(assetsSql, /available_to_agent/);
+assert.match(assetsSql, /when_to_use/);
+assert.match(assetsSql, /business_workforce_counts/);
+assert.match(assetsSql, /can_read_business/);
+assert.match(assetsSql, /can_edit_business/);
+for (const file of ["businesses/assets.js", "businesses/workforce.js"]) {
+  const literals = [...read(file).matchAll(/"([^"\\]|\\.)*"/g)].map((match) => match[0]);
+  assert.deepEqual(literals.filter((text) => /tailortalk|zerochats/i.test(text)), []);
+}
+assert.match(read("businesses/assets.js"), /Available to agent/);
+assert.match(read("businesses/assets.js"), /MediaRecorder/);
+assert.match(read("businesses/assets.js"), /createSignedUrl/);
+assert.match(read("businesses/workforce.js"), /Outreach Agent/);
+assert.match(read("businesses/workforce.js"), /Follow Up Agent/);
+assert.match(read("businesses/workforce.js"), /Setting Agent/);
+assert.match(read("businesses/workforce.js"), /New-follower messages/);
+assert.match(read("auth/site.css"), /office-floor/);
 
 console.log("businesses tests passed");
