@@ -159,7 +159,7 @@ assert.match(assetsSql, /when_to_use/);
 assert.match(assetsSql, /business_workforce_counts/);
 assert.match(assetsSql, /can_read_business/);
 assert.match(assetsSql, /can_edit_business/);
-for (const file of ["businesses/assets.js", "businesses/workforce.js"]) {
+for (const file of ["businesses/assets.js", "businesses/workforce.js", "businesses/office-scene.js"]) {
   const literals = [...read(file).matchAll(/"([^"\\]|\\.)*"/g)].map((match) => match[0]);
   assert.deepEqual(literals.filter((text) => /tailortalk|zerochats/i.test(text)), []);
 }
@@ -171,9 +171,13 @@ assert.match(read("businesses/workforce.js"), /Follow Up Agent/);
 assert.match(read("businesses/workforce.js"), /Setting Agent/);
 assert.match(read("businesses/workforce.js"), /New-follower messages/);
 assert.match(read("businesses/workforce.js"), /showModal/);
-assert.match(read("businesses/workforce.js"), /class="robot /);
-assert.match(read("auth/site.css"), /office-floor/);
-assert.match(read("auth/site.css"), /robot-arm/);
+assert.match(read("businesses/workforce.js"), /import\("\.\/office-scene\.js"\)/);
+assert.match(read("businesses/workforce.js"), /Meeting room|queueFooter/);
+assert.match(read("businesses/office-scene.js"), /three@0\.170\.0/);
+assert.match(read("businesses/office-scene.js"), /OrthographicCamera/);
+assert.match(read("businesses/office-scene.js"), /Meeting room/);
+assert.match(read("auth/site.css"), /office-stage/);
+assert.match(read("auth/site.css"), /agent-pill/);
 assert.doesNotMatch(read("businesses/index.html"), /Loading/);
 assert.doesNotMatch(read("businesses/app.js"), /Loading/);
 
