@@ -39,6 +39,7 @@ export function friendlyAuthError(error) {
     error && error.details,
     error && error.code
   ].filter(Boolean).join(" ");
+  if (/invalid invite/i.test(raw)) return "This invite link is not valid.";
   if (/invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) return "Invalid access code.";
   if (/email not confirmed/i.test(raw)) return "Confirm your email first. Open the link in that message, then log in.";
   if (/invalid login credentials/i.test(raw)) return "That email and password don't match.";

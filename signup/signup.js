@@ -215,16 +215,55 @@ if (!isConfigured()) {
         setBusy(googleBtn, true, "Opening Google…");
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: originPath("/account/") }
+          options: {
+            redirectTo: originPath(params.get("invite")
+              ? "/signup/?invite=" + encodeURIComponent(params.get("invite"))
+              : "/account/")
+          }
         });
         setBusy(googleBtn, false);
         if (error) showLoginError(friendlyAuthError(error));
       });
     }
+    const inviteToken = params.get("invite") || "";
+    let invite = null;
+    const inviteEmail = () => (invite && invite.email ? String(invite.email) : "");
+    async function landFromInvite() {
+      const accepted = await supabase.rpc("accept_invite", { p_token: inviteToken });
+      if (accepted.data) {
+        window.location.replace("/businesses/#" + accepted.data + "/leads");
+        return true;
+      }
+      const { data } = await supabase.auth.getUser();
+      const sessionEmail = String(data.user && data.user.email || "").toLowerCase();
+      if (inviteEmail() && inviteEmail().toLowerCase() === sessionEmail) {
+        window.location.replace("/businesses/");
+        return true;
+      }
+      return false;
+    }
+    if (inviteToken) {
+      const preview = await supabase.rpc("preview_invite", { p_token: inviteToken });
+      invite = preview.data || null;
+      if (invite && invite.email) {
+        const access = document.getElementById("access-code");
+        const accessLabel = access.closest("label");
+        if (accessLabel) accessLabel.hidden = true;
+        access.required = false;
+        document.getElementById("email").value = invite.email;
+        document.getElementById("email").readOnly = true;
+        document.getElementById("login-email").value = invite.email;
+        const roleLabel = invite.role === "editor" ? "Editor" : "Viewer";
+        document.getElementById("page-sub").textContent = "You're invited to " + invite.business_name + " as " + roleLabel + ". No access code is needed. Log in if you already have an account. This invite only adds that business.";
+      } else if (!preview.error) {
+        document.getElementById("page-sub").textContent = "This invite link is not valid. You can still create an account with an access code.";
+      }
+    }
     const resolved = await resolveSession(supabase, window.location.href);
     if (resolved.session) {
       clearAuthParams();
       clearCallbackMemory();
+      if (inviteToken && await landFromInvite()) return;
       window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
     } else {
       if (resolved.errorMessage) {
@@ -251,7 +290,8 @@ if (!isConfigured()) {
         if (!name) return showError("Enter your name.");
         if (!/^\S+@\S+\.\S+$/.test(email)) return showError("Enter a valid email address.");
         if (!instagram) return showError("Enter your Instagram handle.");
-        if (!accessCode) return showError("Enter your access code.");
+        const inviteOk = Boolean(inviteEmail());
+        if (!inviteOk && !accessCode) return showError("Enter your access code.");
         if (password.length < 8) return showError("Use at least 8 characters in the password.");
         if (password !== confirm) return showError("Those passwords do not match.");
         const button = form.querySelector("button[type=submit]");
@@ -260,17 +300,22 @@ if (!isConfigured()) {
           email,
           password,
           options: {
-            data: { full_name: name, instagram, access_code: accessCode },
-            emailRedirectTo: originPath("/account/")
+            data: inviteOk
+              ? { full_name: name, instagram, invite_token: inviteToken }
+              : { full_name: name, instagram, access_code: accessCode },
+            emailRedirectTo: originPath(inviteOk ? "/signup/?invite=" + encodeURIComponent(inviteToken) : "/account/")
           }
         });
         setBusy(button, false);
         if (error) return showError(friendlyAuthError(error));
         if (created.session) {
-          window.location.replace("/account/");
+          if (inviteOk && await landFromInvite()) return;
+          window.location.replace(inviteOk ? "/businesses/" : "/account/");
           return;
         }
-        okEl.textContent = "Check your email to confirm the account, then log in. The link brings you back to your account.";
+        okEl.textContent = inviteOk
+          ? "Check your email to confirm the account. The link brings you back to this invite."
+          : "Check your email to confirm the account, then log in. The link brings you back to your account.";
         toast(okEl.textContent, "ok");
       });
 
@@ -287,6 +332,7 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         setBusy(button, false);
         if (error) return showLoginError(friendlyAuthError(error));
+        if (inviteToken && await landFromInvite()) return;
         window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
       });
 
@@ -300,7 +346,7 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            emailRedirectTo: originPath("/account/"),
+            emailRedirectTo: originPath(inviteEmail() ? "/signup/?invite=" + encodeURIComponent(inviteToken) : "/account/"),
             shouldCreateUser: false
           }
         });
