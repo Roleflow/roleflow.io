@@ -29,6 +29,12 @@ export function markNav() {
       on = path.endsWith("/signup") && ((url.searchParams.get("mode") === "login") === login);
     } else if (linkPath.endsWith("/reset")) {
       on = path.endsWith("/reset");
+    } else if (linkPath.endsWith("/admin/office")) {
+      on = path.endsWith("/admin/office");
+    } else if (linkPath.endsWith("/admin/hq")) {
+      const section = (url.hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";
+      const current = (hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";
+      on = path.endsWith("/admin/hq") && section === current;
     } else if (linkPath.endsWith("/admin")) {
       if (url.hash === "#crm" || url.hash === "#insights") on = path.endsWith("/admin") && (hash === "#crm" || hash === "#insights");
       else if (url.hash === "#publish") on = path.endsWith("/admin") && hash === "#publish";

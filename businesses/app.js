@@ -301,6 +301,8 @@ async function boot(supabase, user) {
   const isAdmin = Boolean(adminRes.data);
   if (isAdmin) {
     nav.append(el("nav", { class: "app-nav", id: "admin-links", "aria-label": "Admin" }, [
+      el("a", { href: "/admin/hq/" }, ["Agent HQ"]),
+      el("a", { href: "/admin/office/" }, ["Agent Office"]),
       el("a", { href: "/businesses/" }, ["Businesses"]),
       el("a", { href: "/account/#profile" }, ["Your account"])
     ]));
