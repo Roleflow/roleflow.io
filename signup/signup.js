@@ -263,8 +263,8 @@ if (!isConfigured()) {
     if (resolved.session) {
       clearAuthParams();
       clearCallbackMemory();
-      if (inviteToken && await landFromInvite()) return;
-      window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
+      const landed = inviteToken ? await landFromInvite() : false;
+      if (!landed) window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
     } else {
       if (resolved.errorMessage) {
         showTab("login");

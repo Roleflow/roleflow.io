@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { friendlyAuthError, isLoginTab, readAuthCallback } from "../auth/callback.js";
@@ -31,6 +33,12 @@ assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "
 
 assert.match(read("signup/signup.js"), /get\("mode"\) === "login"/);
 assert.match(read("signup/signup.js"), /isLoginTab/);
+for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/app.js"]) {
+  const tmp = path.join(os.tmpdir(), "roleflow-syntax-" + file.replaceAll("/", "-") + ".mjs");
+  fs.writeFileSync(tmp, read(file));
+  const checked = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
+  assert.equal(checked.status, 0, file + "\n" + checked.stderr);
+}
 assert.match(read("signup/index.html"), /id="login-form"/);
 assert.match(read("signup/index.html"), /id="access-code"/);
 assert.match(read("login/login.js"), /shouldCreateUser:\s*false/);
