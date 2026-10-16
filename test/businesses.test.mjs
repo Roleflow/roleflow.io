@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { activityDays, activityEvents, conversationWindow, funnelFromLeads, healthScore } from "../businesses/console-model.js";
 import { PROOF_SLOTS, createdAgo, last7, nameKey, nextProof, uniqueAgentMatch } from "../businesses/model.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -163,25 +164,91 @@ assert.match(assetsSql, /when_to_use/);
 assert.match(assetsSql, /business_workforce_counts/);
 assert.match(assetsSql, /can_read_business/);
 assert.match(assetsSql, /can_edit_business/);
-for (const file of ["businesses/assets.js", "businesses/workforce.js", "businesses/office-scene.js"]) {
+for (const file of ["businesses/assets.js", "businesses/workforce.js", "businesses/console-model.js"]) {
   const literals = [...read(file).matchAll(/"([^"\\]|\\.)*"/g)].map((match) => match[0]);
   assert.deepEqual(literals.filter((text) => /tailortalk|zerochats/i.test(text)), []);
 }
 assert.match(read("businesses/assets.js"), /Available to agent/);
 assert.match(read("businesses/assets.js"), /MediaRecorder/);
 assert.match(read("businesses/assets.js"), /createSignedUrl/);
-assert.match(read("businesses/workforce.js"), /Outreach Agent/);
-assert.match(read("businesses/workforce.js"), /Follow Up Agent/);
-assert.match(read("businesses/workforce.js"), /Setting Agent/);
-assert.match(read("businesses/workforce.js"), /New-follower messages/);
-assert.match(read("businesses/workforce.js"), /showModal/);
-assert.match(read("businesses/workforce.js"), /import\("\.\/office-scene\.js"\)/);
-assert.match(read("businesses/workforce.js"), /Meeting room|queueFooter/);
-assert.match(read("businesses/office-scene.js"), /three@0\.170\.0/);
-assert.match(read("businesses/office-scene.js"), /OrthographicCamera/);
-assert.match(read("businesses/office-scene.js"), /Meeting room/);
-assert.match(read("auth/site.css"), /office-stage/);
-assert.match(read("auth/site.css"), /agent-pill/);
+const workforce = read("businesses/workforce.js");
+assert.match(workforce, /Outreach Agent/);
+assert.match(workforce, /Follow Up Agent/);
+assert.match(workforce, /Setting Agent/);
+assert.match(workforce, /New-follower messages/);
+assert.match(workforce, /Active agents/);
+assert.match(workforce, /Follow-ups due/);
+assert.match(workforce, /Calls booked/);
+assert.match(workforce, /Workforce health/);
+assert.match(workforce, /First touch/);
+assert.match(workforce, /id: "agent-drawer"/);
+assert.match(workforce, /Escape/);
+assert.match(workforce, /Available to agent/);
+assert.doesNotMatch(workforce, /office-scene|three@|showModal|Meeting room/);
+assert.match(read("auth/site.css"), /wf-drawer/);
+assert.match(read("auth/site.css"), /wf-grid/);
+assert.match(read("auth/site.css"), /\.brain-simple\{display:block\}/);
+assert.doesNotMatch(read("auth/site.css"), /office-stage|agent-pill/);
+assert.match(read("supabase/migrations/20261016160000_workforce_console.sql"), /last_synced_at/);
+assert.match(read("supabase/migrations/20261016160000_workforce_console.sql"), /joined_at/);
+
+const consoleNow = new Date("2026-10-16T12:00:00Z");
+assert.deepEqual(conversationWindow([], consoleNow), { today: null, week: null });
+assert.deepEqual(conversationWindow([
+  { day: "2026-10-16", count: 1 },
+  { day: "2026-10-14", count: 2 },
+  { day: "2026-09-01", count: 9 }
+], consoleNow), { today: 1, week: 3 });
+assert.equal(conversationWindow([{ day: "2026-09-01", count: 4 }], consoleNow).week, null);
+const days = activityDays([{ day: "2026-10-16", count: 2 }], consoleNow);
+assert.equal(days.length, 30);
+assert.equal(days[29].count, 2);
+assert.equal(days[0].count, null);
+const namedFunnel = funnelFromLeads([
+  { stage: "hot", is_converted: true },
+  { stage: "Qualified", is_converted: false }
+], 2);
+assert.equal(namedFunnel.booked, 2);
+assert.equal(namedFunnel.qualified, 1);
+assert.equal(namedFunnel.engaged, 0);
+assert.equal(namedFunnel.first, 0);
+const plainFunnel = funnelFromLeads([
+  { stage: "hot", is_converted: false },
+  { stage: "warm", is_converted: true }
+], null);
+assert.equal(plainFunnel.booked, 1);
+assert.equal(plainFunnel.first, null);
+assert.equal(plainFunnel.vocabulary, false);
+assert.equal(funnelFromLeads(null, null).booked, null);
+const events = activityEvents([
+  { lead_name: "Eva", stage: "warm", is_converted: false, last_message_time: "2026-10-09T18:00:00Z" },
+  { lead_name: "Alex", stage: "hot", is_converted: false, last_message_time: "2026-10-14T18:00:00Z", joined_at: "2026-10-14T16:00:00Z" },
+  { lead_name: "Sam", stage: "warm", is_converted: true, last_message_time: "2026-10-12T18:00:00Z", converted_at: "2026-10-12T19:00:00Z" }
+], consoleNow);
+assert.ok(events.some((event) => event.label === "Follow-up due" && event.name === "Eva"));
+assert.ok(events.some((event) => event.label === "New lead" && event.name === "Alex"));
+assert.ok(events.some((event) => event.label === "Booked" && event.name === "Sam"));
+assert.equal(events.filter((event) => event.name === "Alex" && event.label === "Follow-up due").length, 0);
+assert.equal(healthScore({
+  statuses: ["active", "paused", "not_set_up"],
+  syncedAt: "2026-10-16T09:00:00Z",
+  syncErrorKnown: true,
+  syncError: "",
+  now: consoleNow
+}).score, 77);
+assert.equal(healthScore({
+  statuses: ["active", "not_set_up", "not_set_up"],
+  syncErrorKnown: false,
+  syncedAt: null,
+  now: consoleNow
+}).score, 32);
+assert.equal(healthScore({
+  statuses: ["active", "active", "active"],
+  syncedAt: "2026-10-01T00:00:00Z",
+  syncErrorKnown: true,
+  syncError: "timeout",
+  now: consoleNow
+}).score, 34);
 assert.doesNotMatch(read("businesses/index.html"), /Loading/);
 assert.doesNotMatch(read("businesses/app.js"), /Loading/);
 
