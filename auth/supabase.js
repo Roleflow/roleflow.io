@@ -45,7 +45,8 @@ export async function destinationAfterLogin(supabase, next) {
   const id = data.user?.id;
   if (!id) return target;
   const admin = await supabase.from("admins").select("user_id").eq("user_id", id).maybeSingle();
-  if (admin.data && (target === "/admin/hq" || target.startsWith("/admin/hq/") || target.startsWith("/admin/hq?"))) return target;
+  const keep = ["/admin/hq", "/admin/office"];
+  if (admin.data && keep.some((prefix) => target === prefix || target.startsWith(prefix + "/") || target.startsWith(prefix + "?"))) return target;
   return admin.data ? "/businesses/" : target;
 }
 
