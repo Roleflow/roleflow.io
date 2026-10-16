@@ -69,9 +69,7 @@ const fn = read("supabase/functions/tailortalk-sync/index.ts");
 assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/get_leads/);
 assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/get_contacts/);
 assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/mark_converted/);
-assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/send_whatsapp_template_message/);
-assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/get_whatsapp_templates/);
-assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/campaign_logs/);
+assert.doesNotMatch(fn, /send_whatsapp_template_message|get_whatsapp_templates|campaign_logs/);
 assert.match(fn, /action === "mark_booked"/);
 assert.match(fn, /The cron job can only sync/);
 assert.doesNotMatch(fn, /update_leads|message_lead|deploy_workflow/);
@@ -112,6 +110,8 @@ assert.doesNotMatch(upsertSql, /[0-9a-f]{40,}/i);
 const toml = read("supabase/config.toml");
 assert.match(toml, /\[functions\.generate-setter-prompt\]\nverify_jwt = true/);
 assert.match(toml, /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
+assert.doesNotMatch(toml, /prompt-simulator/);
+assert.match(toml, /\[functions\.business-members\]\nverify_jwt = true/);
 assert.doesNotMatch(toml, /<<<<<<<|>>>>>>>/);
 
 const adminPage = read("admin/index.html");
@@ -156,7 +156,11 @@ const migrationNames = [
   "20261014160000_tailortalk_crm.sql",
   "20261014180000_tailortalk_registry.sql",
   "20261014200000_client_setter.sql",
-  "20261015120000_businesses.sql"
+  "20261015120000_businesses.sql",
+  "20261016120000_business_members.sql",
+  "20261016140000_business_assets.sql",
+  "20261016160000_workforce_console.sql",
+  "20261016180000_agent_hq.sql"
 ];
 assert.deepEqual(
   migrationNames,

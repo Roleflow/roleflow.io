@@ -3,6 +3,9 @@ import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession 
 import { bindShell, markNav, toast } from "../auth/ui.js";
 import { liveSections } from "../account/setter-model.js";
 import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
+import { mountAssets } from "./assets.js";
+import { mountMembers } from "./members.js";
+import { mountWorkforce } from "./workforce.js";
 
 bindShell();
 
@@ -21,8 +24,9 @@ const SECTIONS = [
 const DETAIL_TABS = [
   ["leads", "Leads"],
   ["workflow", "Workflow"],
-  ["stats", "Stats"],
-  ["campaigns", "Campaigns"]
+  ["workforce", "Workforce"],
+  ["assets", "Assets"],
+  ["stats", "Stats"]
 ];
 
 const COLORS = ["#E8B04A", "#C0409A", "#FF8A3D", "#7B4DFF", "#9AA6C6", "#3DDC97"];
@@ -59,7 +63,7 @@ function el(tag, attrs, children) {
 
 function hideBoot() {
   const boot = document.getElementById("boot-state");
-  if (boot) boot.hidden = true;
+  if (boot) boot.remove();
 }
 
 function showState(title, message) {
@@ -107,7 +111,7 @@ function missingRelation(error) {
 
 function parseRoute() {
   const raw = decodeURIComponent(window.location.hash.replace(/^#/, ""));
-  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(leads|workflow|stats|campaigns|setup)$/i.exec(raw);
+  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(leads|workflow|workforce|assets|stats|setup|members)$/i.exec(raw);
   if (!match) return { kind: "grid" };
   return { kind: "detail", id: match[1], section: match[2].toLowerCase() };
 }
@@ -343,6 +347,11 @@ async function boot(supabase, user) {
   (statsRes.data || []).forEach((row) => statsById.set(row.agent_id, row));
   const agents = agentsRes.data || [];
   const statsError = statsRes.error ? scrub(statsRes.error.message) : "";
+  const roles = new Map();
+  const accessRes = await supabase.from("business_access").select("agent_id, role");
+  if (!accessRes.error) {
+    (accessRes.data || []).forEach((row) => roles.set(row.agent_id, row.role));
+  }
   const pendingIds = new Set();
   if (isAdmin) {
     const pendingRes = await supabase.from("onboarding_submissions").select("user_id, publish_agent_id, publish_status").eq("publish_status", "pending");
@@ -358,20 +367,52 @@ async function boot(supabase, user) {
   function paint() {
     const route = parseRoute();
     hideBoot();
-    if (route.kind === "detail" && route.section === "setup" && !isAdmin) {
+    if (route.kind === "detail" && !sectionAllowed(route, isAdmin, agents, roles, user)) {
       go("#" + route.id + "/leads");
       return;
     }
     if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds);
-    else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById);
-    paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin);
+    else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles);
+    paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin, roles);
   }
 
   window.addEventListener("hashchange", paint);
   paint();
 }
 
-function paintSide(user, agents, route, isAdmin) {
+function sectionAllowed(route, isAdmin, agents, roles, user) {
+  if (route.section === "setup") return isAdmin;
+  if (route.section === "members") return canManage(route.id, isAdmin, agents, roles, user);
+  return true;
+}
+
+function canManage(agentId, isAdmin, agents, roles, user) {
+  if (isAdmin) return true;
+  const agent = agents.find((item) => item.id === agentId);
+  if (agent && agent.client_id === user.id) return true;
+  return roles.get(agentId) === "owner";
+}
+
+function canEditBusiness(agent, isAdmin, roles, user) {
+  if (!agent) return false;
+  if (isAdmin || agent.client_id === user.id) return true;
+  return roles.get(agent.id) === "editor";
+}
+
+function isEditor(agent, isAdmin, roles, user) {
+  if (!agent || isAdmin || agent.client_id === user.id) return false;
+  return roles.get(agent.id) === "editor";
+}
+
+function tabsFor(route, isAdmin, agents, roles, user) {
+  const tabs = DETAIL_TABS.slice();
+  if (!route) return tabs;
+  if (isAdmin) tabs.push(["setup", "Setup"]);
+  if (canManage(route.id, isAdmin, agents, roles, user)) tabs.push(["members", "Members"]);
+  return tabs;
+}
+
+function paintSide(user, agents, route, isAdmin, roles) {
   const existing = document.getElementById("biz-switch");
   if (existing) existing.remove();
   const block = el("div", { id: "biz-switch" });
@@ -394,8 +435,7 @@ function paintSide(user, agents, route, isAdmin) {
     select.addEventListener("change", () => go("#" + select.value + "/" + route.section));
     label.append(select);
     block.append(label);
-    const tabs = isAdmin ? DETAIL_TABS.concat([["setup", "Setup"]]) : DETAIL_TABS;
-    tabs.forEach(([id, title]) => {
+    tabsFor(route, isAdmin, agents, roles, user).forEach(([id, title]) => {
       const link = el("a", { href: "#" + route.id + "/" + id }, [title]);
       if (route.section === id) link.setAttribute("aria-current", "page");
       link.addEventListener("click", (event) => {
@@ -420,13 +460,16 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
   document.title = isAdmin ? "Businesses · Roleflow" : "Your businesses · Roleflow";
   const owned = agents.some((agent) => agent.client_id === user.id);
   sub.textContent = agents.length
-    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : "Each card opens leads, workflow, stats, and campaigns.")
+    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : "Each card opens leads, workflow, workforce, and assets.")
     : (isAdmin ? "No setters are in the cache yet." : "No business is linked to this account yet.");
   app.innerHTML = "";
   if (statsError) {
     app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
   }
-  const grid = el("div", { class: "biz-grid" });
+  const scroller = el("div", { class: "biz-scroller" });
+  const prev = el("button", { type: "button", class: "biz-arrow prev", "aria-label": "Previous businesses" }, ["←"]);
+  const next = el("button", { type: "button", class: "biz-arrow next", "aria-label": "Next businesses" }, ["→"]);
+  const grid = el("div", { class: "biz-row", id: "biz-row", tabindex: "0" });
   if (!agents.length) {
     grid.append(el("div", { class: "state" }, [
       el("h2", { text: "No businesses yet" }),
@@ -467,7 +510,39 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
     grid.append(card);
   });
   if (!isAdmin) grid.append(addCard(supabase, user, owned));
-  app.append(grid);
+  prev.addEventListener("click", () => scrollRow(grid, -1));
+  next.addEventListener("click", () => scrollRow(grid, 1));
+  grid.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      scrollRow(grid, 1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      scrollRow(grid, -1);
+    }
+  });
+  const syncArrows = () => {
+    const max = grid.scrollWidth - grid.clientWidth;
+    const overflow = max > 2;
+    prev.hidden = !overflow;
+    next.hidden = !overflow;
+    prev.disabled = grid.scrollLeft <= 2;
+    next.disabled = grid.scrollLeft >= max - 2;
+  };
+  grid.addEventListener("scroll", syncArrows);
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => syncArrows());
+    observer.observe(grid);
+  }
+  scroller.append(prev, grid, next);
+  app.append(scroller);
+  requestAnimationFrame(syncArrows);
+}
+
+function scrollRow(row, direction) {
+  const card = row.querySelector(".biz-card");
+  const width = card ? card.getBoundingClientRect().width + 16 : 320;
+  row.scrollBy({ left: direction * width, behavior: "smooth" });
 }
 
 function addCard(supabase, user, owned) {
@@ -509,7 +584,7 @@ function addCard(supabase, user, owned) {
   return card;
 }
 
-async function paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById) {
+async function paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles) {
   const agent = agents.find((item) => item.id === route.id);
   if (!agent) {
     heading.textContent = "Business";
@@ -527,15 +602,19 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin, pe
   const tab = DETAIL_TABS.find(([id]) => id === route.section)?.[1] || "";
   sub.textContent = clientLine(agent, peopleById) + (tab ? " · " + tab : "");
   app.innerHTML = "";
-  app.append(el("div", { class: "state", id: "section-loading", role: "status" }, [
+  app.append(el("div", { class: "state", id: "section-loading", role: "status", "aria-busy": "true" }, [
     el("span", { class: "skel" }),
-    el("p", { text: "Loading…" })
+    el("span", { class: "skel short" }),
+    el("span", { class: "skel" })
   ]));
+  const editable = canEditBusiness(agent, isAdmin, roles, user);
   if (route.section === "leads") await paintLeads(supabase, agent.id, statsById.get(agent.id));
-  else if (route.section === "workflow") await paintWorkflow(supabase, agent, isAdmin);
+  else if (route.section === "workflow") await paintWorkflow(supabase, agent, isAdmin, isEditor(agent, isAdmin, roles, user));
+  else if (route.section === "workforce") await paintWorkforce(supabase, agent, editable, statsById.get(agent.id));
+  else if (route.section === "assets") await paintAssets(supabase, agent, editable, user.id);
   else if (route.section === "stats") await paintStats(supabase, agent, statsById.get(agent.id));
   else if (route.section === "setup") await paintSetup(supabase, agent, peopleById);
-  else await paintCampaigns(supabase, agent, isAdmin);
+  else await paintMembers(supabase, agent);
 }
 
 async function paintLeads(supabase, agentId, cached) {
@@ -708,7 +787,22 @@ function personName(person) {
   return person.full_name || person.business_name || person.email || "Client";
 }
 
-async function paintWorkflow(supabase, agent, isAdmin) {
+async function paintWorkforce(supabase, agent, canEdit, stats) {
+  app.innerHTML = "";
+  await mountWorkforce(supabase, agent, app, canEdit, stats);
+}
+
+async function paintAssets(supabase, agent, canEdit, userId) {
+  app.innerHTML = "";
+  await mountAssets(supabase, agent, app, canEdit, userId);
+}
+
+async function paintMembers(supabase, agent) {
+  app.innerHTML = "";
+  await mountMembers(supabase, agent, app);
+}
+
+async function paintWorkflow(supabase, agent, isAdmin, editor) {
   const versionsRes = await supabase.from("client_prompt_versions").select("agent_id, version_id, deployed_at, sections, recorded_at").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
   app.innerHTML = "";
   let showing = agent.prompt_sections;
@@ -722,16 +816,41 @@ async function paintWorkflow(supabase, agent, isAdmin) {
   });
   tools.append(select);
   const host = el("div", { id: "workflow-sections" });
-  const test = el("section", { class: "panel", id: "test-chat" }, [
-    el("h3", { text: "Test chat" }),
-    el("p", { text: "Test chat available in admin." })
-  ]);
-  app.append(tools, host, test);
+  app.append(tools, host);
   if (isAdmin) {
     const slot = el("div", { id: "publish-slot" });
     app.append(slot);
     const { mountPublish } = await import("../admin/publish.js");
     await mountPublish(supabase, agent, slot);
+  } else if (editor && agent.client_id) {
+    const panel = el("section", { class: "panel", id: "editor-regenerate" });
+    panel.append(el("h3", { text: "Prompt" }));
+    panel.append(el("p", { text: "Regenerate uses the saved onboarding answers for this business." }));
+    const note = el("p", { class: "err", role: "status" });
+    const button = el("button", { class: "btn ghost", type: "button", id: "editor-regenerate-btn" }, ["Regenerate"]);
+    button.addEventListener("click", async () => {
+      note.textContent = "";
+      button.disabled = true;
+      const invoked = await supabase.functions.invoke("generate-setter-prompt", { body: { user_id: agent.client_id } });
+      button.disabled = false;
+      if (invoked.error) {
+        let message = invoked.error.message || "Regenerate failed.";
+        const context = invoked.error.context;
+        if (context && typeof context.json === "function") {
+          try {
+            const payload = await context.json();
+            if (payload && payload.error) message = String(payload.error);
+          } catch (_read) { /* keep the status text */ }
+        }
+        note.textContent = scrub(message);
+        toast(note.textContent, "bad");
+        return;
+      }
+      toast("Prompt regenerated.");
+      window.location.reload();
+    });
+    panel.append(button, note);
+    app.append(panel);
   }
   if (versionsRes.error && !missingRelation(versionsRes.error)) {
     app.append(el("p", { class: "err", text: scrub(versionsRes.error.message) }));
@@ -875,48 +994,3 @@ function tally(rows, pick) {
   return out;
 }
 
-async function paintCampaigns(supabase, agent, isAdmin) {
-  app.innerHTML = "";
-  const panel = el("div", { class: "state", id: "campaigns-empty" }, [
-    el("h2", { text: "No campaign feed" }),
-    el("p", { text: "Broadcasts are not included in the synced business data, so this page does not invent them." })
-  ]);
-  app.append(panel);
-  if (!isAdmin) return;
-  const tools = el("section", { class: "panel", id: "template-sends" });
-  tools.append(el("h3", { text: "Template sends" }));
-  tools.append(el("p", { class: "mute", text: "WhatsApp template messages sent through the API for this business. Broadcasts are not included." }));
-  const button = el("button", { type: "button", class: "btn sm", id: "load-template-sends" }, ["Load template sends"]);
-  const slot = el("div", { id: "template-send-list" });
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    slot.innerHTML = "";
-    try {
-      const { loadTemplateSends } = await import("../admin/crm.js");
-      const result = await loadTemplateSends(supabase, agent.id);
-      const logs = result.logs || [];
-      if (!logs.length) {
-        slot.append(el("p", { class: "mute", text: "No template sends were returned." }));
-      } else {
-        const table = el("table", { class: "crm-table" });
-        table.append(el("thead", {}, [el("tr", {}, ["Template", "Contact", "Status", "Error"].map((label) => el("th", { text: label })))]));
-        const body = el("tbody");
-        logs.forEach((item) => {
-          body.append(el("tr", {}, [
-            el("td", { text: item.template_name || "—" }),
-            el("td", { text: item.contact_number || "—" }),
-            el("td", { text: item.status || "—" }),
-            el("td", { text: item.error || "—" })
-          ]));
-        });
-        table.append(body);
-        slot.append(el("div", { class: "crm-scroll" }, [table]));
-      }
-    } catch (error) {
-      slot.append(el("p", { class: "err", text: scrub(error.message || "Template sends could not be loaded.") }));
-    }
-    button.disabled = false;
-  });
-  tools.append(el("div", { class: "toolbar" }, [button]), slot);
-  app.append(tools);
-}
