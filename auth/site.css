@@ -310,9 +310,9 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .user-chip span{color:var(--mute);font-size:.85rem;overflow-wrap:anywhere}
 .biz-main{text-align:left}
 .biz-scroller{position:relative}
-.biz-row{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:4px;padding:2px 4px 12px;-webkit-overflow-scrolling:touch}
+.biz-row{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:stretch;gap:16px;width:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding-inline:4px;padding:2px 4px 12px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .biz-row:focus{outline:2px solid var(--gold);outline-offset:2px}
-.biz-row .biz-card{flex:0 0 min(320px,82vw);scroll-snap-align:start}
+.biz-row .biz-card{flex:0 0 auto;width:min(320px,78vw);min-width:min(320px,78vw);max-width:min(320px,78vw);scroll-snap-align:start;scroll-snap-stop:always}
 .biz-arrow{position:absolute;top:42%;z-index:2;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font:700 1.1rem var(--d);cursor:pointer}
 .biz-arrow.prev{left:6px}
 .biz-arrow.next{right:6px}
