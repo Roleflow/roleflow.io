@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agent Office · Roleflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+<link rel="stylesheet" href="/admin/hq/hq.css">
+<link rel="stylesheet" href="/admin/office/office.css">
+</head>
+<body class="app office">
+<a class="skip" href="#office-app">Skip to Agent Office</a>
+<div class="app-shell">
+  <aside class="app-side" id="app-side">
+    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+    <p class="side-kicker">Admin</p>
+    <nav class="app-nav" aria-label="Admin">
+      <a href="/admin/office/">Agent Office</a>
+      <a href="/admin/hq/">Agent HQ</a>
+      <a href="/businesses/">Businesses</a>
+      <a href="/account/#profile">Your account</a>
+    </nav>
+    <div class="side-foot">
+      <div class="user-chip" id="user-chip" hidden>
+        <strong id="user-name">Account</strong>
+        <span id="user-email"></span>
+      </div>
+      <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
+    </div>
+  </aside>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <div class="app-main">
+    <header class="app-top">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
+      <div>
+        <h1>Agent Office</h1>
+        <p class="hello" id="page-sub">Outputs are drafts for Diego. Nothing here sends a DM, post, or email.</p>
+      </div>
+    </header>
+    <main class="wrap wide" id="main">
+      <div id="boot-state" class="state" role="status">
+        <span class="skel"></span>
+        <span class="skel short"></span>
+        <p>Opening Agent Office…</p>
+      </div>
+      <div id="office-app" hidden>
+        <div class="office-tools">
+          <span id="madrid-clock"></span>
+          <button type="button" class="btn ghost sm" id="replay-standup">Replay standup</button>
+        </div>
+        <div class="office-stage" id="office-stage">
+          <div id="office-view"></div>
+          <div id="office-labels"></div>
+          <aside class="office-float office-manage" aria-label="Management">
+            <h2>Management</h2>
+            <div id="manage-list"></div>
+          </aside>
+          <aside class="office-float office-tracker" aria-label="Task Tracker">
+            <h2>Task Tracker</h2>
+            <p class="office-pending" id="pending-count">0 <span>pending</span></p>
+            <div id="tracker-list"></div>
+          </aside>
+          <div class="office-zoom">
+            <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+            <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+          </div>
+        </div>
+        <ul class="office-legend">
+          <li><i class="diamond active"></i> Active</li>
+          <li><i class="diamond queued"></i> Queued</li>
+          <li><i class="diamond blocked"></i> Blocked</li>
+          <li><i class="diamond needs"><span>!</span></i> Needs Diego</li>
+        </ul>
+        <p id="standup-line">Daily standup is 08:00 Europe/Madrid. Agents walk to the meeting room.</p>
+      </div>
+    </main>
+    <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
+  </div>
+</div>
+<aside id="office-panel" hidden aria-labelledby="office-panel-title">
+  <div class="office-panel-bar">
+    <h2 id="office-panel-title">Agent</h2>
+    <button type="button" class="btn ghost sm" data-action="close-panel">Close</button>
+  </div>
+  <div id="office-panel-body"></div>
+</aside>
+<div id="toasts" class="toast-stack" aria-live="polite"></div>
+<script src="/supabase/config.js" defer></script>
+<script type="module" src="/admin/office/app.js"></script>
+</body>
+</html>
