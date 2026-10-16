@@ -242,6 +242,7 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .auth-main{max-width:640px}
 .auth-main .panel{margin-top:18px}
 .state{display:grid;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:22px;text-align:left}
+.state[hidden]{display:none !important}
 .state h2{font-size:1.35rem}
 .skel{display:block;height:14px;border-radius:999px;background:linear-gradient(90deg,#1c2744,#314268,#1c2744);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
 .skel.short{width:42%}
@@ -352,12 +353,12 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .asset-forms form{align-content:start}
 .asset-flag{color:var(--gold);font-weight:700;margin:0}
 .asset-row audio{width:100%}
-.wf-console{display:grid;gap:14px;text-align:left}
+.wf-console{display:grid;gap:16px;text-align:left}
 .wf-head h2{font-size:clamp(1.45rem,3vw,2rem)}
 .wf-head p{color:var(--mute);max-width:44em;margin-top:6px}
-.wf-grid{display:grid;gap:14px;grid-template-columns:minmax(0,1.45fr) minmax(260px,.78fr);grid-template-areas:"metrics metrics" "brain health" "roster log" "funnel funnel"}
-.wf-metrics{grid-area:metrics;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
-.wf-card{background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:16px 16px 18px;min-width:0}
+.wf-grid{display:grid;gap:16px;align-items:start;grid-template-columns:minmax(0,1.45fr) minmax(260px,.78fr);grid-template-areas:"metrics metrics" "brain health" "roster log" "funnel funnel"}
+.wf-metrics{grid-area:metrics;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.wf-card{background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:18px;min-width:0}
 .wf-metric{display:grid;gap:4px;align-content:start}
 .wf-metric span,.wf-kicker{color:var(--mute);font:600 .74rem var(--b);letter-spacing:.06em;text-transform:uppercase}
 .wf-metric strong{font:800 clamp(1.7rem,3vw,2.15rem) var(--h);letter-spacing:-.04em;line-height:1}
@@ -368,15 +369,17 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .wf-roster{grid-area:roster}
 .wf-log{grid-area:log;display:grid;align-content:start}
 .wf-funnel{grid-area:funnel}
-.wf-card h3{font-size:1.2rem;margin:2px 0 8px}
+.wf-card h3{font-size:1.15rem;margin:2px 0 10px}
 .wf-svg{display:block;width:100%;height:auto}
 .wf-link{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-dasharray:5 8;animation:wf-flow 2.8s linear infinite}
 .wf-link.sub{stroke-width:1.15;opacity:.8}
 .wf-hit{fill:transparent}
 .wf-ring,.wf-hubring{fill:#101A33;stroke:currentColor;stroke-width:2}
 .wf-hubring{stroke-width:2.5;filter:drop-shadow(0 0 10px rgba(232,176,74,.35))}
-.wf-label{fill:currentColor;font:600 12px var(--b)}
-.wf-label.small{font-size:11px;font-weight:500}
+.wf-pill{fill:#101A33;stroke:var(--line);stroke-width:1}
+.wf-label{fill:var(--ink);font:600 12px var(--b)}
+.wf-label.small{font-size:11px;font-weight:600}
+.wf-label.hub{fill:var(--gold);font:700 14px var(--h)}
 .wf-node{cursor:pointer}
 .wf-hub{cursor:default}
 .wf-node:focus{outline:none}
@@ -406,10 +409,12 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .wf-agent-copy{display:grid;gap:2px;min-width:0}
 .wf-agent-copy strong{font:700 1rem var(--h)}
 .wf-roleline{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:.88rem}
-.wf-strip{grid-column:1 / -1;display:flex;gap:3px;margin-top:6px}
-.wf-day{width:8px;height:8px;border-radius:2px;border:1px solid var(--line);background:transparent;flex:none}
-.wf-day.fill{background:currentColor;border-color:transparent;opacity:.4}
-.wf-day.mid{opacity:.7}
+.wf-strip-wrap{grid-column:1 / -1;display:grid;gap:6px;margin-top:8px}
+.wf-strip-legend{color:var(--mute);font:600 .75rem var(--b);letter-spacing:.02em}
+.wf-strip{display:flex;gap:4px}
+.wf-day{width:11px;height:11px;border-radius:3px;background:#314268;flex:none}
+.wf-day.fill{background:currentColor;opacity:.62}
+.wf-day.mid{opacity:.82}
 .wf-day.high{opacity:1}
 .dot.live{animation:live-pulse 1.8s ease-out infinite}
 @keyframes live-pulse{0%{box-shadow:0 0 0 0 rgba(61,220,151,.45)}70%{box-shadow:0 0 0 7px rgba(61,220,151,0)}100%{box-shadow:0 0 0 0 rgba(61,220,151,0)}}
@@ -478,8 +483,8 @@ body.wf-lock{overflow:hidden}
   .brain-full{display:none}
   .brain-simple{display:block}
   .wf-drawer{width:100%;border-left:0}
-  .wf-strip{gap:2px}
-  .wf-day{width:6px;height:6px}
+  .wf-strip{gap:3px}
+  .wf-day{width:8px;height:8px}
   .section-rail{display:flex;overflow:auto;padding-bottom:4px}
   .section-rail button{flex:none}
 }

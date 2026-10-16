@@ -63,7 +63,7 @@ function el(tag, attrs, children) {
 
 function hideBoot() {
   const boot = document.getElementById("boot-state");
-  if (boot) boot.hidden = true;
+  if (boot) boot.remove();
 }
 
 function showState(title, message) {

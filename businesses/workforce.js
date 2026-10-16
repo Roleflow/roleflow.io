@@ -303,11 +303,11 @@ export async function mountWorkforce(supabase, agent, host, canEdit, cachedStats
 
   function brainSvg(mode) {
     const simple = mode === "simple";
-    const cx = simple ? 180 : 340;
-    const cy = simple ? 176 : 286;
-    const orbit = simple ? 112 : 132;
+    const cx = simple ? 200 : 400;
+    const cy = simple ? 188 : 248;
+    const orbit = simple ? 118 : 156;
     const picture = svgEl("svg", {
-      viewBox: simple ? "0 0 360 360" : "0 0 680 580",
+      viewBox: "0 0 10 10",
       class: "wf-svg",
       role: "img",
       "aria-label": "Setter at the centre, with Outreach, Follow Up, and Setting"
@@ -324,57 +324,102 @@ export async function mountWorkforce(supabase, agent, host, canEdit, cachedStats
     const lines = svgEl("g", { class: "wf-links" });
     const nodes = svgEl("g", {});
     const center = polar(cx, cy, 0, 0);
-    nodes.append(nodeGroup({
-      cx, cy, hit: simple ? 46 : 52, ring: simple ? 40 : 46,
+    const placed = [];
+    function addNode(spec) {
+      placed.push(spec);
+      nodes.append(nodeGroup(spec));
+    }
+    addNode({
+      cx, cy, hit: simple ? 46 : 50, ring: simple ? 40 : 46,
       label: "Setter",
-      labelAt: { x: cx, y: cy + 4 },
       inside: true,
       tip: (agent.agent_name || "Setter") + ". The business setter. Choose an agent to open it.",
       tone: "var(--gold)"
-    }));
+    });
     ROLES.forEach((role) => {
       const at = polar(cx, cy, orbit, ANGLES[role.id]);
-      lines.append(link(center, at, accentId, false));
+      lines.append(link(center, at, accentId, false, simple ? 40 : 46, simple ? 30 : 28));
       const status = currentStatus(role);
-      nodes.append(nodeGroup({
-        cx: at.x, cy: at.y, hit: simple ? 36 : 30, ring: simple ? 30 : 26,
+      addNode({
+        cx: at.x, cy: at.y, hit: simple ? 34 : 28, ring: simple ? 30 : 28,
         label: role.short,
-        labelAt: polar(cx, cy, orbit - (simple ? 52 : 48), ANGLES[role.id]),
         role: role.id,
         focus: "",
         tip: role.name + " · " + statusLabel(status) + ". " + role.text,
         tone: role.tone
-      }));
+      });
       if (simple) return;
       SUBS.forEach(([focus, label], index) => {
-        const deg = ANGLES[role.id] + [-51, -17, 17, 51][index];
-        const sub = polar(at.x, at.y, 104, deg);
-        lines.append(link(at, sub, accentId, true));
-        nodes.append(nodeGroup({
-          cx: sub.x, cy: sub.y, hit: 20, ring: 14,
+        const deg = ANGLES[role.id] + [-62, -22, 22, 62][index];
+        const sub = polar(at.x, at.y, 118, deg);
+        lines.append(link(at, sub, accentId, true, 28, 15));
+        addNode({
+          cx: sub.x, cy: sub.y, hit: 18, ring: 15,
           label,
-          labelAt: polar(at.x, at.y, 128, deg),
           role: role.id,
           focus,
           tip: role.short + " · " + label + ". Opens this agent.",
-          tone: "var(--mute)",
+          tone: role.tone,
           small: true
-        }));
+        });
       });
     });
     picture.append(lines, nodes);
+    fitGraph(picture, placed);
     return picture;
   }
 
-  function link(from, to, accentId, sub) {
+  function fitGraph(picture, placed) {
+    const bounds = placed.map((spec) => labelBounds(spec));
+    const minX = Math.min(...bounds.map((box) => box.x)) - 16;
+    const minY = Math.min(...bounds.map((box) => box.y)) - 16;
+    const maxX = Math.max(...bounds.map((box) => box.x + box.w)) + 16;
+    const maxY = Math.max(...bounds.map((box) => box.y + box.h)) + 18;
+    picture.setAttribute("viewBox", [minX, minY, maxX - minX, maxY - minY].map((value) => value.toFixed(1)).join(" "));
+  }
+
+  function labelBounds(spec) {
+    const ringTop = spec.cy - spec.ring;
+    if (spec.inside) return { x: spec.cx - spec.ring, y: ringTop, w: spec.ring * 2, h: spec.ring * 2 };
+    const pill = pillBox(spec);
+    return {
+      x: Math.min(spec.cx - spec.ring, pill.x),
+      y: ringTop,
+      w: Math.max(spec.ring * 2, pill.w),
+      h: pill.y + pill.h - ringTop
+    };
+  }
+
+  function pillBox(spec) {
+    const small = Boolean(spec.small);
+    const height = small ? 18 : 22;
+    const width = Math.max(small ? 46 : 54, Math.ceil(spec.label.length * (small ? 6.4 : 7.05)) + (small ? 16 : 20));
+    return {
+      x: spec.cx - width / 2,
+      y: spec.cy + spec.ring + 8,
+      w: width,
+      h: height
+    };
+  }
+
+  function link(from, to, accentId, sub, fromRadius, toRadius) {
+    const start = edgePoint(from, to, fromRadius);
+    const end = edgePoint(to, from, toRadius);
     return svgEl("line", {
-      x1: from.x.toFixed(1),
-      y1: from.y.toFixed(1),
-      x2: to.x.toFixed(1),
-      y2: to.y.toFixed(1),
+      x1: start.x.toFixed(1),
+      y1: start.y.toFixed(1),
+      x2: end.x.toFixed(1),
+      y2: end.y.toFixed(1),
       class: sub ? "wf-link sub" : "wf-link",
       stroke: "url(#" + accentId + ")"
     });
+  }
+
+  function edgePoint(from, toward, radius) {
+    const dx = toward.x - from.x;
+    const dy = toward.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: from.x + (dx / length) * radius, y: from.y + (dy / length) * radius };
   }
 
   function nodeGroup(spec) {
@@ -391,11 +436,33 @@ export async function mountWorkforce(supabase, agent, host, canEdit, cachedStats
     group.style.color = spec.tone;
     group.append(svgEl("circle", { cx: spec.cx, cy: spec.cy, r: spec.hit, class: "wf-hit" }));
     group.append(svgEl("circle", { cx: spec.cx, cy: spec.cy, r: spec.ring, class: spec.role ? "wf-ring" : "wf-hubring" }));
+    if (spec.inside) {
+      const text = svgEl("text", {
+        x: spec.cx,
+        y: spec.cy,
+        class: "wf-label hub",
+        "text-anchor": "middle",
+        "dominant-baseline": "central"
+      });
+      text.textContent = spec.label;
+      group.append(text);
+      return group;
+    }
+    const pill = pillBox(spec);
+    group.append(svgEl("rect", {
+      class: "wf-pill",
+      x: pill.x.toFixed(1),
+      y: pill.y.toFixed(1),
+      width: pill.w.toFixed(1),
+      height: pill.h,
+      rx: pill.h / 2
+    }));
     const text = svgEl("text", {
-      x: spec.inside ? spec.cx : spec.labelAt.x,
-      y: spec.inside ? spec.cy + 5 : spec.labelAt.y,
+      x: spec.cx.toFixed(1),
+      y: (pill.y + pill.h / 2).toFixed(1),
       class: spec.small ? "wf-label small" : "wf-label",
-      "text-anchor": "middle"
+      "text-anchor": "middle",
+      "dominant-baseline": "central"
     });
     text.textContent = spec.label;
     group.append(text);
@@ -491,6 +558,8 @@ export async function mountWorkforce(supabase, agent, host, canEdit, cachedStats
   function stripFor(role) {
     const mine = role.id === "setting";
     const days = mine ? strip : activityDays(null);
+    const wrap = el("span", { class: "wf-strip-wrap" });
+    wrap.append(el("span", { class: "wf-strip-legend", text: "Last 30 days" }));
     const row = el("span", { class: "wf-strip", style: "color:" + role.tone });
     const filled = mine ? days.filter((day) => day.count > 0).length : 0;
     row.setAttribute("aria-label", mine
@@ -503,7 +572,8 @@ export async function mountWorkforce(supabase, agent, host, canEdit, cachedStats
       mark.title = day.day + " · " + countLabel;
       row.append(mark);
     });
-    return row;
+    wrap.append(row);
+    return wrap;
   }
 
   function logCard() {
