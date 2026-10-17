@@ -56,7 +56,7 @@ Success responses include `"ok": true`. Failures use an HTTP status and `{"error
 
 ### list
 
-Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `estimate_minutes` and `started_at` when they are set. The office uses those fields for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`.
+Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `business_id`, `estimate_minutes`, and `started_at` when they are set. The office uses those fields for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
@@ -79,6 +79,21 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
   -H "X-Agent-Key: $AGENT_API_KEY" \
   -d '{"action":"schedules"}'
 ```
+
+### create
+
+Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (`tailortalk_agents.id`, the same id the Workforce office uses). Each key can create 50 tasks in a rolling 24 hours.
+
+```bash
+curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
+  -H "apikey: $SUPABASE_ANON_KEY" \
+  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Key: $AGENT_API_KEY" \
+  -d '{"action":"create","title":"Research the ICP brief","description":"Draft for Diego.","estimate_minutes":40,"priority":"high","business_id":"BUSINESS_UUID"}'
+```
+
+A successful response includes `task_id`, `business_id`, `priority`, and `estimate_minutes`. The create is written to `hq_activity`. Passing another agent's id does nothing: the task stays on this agent.
 
 ### timing
 
@@ -154,8 +169,9 @@ Diego answers in the Needs Diego inbox (one item, or a numbered batch such as `1
 | HTTP | Meaning |
 | --- | --- |
 | 401 | Missing, malformed, revoked, or unknown `X-Agent-Key`, or the agent is retired |
-| 400 | Unknown action or status, invalid task id, empty comment or question, or an estimate outside 1 to 480 minutes |
+| 400 | Unknown action or status, invalid task id, empty title, comment, or question, an unknown business, or an estimate outside 1 to 480 minutes |
 | 404 | Task is not this agent's |
 | 405 | Not a POST |
+| 429 | This key already created 50 tasks in the last 24 hours |
 
 An agent only sees its own tasks and enabled schedules. It cannot list other agents, issue keys, or approve its own questions.

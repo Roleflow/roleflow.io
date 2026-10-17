@@ -175,6 +175,7 @@ const workforce = read("businesses/workforce.js");
 assert.match(workforce, /Onboarding & Client Success/);
 assert.match(workforce, /client_ai_setter_leads/);
 assert.match(workforce, /setter_id/);
+assert.match(workforce, /business_id/);
 assert.match(workforce, /No agents are assigned to this business yet/);
 assert.match(workforce, /No tasks yet/);
 assert.match(workforce, /admin\/office\/scene\.js/);
