@@ -2,6 +2,7 @@ import { getSupabase, isConfigured, logout } from "../../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../../auth/callback.js";
 import { bindShell, toast } from "../../auth/ui.js";
 import { cronFieldsValid, nextCron, zonedParts } from "./cron.mjs";
+import { activeTask, leftLabel, madridTime, progressOf, recentDone, taskSpot, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
 
 bindShell();
@@ -30,7 +31,7 @@ const TITLES = {
 };
 const SUBS = {
   overview: "The team, open work, and what is waiting on you.",
-  office: "Click a room to assign work. The team walks to the meeting room at 08:00 Madrid.",
+  office: "Each agent works one task at a time, walking to the meeting room, whiteboard, or outbox, then back to their desk.",
   tasks: "Drag a card between columns, or change its status from the menu.",
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
@@ -82,6 +83,8 @@ let officeHandle = null;
 let officeToken = 0;
 let officeMounting = false;
 const officeBadges = new Map();
+const seenStatus = new Map();
+const flashes = new Map();
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -271,6 +274,26 @@ function sceneWork(agent) {
   if (mine.some((task) => task.status === "in_progress")) return "active";
   if (mine.some((task) => task.status === "queued")) return "queued";
   return "clear";
+}
+
+function agentTasks(agentId) {
+  return state.tasks.filter((task) => task.agent_id === agentId && shownTask(task));
+}
+
+function noteTaskChanges() {
+  state.tasks.forEach((task) => {
+    const prev = seenStatus.get(task.id);
+    if (prev && prev !== "done" && task.status === "done") flashes.set(task.id, Date.now());
+    seenStatus.set(task.id, task.status);
+  });
+}
+
+function flashFor(agentId) {
+  const now = Date.now();
+  flashes.forEach((at, id) => {
+    if (now - at > 1600) flashes.delete(id);
+  });
+  return state.tasks.find((task) => task.agent_id === agentId && flashes.has(task.id)) || null;
 }
 
 function markerOf(work) {
@@ -645,6 +668,41 @@ function paintPanel() {
   panelBody.replaceChildren(task ? taskPanel(task) : el("p", { text: "That task is no longer here." }));
 }
 
+function estimateLine(row) {
+  const minutes = row.estimated ? row.estimate + " min est." : row.estimate + " min";
+  const finish = row.task.status === "blocked" ? "waiting" : "finishes " + madridTime(row.finish) + " Madrid";
+  return minutes + " · " + finish;
+}
+
+function queueBlock(tasks) {
+  const wrap = el("div", { class: "hq-queue" });
+  const rows = timeline(tasks, new Date());
+  const lanes = [["now", "Now"], ["next", "Next"], ["later", "Later"]];
+  if (!rows.length) wrap.append(el("p", { class: "hq-note", text: "Queue is empty. This agent is idle." }));
+  lanes.forEach(([lane, label]) => {
+    const items = rows.filter((row) => row.lane === lane);
+    if (!items.length) return;
+    wrap.append(el("h4", { text: label }));
+    items.forEach((row) => {
+      wrap.append(el("div", { class: "hq-card" }, [
+        el("button", { type: "button", class: "hq-card-title", "data-action": "open-task", "data-id": row.task.id }, [row.task.title]),
+        el("p", { class: "hq-note", text: estimateLine(row) }),
+        selectEl({ "data-action": "set-status", "data-id": row.task.id, "aria-label": "Status for " + row.task.title }, STATUSES, row.task.status)
+      ]));
+    });
+  });
+  const done = recentDone(tasks);
+  wrap.append(el("h3", { text: "Recent" }));
+  if (!done.length) wrap.append(el("p", { class: "hq-note", text: "Nothing finished yet." }));
+  done.forEach((task) => {
+    wrap.append(el("div", { class: "hq-card" }, [
+      el("button", { type: "button", class: "hq-card-title", "data-action": "open-task", "data-id": task.id }, [task.title]),
+      el("p", { class: "hq-note", text: "Done · " + formatMadrid(task.completed_at || task.updated_at) })
+    ]));
+  });
+  return wrap;
+}
+
 function agentPanel(agent) {
   const wrap = el("div", {}, [
     el("p", { class: "hq-note", text: [agent.title, agent.department, agent.status].filter(Boolean).join(" · ") }),
@@ -654,16 +712,9 @@ function agentPanel(agent) {
     el("div", { class: "hq-row" }, [
       el("a", { class: "btn ghost sm", href: "#agents/" + agent.id }, ["Edit agent"])
     ]),
-    el("h3", { text: "Tasks" })
+    el("h3", { text: "Queue" })
   ]);
-  const mine = state.tasks.filter((task) => shownTask(task) && task.agent_id === agent.id).slice(0, 12);
-  if (!mine.length) wrap.append(el("p", { class: "hq-note", text: "No tasks yet." }));
-  mine.forEach((task) => {
-    wrap.append(el("div", { class: "hq-card" }, [
-      el("button", { type: "button", class: "hq-card-title", "data-action": "open-task", "data-id": task.id }, [task.title]),
-      selectEl({ "data-action": "set-status", "data-id": task.id, "aria-label": "Status for " + task.title }, STATUSES, task.status)
-    ]));
-  });
+  wrap.append(queueBlock(agentTasks(agent.id)));
   wrap.append(el("h3", { text: "Assign a task" }));
   wrap.append(taskForm(agent.id));
   wrap.append(el("p", { class: "hq-note", text: DRAFT }));
@@ -836,13 +887,18 @@ function renderOffice() {
 }
 
 function officeAgents() {
-  return activeAgents().map((agent) => ({
-    id: agent.id,
-    name: agent.name,
-    color: asObject(agent.avatar).color || "",
-    outside: Boolean(agent.outside_org) || agent.department === "Outside",
-    work: sceneWork(agent)
-  }));
+  return activeAgents().map((agent) => {
+    const current = agent.status === "paused" ? null : activeTask(agentTasks(agent.id));
+    return {
+      id: agent.id,
+      name: agent.name,
+      color: asObject(agent.avatar).color || "",
+      outside: Boolean(agent.outside_org) || agent.department === "Outside",
+      work: sceneWork(agent),
+      errand: current ? taskSpot(current) : "",
+      taskId: current ? current.id : ""
+    };
+  });
 }
 
 function paintOfficeHud() {
@@ -899,14 +955,24 @@ function placeOfficeBadges(items) {
     const agent = item.id === "meeting" ? null : agentById(item.id);
     const marker = item.id === "meeting" ? "meet" : markerOf(sceneWork(agent));
     const name = item.id === "meeting" ? "Meeting Room" : (agent ? agent.name : "");
-    if (node.dataset.marker !== marker || node.dataset.label !== name) {
-      node.dataset.marker = marker;
-      node.dataset.label = name;
+    const current = agent ? activeTask(agentTasks(agent.id)) : null;
+    const progress = current ? progressOf(current, new Date()) : null;
+    const flash = agent ? flashFor(agent.id) : null;
+    const sig = [marker, name, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
+    if (node.dataset.sig !== sig) {
+      node.dataset.sig = sig;
+      const bar = progress ? el("span", { class: "office-progress", "aria-hidden": "true" }, [el("i")]) : null;
+      if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
       node.replaceChildren(
         item.id === "meeting" ? el("i", { class: "diamond meet", title: "Meeting Room" }) : diamond(marker),
-        el("span", { class: "office-pill", text: name })
+        el("span", { class: "office-pill", text: name }),
+        flash ? el("span", { class: "office-check", text: "Done · " + flash.title }) : null,
+        current ? el("span", { class: "office-taskline", text: current.title }) : null,
+        bar,
+        progress ? el("span", { class: "office-left", text: leftLabel(progress) }) : null
       );
-      node.setAttribute("aria-label", name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "")));
+      const detail = current ? ", " + current.title + ", " + leftLabel(progress) : "";
+      node.setAttribute("aria-label", name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
     }
     node.style.left = item.x + "px";
     node.style.top = item.y + "px";
@@ -1215,6 +1281,7 @@ function renderSection(section) {
 }
 
 function paint() {
+  noteTaskChanges();
   const current = route();
   document.body.classList.toggle("hq-office", current.section === "office");
   document.body.dataset.hqReady = current.section;

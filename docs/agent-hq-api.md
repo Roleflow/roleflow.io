@@ -56,7 +56,7 @@ Success responses include `"ok": true`. Failures use an HTTP status and `{"error
 
 ### list
 
-Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`.
+Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `estimate_minutes` and `started_at` when they are set. The office uses those fields for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
@@ -79,6 +79,21 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
   -H "X-Agent-Key: $AGENT_API_KEY" \
   -d '{"action":"schedules"}'
 ```
+
+### timing
+
+Set how long the current task should take, and when the agent started it. This does not change `status`. Send `estimate_minutes` (an integer from 1 to 480, or `null` to clear it), `started_at` (an ISO timestamp, or `null` to clear it), or both. At least one of the two fields is required.
+
+```bash
+curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
+  -H "apikey: $SUPABASE_ANON_KEY" \
+  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Key: $AGENT_API_KEY" \
+  -d '{"action":"timing","task_id":"TASK_UUID","estimate_minutes":25,"started_at":"2026-10-17T05:00:00Z"}'
+```
+
+A successful response includes the stored `estimate_minutes` and `started_at`.
 
 ### status
 
@@ -139,7 +154,7 @@ Diego answers in the Needs Diego inbox (one item, or a numbered batch such as `1
 | HTTP | Meaning |
 | --- | --- |
 | 401 | Missing, malformed, revoked, or unknown `X-Agent-Key`, or the agent is retired |
-| 400 | Unknown action or status, invalid task id, empty comment or question |
+| 400 | Unknown action or status, invalid task id, empty comment or question, or an estimate outside 1 to 480 minutes |
 | 404 | Task is not this agent's |
 | 405 | Not a POST |
 
