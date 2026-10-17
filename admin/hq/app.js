@@ -35,7 +35,7 @@ const SUBS = {
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
   agents: "Add, edit, or retire agents. Retired names can be used again.",
-  activity: "What changed in Agent HQ."
+  activity: "What changed in Agentic HQ."
 };
 const MARK = {
   active: "Active",
@@ -139,7 +139,7 @@ function scrub(error) {
     return "An agent with that name already exists.";
   }
   if (/cannot report to itself/i.test(message)) return "An agent cannot report to itself.";
-  if (/PGRST205|schema cache|does not exist/i.test(message)) return "Apply the Agent HQ migration, then refresh.";
+  if (/PGRST205|schema cache|does not exist/i.test(message)) return "Apply the Agentic HQ migration, then refresh.";
   return message.replace(/rfhq_[0-9a-f]+/gi, "[key]").slice(0, 280);
 }
 
@@ -238,8 +238,12 @@ function agentName(id) {
   return agentById(id)?.name || "Unassigned";
 }
 
+function rosterAgent(agent) {
+  return Boolean(agent) && agent.status !== "retired" && agent.status !== "archived";
+}
+
 function activeAgents() {
-  return state.agents.filter((agent) => agent.status !== "retired");
+  return state.agents.filter(rosterAgent);
 }
 
 function workOf(agent) {
@@ -251,8 +255,12 @@ function workOf(agent) {
   return "idle";
 }
 
+function shownTask(task) {
+  return rosterAgent(agentById(task.agent_id));
+}
+
 function openTasks(agentId) {
-  return state.tasks.filter((task) => task.status !== "done" && (!agentId || task.agent_id === agentId));
+  return state.tasks.filter((task) => shownTask(task) && task.status !== "done" && (!agentId || task.agent_id === agentId));
 }
 
 function sceneWork(agent) {
@@ -315,13 +323,14 @@ function sortState() {
 
 function needsItems() {
   return state.tasks
-    .filter((task) => task.status === "needs_diego")
+    .filter((task) => shownTask(task) && task.status === "needs_diego")
     .sort((a, b) => time(b.updated_at) - time(a.updated_at) || a.title.localeCompare(b.title));
 }
 
 function filteredTasks() {
   const query = state.filters.search.trim().toLowerCase();
   return state.tasks.filter((task) => {
+    if (!shownTask(task)) return false;
     if (state.filters.agent && task.agent_id !== state.filters.agent) return false;
     if (state.filters.priority && task.priority !== state.filters.priority) return false;
     if (!query) return true;
@@ -530,7 +539,7 @@ function memoryClient(seed) {
 function paintChrome() {
   const current = route();
   heading.textContent = TITLES[current.section];
-  document.title = TITLES[current.section] + " · Agent HQ · Roleflow";
+  document.title = TITLES[current.section] + " · Agentic HQ · Roleflow";
   sub.textContent = SUBS[current.section] + " " + DRAFT;
   document.querySelectorAll("#hq-nav a").forEach((link) => {
     const href = link.getAttribute("href") || "";
@@ -647,7 +656,7 @@ function agentPanel(agent) {
     ]),
     el("h3", { text: "Tasks" })
   ]);
-  const mine = state.tasks.filter((task) => task.agent_id === agent.id).slice(0, 12);
+  const mine = state.tasks.filter((task) => shownTask(task) && task.agent_id === agent.id).slice(0, 12);
   if (!mine.length) wrap.append(el("p", { class: "hq-note", text: "No tasks yet." }));
   mine.forEach((task) => {
     wrap.append(el("div", { class: "hq-card" }, [
@@ -708,7 +717,7 @@ function taskPanel(task) {
   });
   wrap.append(thread);
   wrap.append(el("form", { class: "hq-form", "data-form": "comment", "data-id": task.id }, [
-    field("Comment", el("textarea", { name: "body", required: true, maxlength: "8000", placeholder: "Reply stays in Agent HQ." })),
+    field("Comment", el("textarea", { name: "body", required: true, maxlength: "8000", placeholder: "Reply stays in Agentic HQ." })),
     el("button", { class: "btn sm", type: "submit" }, ["Comment"])
   ]));
   return wrap;
@@ -720,10 +729,10 @@ function stat(label, value, href) {
 }
 
 function renderOverview() {
-  const open = state.tasks.filter((task) => task.status !== "done").length;
+  const open = openTasks().length;
   const needs = needsItems().length;
-  const blocked = state.tasks.filter((task) => task.status === "blocked").length;
-  const enabled = state.schedules.filter((item) => item.enabled).length;
+  const blocked = state.tasks.filter((task) => shownTask(task) && task.status === "blocked").length;
+  const enabled = state.schedules.filter((item) => item.enabled && rosterAgent(agentById(item.agent_id))).length;
   const wrap = el("div", {}, [
     el("div", { class: "hq-stats" }, [
       stat("Agents", activeAgents().length, "#agents"),
@@ -1060,8 +1069,9 @@ function renderSchedule() {
     scheduleForm(editing)
   ]);
   const list = el("div", { class: "hq-list" });
-  if (!state.schedules.length) list.append(el("p", { class: "hq-note", text: "No recurring tasks yet." }));
-  state.schedules.forEach((item) => {
+  const schedules = state.schedules.filter((item) => rosterAgent(agentById(item.agent_id)));
+  if (!schedules.length) list.append(el("p", { class: "hq-note", text: "No recurring tasks yet." }));
+  schedules.forEach((item) => {
     const confirm = state.confirmDelete === item.id;
     list.append(el("article", {}, [
       el("strong", { text: agentName(item.agent_id) }),
@@ -1106,12 +1116,6 @@ function renderAgents() {
   ]);
   const list = el("div", { class: "hq-list" });
   activeAgents().forEach((agent) => list.append(agentCard(agent)));
-  const retired = state.agents.filter((agent) => agent.status === "retired");
-  if (retired.length) {
-    const block = el("details", { class: "hq-create" }, [el("summary", { text: "Retired (" + retired.length + ")" })]);
-    retired.forEach((agent) => block.append(agentCard(agent)));
-    list.append(block);
-  }
   wrap.append(list);
   return wrap;
 }
@@ -1690,7 +1694,7 @@ async function boot(supabase, user) {
   if (!adminRes.data) {
     showState(
       "Admins only",
-      "Agent HQ is for Roleflow admins.",
+      "Agentic HQ is for Roleflow admins.",
       el("p", {}, [el("a", { href: "/businesses/" }, ["Back to businesses"])])
     );
     document.body.dataset.hqReady = "denied";
@@ -1700,11 +1704,11 @@ async function boot(supabase, user) {
     await reload();
   } catch (error) {
     if (missingRelation(error)) {
-      showState("Agent HQ is not in the database yet", "Apply the Agent HQ migration, then refresh.");
+      showState("Agentic HQ is not in the database yet", "Apply the Agentic HQ migration, then refresh.");
       document.body.dataset.hqReady = "missing";
       return;
     }
-    showState("Agent HQ did not open", scrub(error));
+    showState("Agentic HQ did not open", scrub(error));
     document.body.dataset.hqReady = "error";
     return;
   }
