@@ -5,7 +5,7 @@ import { liveSections } from "../account/setter-model.js";
 import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
-import { mountWorkforce } from "./workforce.js";
+import { cancelWorkforce, fixtureClient, mountWorkforce } from "./workforce.js";
 
 bindShell();
 
@@ -265,8 +265,26 @@ function dayChart(series) {
   return block;
 }
 
+function readBizFixture() {
+  const host = location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1") return null;
+  const fixture = window.__BIZ_FIXTURE;
+  if (!fixture || !fixture.agent || !fixture.agent.id) return null;
+  return fixture;
+}
+
+const preview = readBizFixture();
 const arriving = rememberCallback(window.location.href);
-if (arriving.type === "recovery") {
+if (preview) {
+  hideBoot();
+  heading.textContent = preview.agent.agent_name || "Workforce";
+  document.title = (preview.agent.agent_name || "Workforce") + " · Roleflow";
+  sub.textContent = "Workforce";
+  nav.append(el("nav", { class: "app-nav", "aria-label": "Business" }, [
+    el("a", { href: "#workforce", "aria-current": "page" }, ["Workforce"])
+  ]));
+  await mountWorkforce(fixtureClient(preview), preview.agent, app, false, null);
+} else if (arriving.type === "recovery") {
   window.location.replace("/reset/" + window.location.hash);
 } else if (!isConfigured()) {
   showState("Accounts unavailable", "Paste SUPABASE_URL and SUPABASE_ANON_KEY into supabase/config.js, then refresh.");
@@ -305,7 +323,7 @@ async function boot(supabase, user) {
   const isAdmin = Boolean(adminRes.data);
   if (isAdmin) {
     nav.append(el("nav", { class: "app-nav", id: "admin-links", "aria-label": "Admin" }, [
-      el("a", { href: "/admin/hq/" }, ["Agent HQ"]),
+      el("a", { href: "/admin/hq/" }, ["Agentic HQ"]),
       el("a", { href: "/businesses/" }, ["Businesses"]),
       el("a", { href: "/account/#profile" }, ["Your account"])
     ]));
@@ -364,6 +382,7 @@ async function boot(supabase, user) {
   }
 
   function paint() {
+    cancelWorkforce();
     const route = parseRoute();
     hideBoot();
     if (route.kind === "detail" && !sectionAllowed(route, isAdmin, agents, roles, user)) {

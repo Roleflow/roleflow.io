@@ -1,8 +1,8 @@
-# Agent HQ API
+# Agentic HQ API
 
 Diego manages agents in the admin UI at `/admin/hq/`. The isometric office is the main view there, filling the area beside the sidebar, and it reads the same tables (agents, tasks, comments, and the Needs Diego queue). `/admin/office` redirects to `/admin/hq`. Three.js loads only when that office view opens. Each agent can also call this HTTP API with its own key to read its queue and post drafts back.
 
-Nothing in this API sends email, DMs, or social posts. Task results are drafts for Diego. Approving or rejecting a `needs_diego` item is admin-only and stays inside Agent HQ.
+Nothing in this API sends email, DMs, or social posts. Task results are drafts for Diego. Approving or rejecting a `needs_diego` item is admin-only and stays inside Agentic HQ.
 
 ## Tables
 
@@ -31,14 +31,14 @@ Apply migrations in filename order. Agent HQ depends on `public.is_admin()` from
 5. The migration adds the HQ tables to the `supabase_realtime` publication when that publication exists. The admin UI subscribes with the logged-in admin session.
 6. Diego issues a key from **Agents → Edit → Issue API key**. The plaintext is shown once. Only a SHA-256 hash is stored. Issuing a new key revokes the previous active key. Revoke from the same screen.
 
-Seeded after a fresh apply: 9 agents (8 Roleflow roles plus New Bot, outside the org), 25 tasks (12 of them `needs_diego`), and 29 schedules in `Europe/Madrid`. Website Buildeer and Loom Outreacher are notes on Roleflow Agent and Outbound Rep, not separate rows.
+The live roster is Roleflow Agent, Lead Gen Manager, Outbound Rep, Content Generator, Onboarding & Client Success, and Ads Manager (paused). Older bots stay in the tables as retired so their tasks and history remain, and Agentic HQ hides them. Website Buildeer and Loom Outreacher were notes, not separate rows.
 
 ## Call the API
 
 ```bash
 export SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
 export SUPABASE_ANON_KEY="YOUR_PUBLISHABLE_KEY"
-export AGENT_API_KEY="rfhq_..."   # issued in Agent HQ, never commit this
+export AGENT_API_KEY="rfhq_..."   # issued in Agentic HQ, never commit this
 ```
 
 `AGENT_API_KEY` looks like `rfhq_` plus 64 hex characters. Send it only in `X-Agent-Key`.
