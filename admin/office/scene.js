@@ -700,6 +700,9 @@ function makeSitter(color) {
 
   const observer = new ResizeObserver(() => resize());
   observer.observe(host);
+  const onWindowResize = () => resize();
+  window.addEventListener("resize", onWindowResize);
+  requestAnimationFrame(() => resize());
   renderer.domElement.addEventListener("pointerdown", onDown);
   window.addEventListener("pointerup", onUp);
   resize();
@@ -733,6 +736,7 @@ function makeSitter(color) {
       stopped = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      window.removeEventListener("resize", onWindowResize);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);
       controls.dispose();

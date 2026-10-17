@@ -2,6 +2,7 @@ import { getSupabase, isConfigured, logout } from "../../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../../auth/callback.js";
 import { bindShell, toast } from "../../auth/ui.js";
 import { cronFieldsValid, nextCron, zonedParts } from "./cron.mjs";
+import { standupPhase } from "../office/standup.mjs";
 
 bindShell();
 
@@ -17,11 +18,10 @@ const PRIORITIES = [["low", "Low"], ["normal", "Normal"], ["high", "High"]];
 const DOT = { needs: "#ef4444", typing: "#22c55e", blocked: "#e8b04a", idle: "#64748b", paused: "#64748b" };
 const WORK_LABEL = { needs: "Needs Diego", typing: "In progress", blocked: "Blocked", idle: "Idle", paused: "Paused" };
 const DRAFT = "Outputs are drafts for Diego. Nothing here sends a DM, post, or email.";
-const SECTIONS = ["overview", "office", "chat", "tasks", "needs", "schedule", "agents", "activity"];
+const SECTIONS = ["overview", "office", "tasks", "needs", "schedule", "agents", "activity"];
 const TITLES = {
   overview: "Overview",
-  office: "3D Office",
-  chat: "Chat",
+  office: "Office",
   tasks: "Tasks",
   needs: "Needs Diego",
   schedule: "Schedule",
@@ -30,13 +30,19 @@ const TITLES = {
 };
 const SUBS = {
   overview: "The team, open work, and what is waiting on you.",
-  office: "Click an agent to assign work or answer them. A red mark means a task needs you.",
-  chat: "Messages become queued tasks. Replies stay in the task thread.",
+  office: "Click a room to assign work. The team walks to the meeting room at 08:00 Madrid.",
   tasks: "Drag a card between columns, or change its status from the menu.",
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
   agents: "Add, edit, or retire agents. Retired names can be used again.",
   activity: "What changed in Agent HQ."
+};
+const MARK = {
+  active: "Active",
+  queued: "Queued",
+  blocked: "Blocked",
+  needs: "Needs Diego",
+  paused: "Paused"
 };
 const FIXTURE_USER = {
   id: "00000000-0000-4000-8000-0000000000d1",
@@ -65,7 +71,6 @@ const state = {
   activity: [],
   keys: [],
   filters: { agent: "", priority: "", search: "" },
-  chatAgent: "",
   confirmDelete: "",
   confirmRetire: "",
   pendingKey: "",
@@ -76,7 +81,7 @@ const state = {
 let officeHandle = null;
 let officeToken = 0;
 let officeMounting = false;
-let officeFocus = "";
+const officeBadges = new Map();
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -143,9 +148,14 @@ function missingRelation(error) {
 }
 
 function route() {
-  const raw = decodeURIComponent(location.hash.replace(/^#/, "")) || "overview";
+  const raw = decodeURIComponent(location.hash.replace(/^#/, "")) || "office";
+  if (raw === "standup") return { section: "office", id: "" };
+  if (raw === "meeting") return { section: "office", id: "meeting" };
   const [section, id] = raw.split("/");
-  if (!SECTIONS.includes(section)) return { section: "overview", id: "" };
+  if (section === "chat") return { section: "office", id: "" };
+  if (section === "agent" && id) return { section: "office", id };
+  if (section === "task" && id) return { section: "tasks", id };
+  if (!SECTIONS.includes(section)) return { section: "office", id: "" };
   return { section, id: id || "" };
 }
 
@@ -239,6 +249,41 @@ function workOf(agent) {
   if (mine.some((task) => task.status === "in_progress")) return "typing";
   if (mine.some((task) => task.status === "blocked")) return "blocked";
   return "idle";
+}
+
+function openTasks(agentId) {
+  return state.tasks.filter((task) => task.status !== "done" && (!agentId || task.agent_id === agentId));
+}
+
+function sceneWork(agent) {
+  if (!agent || agent.status === "paused") return "paused";
+  const mine = openTasks(agent.id);
+  if (mine.some((task) => task.status === "needs_diego")) return "needs";
+  if (mine.some((task) => task.status === "blocked")) return "blocked";
+  if (mine.some((task) => task.status === "in_progress")) return "active";
+  if (mine.some((task) => task.status === "queued")) return "queued";
+  return "clear";
+}
+
+function markerOf(work) {
+  return work === "clear" ? "active" : work;
+}
+
+function lockSvg() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("fill", "currentColor");
+  path.setAttribute("d", "M8 1.2a3 3 0 0 0-3 3V6H4.2A1.2 1.2 0 0 0 3 7.2v6.1A1.2 1.2 0 0 0 4.2 14.5h7.6a1.2 1.2 0 0 0 1.2-1.2V7.2A1.2 1.2 0 0 0 11.8 6H11V4.2a3 3 0 0 0-3-3zm-1.6 3a1.6 1.6 0 0 1 3.2 0V6H6.4V4.2z");
+  svg.append(path);
+  return svg;
+}
+
+function diamond(kind) {
+  return el("i", { class: "diamond " + kind, title: MARK[kind] || "Meeting Room" }, [
+    kind === "blocked" ? lockSvg() : el("span", { text: kind === "needs" ? "!" : "" })
+  ]);
 }
 
 function statusLabel(status) {
@@ -553,8 +598,9 @@ function personButton(person, current) {
 function paintPanel() {
   const current = route();
   let target = null;
-  if (current.id && (current.section === "office" || current.section === "tasks" || current.section === "needs" || current.section === "chat")) {
-    target = current.id === "diego" ? { kind: "diego" } : (
+  if (current.id && (current.section === "office" || current.section === "tasks" || current.section === "needs")) {
+    if (current.section === "office" && current.id === "meeting") target = { kind: "meeting" };
+    else target = current.id === "diego" ? { kind: "diego" } : (
       current.section === "office" ? { kind: "agent", id: current.id } : { kind: "task", id: current.id }
     );
   }
@@ -564,6 +610,11 @@ function paintPanel() {
     return;
   }
   panel.hidden = false;
+  if (target.kind === "meeting") {
+    panelTitle.textContent = "Meeting Room";
+    panelBody.replaceChildren(meetingPanel());
+    return;
+  }
   if (target.kind === "diego") {
     panelTitle.textContent = "Diego Castanedo";
     const waiting = needsItems().length;
@@ -592,8 +643,7 @@ function agentPanel(agent) {
     agent.standing_need ? el("p", {}, [el("strong", { text: "Standing need. " }), agent.standing_need]) : null,
     el("p", { class: "hq-note", text: "Last active " + formatMadrid(agent.last_active_at) }),
     el("div", { class: "hq-row" }, [
-      el("a", { class: "btn ghost sm", href: "#agents/" + agent.id }, ["Edit agent"]),
-      el("button", { type: "button", class: "btn ghost sm", "data-action": "open-chat-agent", "data-id": agent.id }, ["Chat"])
+      el("a", { class: "btn ghost sm", href: "#agents/" + agent.id }, ["Edit agent"])
     ]),
     el("h3", { text: "Tasks" })
   ]);
@@ -705,24 +755,74 @@ function rosterList(agents) {
   return list;
 }
 
-function renderOffice() {
-  return el("div", { class: "hq-office-view" }, [
-    el("div", { class: "hq-stage-wrap" }, [
-      el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "3D office. Click an agent to assign work." })
-    ]),
-    el("ul", { class: "hq-legend" }, [
-      legend("#22c55e", "Typing", "in progress"),
-      legend("#ef4444", "!", "needs Diego"),
-      legend("#e8b04a", "!", "blocked"),
-      legend("#64748b", "Z", "idle or paused")
-    ])
+function meetingPanel() {
+  const phase = standupPhase(new Date());
+  const when = phase.playing
+    ? "Standup is happening now. Agents walk to the meeting room at 08:00 Madrid."
+    : "Next standup is 08:00 Europe/Madrid. Agents walk in and gather around the orb.";
+  const wrap = el("div", {}, [
+    el("p", { text: when }),
+    el("p", { class: "hq-note", text: DRAFT }),
+    el("h3", { text: "Needs Diego" })
   ]);
+  const needs = needsItems();
+  if (!needs.length) wrap.append(el("p", { class: "hq-note", text: "Nothing is waiting on you." }));
+  needs.forEach((task, index) => {
+    wrap.append(el("article", { class: "hq-need" }, [
+      el("span", { class: "num", text: String(index + 1) }),
+      el("div", {}, [
+        el("button", { type: "button", class: "hq-card-title", "data-action": "open-task", "data-id": task.id }, [task.title]),
+        el("p", { class: "hq-note", text: agentName(task.agent_id) }),
+        task.result ? el("p", { text: task.result }) : null,
+        el("div", { class: "hq-row" }, [
+          el("button", { type: "button", class: "btn sm", "data-action": "approve", "data-id": task.id }, ["Approve"]),
+          el("button", { type: "button", class: "btn ghost sm", "data-action": "reject", "data-id": task.id }, ["Reject"])
+        ])
+      ])
+    ]));
+  });
+  wrap.append(el("p", {}, [el("a", { href: "#needs" }, ["Open the full Needs Diego inbox"])]));
+  wrap.append(el("h3", { text: "Today's standup" }));
+  activeAgents().forEach((agent) => {
+    const mine = openTasks(agent.id);
+    const block = el("article", { class: "hq-card" }, [
+      el("button", { type: "button", class: "hq-card-title", "data-action": "open-agent", "data-id": agent.id }, [agent.name]),
+      el("p", { class: "hq-note", text: (MARK[markerOf(sceneWork(agent))] || "Active") + " · " + mine.length + " open" })
+    ]);
+    if (!mine.length) block.append(el("p", { class: "hq-note", text: "Clear." }));
+    mine.slice(0, 4).forEach((task) => {
+      block.append(el("button", { type: "button", class: "office-task", "data-action": "open-task", "data-id": task.id }, [
+        el("strong", { text: task.title }),
+        el("small", { text: statusLabel(task.status) })
+      ]));
+    });
+    wrap.append(block);
+  });
+  return wrap;
 }
 
-function legend(color, mark, label) {
-  return el("li", {}, [
-    el("i", { class: "dot", style: "background:" + color }),
-    el("span", { text: mark + " " + label })
+function renderOffice() {
+  return el("div", { class: "hq-office-view" }, [
+    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Isometric office. Click an agent to assign work." }),
+    el("div", { id: "hq-labels" }),
+    el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
+      el("h2", { text: "Management" }),
+      el("div", { id: "hq-manage" })
+    ]),
+    el("aside", { class: "office-float office-tracker", "aria-label": "Task Tracker" }, [
+      el("h2", { text: "Task Tracker" }),
+      el("p", { class: "office-pending", id: "hq-pending" }, ["0 ", el("span", { text: "pending" })]),
+      el("div", { id: "hq-tracker" })
+    ]),
+    el("div", { class: "office-tools" }, [
+      el("span", { id: "hq-clock" }),
+      el("button", { type: "button", class: "btn ghost sm", "data-action": "replay-standup" }, ["Replay standup"]),
+      el("p", { id: "hq-standup-line" })
+    ]),
+    el("div", { class: "hq-zoom" }, [
+      el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
+      el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
+    ]),
   ]);
 }
 
@@ -730,14 +830,100 @@ function officeAgents() {
   return activeAgents().map((agent) => ({
     id: agent.id,
     name: agent.name,
-    title: agent.title,
-    department: agent.department,
-    outside: Boolean(agent.outside_org),
-    lead: Boolean(agent.is_lead),
-    sort: agent.sort_order || 0,
-    work: workOf(agent),
-    color: asObject(agent.avatar).color || ""
+    color: asObject(agent.avatar).color || "",
+    outside: Boolean(agent.outside_org) || agent.department === "Outside",
+    work: sceneWork(agent)
   }));
+}
+
+function paintOfficeHud() {
+  const manage = document.getElementById("hq-manage");
+  const tracker = document.getElementById("hq-tracker");
+  const pending = document.getElementById("hq-pending");
+  const clock = document.getElementById("hq-clock");
+  if (!manage || !tracker || !pending) return;
+  const open = openTasks();
+  pending.replaceChildren(document.createTextNode(String(open.length) + " "), el("span", { text: "pending" }));
+  if (clock) {
+    clock.textContent = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Madrid",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).format(new Date()) + " Madrid";
+  }
+  const current = route();
+  manage.replaceChildren();
+  activeAgents().forEach((agent) => {
+    const work = sceneWork(agent);
+    const button = el("button", { type: "button", class: "office-count", "data-action": "open-agent", "data-id": agent.id }, [
+      diamond(markerOf(work)),
+      el("span", { class: "who", text: agent.name }),
+      el("b", { text: String(openTasks(agent.id).length) })
+    ]);
+    if (current.section === "office" && current.id === agent.id) button.setAttribute("aria-current", "true");
+    manage.append(button);
+  });
+  tracker.replaceChildren();
+  const shown = open.slice(0, 6);
+  if (!shown.length) tracker.append(el("p", { class: "office-quiet", text: "Nothing open." }));
+  shown.forEach((task) => {
+    tracker.append(el("button", { type: "button", class: "office-task", "data-action": "open-task", "data-id": task.id }, [
+      el("strong", { text: task.title }),
+      el("small", { text: agentName(task.agent_id) + " · " + statusLabel(task.status) })
+    ]));
+  });
+}
+
+function placeOfficeBadges(items) {
+  const labels = document.getElementById("hq-labels");
+  if (!labels) return;
+  const seen = new Set();
+  items.forEach((item) => {
+    seen.add(item.id);
+    let node = officeBadges.get(item.id);
+    if (!node) {
+      node = el("button", { type: "button", class: "office-badge", "data-action": item.id === "meeting" ? "open-meeting" : "open-agent", "data-id": item.id === "meeting" ? "" : item.id });
+      labels.append(node);
+      officeBadges.set(item.id, node);
+    }
+    const agent = item.id === "meeting" ? null : agentById(item.id);
+    const marker = item.id === "meeting" ? "meet" : markerOf(sceneWork(agent));
+    const name = item.id === "meeting" ? "Meeting Room" : (agent ? agent.name : "");
+    if (node.dataset.marker !== marker || node.dataset.label !== name) {
+      node.dataset.marker = marker;
+      node.dataset.label = name;
+      node.replaceChildren(
+        item.id === "meeting" ? el("i", { class: "diamond meet", title: "Meeting Room" }) : diamond(marker),
+        el("span", { class: "office-pill", text: name })
+      );
+      node.setAttribute("aria-label", name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "")));
+    }
+    node.style.left = item.x + "px";
+    node.style.top = item.y + "px";
+    node.hidden = !item.visible || !name;
+  });
+  officeBadges.forEach((node, id) => {
+    if (!seen.has(id)) {
+      node.remove();
+      officeBadges.delete(id);
+    }
+  });
+}
+
+function phaseLine(phase) {
+  const line = document.getElementById("hq-standup-line");
+  const button = document.querySelector("[data-action=replay-standup]");
+  if (line) {
+    const text = phase && phase.playing
+      ? "Standup is in progress. Agents are walking to the meeting room."
+      : "Daily standup is 08:00 Europe/Madrid. Agents walk to the meeting room.";
+    if (line.textContent !== text) line.textContent = text;
+  }
+  if (button) {
+    const label = phase && phase.playing && location.hash !== "#standup" ? "Standup playing" : "Replay standup";
+    if (button.textContent !== label) button.textContent = label;
+  }
 }
 
 function cancelOffice() {
@@ -756,25 +942,27 @@ async function mountOffice() {
   const agents = officeAgents();
   try {
     if (!host) return;
-    if (window.matchMedia("(max-width: 760px)").matches) {
-      host.append(rosterList(agents));
-      window.__hqOfficeReady = true;
-      return;
-    }
-    const mod = await import("./office.js");
+    const mod = await import("../office/scene.js");
     if (token !== officeToken || !document.body.contains(host)) return;
-    officeHandle = await mod.createOffice(host, agents, {
-      onSelect(id) { go("#office/" + id); }
+    officeHandle = await mod.createScene(host, {
+      onSelect(id) {
+        if (id === "meeting") go("#office/meeting");
+        else go("#office/" + id);
+      },
+      onFrame(payload) {
+        placeOfficeBadges(payload.labels || []);
+        phaseLine(payload.phase);
+      }
     });
     if (token !== officeToken) {
       officeHandle.destroy();
       officeHandle = null;
       return;
     }
-    if (route().id) {
-      officeHandle.focus(route().id);
-      officeFocus = route().id;
-    }
+    officeHandle.setLoop(() => location.hash === "#standup");
+    officeHandle.update(agents);
+    window.__hqOfficeReady = true;
+    if (window.__officeProject) window.__hqProject = window.__officeProject;
   } catch {
     if (token !== officeToken || !host.isConnected) return;
     host.replaceChildren(
@@ -859,54 +1047,6 @@ function renderNeeds() {
     wrap.append(el("form", { class: "hq-form", "data-form": "needs-batch" }, [
       field("Batch answers", el("textarea", { name: "batch", placeholder: "1 yes\n2 no, wait for the call notes" })),
       el("button", { class: "btn sm", type: "submit" }, ["Apply answers"])
-    ]));
-  }
-  return wrap;
-}
-
-function renderChat() {
-  const agents = activeAgents();
-  if (!agents.length) return el("p", { text: "Add an agent before starting a chat." });
-  if (!agents.some((agent) => agent.id === state.chatAgent)) state.chatAgent = agents[0].id;
-  const threads = state.tasks.filter((task) => task.agent_id === state.chatAgent);
-  const current = route();
-  const selected = threads.some((task) => task.id === current.id) ? current.id : "";
-  const task = selected ? taskById(selected) : null;
-  const wrap = el("div", { class: "hq-split" }, [
-    el("div", {}, [
-      field("Agent", selectEl({ "data-action": "chat-agent", "aria-label": "Chat agent" }, agents.map((agent) => [agent.id, agent.name]), state.chatAgent)),
-      el("div", { class: "hq-list", id: "hq-threads" })
-    ]),
-    el("div", {}, [
-      el("form", { class: "hq-form", "data-form": "chat" }, [
-        field("New draft for " + agentName(state.chatAgent), el("textarea", { name: "body", required: true, placeholder: "First line becomes the task title." })),
-        el("button", { class: "btn sm", type: "submit" }, ["Queue task"])
-      ])
-    ])
-  ]);
-  const list = wrap.querySelector("#hq-threads");
-  if (!threads.length) list.append(el("p", { class: "hq-note", text: "No thread yet." }));
-  threads.forEach((item) => {
-    const button = el("button", { type: "button", class: "hq-card-title", "data-action": "open-chat", "data-id": item.id }, [item.title]);
-    const card = el("article", { class: "hq-card" }, [button, el("p", { class: "hq-meta", text: statusLabel(item.status) })]);
-    if (item.id === selected) card.style.borderColor = "var(--m)";
-    list.append(card);
-  });
-  const main = wrap.lastElementChild;
-  if (task) {
-    main.append(el("h2", { text: task.title }));
-    if (task.result) main.append(el("p", {}, [el("strong", { text: "Draft output. " }), task.result]));
-    const thread = el("div", { class: "hq-thread" });
-    state.comments.filter((comment) => comment.task_id === task.id).forEach((comment) => {
-      thread.append(el("div", { class: "hq-bubble" + (comment.author_kind === "diego" ? " diego" : "") }, [
-        el("strong", { text: comment.author_kind === "diego" ? "Diego" : agentName(task.agent_id) }),
-        el("p", { text: comment.body })
-      ]));
-    });
-    main.append(thread);
-    main.append(el("form", { class: "hq-form", "data-form": "comment", "data-id": task.id }, [
-      field("Reply", el("textarea", { name: "body", required: true })),
-      el("button", { class: "btn sm", type: "submit" }, ["Reply"])
     ]));
   }
   return wrap;
@@ -1063,7 +1203,6 @@ function renderActivity() {
 function renderSection(section) {
   if (section === "overview") return renderOverview();
   if (section === "office") return renderOffice();
-  if (section === "chat") return renderChat();
   if (section === "tasks") return renderTasks();
   if (section === "needs") return renderNeeds();
   if (section === "schedule") return renderSchedule();
@@ -1085,22 +1224,23 @@ function paint() {
   if (current.section === "office" && (officeHandle || officeMounting) && document.getElementById("hq-stage")) {
     if (officeHandle) {
       officeHandle.update(officeAgents());
-      if (current.id !== officeFocus) {
-        if (current.id) officeHandle.focus(current.id);
-        officeFocus = current.id;
-      }
+      officeHandle.setLoop(() => location.hash === "#standup");
       window.__hqOfficeReady = true;
     }
+    paintOfficeHud();
     window.__hqPainted = current.section;
     return;
   }
   if (current.section !== "office") {
-    officeFocus = "";
+    officeBadges.clear();
     cancelOffice();
   }
   app.replaceChildren(renderSection(current.section));
   hideBoot();
-  if (current.section === "office") mountOffice();
+  if (current.section === "office") {
+    paintOfficeHud();
+    mountOffice();
+  }
   window.__hqPainted = current.section;
 }
 
@@ -1231,27 +1371,6 @@ async function onComment(form) {
   const ok = await commit(
     () => state.supabase.from("hq_task_comments").insert({ task_id: form.dataset.id, author_kind: "diego", body: body.slice(0, 8000) }),
     "Comment added."
-  );
-  if (ok) form.reset();
-}
-
-async function onChat(form) {
-  const body = String(formData(form).body || "").trim();
-  const title = body.split(/\n/)[0].trim().slice(0, 120);
-  if (!title || !agentById(state.chatAgent)) {
-    toast("Write a message and choose an agent.", "bad");
-    return;
-  }
-  const ok = await commit(
-    () => state.supabase.from("hq_tasks").insert({
-      agent_id: state.chatAgent,
-      title,
-      description: body,
-      status: "queued",
-      priority: "normal",
-      result: ""
-    }),
-    "Queued as a draft task."
   );
   if (ok) form.reset();
 }
@@ -1403,14 +1522,13 @@ document.addEventListener("click", async (event) => {
   const action = trigger.dataset.action;
   const id = trigger.dataset.id || "";
   if (action === "close-panel") closePanel();
+  else if (action === "open-meeting") go("#office/meeting");
   else if (action === "open-diego") go("#office/diego");
   else if (action === "open-agent") go("#office/" + id);
-  else if (action === "open-chat-agent") {
-    state.chatAgent = id;
-    go("#chat");
-  }
   else if (action === "open-task") go("#" + (route().section === "needs" ? "needs" : "tasks") + "/" + id);
-  else if (action === "open-chat") go("#chat/" + id);
+  else if (action === "replay-standup") officeHandle && officeHandle.replay();
+  else if (action === "zoom-in") officeHandle && officeHandle.zoom(1.12);
+  else if (action === "zoom-out") officeHandle && officeHandle.zoom(0.88);
   else if (action === "approve") decide([{ id, decision: "approved", note: "" }], "Approved. The draft stays here.");
   else if (action === "reject") decide([{ id, decision: "rejected", note: "" }], "Rejected. The draft stays here.");
   else if (action === "delete-schedule") {
@@ -1478,7 +1596,6 @@ document.addEventListener("submit", (event) => {
   if (kind === "create-task") onCreateTask(form);
   else if (kind === "save-task") onSaveTask(form);
   else if (kind === "comment") onComment(form);
-  else if (kind === "chat") onChat(form);
   else if (kind === "schedule") onSchedule(form);
   else if (kind === "agent") onAgent(form);
   else if (kind === "needs-batch") onNeedsBatch(form);
@@ -1492,11 +1609,6 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (target.dataset.action === "set-status") setTaskStatus(target.dataset.id, target.value);
-  if (target.dataset.action === "chat-agent") {
-    state.chatAgent = target.value;
-    if (location.hash.startsWith("#chat/")) go("#chat");
-    else paint();
-  }
 });
 
 document.addEventListener("input", (event) => {
@@ -1558,7 +1670,7 @@ window.addEventListener("hashchange", () => {
 
 function closePanel() {
   const current = route();
-  if (current.id && ["office", "tasks", "needs", "chat"].includes(current.section)) {
+  if (current.id && ["office", "tasks", "needs"].includes(current.section)) {
     go("#" + current.section);
     return;
   }

@@ -33,7 +33,7 @@ assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "
 
 assert.match(read("signup/signup.js"), /get\("mode"\) === "login"/);
 assert.match(read("signup/signup.js"), /isLoginTab/);
-for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/app.js"]) {
+for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/scene.js"]) {
   const tmp = path.join(os.tmpdir(), "roleflow-syntax-" + file.replaceAll("/", "-") + ".mjs");
   fs.writeFileSync(tmp, read(file));
   const checked = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });

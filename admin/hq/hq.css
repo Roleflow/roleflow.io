@@ -74,8 +74,55 @@ body.hq{--hq-panel:420px}
 .hq-pill.high{color:#ffb089;border-color:rgba(255,138,61,.5)}
 .hq-pill.paused{color:var(--gold)}
 .hq-pill.retired{color:var(--mute)}
-body.hq-office .app-main{min-height:100vh}
-body.hq-office #main{padding-top:12px}
+body.hq-office{overflow:hidden;height:100vh;height:100dvh}
+body.hq-office .app-shell{height:100%;min-height:0;overflow:hidden}
+body.hq-office .app-side,
+body.hq-office .app-main{min-height:0;max-height:100%}
+body.hq-office .app-side{height:100%}
+body.hq-office .app-main{position:relative;height:100%;overflow:hidden}
+body.hq-office .app-top{position:absolute;top:0;left:0;right:0;z-index:6;background:transparent;border:0;pointer-events:none;padding:12px}
+body.hq-office .app-top > div{display:none}
+body.hq-office .nav-toggle{pointer-events:auto}
+body.hq-office footer{display:none}
+body.hq-office main{flex:1;min-height:0;height:100%;max-width:none;width:100%;margin:0;padding:0;display:flex;flex-direction:column}
+body.hq-office #hq-app{flex:1;min-height:0;height:100%;display:flex}
+body.hq-office .hq-office-view{position:relative;flex:1;width:100%;height:100%;min-height:0}
+body.hq-office #hq-stage{position:absolute;inset:0;width:100%;height:100%;min-height:0;border:0;border-radius:0}
+body.hq-office #hq-labels{position:absolute;inset:0;pointer-events:none;z-index:2}
+.office-badge{position:absolute;transform:translate(-50%,-120%);display:grid;justify-items:center;gap:4px;background:transparent;border:0;padding:0;cursor:pointer;pointer-events:auto}
+.office-pill{background:rgba(12,16,28,.84);color:#fff;border-radius:999px;padding:4px 10px;font:600 .78rem var(--b);white-space:nowrap;box-shadow:0 8px 18px rgba(0,0,0,.35)}
+.diamond{width:16px;height:16px;transform:rotate(45deg);display:grid;place-items:center;border-radius:3px;color:#fff;box-shadow:0 4px 10px rgba(0,0,0,.28)}
+.diamond span,.diamond svg{transform:rotate(-45deg);width:11px;height:11px}
+.diamond span{font:800 .72rem/11px var(--b);width:auto}
+.diamond.active{background:#3dbe6a}
+.diamond.queued{background:#e2a23a}
+.diamond.blocked{background:#e24b4b}
+.diamond.needs{background:#e23d9a}
+.diamond.paused{background:#64748b}
+.diamond.meet{background:linear-gradient(135deg,#FF8A3D,#C0409A)}
+.office-float{position:absolute;z-index:4;width:min(260px,calc(100% - 24px));max-height:46%;overflow:auto;background:rgba(10,14,24,.78);border:1px solid rgba(255,255,255,.08);border-radius:16px;backdrop-filter:blur(10px);color:#fff;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.office-manage{left:12px;bottom:12px}
+.office-tracker{right:12px;top:12px}
+.office-float h2{margin:0 0 8px;font:700 .95rem var(--h)}
+.office-count,.office-task{display:flex;align-items:center;gap:8px;width:100%;background:transparent;color:inherit;border:0;border-bottom:1px solid rgba(255,255,255,.06);padding:7px 2px;cursor:pointer;text-align:left;font:600 .86rem var(--b)}
+.office-count .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.office-count b{font:800 .95rem var(--h)}
+.office-count[aria-current=true]{color:#ffb089}
+.office-task{display:grid;gap:2px}
+.office-task small,.office-quiet{color:#c5cbe0;font-weight:500}
+.office-pending{margin:0 0 8px;font:800 1.45rem/1.15 var(--h)}
+.office-pending span{font:600 .85rem var(--b);color:#c5cbe0}
+.office-tools{position:absolute;z-index:4;top:12px;left:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;max-width:min(640px,calc(100% - 280px))}
+.office-tools .btn{margin:0}
+#hq-clock{color:#fff;font:600 .85rem var(--b);background:rgba(10,14,24,.72);border-radius:999px;padding:6px 10px}
+#hq-standup-line{margin:0;color:#c5cbe0;font-size:.82rem;pointer-events:none}
+body.hq-office .hq-zoom{z-index:4}
+@media(max-width:760px){
+  body.hq-office .office-tools{left:auto;right:12px;top:64px}
+  body.hq-office .office-manage{max-height:28%}
+  body.hq-office .office-tracker{top:108px;width:min(200px,46%)}
+  #hq-standup-line{display:none}
+}
 @media(max-width:980px){
   .hq-stats{grid-template-columns:1fr 1fr}
   .hq-split{grid-template-columns:1fr}

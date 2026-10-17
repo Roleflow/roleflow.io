@@ -1,6 +1,21 @@
 {
   "redirects": [
     {
+      "source": "/admin/office",
+      "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/office/",
+      "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/office/index.html",
+      "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
       "source": "/:path*",
       "has": [
         {
