@@ -29,8 +29,6 @@ export function markNav() {
       on = path.endsWith("/signup") && ((url.searchParams.get("mode") === "login") === login);
     } else if (linkPath.endsWith("/reset")) {
       on = path.endsWith("/reset");
-    } else if (linkPath.endsWith("/admin/office")) {
-      on = path.endsWith("/admin/office");
     } else if (linkPath.endsWith("/admin/hq")) {
       const section = (url.hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";
       const current = (hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";

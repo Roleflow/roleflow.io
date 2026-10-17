@@ -1,6 +1,6 @@
 # Agent HQ API
 
-Diego manages agents in the admin UI at `/admin/hq/`. The isometric Agent Office at `/admin/office/` reads the same tables (agents, tasks, comments, and the Needs Diego queue) and does not add tables or secrets. Three.js for that view loads only when the page opens. Each agent can also call this HTTP API with its own key to read its queue and post drafts back.
+Diego manages agents in the admin UI at `/admin/hq/`. The isometric office is the main view there, filling the area beside the sidebar, and it reads the same tables (agents, tasks, comments, and the Needs Diego queue). `/admin/office` redirects to `/admin/hq`. Three.js loads only when that office view opens. Each agent can also call this HTTP API with its own key to read its queue and post drafts back.
 
 Nothing in this API sends email, DMs, or social posts. Task results are drafts for Diego. Approving or rejecting a `needs_diego` item is admin-only and stays inside Agent HQ.
 
