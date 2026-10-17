@@ -109,8 +109,18 @@ async function loadWorkforce(supabase, agent) {
   if (!leadsRes.error) conversations = (leadsRes.data || []).filter((lead) => leadTitle(lead)).length;
 
   let hqTasks = [];
-  const taskRes = await supabase.from("hq_tasks").select("id, agent_id, setter_id, title, description, status, priority, created_at, updated_at, completed_at, estimate_minutes, started_at").eq("setter_id", agent.id).limit(200);
-  if (!taskRes.error) hqTasks = (taskRes.data || []).map(hqTask).filter(Boolean);
+  const taskColumns = "id, agent_id, business_id, setter_id, title, description, status, priority, created_at, updated_at, completed_at, estimate_minutes, started_at";
+  const [byBusiness, bySetter] = await Promise.all([
+    supabase.from("hq_tasks").select(taskColumns).eq("business_id", agent.id).limit(200),
+    supabase.from("hq_tasks").select(taskColumns).eq("setter_id", agent.id).limit(200)
+  ]);
+  const seenTask = new Set();
+  [...(byBusiness.error ? [] : byBusiness.data || []), ...(bySetter.error ? [] : bySetter.data || [])].forEach((row) => {
+    if (!row || seenTask.has(row.id)) return;
+    seenTask.add(row.id);
+    const task = hqTask(row);
+    if (task) hqTasks.push(task);
+  });
 
   let hqAgents = [];
   const agentRes = await supabase.from("hq_agents").select("id, source_id, name, title, status, avatar");

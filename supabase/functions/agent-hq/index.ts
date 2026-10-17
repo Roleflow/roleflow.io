@@ -5,6 +5,9 @@
 //
 // This function never sends email, DMs, or posts. Results are drafts.
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY are injected. No other secrets.
+//
+// Every action is forwarded to hq_agent_dispatch. create adds a queued task
+// for this key's own agent. Optional business_id links it to a business.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 
