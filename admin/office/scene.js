@@ -206,6 +206,7 @@ export async function createScene(host, hooks) {
   let built = [];
   let pickables = [];
   let builtKey = "";
+  const errandSpots = {};
   let frame = 0;
   let stopped = false;
   let replayStart = 0;
@@ -487,6 +488,29 @@ function makeSitter(color) {
     scene.add(meeting);
     built.push(meeting);
 
+    const boardSpot = { x: -4.8, z: 0.35 };
+    const fileSpot = { x: -4.8, z: -1.55 };
+    const outSpot = { x: 4.85, z: -0.45 };
+    const meetSpot = { x: 0.15, z: 2.25 };
+    const board = new THREE.Group();
+    board.position.set(boardSpot.x, 0, boardSpot.z);
+    board.add(put(box(0.12, 1.7, 2.2, lambert(0xf4f1ea)), 0, 1.15, 0));
+    board.add(put(box(0.08, 1.35, 1.7, lambert(0x2f6f73)), 0.08, 1.2, 0));
+    board.add(put(box(0.35, 0.9, 0.7, lambert(0x8d6a45)), -0.2, 0.5, -1.15));
+    scene.add(board);
+    built.push(board);
+    const outbox = new THREE.Group();
+    outbox.position.set(outSpot.x, 0, outSpot.z);
+    outbox.add(put(box(0.9, 0.16, 0.7, lambert(0xc9844a)), 0, 0.55, 0));
+    outbox.add(put(box(0.7, 0.04, 0.5, lambert(0xf7f3ea)), 0, 0.66, 0));
+    outbox.add(put(box(0.55, 0.7, 0.55, lambert(0x6d4c38)), 0, 0.4, 0));
+    scene.add(outbox);
+    built.push(outbox);
+    errandSpots.meeting = meetSpot;
+    errandSpots.board = boardSpot;
+    errandSpots.files = fileSpot;
+    errandSpots.outbox = outSpot;
+
     const walking = agents.filter((agent) => agent.work !== "paused");
     placed.forEach((item) => {
       const door = doorOf(item.col, item.row);
@@ -537,15 +561,22 @@ function makeSitter(color) {
         path.push({ x: Math.sign(room.position.x) * STEP * 0.5, z: room.position.z * 0.2 });
       }
       path.push({ x: slot.x * 0.25 + inward.x * ROOM * 0.2, z: slot.z * 0.25 + inward.z * ROOM * 0.2 }, slot);
+      const errandPath = (spot) => [seatWorld, doorPoint, hallPoint, spot];
       people.set(item.agent.id, {
         id: item.agent.id,
         work: item.agent.work,
+        errand: item.agent.errand || "",
         sitter,
         walker,
         seat: seatWorld,
         pace,
         face: yawOf(-inward.x, -inward.z),
         path,
+        errands: {
+          meeting: errandPath(errandSpots.meeting),
+          board: errandPath(errandSpots.board),
+          outbox: errandPath(errandSpots.outbox)
+        },
         slot,
         anchor: { x: room.position.x, y: 2.55, z: room.position.z }
       });
@@ -566,18 +597,63 @@ function makeSitter(color) {
     return standupPhase(new Date());
   }
 
+  function dutyPose(person, elapsed) {
+    const errand = person.errand || "";
+    if (!errand) return null;
+    if (errand === "desk") return { sitting: true, typing: true };
+    const route = person.errands && person.errands[errand];
+    if (!route || !route.length) return { sitting: true, typing: true };
+    const period = 16;
+    const shift = Math.abs(Math.sin(person.seat.x * 2.1)) * 3;
+    const local = (elapsed + shift) % period;
+    if (local < 4.5) {
+      const point = pointOn(route, local / 4.5);
+      return { sitting: false, x: point.x, z: point.z, face: yawOf(point.dx || 0, point.dz || 1), moving: true };
+    }
+    if (local < 8) {
+      const end = route[route.length - 1];
+      return { sitting: false, x: end.x, z: end.z, face: yawOf(-end.x, -end.z || 1), moving: false, working: true };
+    }
+    if (local < 12.5) {
+      const point = pointOn(route, 1 - (local - 8) / 4.5);
+      return { sitting: false, x: point.x, z: point.z, face: yawOf(-(point.dx || 0), -(point.dz || 1)), moving: true };
+    }
+    return { sitting: true, typing: true };
+  }
+
+  function parkAnchor(person) {
+    if (!person.anchor) return;
+    if (person.walker && person.walker.visible) {
+      person.anchor.x = person.walker.position.x;
+      person.anchor.z = person.walker.position.z;
+    } else {
+      person.anchor.x = person.seat.x;
+      person.anchor.z = person.seat.z;
+    }
+  }
+
   function applyPose(person, phase, elapsed) {
     if (!person.walker) return;
     const paused = person.work === "paused";
     let mode = paused ? "desk" : phase.mode;
     if (reduceMotion && mode !== "desk") mode = "meet";
-    const typing = person.work === "active";
-    const pacing = person.work === "clear" && mode === "desk";
+    const typing = person.work === "active" || person.errand === "desk";
+    const pacing = !person.errand && person.work !== "paused" && mode === "desk";
     let x = person.seat.x;
     let z = person.seat.z;
     let face = person.face;
     let sitting = true;
-    if (mode === "to" || mode === "back") {
+    let moving = false;
+    let working = false;
+    const duty = mode === "desk" && !paused ? dutyPose(person, elapsed) : null;
+    if (duty) {
+      sitting = duty.sitting;
+      x = duty.x == null ? person.seat.x : duty.x;
+      z = duty.z == null ? person.seat.z : duty.z;
+      face = duty.face == null ? person.face : duty.face;
+      moving = Boolean(duty.moving);
+      working = Boolean(duty.working);
+    } else if (mode === "to" || mode === "back") {
       sitting = false;
       const t = mode === "to" ? smoothstep(phase.t) : 1 - smoothstep(phase.t);
       const point = pointOn(person.path, t);
@@ -601,21 +677,24 @@ function makeSitter(color) {
     person.walker.visible = !sitting;
     if (sitting) {
       const arms = person.sitter.userData.arms || [];
-      const wave = typing ? Math.sin(elapsed * 9) * 0.35 : 0;
+      const wave = (typing || (duty && duty.typing)) ? Math.sin(elapsed * 9) * 0.35 : 0;
       if (arms[0]) arms[0].rotation.x = wave;
       if (arms[1]) arms[1].rotation.x = -wave * 0.8;
+      parkAnchor(person);
       return;
     }
     person.walker.position.set(x, 0, z);
     person.walker.rotation.y = face;
     const step = Math.sin(elapsed * 7.2);
     const joints = person.walker.userData.joints;
-    if (!joints) return;
-    const moving = mode !== "meet";
-    joints.legL.rotation.x = moving ? step * 0.7 : 0;
-    joints.legR.rotation.x = moving ? -step * 0.7 : 0;
-    joints.armL.rotation.x = moving ? -step * 0.5 : Math.sin(elapsed * 1.5) * 0.08;
-    joints.armR.rotation.x = moving ? step * 0.5 : -Math.sin(elapsed * 1.5) * 0.08;
+    const walking = moving || (!duty && mode !== "meet");
+    if (joints) {
+      joints.legL.rotation.x = walking ? step * 0.7 : 0;
+      joints.legR.rotation.x = walking ? -step * 0.7 : 0;
+      joints.armL.rotation.x = walking ? -step * 0.5 : Math.sin(elapsed * (working ? 8 : 1.5)) * (working ? 0.45 : 0.08);
+      joints.armR.rotation.x = walking ? step * 0.5 : -Math.sin(elapsed * (working ? 8 : 1.5)) * (working ? 0.35 : 0.08);
+    }
+    parkAnchor(person);
   }
 
   function projectLabels() {
@@ -718,7 +797,9 @@ function makeSitter(color) {
       }
       agents.forEach((agent) => {
         const person = people.get(agent.id);
-        if (person) person.work = agent.work;
+        if (!person) return;
+        person.work = agent.work;
+        person.errand = agent.errand || "";
       });
     },
     replay() {
