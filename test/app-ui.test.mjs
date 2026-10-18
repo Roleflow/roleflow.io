@@ -58,6 +58,16 @@ assert.match(read("admin/crm.js"), /id: "crm-sync"/);
 assert.match(read("onboarding/app.js"), /class: "stepper"/);
 assert.match(read("auth/site.css"), /\.toast-stack/);
 assert.match(read("auth/site.css"), /\.app-nav a\[aria-current=page\]/);
+const scene = read("admin/office/scene.js");
+assert.match(scene, /visibilitychange/);
+assert.match(scene, /TOUCH\.PAN/);
+assert.match(scene, /TOUCH\.DOLLY_PAN/);
+assert.match(scene, /narrow \? 1\.25 : 1\.5/);
+const hqCss = read("admin/hq/hq.css");
+assert.match(hqCss, /scroll-snap-type:x mandatory/);
+assert.match(hqCss, /body\.hq #hq-nav\.app-nav\{position:fixed/);
+assert.match(hqCss, /#hq-panel\{top:auto/);
+assert.match(hqCss, /\.hq-need \.btn\{min-height:52px/);
 
 const homepage = read("index.html");
 assert.match(homepage, /id="menu-toggle" href="\/signup\/">Access/);
