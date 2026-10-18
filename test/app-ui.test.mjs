@@ -72,6 +72,7 @@ assert.match(hq, /layout: "factory"/);
 assert.match(hq, /\/docs\/brand-brain\.md/);
 assert.match(hq, /factoryCards/);
 assert.match(read("docs/brand-brain.md"), /Brand Brain/);
+assert.match(read(".vercelignore"), /!docs\/brand-brain\.md/);
 assert.doesNotMatch(read("businesses/workforce.js"), /layout: "factory"/);
 const hqCss = read("admin/hq/hq.css");
 assert.match(hqCss, /scroll-snap-type:x mandatory/);
