@@ -5,7 +5,10 @@ export const STATIONS = [
   "edit_bay",
   "shipping_dock",
   "client_floor",
-  "chief_of_staff"
+  "chief_of_staff",
+  "mail_room",
+  "sales_desk",
+  "back_office"
 ];
 
 export const SETTER_STATIONS = [
@@ -25,7 +28,10 @@ export const STATION_OPTIONS = [
   ["edit_bay", "Edit Bay"],
   ["shipping_dock", "Shipping Dock"],
   ["client_floor", "Client Floor"],
-  ["chief_of_staff", "Chief of Staff"]
+  ["chief_of_staff", "Chief of Staff"],
+  ["mail_room", "Mail Room"],
+  ["sales_desk", "Sales Desk"],
+  ["back_office", "Back Office"]
 ];
 
 const HOMES = {
@@ -36,7 +42,12 @@ const HOMES = {
   "onboarding & client success": "client_floor",
   "onboarding prompt builder": "client_floor",
   "social media manager": "shipping_dock",
-  "ads manager": "shipping_dock"
+  "ads manager": "shipping_dock",
+  "mail room": "mail_room",
+  "sales desk": "sales_desk",
+  finance: "back_office",
+  "proof builder": "client_floor",
+  "setter qa": "client_floor"
 };
 
 const LABELS = {
@@ -110,11 +121,38 @@ export function hqPlan() {
       { id: "writers_room", step: "STEP 2", title: "Writers' Room", tab: "Writers' Room", blurb: "Scripts get written here", color: 0x160c1c, prop: "" },
       { id: "film_studio", step: "STEP 3", title: "Film Studio", tab: "Film Studio", blurb: "Record in front of the ring light", color: 0x1c0c18, prop: "studio", far: -2.2, afterGate: true },
       { id: "edit_bay", step: "STEP 4", title: "Edit Bay", tab: "Edit Bay", blurb: "One take becomes ten cuts", color: 0x120c1a, prop: "edit" },
-      { id: "shipping_dock", step: "STEP 5", title: "Shipping Dock", tab: "Shipping Dock", blurb: "Posts leave from the dock", color: 0x160e14, prop: "shipping" },
-      { id: "mail_room", step: "STEP 6", title: "Mail Room, coming soon", tab: "Mail Room", blurb: "Inbound replies", color: 0x100c14, prop: "mail" }
+      { id: "shipping_dock", step: "STEP 5", title: "Shipping Dock", tab: "Shipping Dock", blurb: "Posts leave from the dock", color: 0x160e14, prop: "shipping" }
+    ],
+    floorLabels: [
+      { title: "Content pipeline", index: 0, far: 3.6, y: 2.85 }
+    ],
+    revenue: {
+      id: "revenue_floor",
+      title: "Revenue Floor",
+      tab: "Revenue Floor",
+      far: -8.2,
+      stations: [
+        { id: "mail_room", title: "Mail Room", blurb: "Inbound replies", color: 0x100c14, prop: "mail" },
+        { id: "sales_desk", title: "Sales Desk", blurb: "Call prep and proposals", color: 0x18101c, prop: "sales", next: "Next step: Sales Desk" },
+        { id: "booked_call", title: "Booked call (You)", you: true, next: "Next step: Booked call (You)" }
+      ]
+    },
+    backOffice: {
+      id: "back_office",
+      title: "Back Office",
+      tab: "Back Office",
+      blurb: "Ledger and invoices",
+      color: 0x14101c,
+      prop: "ledger",
+      index: -3.05,
+      far: -1.6
+    },
+    groups: [
+      { id: "revenue_floor", tab: "Revenue Floor" },
+      { id: "back_office", tab: "Back Office" }
     ],
     balcony: { id: "chief_of_staff", label: "Chief of Staff, on the balcony", eyebrow: "ON THE BALCONY", title: "Chief of Staff" },
-    side: { id: "client_floor", title: "Client Floor", tab: "Client Floor", blurb: "Client work sits here", color: 0x12101c }
+    side: { id: "client_floor", title: "Client Floor", tab: "Client Floor", blurb: "Onboarding, proof, and setter QA", color: 0x12101c, width: 6.8, depth: 3.7 }
   };
 }
 
@@ -140,6 +178,13 @@ export function planIds(plan) {
   ((plan && plan.pipeline) || []).forEach((station) => ids.add(station.id));
   if (plan && plan.balcony) ids.add(plan.balcony.id);
   if (plan && plan.side) ids.add(plan.side.id);
+  if (plan && plan.backOffice) ids.add(plan.backOffice.id);
+  if (plan && plan.revenue) {
+    ids.add(plan.revenue.id);
+    (plan.revenue.stations || []).forEach((station) => {
+      if (!station.you) ids.add(station.id);
+    });
+  }
   return ids;
 }
 
@@ -178,6 +223,20 @@ export function pointsFor(plan) {
   points.approval = at(gateIndex, 1.35);
   if (plan && plan.side) points[plan.side.id] = at(start - 0.15, -6.4);
   if (plan && plan.balcony) points[plan.balcony.id] = at(start + count - 0.15, 7.4, 1.25);
+  if (plan && plan.revenue) {
+    const far = plan.revenue.far == null ? -8.2 : plan.revenue.far;
+    const stations = plan.revenue.stations || [];
+    const origin = 0.35;
+    stations.forEach((station, index) => {
+      points[station.id] = at(origin + index * 0.95, far);
+    });
+    const mid = origin + Math.max(stations.length - 1, 0) * 0.95 / 2;
+    points[plan.revenue.id] = at(mid, far);
+  }
+  if (plan && plan.backOffice) {
+    const office = plan.backOffice;
+    points[office.id] = at(office.index == null ? -3.05 : office.index, office.far == null ? -1.6 : office.far);
+  }
   points.brand_brain = at(0, 11.2, 3.5);
   points.meetup = at(0, 3.1);
   return points;
