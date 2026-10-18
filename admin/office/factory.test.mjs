@@ -40,6 +40,13 @@ const order = ["research", "writers_room", "film_studio", "edit_bay", "shipping_
 assert.deepEqual(order.slice().sort((a, b) => a - b), order);
 assert.ok(screenOrder(points.writers_room) < screenOrder(points.approval));
 assert.ok(screenOrder(points.approval) < screenOrder(points.film_studio));
+assert.ok(screenOrder(points.shipping_dock) < screenOrder(points.mail_room));
+assert.equal(hqPlan().pipeline[0].step, "STEP 1");
+assert.equal(hqPlan().pipeline.at(-1).title, "Mail Room, coming soon");
+assert.equal(homeStation({ name: "Mail Room", station: "mail_room" }), "");
+const farOf = (point) => point.x * -0.70710678 + point.z * -0.70710678;
+assert.ok(farOf(points.film_studio) < farOf(points.research) - 1);
+assert.ok(screenOrder(points.research) < screenOrder(points.chief_of_staff));
 
 const vam = setterPlan("VAM");
 assert.deepEqual(vam.pipeline.map((station) => station.title), ["Leads In", "Qualify", "Book Call", "Follow-up", "Report"]);
