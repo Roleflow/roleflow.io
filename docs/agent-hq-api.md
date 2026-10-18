@@ -31,7 +31,7 @@ Apply migrations in filename order. Agent HQ depends on `public.is_admin()` from
 5. The migration adds the HQ tables to the `supabase_realtime` publication when that publication exists. The admin UI subscribes with the logged-in admin session.
 6. Diego issues a key from **Agents → Edit → Issue API key**. The plaintext is shown once. Only a SHA-256 hash is stored. Issuing a new key revokes the previous active key. Revoke from the same screen.
 
-The live roster is Roleflow Agent, Lead Gen Manager, Outbound Rep, Content Generator, Onboarding & Client Success, and Ads Manager (paused). Older bots stay in the tables as retired so their tasks and history remain, and Agentic HQ hides them. Website Buildeer and Loom Outreacher were notes, not separate rows.
+The live roster is Roleflow Agent, Lead Gen Manager, Outbound Rep, Content Generator, Onboarding & Client Success, and Social Media Manager. Older bots stay in the tables as retired so their tasks and history remain, and Agentic HQ hides them. Website Buildeer and Loom Outreacher were notes, not separate rows.
 
 ## Call the API
 
@@ -56,7 +56,7 @@ Success responses include `"ok": true`. Failures use an HTTP status and `{"error
 
 ### list
 
-Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `business_id`, `estimate_minutes`, and `started_at` when they are set. The office uses those fields for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`.
+Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `business_id`, `station`, `estimate_minutes`, and `started_at` when they are set. `station` is one of `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, or `chief_of_staff`. The office uses the estimate for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`. The card sits at `station`, and a `needs_diego` task sits at Your Approval.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
@@ -82,7 +82,7 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
 
 ### create
 
-Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (`tailortalk_agents.id`, the same id the Workforce office uses). Each key can create 50 tasks in a rolling 24 hours.
+Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (`tailortalk_agents.id`, the same id the Workforce office uses). `station` is optional. When it is omitted, the task uses the agent's home station. Allowed values are `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, and `chief_of_staff`. Each key can create 50 tasks in a rolling 24 hours.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
@@ -93,7 +93,7 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
   -d '{"action":"create","title":"Research the ICP brief","description":"Draft for Diego.","estimate_minutes":40,"priority":"high","business_id":"BUSINESS_UUID"}'
 ```
 
-A successful response includes `task_id`, `business_id`, `priority`, and `estimate_minutes`. The create is written to `hq_activity`. Passing another agent's id does nothing: the task stays on this agent.
+A successful response includes `task_id`, `business_id`, `station`, `priority`, and `estimate_minutes`. The create is written to `hq_activity`. Passing another agent's id does nothing: the task stays on this agent. An agent key cannot change `station` after create. Diego can move the card from Agentic HQ.
 
 ### timing
 

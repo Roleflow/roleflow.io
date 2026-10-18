@@ -33,7 +33,7 @@ assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "
 
 assert.match(read("signup/signup.js"), /get\("mode"\) === "login"/);
 assert.match(read("signup/signup.js"), /isLoginTab/);
-for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/scene.js"]) {
+for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/scene.js", "admin/office/factory.mjs"]) {
   const tmp = path.join(os.tmpdir(), "roleflow-syntax-" + file.replaceAll("/", "-") + ".mjs");
   fs.writeFileSync(tmp, read(file));
   const checked = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
@@ -63,6 +63,16 @@ assert.match(scene, /visibilitychange/);
 assert.match(scene, /TOUCH\.PAN/);
 assert.match(scene, /TOUCH\.DOLLY_PAN/);
 assert.match(scene, /narrow \? 1\.25 : 1\.5/);
+assert.match(scene, /layout === "factory"/);
+assert.match(scene, /brand-brain/);
+assert.match(scene, /Your Approval/);
+assert.match(scene, /syncCards/);
+const hq = read("admin/hq/app.js");
+assert.match(hq, /layout: "factory"/);
+assert.match(hq, /\/docs\/brand-brain\.md/);
+assert.match(hq, /factoryCards/);
+assert.match(read("docs/brand-brain.md"), /Brand Brain/);
+assert.doesNotMatch(read("businesses/workforce.js"), /layout: "factory"/);
 const hqCss = read("admin/hq/hq.css");
 assert.match(hqCss, /scroll-snap-type:x mandatory/);
 assert.match(hqCss, /body\.hq #hq-nav\.app-nav\{position:fixed/);
