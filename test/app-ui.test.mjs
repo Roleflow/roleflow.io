@@ -69,6 +69,11 @@ assert.match(hqCss, /body\.hq #hq-nav\.app-nav\{position:fixed/);
 assert.match(hqCss, /#hq-panel\{top:auto/);
 assert.match(hqCss, /\.hq-need \.btn\{min-height:52px/);
 
+assert.match(read("index.html"), /id="drawer-applications" href="\/admin\/#applications" hidden>Applications Tracker/);
+assert.match(read("index.html"), /id="drawer-admin" href="\/admin\/" hidden>Client tracking/);
+assert.match(read("index.html"), /id="drawer-crm" href="\/admin\/#crm" hidden>CRM/);
+assert.match(read("auth/sidebar.js"), /applicationsLink\.hidden = !isAdmin/);
+assert.match(read("auth/sidebar.js"), /crmLink\.hidden = !isAdmin/);
 const homepage = read("index.html");
 assert.match(homepage, /id="menu-toggle" href="\/signup\/">Access/);
 assert.match(homepage, /class="vsl"/);

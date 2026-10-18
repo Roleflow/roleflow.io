@@ -18,6 +18,7 @@
     <nav class="app-nav" aria-label="Admin">
       <a href="/admin/hq/">Agentic HQ</a>
       <a href="/businesses/">Businesses</a>
+      <a id="nav-applications" href="/admin/#applications" hidden>Applications Tracker</a>
       <a href="/account/#profile">Your account</a>
     </nav>
     <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
@@ -32,6 +33,9 @@
       </div>
     </header>
     <main class="wrap wide" id="main">
+      <div class="auth-tabs admin-tabs" id="admin-tabs" hidden role="tablist" aria-label="Admin sections">
+        <button type="button" role="tab" id="tab-applications" aria-selected="false" aria-controls="admin-app">Applications Tracker</button>
+      </div>
       <div id="boot-state" class="state" role="status">
         <span class="skel"></span>
         <span class="skel short"></span>

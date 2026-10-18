@@ -1,6 +1,7 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
-import { bindShell } from "../auth/ui.js";
+import { bindShell, markNav } from "../auth/ui.js";
+import { renderApplications } from "./applications.js";
 
 bindShell();
 
@@ -65,7 +66,21 @@ if (arriving.type === "recovery") {
       showMessage("This page is only for Roleflow admins. Your businesses are on your account.");
       app.append(el("p", { class: "links" }, [el("a", { href: "/businesses/" }, ["Go to your businesses"])]));
     } else {
-      window.location.replace("/businesses/");
+      if (location.hash === "#applications") {
+        hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+        hideBoot();
+        const tabs = document.getElementById("admin-tabs");
+        const tabApplications = document.getElementById("tab-applications");
+        if (tabs) tabs.hidden = false;
+        const headerApplications = document.getElementById("nav-applications");
+        if (headerApplications) headerApplications.hidden = false;
+        if (tabApplications) tabApplications.setAttribute("aria-selected", "true");
+        document.getElementById("main")?.classList.add("sheet-wide");
+        markNav();
+        await renderApplications(supabase, user, { app, hello });
+      } else {
+        window.location.replace("/businesses/");
+      }
     }
   }
 }

@@ -34,10 +34,11 @@ export function markNav() {
       const current = (hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";
       on = path.endsWith("/admin/hq") && section === current;
     } else if (linkPath.endsWith("/admin")) {
-      if (url.hash === "#crm" || url.hash === "#insights") on = path.endsWith("/admin") && (hash === "#crm" || hash === "#insights");
+      if (url.hash === "#applications") on = path.endsWith("/admin") && hash === "#applications";
+      else if (url.hash === "#crm" || url.hash === "#insights") on = path.endsWith("/admin") && (hash === "#crm" || hash === "#insights");
       else if (url.hash === "#publish") on = path.endsWith("/admin") && hash === "#publish";
       else if (url.hash === "#clients") on = path.endsWith("/admin") && hash === "#clients";
-      else on = path.endsWith("/admin") && hash !== "#crm" && hash !== "#insights" && hash !== "#publish" && hash !== "#clients";
+      else on = path.endsWith("/admin") && hash !== "#crm" && hash !== "#insights" && hash !== "#publish" && hash !== "#clients" && hash !== "#applications";
     } else if (linkPath.endsWith("/businesses")) {
       on = path.endsWith("/businesses");
     } else if (linkPath.endsWith("/account")) {
