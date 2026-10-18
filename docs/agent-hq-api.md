@@ -56,7 +56,7 @@ Success responses include `"ok": true`. Failures use an HTTP status and `{"error
 
 ### list
 
-Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `business_id`, `station`, `estimate_minutes`, and `started_at` when they are set. `station` is one of `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, or `chief_of_staff`. The office uses the estimate for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`. The card sits at `station`, and a `needs_diego` task sits at Your Approval.
+Open tasks for this agent (`queued`, `in_progress`, `blocked`, `needs_diego`). Pass `status` to include one status, including `done`. Each task includes `business_id`, `station`, `estimate_minutes`, and `started_at` when they are set. `station` is one of `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, or `chief_of_staff`. Workforce offices also accept `leads_in`, `qualify`, `book_call`, `follow_up`, `report`, and `overseer`. `mail_room`, `sales_desk`, and `back_office` stay valid too. The office uses the estimate for the progress bar. The bar is elapsed time divided by the estimate, and it stops at 95% until the task status is `done`. The card sits at `station`, and a `needs_diego` task sits at Your Approval.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
@@ -82,7 +82,7 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
 
 ### create
 
-Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (`tailortalk_agents.id`, the same id the Workforce office uses). `station` is optional. When it is omitted, the task uses the agent's home station. Allowed values are `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, and `chief_of_staff`. Each key can create 50 tasks in a rolling 24 hours.
+Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (`tailortalk_agents.id`, the same id the Workforce office uses). `station` is optional. When it is omitted, the task uses the agent's home station. Allowed values are `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, `chief_of_staff`, `mail_room`, `sales_desk`, `back_office`, `leads_in`, `qualify`, `book_call`, `follow_up`, `report`, and `overseer`. Each key can create 50 tasks in a rolling 24 hours.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \

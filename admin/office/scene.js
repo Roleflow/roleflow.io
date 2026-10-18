@@ -1,4 +1,4 @@
-import { factoryBounds, factoryPoints, homeStation } from "./factory.mjs";
+import { factoryBounds, factoryPoints, homeStation, hqPlan, pointsFor } from "./factory.mjs";
 import { smoothstep, standupPhase, standupReplay } from "./standup.mjs";
 
 const STEP = 8.5;
@@ -226,6 +226,7 @@ export async function createScene(host, hooks) {
   let layoutPoints = null;
   const narrowQuery = window.matchMedia("(max-width: 760px)");
   const factoryMode = hooks && hooks.layout === "factory";
+  const factoryPlan = factoryMode ? ((hooks && hooks.plan) || hqPlan()) : null;
   const cardItems = new Map();
   let approvalMat = null;
 
@@ -443,8 +444,103 @@ function makeSitter(color) {
     return mesh;
   }
 
+  function placeProp(prop, spot) {
+    if (prop === "research") {
+      const watch = sign("Competitor Watch", 2.2, 0.42, spot.x - 1.2, 0.7, spot.z + 1.15);
+      const reader = sign("Transcript Reader", 2.2, 0.42, spot.x + 1.15, 0.7, spot.z + 1.15);
+      scene.add(watch, reader);
+      built.push(watch, reader);
+      return;
+    }
+    if (prop === "studio") {
+      const ringMat = new THREE.MeshLambertMaterial({ color: 0xfff1d2, emissive: 0xfff4e0, emissiveIntensity: 0.55 });
+      owned.add(ringMat);
+      const ringGeo = new THREE.TorusGeometry(0.72, 0.06, 10, 28);
+      owned.add(ringGeo);
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.set(spot.x + 0.85, 1.85, spot.z - 0.15);
+      ring.rotation.x = Math.PI / 2.4;
+      scene.add(ring);
+      built.push(ring);
+      const you = new THREE.Group();
+      you.position.set(spot.x + 0.85, 0, spot.z + 0.15);
+      you.add(put(box(0.7, 0.06, 0.7, lambert(0xe8b04a)), 0, 0.12, 0));
+      you.add(sign("You", 1.1, 0.4, 0, 0.85, 0));
+      addPick(you, "diego");
+      scene.add(you);
+      built.push(you);
+      const shelf = new THREE.Group();
+      shelf.position.set(spot.x - 1.35, 0, spot.z + 0.2);
+      shelf.add(put(box(0.9, 1.15, 0.28, lambert(0x8d6a45)), 0, 0.7, 0));
+      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xf4efe4)), 0, 0.95, 0.08));
+      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xd7c4ff)), 0, 0.72, 0.08));
+      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xf7f3ea)), 0, 0.5, 0.08));
+      shelf.add(sign("Script Library", 1.8, 0.4, 0, 1.55, 0));
+      scene.add(shelf);
+      built.push(shelf);
+      return;
+    }
+    if (prop === "edit") {
+      const ratio = sign("1 in, 10 out", 1.8, 0.42, spot.x, 0.85, spot.z + 1.2);
+      scene.add(ratio);
+      built.push(ratio);
+      return;
+    }
+    if (prop === "shipping") {
+      const crates = new THREE.Group();
+      crates.position.set(spot.x + 1.15, 0, spot.z + 0.4);
+      crates.add(put(box(0.55, 0.45, 0.45, lambert(0xc9844a)), 0, 0.3, 0));
+      crates.add(put(box(0.4, 0.35, 0.4, lambert(0x8d6a45)), 0.45, 0.25, 0.2));
+      crates.add(put(box(0.48, 0.4, 0.42, lambert(0xd8c09a)), -0.15, 0.28, 0.45));
+      crates.add(sign("Your Posts", 1.7, 0.42, 0.1, 1.05, 0));
+      scene.add(crates);
+      built.push(crates);
+      return;
+    }
+    if (prop === "inbox") {
+      const tray = new THREE.Group();
+      tray.position.set(spot.x + 1.1, 0, spot.z + 0.35);
+      tray.add(put(box(0.9, 0.12, 0.7, lambert(0x8d6a45)), 0, 0.2, 0));
+      tray.add(put(box(0.7, 0.04, 0.5, lambert(0xf7f3ea)), 0, 0.32, 0));
+      tray.add(put(box(0.55, 0.04, 0.4, lambert(0xd7c4ff)), 0.05, 0.38, 0));
+      tray.add(sign("DM inbox", 1.6, 0.4, 0, 0.9, 0));
+      scene.add(tray);
+      built.push(tray);
+      return;
+    }
+    if (prop === "handset") {
+      const phone = new THREE.Group();
+      phone.position.set(spot.x + 1.05, 0, spot.z + 0.4);
+      phone.add(put(box(0.28, 0.12, 0.7, lambert(0x1b2430)), 0, 0.35, 0));
+      phone.add(put(box(0.22, 0.1, 0.22, lambert(0x141820)), 0, 0.48, 0.22));
+      scene.add(phone);
+      built.push(phone);
+      return;
+    }
+    if (prop === "notes") {
+      const notes = new THREE.Group();
+      notes.position.set(spot.x + 1.0, 0, spot.z + 0.45);
+      notes.add(put(box(0.55, 0.04, 0.7, lambert(0xf7f3ea)), 0, 0.3, 0));
+      notes.add(put(box(0.55, 0.04, 0.7, lambert(0xffe4f0)), 0.2, 0.36, 0.12));
+      scene.add(notes);
+      built.push(notes);
+      return;
+    }
+    if (prop === "chart") {
+      const board = new THREE.Group();
+      board.position.set(spot.x + 1.15, 0, spot.z + 0.2);
+      board.add(put(box(1.1, 0.9, 0.08, lambert(0x1b2430)), 0, 0.85, 0));
+      board.add(put(box(0.16, 0.35, 0.06, lambert(0xff8a3d)), -0.28, 0.7, 0.08));
+      board.add(put(box(0.16, 0.55, 0.06, lambert(0x3dbe6a)), 0, 0.8, 0.08));
+      board.add(put(box(0.16, 0.75, 0.06, lambert(0x7a8cff)), 0.28, 0.9, 0.08));
+      scene.add(board);
+      built.push(board);
+    }
+  }
+
   function buildFactory(agents) {
-    const points = factoryPoints();
+    const plan = factoryPlan || hqPlan();
+    const points = pointsFor(plan);
     layoutPoints = points;
     officeBounds = factoryBounds(points);
     const floorW = officeBounds.maxX - officeBounds.minX + 2;
@@ -456,29 +552,23 @@ function makeSitter(color) {
     scene.add(floor);
     built.push(floor);
 
-    const pads = [
-      ["research", 0x2a3d55, "Step 1", "Research"],
-      ["writers_room", 0x3a2d4e, "Step 2", "Writers' Room"],
-      ["film_studio", 0x3d3428, "Step 3", "Film Studio"],
-      ["edit_bay", 0x243e3a, "Step 4", "Edit Bay"],
-      ["shipping_dock", 0x3a3224, "Step 5", "Shipping Dock"]
-    ];
-    pads.forEach(([id, color, step, title]) => {
-      const spot = points[id];
+    const pipeline = plan.pipeline || [];
+    pipeline.forEach((station) => {
+      const spot = points[station.id];
       const pad = new THREE.Group();
       pad.position.set(spot.x, 0, spot.z);
-      pad.add(put(box(4.4, 0.08, 3.3, lambert(color)), 0, 0.06, 0));
+      pad.add(put(box(4.4, 0.08, 3.3, lambert(station.color || 0x2a3d55)), 0, 0.06, 0));
       pad.add(put(box(1.55, 0.08, 0.7, deskMat), 0.2, 0.7, 0.45));
-      pad.add(sign(step, 1.5, 0.42, -1.15, 1.55, -1.15));
-      pad.add(sign(title, 2.5, 0.55, 0.35, 1.7, -1.25));
+      pad.add(sign(station.step || "Step", 1.5, 0.42, -1.15, 1.55, -1.15));
+      pad.add(sign(station.title || station.id, 2.5, 0.55, 0.35, 1.7, -1.25));
       scene.add(pad);
       built.push(pad);
+      if (station.prop) placeProp(station.prop, spot);
     });
 
-    const pipeline = ["research", "writers_room", "film_studio", "edit_bay", "shipping_dock"];
     for (let i = 0; i < pipeline.length - 1; i += 1) {
-      const from = points[pipeline[i]];
-      const to = points[pipeline[i + 1]];
+      const from = points[pipeline[i].id];
+      const to = points[pipeline[i + 1].id];
       const mid = { x: (from.x + to.x) / 2, z: (from.z + to.z) / 2 };
       const arrow = new THREE.Group();
       arrow.position.set(mid.x, 0.2, mid.z);
@@ -489,12 +579,6 @@ function makeSitter(color) {
       scene.add(arrow);
       built.push(arrow);
     }
-
-    const research = points.research;
-    const watch = sign("Competitor Watch", 2.2, 0.42, research.x - 1.2, 0.7, research.z + 1.15);
-    const reader = sign("Transcript Reader", 2.2, 0.42, research.x + 1.15, 0.7, research.z + 1.15);
-    scene.add(watch, reader);
-    built.push(watch, reader);
 
     const approval = points.approval;
     const gate = new THREE.Group();
@@ -508,66 +592,30 @@ function makeSitter(color) {
     scene.add(gate);
     built.push(gate);
 
-    const film = points.film_studio;
-    const ringMat = new THREE.MeshLambertMaterial({ color: 0xfff1d2, emissive: 0xfff4e0, emissiveIntensity: 0.55 });
-    owned.add(ringMat);
-    const ringGeo = new THREE.TorusGeometry(0.72, 0.06, 10, 28);
-    owned.add(ringGeo);
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.set(film.x + 0.85, 1.85, film.z - 0.15);
-    ring.rotation.x = Math.PI / 2.4;
-    scene.add(ring);
-    built.push(ring);
-    const you = new THREE.Group();
-    you.position.set(film.x + 0.85, 0, film.z + 0.15);
-    you.add(put(box(0.7, 0.06, 0.7, lambert(0xe8b04a)), 0, 0.12, 0));
-    you.add(sign("You", 1.1, 0.4, 0, 0.85, 0));
-    addPick(you, "diego");
-    scene.add(you);
-    built.push(you);
-    const shelf = new THREE.Group();
-    shelf.position.set(film.x - 1.35, 0, film.z + 0.2);
-    shelf.add(put(box(0.9, 1.15, 0.28, lambert(0x8d6a45)), 0, 0.7, 0));
-    shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xf4efe4)), 0, 0.95, 0.08));
-    shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xd7c4ff)), 0, 0.72, 0.08));
-    shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xf7f3ea)), 0, 0.5, 0.08));
-    shelf.add(sign("Script Library", 1.8, 0.4, 0, 1.55, 0));
-    scene.add(shelf);
-    built.push(shelf);
+    if (plan.side && points[plan.side.id]) {
+      const client = points[plan.side.id];
+      const clientPad = new THREE.Group();
+      clientPad.position.set(client.x, 0, client.z);
+      clientPad.add(put(box(4.6, 0.08, 3.4, lambert(plan.side.color || 0x2c3148)), 0, 0.06, 0));
+      clientPad.add(sign(plan.side.title || "Client Floor", 2.3, 0.5, 0, 1.55, -1.2));
+      scene.add(clientPad);
+      built.push(clientPad);
+    }
 
-    const edit = points.edit_bay;
-    const ratio = sign("1 in, 10 out", 1.8, 0.42, edit.x, 0.85, edit.z + 1.2);
-    scene.add(ratio);
-    built.push(ratio);
-
-    const dock = points.shipping_dock;
-    const crates = new THREE.Group();
-    crates.position.set(dock.x + 1.15, 0, dock.z + 0.4);
-    crates.add(put(box(0.55, 0.45, 0.45, lambert(0xc9844a)), 0, 0.3, 0));
-    crates.add(put(box(0.4, 0.35, 0.4, lambert(0x8d6a45)), 0.45, 0.25, 0.2));
-    crates.add(put(box(0.48, 0.4, 0.42, lambert(0xd8c09a)), -0.15, 0.28, 0.45));
-    crates.add(sign("Your Posts", 1.7, 0.42, 0.1, 1.05, 0));
-    scene.add(crates);
-    built.push(crates);
-
-    const client = points.client_floor;
-    const clientPad = new THREE.Group();
-    clientPad.position.set(client.x, 0, client.z);
-    clientPad.add(put(box(4.6, 0.08, 3.4, lambert(0x2c3148)), 0, 0.06, 0));
-    clientPad.add(sign("Client Floor", 2.3, 0.5, 0, 1.55, -1.2));
-    scene.add(clientPad);
-    built.push(clientPad);
-
-    const chief = points.chief_of_staff;
-    const balcony = new THREE.Group();
-    balcony.position.set(chief.x, 0, chief.z);
-    balcony.add(put(box(5.4, 0.22, 2.5, lambert(0x243049)), 0, 1.15, 0));
-    [[-2.3, -1], [2.3, -1], [-2.3, 1], [2.3, 1]].forEach(([x, z]) => {
-      balcony.add(put(box(0.16, 1.15, 0.16, lambert(0x8d6a45)), x, 0.55, z));
-    });
-    balcony.add(sign("Chief of Staff, on the balcony", 3.4, 0.48, 0, 2.15, 0));
-    scene.add(balcony);
-    built.push(balcony);
+    let balcony = null;
+    const balconyId = plan.balcony && plan.balcony.id;
+    if (balconyId && points[balconyId]) {
+      const chief = points[balconyId];
+      balcony = new THREE.Group();
+      balcony.position.set(chief.x, 0, chief.z);
+      balcony.add(put(box(5.4, 0.22, 2.5, lambert(0x243049)), 0, 1.15, 0));
+      [[-2.3, -1], [2.3, -1], [-2.3, 1], [2.3, 1]].forEach(([x, z]) => {
+        balcony.add(put(box(0.16, 1.15, 0.16, lambert(0x8d6a45)), x, 0.55, z));
+      });
+      balcony.add(sign(plan.balcony.label || "Overseer, on the balcony", 3.4, 0.48, 0, 2.15, 0));
+      scene.add(balcony);
+      built.push(balcony);
+    }
 
     const brainPoint = points.brand_brain;
     const brain = new THREE.Group();
@@ -598,13 +646,18 @@ function makeSitter(color) {
     const glow = new THREE.Mesh(glowGeo, glowMat);
     brain.add(orb, glow);
     brain.add(sign("Brand Brain", 2.2, 0.48, 0, 1.7, 0));
+    if (plan.brainSub) brain.add(sign(plan.brainSub, 2.2, 0.4, 0, 2.25, 0));
     addPick(brain, "brand-brain");
     scene.add(brain);
     built.push(brain);
     const lineMat = new THREE.LineBasicMaterial({ color: 0xff8ad0, transparent: true, opacity: 0.35 });
     owned.add(lineMat);
-    ["research", "writers_room", "film_studio", "edit_bay", "shipping_dock", "client_floor", "chief_of_staff"].forEach((id) => {
+    const lineIds = pipeline.map((station) => station.id);
+    if (balconyId) lineIds.push(balconyId);
+    if (plan.side) lineIds.push(plan.side.id);
+    lineIds.forEach((id) => {
       const spot = points[id];
+      if (!spot) return;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute([
         brainPoint.x, brainPoint.y, brainPoint.z,
@@ -621,22 +674,23 @@ function makeSitter(color) {
     });
 
     const face = yawOf(0.7, 0.7);
+    const fallbackId = plan.fallback || (pipeline[0] && pipeline[0].id) || "qualify";
     const homes = new Map();
     agents.forEach((agent) => {
-      const home = agent.home || homeStation(agent) || "client_floor";
+      const home = agent.home || homeStation(agent) || fallbackId;
       if (!homes.has(home)) homes.set(home, []);
       homes.get(home).push(agent);
     });
     const walking = agents.filter((agent) => agent.work !== "paused");
     homes.forEach((group, home) => {
-      const base = points[home] || points.client_floor;
+      const base = points[home] || points[fallbackId] || points[pipeline[0] && pipeline[0].id];
       group.forEach((agent, index) => {
         const shift = (index - (group.length - 1) / 2) * 1.15;
         const seat = {
           x: base.x + RIGHT_X * shift,
           z: base.z + RIGHT_Z * shift
         };
-        const elevated = home === "chief_of_staff";
+        const elevated = Boolean(balcony) && home === balconyId;
         const color = hexOf(agent.color);
         const chair = makeChair();
         chair.rotation.y = face;
@@ -1101,7 +1155,8 @@ function makeSitter(color) {
 
   function cardTarget(spot, index) {
     const points = layoutPoints || factoryPoints();
-    const point = points[spot] || points.writers_room;
+    const fallbackId = factoryPlan && factoryPlan.fallback;
+    const point = points[spot] || (fallbackId && points[fallbackId]) || points.writers_room || points.qualify;
     const shift = index * 0.55;
     return {
       x: point.x + RIGHT_X * shift,

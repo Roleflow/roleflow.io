@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../../auth/callback.js";
 import { bindShell, toast } from "../../auth/ui.js";
 import { cronFieldsValid, nextCron, zonedParts } from "./cron.mjs";
-import { STATION_OPTIONS, STATIONS, cardSpot, homeStation, taskStation } from "../office/factory.mjs";
+import { STATION_OPTIONS, STATIONS, cardSpot, homeStation, hqPlan, taskStation } from "../office/factory.mjs";
 import { activeTask, leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
 
@@ -1129,6 +1129,7 @@ async function mountOffice() {
     if (token !== officeToken || !document.body.contains(host)) return;
     officeHandle = await mod.createScene(host, {
       layout: "factory",
+      plan: hqPlan(),
       onSelect(id) {
         if (id === "meeting") go("#office/meeting");
         else if (id === "brand-brain") go("#office/brand-brain");

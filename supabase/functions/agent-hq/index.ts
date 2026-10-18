@@ -9,6 +9,7 @@
 // Every action is forwarded to hq_agent_dispatch. create adds a queued task
 // for this key's own agent. Optional business_id links it to a business.
 // Optional station places the card. Omitted station uses the agent's home station.
+// Workforce stations: leads_in, qualify, book_call, follow_up, report, overseer.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 
