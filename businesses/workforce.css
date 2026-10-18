@@ -12,7 +12,7 @@ body.biz-workforce main{flex:1;min-height:0;height:100%;max-width:none;width:100
 body.biz-workforce #biz-app{flex:1;min-height:0;height:100%;display:flex}
 .wf-office{position:relative;flex:1;width:100%;height:100%;min-height:0;background:#0d1220}
 #wf-stage{position:absolute;inset:0}
-#wf-stage canvas{display:block;width:100%;height:100%}
+#wf-stage canvas{display:block;width:100%;height:100%;touch-action:none}
 #wf-labels{position:absolute;inset:0;pointer-events:none;z-index:2}
 .wf-badge{position:absolute;transform:translate(-50%,-120%);display:grid;justify-items:center;gap:4px;background:transparent;border:0;padding:0;cursor:pointer;pointer-events:auto;color:#fff}
 .wf-pill{background:rgba(12,16,28,.84);border-radius:999px;padding:4px 10px;font:600 .78rem var(--b);white-space:nowrap;box-shadow:0 8px 18px rgba(0,0,0,.35)}
@@ -32,3 +32,16 @@ body.biz-workforce #biz-app{flex:1;min-height:0;height:100%;display:flex}
 .wf-task{display:grid;gap:2px;width:100%;text-align:left;background:transparent;color:inherit;border:0;border-bottom:1px solid rgba(255,255,255,.08);padding:8px 0}
 .wf-task small,.wf-quiet{color:#c5cbe0}
 .wf-status{display:inline-block;margin-left:8px;border-radius:999px;padding:2px 8px;border:1px solid var(--line);font-size:.75rem}
+@media(max-width:760px){
+  body.biz-workforce{overflow-x:hidden;padding-bottom:calc(68px + env(safe-area-inset-bottom))}
+  body.biz-workforce .app-shell,body.biz-workforce .app-main,body.biz-workforce main{max-width:100%;overflow-x:hidden}
+  body.biz-workforce .app-side{transform:none;left:calc(-1 * min(84vw,280px) - 24px);transition:left .18s ease;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  body.biz-workforce.nav-open .app-side{left:0;transform:none}
+  body.biz-workforce #biz-nav > .app-nav:not(#admin-links),
+  body.biz-workforce #biz-switch > .app-nav{position:fixed;z-index:45;left:0;right:0;bottom:0;top:auto;display:flex;flex-direction:row;gap:2px;overflow-x:auto;width:auto;max-width:100%;margin:0;background:rgba(16,26,51,.96);border:0;border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+  body.biz-workforce #biz-nav > .app-nav:not(#admin-links) a,
+  body.biz-workforce #biz-switch > .app-nav a{flex:1 0 auto;min-width:72px;min-height:52px;justify-content:center;text-align:center;font-size:.72rem;padding:6px 8px;border-radius:12px}
+  body.biz-workforce .toast-stack{bottom:calc(76px + env(safe-area-inset-bottom))}
+  #wf-panel{top:auto;left:0;right:0;bottom:0;width:100%;height:min(78dvh,640px);border-left:0;border-top:1px solid var(--line);border-radius:18px 18px 0 0;z-index:50;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  #wf-panel .wf-panel-bar .btn{min-height:44px;min-width:44px}
+}
