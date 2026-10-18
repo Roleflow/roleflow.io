@@ -979,6 +979,7 @@ function camBar(plan, id) {
   const tabs = [{ id: "overview", label: "Overview" }];
   (plan.pipeline || []).forEach((station) => tabs.push({ id: station.id, label: station.tab || station.title }));
   if (plan.side) tabs.push({ id: plan.side.id, label: plan.side.tab || plan.side.title });
+  (plan.groups || []).forEach((group) => tabs.push({ id: group.id, label: group.tab || group.title }));
   return el("div", { class: "cam-tabs", id, role: "tablist", "aria-label": "Fly the camera" }, tabs.map((tab, index) => el("button", {
     type: "button",
     role: "tab",
