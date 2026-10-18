@@ -338,6 +338,15 @@ verify_jwt = true
 [functions.tailortalk-sync]
 verify_jwt = false
 
+# business-members sends invite email with RESEND_API_KEY and RESEND_FROM.
+[functions.business-members]
+verify_jwt = true
+
+# agent-hq authenticates with X-Agent-Key, which is not a user JWT.
+# The gateway still requires the project publishable key in the apikey header.
+[functions.agent-hq]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

@@ -1,5 +1,6 @@
 // Pure stats for cached TailorTalk leads. Only fields the Get Leads guide returns.
-// A blank source is not counted. Days with no joins stay at zero.
+// A blank source is not counted. Leads have no join date, so each day counts
+// last_message_time. Days with no messages stay at zero.
 
 export function computeStats(leads, now = new Date()) {
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -26,9 +27,8 @@ export function computeStats(leads, now = new Date()) {
     if (lead.is_converted === true) converted += 1;
     const activity = timeOf(lead.last_message_time);
     if (activity != null && (lastMs == null || activity > lastMs)) lastMs = activity;
-    const joined = timeOf(lead.joined || lead.joined_at);
-    if (joined == null) return;
-    const at = index.get(new Date(joined).toISOString().slice(0, 10));
+    if (activity == null) return;
+    const at = index.get(new Date(activity).toISOString().slice(0, 10));
     if (at != null) series[at].count += 1;
   });
 

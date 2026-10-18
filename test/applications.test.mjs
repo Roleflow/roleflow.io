@@ -100,7 +100,7 @@ function walk(dir) {
   }
 }
 walk(root);
-const leaked = publicFiles.filter((file) => /melisaestraday|share\.descript\.com|atelium|schemionek|jamesdadswell@icloud\.com/i.test(read(path.relative(root, file))));
+const leaked = publicFiles.filter((file) => /melisaestraday|atelium|schemionek|jamesdadswell@icloud\.com|EQKsq9fa7Jh|ESvdUvydBxh/i.test(read(path.relative(root, file))));
 assert.deepEqual(leaked, []);
 
 console.log("applications tracker tests passed");

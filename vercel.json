@@ -1,6 +1,21 @@
 {
   "redirects": [
     {
+      "source": "/admin/office",
+      "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/office/",
+      "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/office/index.html",
+      "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
       "source": "/:path*",
       "has": [
         {
@@ -13,6 +28,15 @@
     }
   ],
   "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-src 'self' https://share.descript.com"
+        }
+      ]
+    },
     {
       "source": "/(account|admin|reset)(.*)",
       "headers": [

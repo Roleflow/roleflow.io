@@ -1,4 +1,4 @@
-import { getSupabase, isConfigured, logout, originPath, signupErrorMessage } from "./supabase.js";
+import { destinationAfterLogin, getSupabase, isConfigured, logout, originPath, signupErrorMessage } from "./supabase.js";
 
 const drawer = document.getElementById("site-drawer");
 const toggle = document.getElementById("menu-toggle");
@@ -17,6 +17,7 @@ if (!drawer || !toggle) {
   const adminLink = document.getElementById("drawer-admin");
   const crmLink = document.getElementById("drawer-crm");
   const applicationsLink = document.getElementById("drawer-applications");
+  const hqLink = document.getElementById("drawer-hq");
   let paintToken = 0;
 
   function setOpen(open) {
@@ -67,7 +68,8 @@ if (!drawer || !toggle) {
     showPanel(which);
   }
 
-  toggle.addEventListener("click", () => setOpen(drawer.hidden));
+  const accessLink = toggle.tagName === "A";
+  if (!accessLink) toggle.addEventListener("click", () => setOpen(drawer.hidden));
   document.getElementById("drawer-close").addEventListener("click", () => setOpen(false));
   backdrop.addEventListener("click", () => setOpen(false));
   document.addEventListener("keydown", (event) => {
@@ -84,12 +86,17 @@ if (!drawer || !toggle) {
     });
   });
   window.addEventListener("hashchange", () => {
+    if (accessLink && wantsLogin()) {
+      window.location.replace("/signup/?mode=login");
+      return;
+    }
     const mode = wantsLogin() ? "login" : "signup";
     showPanel(mode);
     if (mode === "login") setOpen(true);
   });
   showPanel(wantsLogin() ? "login" : "signup");
-  if (wantsLogin()) setOpen(true);
+  if (accessLink && wantsLogin()) window.location.replace("/signup/?mode=login");
+  else if (wantsLogin()) setOpen(true);
   document.getElementById("drawer-logout").addEventListener("click", logout);
 
   function normalizeHandle(value) {
@@ -106,6 +113,7 @@ if (!drawer || !toggle) {
       adminLink.hidden = true;
       if (crmLink) crmLink.hidden = true;
       if (applicationsLink) applicationsLink.hidden = true;
+      if (hqLink) hqLink.hidden = true;
       return;
     }
     guest.hidden = true;
@@ -125,6 +133,7 @@ if (!drawer || !toggle) {
     adminLink.hidden = !isAdmin;
     if (crmLink) crmLink.hidden = !isAdmin;
     if (applicationsLink) applicationsLink.hidden = !isAdmin;
+    if (hqLink) hqLink.hidden = !isAdmin;
   }
 
   if (!isConfigured()) {
@@ -193,7 +202,7 @@ if (!drawer || !toggle) {
         loginError.textContent = error.message;
         return;
       }
-      window.location.replace("/account/");
+      window.location.replace(await destinationAfterLogin(supabase, "/account/"));
     });
 
     document.getElementById("drawer-magic").addEventListener("click", async () => {

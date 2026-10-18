@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Agentic HQ · Roleflow</title>
+<link rel="canonical" href="/admin/hq/">
+<meta http-equiv="refresh" content="0; url=/admin/hq/">
+<script>
+(function () {
+  var hash = location.hash || "";
+  if (hash === "#meeting") hash = "#office/meeting";
+  else if (hash.indexOf("#agent/") === 0) hash = "#office/" + hash.slice(7);
+  else if (hash.indexOf("#task/") === 0) hash = "#tasks/" + hash.slice(6);
+  else if (hash === "#chat" || hash.indexOf("#chat/") === 0) hash = "#office";
+  location.replace("/admin/hq/" + hash);
+})();
+</script>
+</head>
+<body>
+<p><a href="/admin/hq/">Continue to Agentic HQ</a></p>
+</body>
+</html>

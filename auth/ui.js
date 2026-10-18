@@ -29,14 +29,23 @@ export function markNav() {
       on = path.endsWith("/signup") && ((url.searchParams.get("mode") === "login") === login);
     } else if (linkPath.endsWith("/reset")) {
       on = path.endsWith("/reset");
+    } else if (linkPath.endsWith("/admin/hq")) {
+      const section = (url.hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";
+      const current = (hash || "#overview").replace(/^#/, "").split("/")[0] || "overview";
+      on = path.endsWith("/admin/hq") && section === current;
     } else if (linkPath.endsWith("/admin")) {
-      if (url.hash === "#crm") on = path.endsWith("/admin") && hash === "#crm";
-      else if (url.hash === "#applications") on = path.endsWith("/admin") && hash === "#applications";
-      else on = path.endsWith("/admin") && hash !== "#crm" && hash !== "#applications";
+      if (url.hash === "#applications") on = path.endsWith("/admin") && hash === "#applications";
+      else if (url.hash === "#crm" || url.hash === "#insights") on = path.endsWith("/admin") && (hash === "#crm" || hash === "#insights");
+      else if (url.hash === "#publish") on = path.endsWith("/admin") && hash === "#publish";
+      else if (url.hash === "#clients") on = path.endsWith("/admin") && hash === "#clients";
+      else on = path.endsWith("/admin") && hash !== "#crm" && hash !== "#insights" && hash !== "#publish" && hash !== "#clients" && hash !== "#applications";
+    } else if (linkPath.endsWith("/businesses")) {
+      on = path.endsWith("/businesses");
     } else if (linkPath.endsWith("/account")) {
       if (url.hash === "#onboarding") on = path.endsWith("/account") && hash.startsWith("#onboarding");
-      else if (url.hash === "#setter") on = path.endsWith("/account") && !hash.startsWith("#onboarding");
-      else on = path.endsWith("/account");
+      else if (url.hash === "#setter") on = path.endsWith("/account") && hash.startsWith("#setter");
+      else if (url.hash === "#profile") on = path.endsWith("/account") && (hash === "#profile" || hash === "");
+      else on = path.endsWith("/account") && !hash.startsWith("#onboarding") && !hash.startsWith("#setter");
     }
     if (on) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");

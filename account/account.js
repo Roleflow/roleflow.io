@@ -69,6 +69,10 @@ if (arriving.type === "recovery") {
         showGate(profileRes.error.message);
       } else {
         profile = profileRes.data;
+        const adminPeek = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
+        if (adminPeek.data && !window.location.hash) {
+          window.location.replace("/businesses/");
+        } else {
         if (!profile) {
           const created = await supabase.from("profiles").insert({
             id: user.id,
@@ -87,6 +91,11 @@ if (arriving.type === "recovery") {
             const inserted = await supabase.from("onboarding_submissions").insert({ user_id: user.id }).select("*").single();
             submission = inserted.data;
           }
+          const statusNow = submission?.status || "not_started";
+          const leaveForBusinesses = (statusNow === "submitted" || statusNow === "integrated" || statusNow === "live") && !window.location.hash.startsWith("#onboarding");
+          if (leaveForBusinesses) {
+            window.location.replace("/businesses/");
+          } else {
           const name = profile?.full_name || user.user_metadata?.full_name || "";
           hello.textContent = name ? "Signed in as " + name + "." : "Signed in as " + (user.email || "your account") + ".";
           const answers = submission && submission.answers && typeof submission.answers === "object" ? submission.answers : {};
@@ -124,11 +133,7 @@ if (arriving.type === "recovery") {
           if (setter) setter.hidden = false;
           const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
           if (adminRes.data) {
-            const navAdmin = document.getElementById("nav-admin");
-            const navCrm = document.getElementById("nav-admin-crm");
             const navApplications = document.getElementById("nav-admin-applications");
-            if (navAdmin) navAdmin.hidden = false;
-            if (navCrm) navCrm.hidden = false;
             if (navApplications) navApplications.hidden = false;
             markNav();
           }
@@ -146,6 +151,8 @@ if (arriving.type === "recovery") {
           const script = document.createElement("script");
           script.src = "/onboarding/app.js";
           document.body.append(script);
+          }
+        }
         }
       }
     }

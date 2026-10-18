@@ -37,6 +37,22 @@ export function safeNext(raw) {
   return value;
 }
 
+export async function destinationAfterLogin(supabase, next) {
+  let target = safeNext(next);
+  const home = target === "/account/" || target === "/account" || target === "/admin/" || target === "/admin" || target.startsWith("/admin/") || target.startsWith("/admin#");
+  if (!home || !supabase) return target;
+  const { data } = await supabase.auth.getUser();
+  const id = data.user?.id;
+  if (!id) return target;
+  const admin = await supabase.from("admins").select("user_id").eq("user_id", id).maybeSingle();
+  if (target === "/admin/office" || target.startsWith("/admin/office/") || target.startsWith("/admin/office?")) {
+    const hash = target.includes("#") ? target.slice(target.indexOf("#")) : "";
+    target = "/admin/hq/" + hash;
+  }
+  if (admin.data && (target === "/admin/hq" || target.startsWith("/admin/hq/") || target.startsWith("/admin/hq?"))) return target;
+  return admin.data ? "/businesses/" : target;
+}
+
 export function originPath(path) {
   return window.location.origin + path;
 }

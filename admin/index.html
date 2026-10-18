@@ -16,10 +16,10 @@
     <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
     <p class="side-kicker">Admin</p>
     <nav class="app-nav" aria-label="Admin">
-      <a href="/admin/#clients">Clients</a>
-      <a id="nav-crm" href="/admin/#crm" hidden>CRM</a>
+      <a href="/admin/hq/">Agentic HQ</a>
+      <a href="/businesses/">Businesses</a>
       <a id="nav-applications" href="/admin/#applications" hidden>Applications Tracker</a>
-      <a href="/account/">Your account</a>
+      <a href="/account/#profile">Your account</a>
     </nav>
     <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
   </aside>
@@ -28,20 +28,18 @@
     <header class="app-top">
       <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
       <div>
-        <h1>Client <span class="g">tracking</span></h1>
-        <p class="hello" id="admin-hello">Loading clients…</p>
+        <h1 id="admin-title">Businesses</h1>
+        <p class="hello" id="admin-hello">Loading…</p>
       </div>
     </header>
     <main class="wrap wide" id="main">
       <div class="auth-tabs admin-tabs" id="admin-tabs" hidden role="tablist" aria-label="Admin sections">
-        <button type="button" role="tab" id="tab-clients" aria-selected="true" aria-controls="admin-app">Clients</button>
-        <button type="button" role="tab" id="tab-crm" aria-selected="false" aria-controls="admin-app">CRM</button>
         <button type="button" role="tab" id="tab-applications" aria-selected="false" aria-controls="admin-app">Applications Tracker</button>
       </div>
       <div id="boot-state" class="state" role="status">
         <span class="skel"></span>
         <span class="skel short"></span>
-        <p>Loading clients…</p>
+        <p>Opening businesses…</p>
       </div>
       <div id="admin-app"></div>
     </main>

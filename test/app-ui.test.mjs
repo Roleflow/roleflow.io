@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { friendlyAuthError, isLoginTab, readAuthCallback } from "../auth/callback.js";
@@ -31,6 +33,12 @@ assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "
 
 assert.match(read("signup/signup.js"), /get\("mode"\) === "login"/);
 assert.match(read("signup/signup.js"), /isLoginTab/);
+for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/scene.js"]) {
+  const tmp = path.join(os.tmpdir(), "roleflow-syntax-" + file.replaceAll("/", "-") + ".mjs");
+  fs.writeFileSync(tmp, read(file));
+  const checked = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
+  assert.equal(checked.status, 0, file + "\n" + checked.stderr);
+}
 assert.match(read("signup/index.html"), /id="login-form"/);
 assert.match(read("signup/index.html"), /id="access-code"/);
 assert.match(read("login/login.js"), /shouldCreateUser:\s*false/);
@@ -41,10 +49,12 @@ assert.match(read("account/account.js"), /type === "recovery"/);
 assert.match(read("account/index.html"), /id="setter" hidden/);
 assert.match(read("account/index.html"), /Your <span class="g">AI Setter<\/span>/);
 assert.match(read("account/index.html"), /id="app-side"/);
-assert.match(read("admin/index.html"), /id="nav-crm" href="\/admin\/#crm" hidden>CRM</);
-assert.match(read("admin/index.html"), /id="admin-tabs" hidden/);
-assert.match(read("admin/crm.js"), /id: "crm-setter-search"|id="crm-setter-search"/);
-assert.match(read("admin/crm.js"), /id: "crm-sort"/);
+assert.match(read("admin/index.html"), /href="\/businesses\/">Businesses/);
+assert.match(read("admin/index.html"), /href="\/account\/#profile">Your account/);
+assert.doesNotMatch(read("admin/index.html"), /#clients|#publish|CRM\/Insights/);
+assert.match(read("admin/admin.js"), /location\.replace\("\/businesses\/"\)/);
+assert.match(read("admin/crm.js"), /id: "crm-action-agent"|id="crm-action-agent"/);
+assert.match(read("admin/crm.js"), /id: "crm-sync"/);
 assert.match(read("onboarding/app.js"), /class: "stepper"/);
 assert.match(read("auth/site.css"), /\.toast-stack/);
 assert.match(read("auth/site.css"), /\.app-nav a\[aria-current=page\]/);
@@ -54,6 +64,15 @@ assert.match(read("index.html"), /id="drawer-admin" href="\/admin\/" hidden>Clie
 assert.match(read("index.html"), /id="drawer-crm" href="\/admin\/#crm" hidden>CRM/);
 assert.match(read("auth/sidebar.js"), /applicationsLink\.hidden = !isAdmin/);
 assert.match(read("auth/sidebar.js"), /crmLink\.hidden = !isAdmin/);
+const homepage = read("index.html");
+assert.match(homepage, /id="menu-toggle" href="\/signup\/">Access/);
+assert.match(homepage, /class="vsl"/);
+assert.match(homepage, /data-src="https:\/\/share\.descript\.com\/embed\/XJIQMjM0Q1N"/);
+assert.match(homepage, /loading="lazy"/);
+assert.match(read("vercel.json"), /frame-src 'self' https:\/\/share\.descript\.com/);
+assert.doesNotMatch(homepage, />Menu</);
+assert.match(homepage, /<footer><a href="\/resources\/"/);
+assert.match(read("auth/sidebar.js"), /tagName === "A"/);
 
 for (const file of ["account/index.html", "account/account.js", "account/setter.js", "account/setter-model.js"]) {
   assert.doesNotMatch(read(file), /tailortalk/i, file);

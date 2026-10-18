@@ -1,8 +1,93 @@
-import { getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
+import { destinationAfterLogin, getSupabase, isConfigured, originPath } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
+import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
 
 bindShell();
+
+const proofPane = document.getElementById("proof");
+const proofQuote = document.getElementById("proof-quote");
+const proofName = document.getElementById("proof-name");
+const proofDetail = document.getElementById("proof-detail");
+const proofPortrait = document.getElementById("proof-portrait");
+const proofStars = document.getElementById("proof-stars-label");
+const proofLogos = document.getElementById("proof-logos");
+const proofCounter = document.getElementById("proof-counter");
+const proofDots = document.getElementById("proof-dots");
+let proofIndex = 0;
+let proofTimer = 0;
+
+if (proofDots) {
+  PROOF_SLOTS.forEach((_, index) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "proof-dot";
+    dot.setAttribute("aria-label", "Placeholder " + (index + 1));
+    dot.addEventListener("click", () => {
+      proofIndex = index;
+      paintProof();
+    });
+    proofDots.append(dot);
+  });
+}
+
+function paintProof() {
+  const slot = PROOF_SLOTS[proofIndex] || PROOF_SLOTS[0];
+  if (proofQuote) proofQuote.textContent = slot.quote;
+  if (proofName) proofName.textContent = slot.name;
+  if (proofDetail) proofDetail.textContent = slot.detail;
+  if (proofPortrait) proofPortrait.textContent = slot.portrait;
+  if (proofStars) proofStars.textContent = slot.stars;
+  if (proofCounter) proofCounter.textContent = (proofIndex + 1) + " / " + PROOF_SLOTS.length;
+  if (proofLogos) {
+    proofLogos.innerHTML = "";
+    (slot.logos || []).forEach((logo) => {
+      const item = document.createElement("p");
+      item.className = "logo-slot";
+      item.textContent = logo;
+      proofLogos.append(item);
+    });
+  }
+  if (proofDots) {
+    [...proofDots.children].forEach((dot, index) => {
+      if (index === proofIndex) dot.setAttribute("aria-current", "true");
+      else dot.removeAttribute("aria-current");
+    });
+  }
+}
+
+function moveProof(direction) {
+  proofIndex = nextProof(proofIndex, PROOF_SLOTS.length, direction);
+  paintProof();
+}
+
+function armProof() {
+  window.clearInterval(proofTimer);
+  if (!proofPane) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || proofPane.matches(":hover") || proofPane.contains(document.activeElement)) return;
+  proofTimer = window.setInterval(() => moveProof(1), 7000);
+}
+
+if (proofPane) {
+  paintProof();
+  document.getElementById("proof-prev").addEventListener("click", () => moveProof(-1));
+  document.getElementById("proof-next").addEventListener("click", () => moveProof(1));
+  proofPane.addEventListener("mouseenter", () => window.clearInterval(proofTimer));
+  proofPane.addEventListener("mouseleave", armProof);
+  proofPane.addEventListener("focusin", () => window.clearInterval(proofTimer));
+  proofPane.addEventListener("focusout", armProof);
+  proofPane.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveProof(1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveProof(-1);
+    }
+  });
+  armProof();
+}
 
 const form = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
@@ -107,22 +192,79 @@ if (notice) {
   clearAuthParams();
 }
 
+const googleBtn = document.getElementById("google-btn");
+const googleNote = document.getElementById("google-note");
+const googleOn = globalThis.ROLEFLOW_SUPABASE && globalThis.ROLEFLOW_SUPABASE.GOOGLE_AUTH === true;
+
 if (!isConfigured()) {
   showError("Add SUPABASE_URL and SUPABASE_ANON_KEY in supabase/config.js before accounts can be created.");
   form.querySelector("button").disabled = true;
   document.getElementById("login-btn").disabled = true;
   document.getElementById("magic-btn").disabled = true;
+  if (googleBtn) googleBtn.disabled = true;
 } else {
   const callback = rememberCallback(window.location.href);
   if (callback.type === "recovery") {
     window.location.replace("/reset/" + window.location.hash);
   } else {
     const supabase = getSupabase();
+    if (googleBtn && googleOn) {
+      googleBtn.disabled = false;
+      if (googleNote) googleNote.textContent = "Continues with the Google account on this device.";
+      googleBtn.addEventListener("click", async () => {
+        setBusy(googleBtn, true, "Opening Google…");
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: originPath(params.get("invite")
+              ? "/signup/?invite=" + encodeURIComponent(params.get("invite"))
+              : "/account/")
+          }
+        });
+        setBusy(googleBtn, false);
+        if (error) showLoginError(friendlyAuthError(error));
+      });
+    }
+    const inviteToken = params.get("invite") || "";
+    let invite = null;
+    const inviteEmail = () => (invite && invite.email ? String(invite.email) : "");
+    async function landFromInvite() {
+      const accepted = await supabase.rpc("accept_invite", { p_token: inviteToken });
+      if (accepted.data) {
+        window.location.replace("/businesses/#" + accepted.data + "/leads");
+        return true;
+      }
+      const { data } = await supabase.auth.getUser();
+      const sessionEmail = String(data.user && data.user.email || "").toLowerCase();
+      if (inviteEmail() && inviteEmail().toLowerCase() === sessionEmail) {
+        window.location.replace("/businesses/");
+        return true;
+      }
+      return false;
+    }
+    if (inviteToken) {
+      const preview = await supabase.rpc("preview_invite", { p_token: inviteToken });
+      invite = preview.data || null;
+      if (invite && invite.email) {
+        const access = document.getElementById("access-code");
+        const accessLabel = access.closest("label");
+        if (accessLabel) accessLabel.hidden = true;
+        access.required = false;
+        document.getElementById("email").value = invite.email;
+        document.getElementById("email").readOnly = true;
+        document.getElementById("login-email").value = invite.email;
+        const roleLabel = invite.role === "editor" ? "Editor" : "Viewer";
+        document.getElementById("page-sub").textContent = "You're invited to " + invite.business_name + " as " + roleLabel + ". No access code is needed. Log in if you already have an account. This invite only adds that business.";
+      } else if (!preview.error) {
+        document.getElementById("page-sub").textContent = "This invite link is not valid. You can still create an account with an access code.";
+      }
+    }
     const resolved = await resolveSession(supabase, window.location.href);
     if (resolved.session) {
       clearAuthParams();
       clearCallbackMemory();
-      window.location.replace(safeNext(params.get("next")));
+      const landed = inviteToken ? await landFromInvite() : false;
+      if (!landed) window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
     } else {
       if (resolved.errorMessage) {
         showTab("login");
@@ -148,7 +290,8 @@ if (!isConfigured()) {
         if (!name) return showError("Enter your name.");
         if (!/^\S+@\S+\.\S+$/.test(email)) return showError("Enter a valid email address.");
         if (!instagram) return showError("Enter your Instagram handle.");
-        if (!accessCode) return showError("Enter your access code.");
+        const inviteOk = Boolean(inviteEmail());
+        if (!inviteOk && !accessCode) return showError("Enter your access code.");
         if (password.length < 8) return showError("Use at least 8 characters in the password.");
         if (password !== confirm) return showError("Those passwords do not match.");
         const button = form.querySelector("button[type=submit]");
@@ -157,17 +300,22 @@ if (!isConfigured()) {
           email,
           password,
           options: {
-            data: { full_name: name, instagram, access_code: accessCode },
-            emailRedirectTo: originPath("/account/")
+            data: inviteOk
+              ? { full_name: name, instagram, invite_token: inviteToken }
+              : { full_name: name, instagram, access_code: accessCode },
+            emailRedirectTo: originPath(inviteOk ? "/signup/?invite=" + encodeURIComponent(inviteToken) : "/account/")
           }
         });
         setBusy(button, false);
         if (error) return showError(friendlyAuthError(error));
         if (created.session) {
-          window.location.replace("/account/");
+          if (inviteOk && await landFromInvite()) return;
+          window.location.replace(inviteOk ? "/businesses/" : "/account/");
           return;
         }
-        okEl.textContent = "Check your email to confirm the account, then log in. The link brings you back to your account.";
+        okEl.textContent = inviteOk
+          ? "Check your email to confirm the account. The link brings you back to this invite."
+          : "Check your email to confirm the account, then log in. The link brings you back to your account.";
         toast(okEl.textContent, "ok");
       });
 
@@ -184,7 +332,8 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         setBusy(button, false);
         if (error) return showLoginError(friendlyAuthError(error));
-        window.location.replace(safeNext(params.get("next")));
+        if (inviteToken && await landFromInvite()) return;
+        window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
       });
 
       document.getElementById("magic-btn").addEventListener("click", async () => {
@@ -197,7 +346,7 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            emailRedirectTo: originPath("/account/"),
+            emailRedirectTo: originPath(inviteEmail() ? "/signup/?invite=" + encodeURIComponent(inviteToken) : "/account/"),
             shouldCreateUser: false
           }
         });

@@ -27,10 +27,23 @@ assert.equal(stats.last_activity_at, "2026-10-14T01:00:00.000Z");
 assert.equal(stats.leads_per_day.length, 30);
 assert.equal(stats.leads_per_day[0].day, "2026-09-15");
 assert.equal(stats.leads_per_day.at(-1).day, "2026-10-14");
-assert.equal(stats.leads_per_day.at(-1).count, 2);
-assert.equal(stats.leads_per_day.find((item) => item.day === "2026-10-01").count, 1);
+assert.equal(stats.leads_per_day.at(-1).count, 1);
+assert.equal(stats.leads_per_day.find((item) => item.day === "2026-10-13").count, 1);
+assert.equal(stats.leads_per_day.find((item) => item.day === "2026-10-01").count, 0);
 assert.equal(stats.leads_per_day.filter((item) => item.day < "2026-10-01").every((item) => item.count === 0), true);
 assert.equal("message_count" in stats, false);
+assert.match(statsSource, /last_message_time/);
+assert.doesNotMatch(statsSource, /joined/);
+
+const leadSource = read("supabase/functions/tailortalk-sync/lead.js");
+const { usernameOf } = await import("data:text/javascript," + encodeURIComponent(leadSource));
+assert.equal(usernameOf({ integration: "instagram", lead_contact: "@maya.lead" }), "maya.lead");
+assert.equal(usernameOf({ integration: "Instagram", lead_contact: "handle" }), "handle");
+assert.equal(usernameOf({ integration: "instagram", lead_contact: "12maya" }), "12maya");
+assert.equal(usernameOf({ integration: "instagram", lead_contact: "555****12" }), null);
+assert.equal(usernameOf({ integration: "whatsapp", lead_contact: "+15551212" }), null);
+assert.equal(usernameOf({ integration: "instagram", username: "@kept", lead_contact: "other" }), "kept");
+assert.equal(usernameOf({ integration: "web", lead_contact: "visitor" }), null);
 
 const empty = computeStats([], now);
 assert.equal(empty.conversion_rate, null);
@@ -56,9 +69,7 @@ const fn = read("supabase/functions/tailortalk-sync/index.ts");
 assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/get_leads/);
 assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/get_contacts/);
 assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/mark_converted/);
-assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/send_whatsapp_template_message/);
-assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/get_whatsapp_templates/);
-assert.match(fn, /https:\/\/api\.tailortalk\.ai\/api\/v1\/campaign_logs/);
+assert.doesNotMatch(fn, /send_whatsapp_template_message|get_whatsapp_templates|campaign_logs/);
 assert.match(fn, /action === "mark_booked"/);
 assert.match(fn, /The cron job can only sync/);
 assert.doesNotMatch(fn, /update_leads|message_lead|deploy_workflow/);
@@ -70,7 +81,13 @@ assert.match(fn, /TAILORTALK_CRON_SECRET/);
 assert.match(fn, /eq\("archived", false\)/);
 assert.match(fn, /client_id: clientId/);
 assert.match(fn, /username: usernameOf\(lead\)/);
+assert.match(fn, /from "\.\/lead\.js"/);
 assert.match(fn, /by_category: stats\.by_category/);
+assert.match(fn, /async function loadContacts/);
+assert.match(fn, /if \(loadedContacts\.ok\) await saveContacts/);
+assert.match(fn, /contacts: loadedContacts\.ok \? "saved" : "skipped"/);
+assert.doesNotMatch(fn, /The contact response had no contacts array/);
+assert.doesNotMatch(fn, /get_contacts response had no contacts array/);
 assert.doesNotMatch(fn, /username:\s*name/);
 assert.doesNotMatch(fn, /service\.tailortalk\.ai/);
 assert.doesNotMatch(fn, /message_count/);
@@ -93,13 +110,16 @@ assert.doesNotMatch(upsertSql, /[0-9a-f]{40,}/i);
 const toml = read("supabase/config.toml");
 assert.match(toml, /\[functions\.generate-setter-prompt\]\nverify_jwt = true/);
 assert.match(toml, /\[functions\.tailortalk-sync\]\nverify_jwt = false/);
+assert.doesNotMatch(toml, /prompt-simulator/);
+assert.match(toml, /\[functions\.business-members\]\nverify_jwt = true/);
 assert.doesNotMatch(toml, /<<<<<<<|>>>>>>>/);
 
 const adminPage = read("admin/index.html");
-assert.match(adminPage, /id="tab-crm"/);
-assert.match(adminPage, /id="admin-tabs" hidden/);
+assert.match(adminPage, /href="\/businesses\/">Businesses/);
+assert.match(adminPage, /href="\/account\/#profile">Your account/);
+assert.doesNotMatch(adminPage, /#clients|#publish|CRM\/Insights/);
 assert.match(read("auth/site.css"), /\.admin-tabs\[hidden\]\{display:none !important\}/);
-assert.match(read("admin/admin.js"), /renderCrm/);
+assert.match(read("admin/admin.js"), /location\.replace\("\/businesses\/"\)/);
 assert.match(read("admin/crm.js"), /No source was returned for these leads/);
 assert.match(read("admin/crm.js"), /Copy section/);
 assert.match(read("admin/crm.js"), /Prompt version history/);
@@ -125,8 +145,9 @@ assert.match(homepage, /id="drawer-crm" href="\/admin\/#crm" hidden>CRM</);
 assert.match(homepage, /id="drawer-admin" href="\/admin\/" hidden>Client tracking</);
 assert.match(homepage, /href="\/resources\/">Resources</);
 assert.match(read("auth/sidebar.js"), /crmLink\.hidden = !isAdmin/);
-assert.match(read("admin/index.html"), /id="nav-crm" href="\/admin\/#crm" hidden>CRM</);
-assert.match(read("admin/admin.js"), /headerCrm\.hidden = false/);
+assert.doesNotMatch(read("admin/index.html"), /id="nav-crm"/);
+assert.match(read("businesses/app.js"), /id: "admin-links"/);
+assert.doesNotMatch(read("businesses/app.js"), /CRM\/Insights|#clients|#publish/);
 const migrationNames = [
   "20261010120000_roleflow_accounts.sql",
   "20261011090000_signup_access_code.sql",
@@ -135,7 +156,15 @@ const migrationNames = [
   "20261014160000_tailortalk_crm.sql",
   "20261014180000_tailortalk_registry.sql",
   "20261014200000_client_setter.sql",
-  "20261015120000_setter_applications.sql"
+  "20261015120000_businesses.sql",
+  "20261015120000_setter_applications.sql",
+  "20261016120000_business_members.sql",
+  "20261016140000_business_assets.sql",
+  "20261016160000_workforce_console.sql",
+  "20261016180000_agent_hq.sql",
+  "20261017050000_agentic_hq_roster.sql",
+  "20261017060000_hq_task_timing.sql",
+  "20261017070000_hq_task_create.sql"
 ];
 assert.deepEqual(
   migrationNames,
