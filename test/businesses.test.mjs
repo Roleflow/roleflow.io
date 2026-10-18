@@ -187,6 +187,8 @@ assert.match(read("auth/site.css"), /wf-drawer/);
 assert.match(read("auth/site.css"), /wf-grid/);
 assert.match(read("auth/site.css"), /\.brain-simple\{display:block\}/);
 assert.doesNotMatch(read("auth/site.css"), /office-stage|agent-pill/);
+assert.match(read("businesses/workforce.css"), /#wf-panel\{top:auto/);
+assert.match(read("businesses/workforce.css"), /#biz-switch > \.app-nav\{position:fixed/);
 assert.match(read("supabase/migrations/20261016160000_workforce_console.sql"), /last_synced_at/);
 assert.match(read("supabase/migrations/20261016160000_workforce_console.sql"), /joined_at/);
 

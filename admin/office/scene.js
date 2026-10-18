@@ -131,7 +131,7 @@ export async function createScene(host, hooks) {
     renderer.dispose();
     throw new Error("WebGL is not available.");
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.matchMedia("(max-width: 760px)").matches ? 1.25 : 1.5));
   renderer.setClearColor(0x0a1226, 1);
   host.append(renderer.domElement);
 
@@ -148,7 +148,10 @@ export async function createScene(host, hooks) {
   controls.maxPolarAngle = 1.12;
   controls.minZoom = 0.55;
   controls.maxZoom = 2.8;
+  controls.touches.ONE = THREE.TOUCH.PAN;
+  controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
   controls.update();
+  renderer.domElement.style.touchAction = "none";
 
   scene.add(new THREE.HemisphereLight(0xfff6ea, 0x1a2233, 0.88));
   const sun = new THREE.DirectionalLight(0xfff8f0, 0.72);
@@ -218,6 +221,8 @@ export async function createScene(host, hooks) {
   const pointer = new THREE.Vector2();
   const projector = new THREE.Vector3();
   let down = null;
+  let officeBounds = { minX: -STEP, maxX: STEP, minZ: -STEP, maxZ: STEP };
+  const narrowQuery = window.matchMedia("(max-width: 760px)");
 
   function addPick(object, id) {
     object.userData.pick = id;
@@ -422,6 +427,7 @@ function makeSitter(color) {
     });
     const width = Math.max(STEP, maxX - minX);
     const depth = Math.max(STEP, maxZ - minZ);
+    officeBounds = { minX, maxX, minZ, maxZ };
     const tex = gridTexture(THREE);
     tex.repeat.set(width, depth);
     owned.add(tex);
@@ -585,6 +591,7 @@ function makeSitter(color) {
       id: "meeting",
       anchor: { x: 0, y: 3.05, z: 0 }
     });
+    resize();
   }
 
   function phaseNow(elapsed) {
@@ -717,9 +724,33 @@ function makeSitter(color) {
   function resize() {
     const width = host.clientWidth || 1;
     const height = host.clientHeight || 1;
+    const narrow = narrowQuery.matches;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, narrow ? 1.25 : 1.5));
     renderer.setSize(width, height, false);
-    const view = 19.5;
     const aspect = width / Math.max(height, 1);
+    let view = 19.5;
+    if (narrow) {
+      camera.left = -view * aspect;
+      camera.right = view * aspect;
+      camera.top = view;
+      camera.bottom = -view;
+      camera.updateProjectionMatrix();
+      let minNX = Infinity;
+      let maxNX = -Infinity;
+      [
+        [officeBounds.minX, 0, officeBounds.minZ],
+        [officeBounds.maxX, 0, officeBounds.minZ],
+        [officeBounds.minX, 0, officeBounds.maxZ],
+        [officeBounds.maxX, 0, officeBounds.maxZ]
+      ].forEach(([x, y, z]) => {
+        projector.set(x, y, z);
+        projector.project(camera);
+        minNX = Math.min(minNX, projector.x);
+        maxNX = Math.max(maxNX, projector.x);
+      });
+      const span = maxNX - minNX;
+      if (span > 0.2) view = Math.max(8, view * (span / 1.72));
+    }
     camera.left = -view * aspect;
     camera.right = view * aspect;
     camera.top = view;
@@ -755,8 +786,14 @@ function makeSitter(color) {
     if (moved < 6 && id && hooks.onSelect) hooks.onSelect(id);
   }
 
-  function animate() {
+  function onVisibility() {
     if (stopped) return;
+    cancelAnimationFrame(frame);
+    if (!document.hidden) frame = requestAnimationFrame(animate);
+  }
+
+  function animate() {
+    if (stopped || document.hidden) return;
     frame = requestAnimationFrame(animate);
     const elapsed = clock.getElapsedTime();
     const phase = phaseNow(elapsed);
@@ -784,6 +821,7 @@ function makeSitter(color) {
   requestAnimationFrame(() => resize());
   renderer.domElement.addEventListener("pointerdown", onDown);
   window.addEventListener("pointerup", onUp);
+  document.addEventListener("visibilitychange", onVisibility);
   resize();
 
   const local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
@@ -820,6 +858,7 @@ function makeSitter(color) {
       window.removeEventListener("resize", onWindowResize);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);
+      document.removeEventListener("visibilitychange", onVisibility);
       controls.dispose();
       owned.forEach((item) => {
         if (item && item.dispose) item.dispose();
