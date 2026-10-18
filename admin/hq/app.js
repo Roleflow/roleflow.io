@@ -2,7 +2,8 @@ import { getSupabase, isConfigured, logout } from "../../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../../auth/callback.js";
 import { bindShell, toast } from "../../auth/ui.js";
 import { cronFieldsValid, nextCron, zonedParts } from "./cron.mjs";
-import { activeTask, leftLabel, madridTime, progressOf, recentDone, taskSpot, timeline } from "../office/queue.mjs";
+import { STATION_OPTIONS, STATIONS, cardSpot, homeStation, taskStation } from "../office/factory.mjs";
+import { activeTask, leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
 
 bindShell();
@@ -31,7 +32,7 @@ const TITLES = {
 };
 const SUBS = {
   overview: "The team, open work, and what is waiting on you.",
-  office: "Each agent works one task at a time, walking to the meeting room, whiteboard, or outbox, then back to their desk.",
+  office: "The content factory. Each agent works one task at a time, and the card travels with the station.",
   tasks: "Drag a card between columns, or change its status from the menu.",
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
@@ -82,6 +83,8 @@ const state = {
 let officeHandle = null;
 let officeToken = 0;
 let officeMounting = false;
+let brainToken = 0;
+let brandBrainText = "";
 const officeBadges = new Map();
 const seenStatus = new Map();
 const flashes = new Map();
@@ -632,6 +635,8 @@ function paintPanel() {
   let target = null;
   if (current.id && (current.section === "office" || current.section === "tasks" || current.section === "needs")) {
     if (current.section === "office" && current.id === "meeting") target = { kind: "meeting" };
+    else if (current.section === "office" && current.id === "brand-brain") target = { kind: "brain" };
+    else if (current.section === "office" && current.id.startsWith("task:")) target = { kind: "task", id: current.id.slice(5) };
     else target = current.id === "diego" ? { kind: "diego" } : (
       current.section === "office" ? { kind: "agent", id: current.id } : { kind: "task", id: current.id }
     );
@@ -645,6 +650,10 @@ function paintPanel() {
   if (target.kind === "meeting") {
     panelTitle.textContent = "Meeting Room";
     panelBody.replaceChildren(meetingPanel());
+    return;
+  }
+  if (target.kind === "brain") {
+    paintBrain();
     return;
   }
   if (target.kind === "diego") {
@@ -666,6 +675,75 @@ function paintPanel() {
   const task = taskById(target.id);
   panelTitle.textContent = task ? task.title : "Task";
   panelBody.replaceChildren(task ? taskPanel(task) : el("p", { text: "That task is no longer here." }));
+}
+
+function stationLabel(value) {
+  return STATION_OPTIONS.find((item) => item[0] === value)?.[1] || "";
+}
+
+function renderMarkdown(text) {
+  const wrap = el("div", { class: "hq-md" });
+  let list = null;
+  let para = [];
+  const flushPara = () => {
+    if (!para.length) return;
+    wrap.append(el("p", { text: para.join(" ") }));
+    para = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    wrap.append(list);
+    list = null;
+  };
+  String(text || "").replace(/\r\n/g, "\n").split("\n").forEach((line) => {
+    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+    const item = /^[-*]\s+(.*)$/.exec(line);
+    if (!line.trim()) {
+      flushPara();
+      flushList();
+      return;
+    }
+    if (heading) {
+      flushPara();
+      flushList();
+      const tag = heading[1].length === 1 ? "h2" : heading[1].length === 2 ? "h3" : "h4";
+      wrap.append(el(tag, { text: heading[2] }));
+      return;
+    }
+    if (item) {
+      flushPara();
+      if (!list) list = el("ul");
+      list.append(el("li", { text: item[1] }));
+      return;
+    }
+    flushList();
+    para.push(line.trim());
+  });
+  flushPara();
+  flushList();
+  return wrap;
+}
+
+async function paintBrain() {
+  const token = ++brainToken;
+  panelTitle.textContent = "Brand Brain";
+  if (!brandBrainText) panelBody.replaceChildren(el("p", { class: "hq-note", text: "Loading Brand Brain…" }));
+  let text = brandBrainText;
+  if (!text) {
+    try {
+      const res = await fetch("/docs/brand-brain.md", { cache: "no-store" });
+      text = res.ok ? await res.text() : "";
+    } catch {
+      text = "";
+    }
+    if (token !== brainToken || route().id !== "brand-brain") return;
+    if (String(text || "").trim()) brandBrainText = text;
+  }
+  if (!String(text || "").trim()) {
+    panelBody.replaceChildren(el("p", { text: "Brand Brain is ready for Diego to fill in docs/brand-brain.md." }));
+    return;
+  }
+  panelBody.replaceChildren(renderMarkdown(text));
 }
 
 function estimateLine(row) {
@@ -730,6 +808,7 @@ function taskForm(agentId) {
     field("Description", el("textarea", { name: "description", maxlength: "8000" })),
     field("Priority", selectEl({ name: "priority" }, PRIORITIES, "normal")),
     field("Status", selectEl({ name: "status" }, STATUSES.filter((item) => item[0] !== "done"), "queued")),
+    field("Station", selectEl({ name: "station" }, STATION_OPTIONS, "")),
     field("Due (Madrid)", el("input", { type: "datetime-local", name: "due" })),
     el("button", { class: "btn sm", type: "submit" }, ["Assign task"])
   ]);
@@ -738,11 +817,12 @@ function taskForm(agentId) {
 function taskPanel(task) {
   const comments = state.comments.filter((comment) => comment.task_id === task.id);
   const wrap = el("div", {}, [
-    el("p", { class: "hq-note", text: agentName(task.agent_id) + " · " + statusLabel(task.status) }),
+    el("p", { class: "hq-note", text: [agentName(task.agent_id), statusLabel(task.status), stationLabel(task.station)].filter(Boolean).join(" · ") }),
     el("form", { class: "hq-form", "data-form": "save-task", "data-id": task.id }, [
       field("Title", el("input", { name: "title", required: true, maxlength: "240", value: task.title })),
       field("Description", el("textarea", { name: "description", maxlength: "8000", value: task.description || "" })),
       field("Status", selectEl({ name: "status" }, STATUSES, task.status)),
+      field("Station", selectEl({ name: "station" }, STATION_OPTIONS, task.station || "")),
       field("Priority", selectEl({ name: "priority" }, PRIORITIES, task.priority || "normal")),
       field("Due (Madrid)", el("input", { type: "datetime-local", name: "due", value: madridInputValue(task.due) })),
       field("Output draft", el("textarea", { name: "result", maxlength: "20000", value: task.result || "" })),
@@ -889,16 +969,37 @@ function renderOffice() {
 function officeAgents() {
   return activeAgents().map((agent) => {
     const current = agent.status === "paused" ? null : activeTask(agentTasks(agent.id));
+    const home = homeStation(agent);
+    const station = current ? taskStation(current, agent) : home;
     return {
       id: agent.id,
       name: agent.name,
       color: asObject(agent.avatar).color || "",
       outside: Boolean(agent.outside_org) || agent.department === "Outside",
       work: sceneWork(agent),
-      errand: current ? taskSpot(current) : "",
+      home,
+      errand: current && station && station !== home ? station : "",
       taskId: current ? current.id : ""
     };
   });
+}
+
+function factoryCards() {
+  const cards = [];
+  const seen = new Set();
+  const push = (task) => {
+    if (!task || seen.has(task.id) || task.status === "done") return;
+    const spot = cardSpot(task, agentById(task.agent_id));
+    if (!spot) return;
+    seen.add(task.id);
+    cards.push({ id: task.id, title: task.title, spot, glow: task.status === "needs_diego" });
+  };
+  activeAgents().forEach((agent) => {
+    if (agent.status === "paused") return;
+    push(activeTask(agentTasks(agent.id)));
+  });
+  needsItems().forEach(push);
+  return cards;
 }
 
 function paintOfficeHud() {
@@ -948,13 +1049,20 @@ function placeOfficeBadges(items) {
     seen.add(item.id);
     let node = officeBadges.get(item.id);
     if (!node) {
-      node = el("button", { type: "button", class: "office-badge", "data-action": item.id === "meeting" ? "open-meeting" : "open-agent", "data-id": item.id === "meeting" ? "" : item.id });
+      const brain = item.id === "brand-brain";
+      node = el("button", {
+        type: "button",
+        class: "office-badge",
+        "data-action": item.id === "meeting" ? "open-meeting" : brain ? "open-brain" : "open-agent",
+        "data-id": item.id === "meeting" || brain ? "" : item.id
+      });
       labels.append(node);
       officeBadges.set(item.id, node);
     }
-    const agent = item.id === "meeting" ? null : agentById(item.id);
-    const marker = item.id === "meeting" ? "meet" : markerOf(sceneWork(agent));
-    const name = item.id === "meeting" ? "Meeting Room" : (agent ? agent.name : "");
+    const brain = item.id === "brand-brain";
+    const agent = item.id === "meeting" || brain ? null : agentById(item.id);
+    const marker = item.id === "meeting" || brain ? "meet" : markerOf(sceneWork(agent));
+    const name = item.id === "meeting" ? "Meeting Room" : brain ? "Brand Brain" : (agent ? agent.name : "");
     const current = agent ? activeTask(agentTasks(agent.id)) : null;
     const progress = current ? progressOf(current, new Date()) : null;
     const flash = agent ? flashFor(agent.id) : null;
@@ -964,7 +1072,7 @@ function placeOfficeBadges(items) {
       const bar = progress ? el("span", { class: "office-progress", "aria-hidden": "true" }, [el("i")]) : null;
       if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
       node.replaceChildren(
-        item.id === "meeting" ? el("i", { class: "diamond meet", title: "Meeting Room" }) : diamond(marker),
+        brain || item.id === "meeting" ? el("i", { class: "diamond meet", title: brain ? "Brand Brain" : "Meeting Room" }) : diamond(marker),
         el("span", { class: "office-pill", text: name }),
         flash ? el("span", { class: "office-check", text: "Done · " + flash.title }) : null,
         current ? el("span", { class: "office-taskline", text: current.title }) : null,
@@ -972,7 +1080,7 @@ function placeOfficeBadges(items) {
         progress ? el("span", { class: "office-left", text: leftLabel(progress) }) : null
       );
       const detail = current ? ", " + current.title + ", " + leftLabel(progress) : "";
-      node.setAttribute("aria-label", name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
+      node.setAttribute("aria-label", brain ? "Brand Brain" : name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
     }
     node.style.left = item.x + "px";
     node.style.top = item.y + "px";
@@ -1020,8 +1128,11 @@ async function mountOffice() {
     const mod = await import("../office/scene.js");
     if (token !== officeToken || !document.body.contains(host)) return;
     officeHandle = await mod.createScene(host, {
+      layout: "factory",
       onSelect(id) {
         if (id === "meeting") go("#office/meeting");
+        else if (id === "brand-brain") go("#office/brand-brain");
+        else if (id === "diego") go("#office/diego");
         else go("#office/" + id);
       },
       onFrame(payload) {
@@ -1035,7 +1146,7 @@ async function mountOffice() {
       return;
     }
     officeHandle.setLoop(() => location.hash === "#standup");
-    officeHandle.update(agents);
+    officeHandle.update(agents, factoryCards());
     window.__hqOfficeReady = true;
     if (window.__officeProject) window.__hqProject = window.__officeProject;
   } catch {
@@ -1294,7 +1405,7 @@ function paint() {
   }
   if (current.section === "office" && (officeHandle || officeMounting) && document.getElementById("hq-stage")) {
     if (officeHandle) {
-      officeHandle.update(officeAgents());
+      officeHandle.update(officeAgents(), factoryCards());
       officeHandle.setLoop(() => location.hash === "#standup");
       window.__hqOfficeReady = true;
     }
@@ -1399,6 +1510,8 @@ async function onCreateTask(form) {
     return;
   }
   const status = STATUSES.some((item) => item[0] === data.status) ? data.status : "queued";
+  const agent = agentById(agentId);
+  const station = STATIONS.includes(data.station) ? data.station : homeStation(agent);
   const payload = {
     agent_id: agentId,
     title: title.slice(0, 240),
@@ -1408,6 +1521,7 @@ async function onCreateTask(form) {
     due: data.due ? zonedInputToDate(data.due, "Europe/Madrid") : null,
     result: ""
   };
+  if (station) payload.station = station;
   if (status === "needs_diego") payload.decision = "pending";
   const ok = await commit(() => state.supabase.from("hq_tasks").insert(payload), "Task assigned.");
   if (ok) form.reset();
@@ -1421,6 +1535,8 @@ async function onSaveTask(form) {
     toast("A title is required.", "bad");
     return;
   }
+  const task = taskById(id);
+  const station = STATIONS.includes(data.station) ? data.station : homeStation(task ? agentById(task.agent_id) : null);
   const payload = {
     title: title.slice(0, 240),
     description: String(data.description || ""),
@@ -1429,6 +1545,7 @@ async function onSaveTask(form) {
     due: data.due ? zonedInputToDate(data.due, "Europe/Madrid") : null,
     result: String(data.result || "").slice(0, 20000)
   };
+  if (station) payload.station = station;
   if (payload.status === "needs_diego") payload.decision = "pending";
   await commit(() => state.supabase.from("hq_tasks").update(payload).eq("id", id), "Task saved.");
 }
@@ -1594,9 +1711,13 @@ document.addEventListener("click", async (event) => {
   const id = trigger.dataset.id || "";
   if (action === "close-panel") closePanel();
   else if (action === "open-meeting") go("#office/meeting");
+  else if (action === "open-brain") go("#office/brand-brain");
   else if (action === "open-diego") go("#office/diego");
   else if (action === "open-agent") go("#office/" + id);
-  else if (action === "open-task") go("#" + (route().section === "needs" ? "needs" : "tasks") + "/" + id);
+  else if (action === "open-task") {
+    const here = route();
+    go(here.section === "office" ? "#office/task:" + id : "#" + (here.section === "needs" ? "needs" : "tasks") + "/" + id);
+  }
   else if (action === "replay-standup") officeHandle && officeHandle.replay();
   else if (action === "zoom-in") officeHandle && officeHandle.zoom(1.12);
   else if (action === "zoom-out") officeHandle && officeHandle.zoom(0.88);
