@@ -1,4 +1,4 @@
-import { getSupabase, isConfigured, originPath } from "../auth/supabase.js";
+import { authReturnUrl, getSupabase, isConfigured, safeNext } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, peekCallback, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, setBusy, toast } from "../auth/ui.js";
 
@@ -8,6 +8,7 @@ const requestPanel = document.getElementById("request-panel");
 const passwordPanel = document.getElementById("password-panel");
 const errorEl = document.getElementById("form-error");
 const okEl = document.getElementById("form-ok");
+const next = safeNext(new URLSearchParams(window.location.search).get("next"));
 const callback = rememberCallback(window.location.href);
 const memory = peekCallback();
 const recovery = callback.type === "recovery" || memory?.type === "recovery";
@@ -56,7 +57,7 @@ if (!isConfigured()) {
     const button = event.target.querySelector("button");
     setBusy(button, true, "Sending…");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: originPath("/reset/")
+      redirectTo: authReturnUrl("/reset/", next, window.location.href)
     });
     setBusy(button, false);
     if (error) return showError(friendlyAuthError(error));
@@ -78,6 +79,6 @@ if (!isConfigured()) {
     if (error) return showError(friendlyAuthError(error));
     clearCallbackMemory();
     showOk("Password updated. Taking you to your account.");
-    window.setTimeout(() => window.location.replace("/account/"), 600);
+    window.setTimeout(() => window.location.replace(next), 600);
   });
 }

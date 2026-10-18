@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { friendlyAuthError, isLoginTab, readAuthCallback } from "../auth/callback.js";
+import { authReturnUrl, siteOrigin } from "../auth/return-url.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -21,6 +22,30 @@ assert.equal(confirmed.error, "");
 
 const queryError = readAuthCallback("https://www.roleflow.io/signup/?error_description=Email+link+is+invalid+or+has+expired");
 assert.match(friendlyAuthError({ message: queryError.error }), /invalid or expired/i);
+
+const pkce = readAuthCallback("https://www.roleflow.io/signup/?next=%2Fbusinesses%2F&mode=login&code=abc123");
+assert.equal(pkce.code, "abc123");
+assert.equal(pkce.hasGrant, false);
+assert.equal(pkce.error, "");
+assert.equal(siteOrigin("http://localhost:3000/signup/?mode=login"), "https://www.roleflow.io");
+assert.equal(siteOrigin("https://roleflow.io/signup/?next=%2Fbusinesses%2F"), "https://www.roleflow.io");
+assert.equal(
+  authReturnUrl("/signup/?mode=login", "/businesses/", "http://localhost:3000/signup/?next=%2Fbusinesses%2F&mode=login"),
+  "https://www.roleflow.io/signup/?mode=login&next=%2Fbusinesses%2F"
+);
+assert.equal(
+  authReturnUrl("/login/", "https://evil.example/phish", "https://www.roleflow.io/login/"),
+  "https://www.roleflow.io/login/?next=%2Faccount%2F"
+);
+assert.match(read("signup/signup.js"), /authReturnUrl\(/);
+assert.match(read("signup/signup.js"), /\/signup\/\?mode=login/);
+assert.match(read("login/login.js"), /authReturnUrl\("\/login\/", next, window\.location\.href\)/);
+assert.match(read("reset/reset.js"), /authReturnUrl\("\/reset\/", next, window\.location\.href\)/);
+assert.match(read("auth/callback.js"), /exchangeCodeForSession/);
+assert.match(read("supabase/config.toml"), /site_url = "https:\/\/www\.roleflow\.io"/);
+assert.match(read("supabase/config.toml"), /https:\/\/www\.roleflow\.io\/\*\*/);
+assert.match(read("supabase/config.toml"), /https:\/\/roleflow\.io\/\*\*/);
+assert.doesNotMatch(read("signup/signup.js") + read("login/login.js") + read("reset/reset.js") + read("auth/sidebar.js"), /localhost:3000/);
 
 assert.equal(isLoginTab("?mode=login", "#access_token=abc&type=signup"), true);
 assert.equal(isLoginTab("", "#login"), true);

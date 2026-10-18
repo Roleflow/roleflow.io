@@ -1,4 +1,4 @@
-import { destinationAfterLogin, getSupabase, isConfigured, originPath } from "../auth/supabase.js";
+import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
 import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
@@ -216,9 +216,13 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
-            redirectTo: originPath(params.get("invite")
-              ? "/signup/?invite=" + encodeURIComponent(params.get("invite"))
-              : "/account/")
+            redirectTo: authReturnUrl(
+              params.get("invite")
+                ? "/signup/?mode=login&invite=" + encodeURIComponent(params.get("invite"))
+                : "/signup/?mode=login",
+              params.get("next"),
+              window.location.href
+            )
           }
         });
         setBusy(googleBtn, false);
@@ -303,7 +307,11 @@ if (!isConfigured()) {
             data: inviteOk
               ? { full_name: name, instagram, invite_token: inviteToken }
               : { full_name: name, instagram, access_code: accessCode },
-            emailRedirectTo: originPath(inviteOk ? "/signup/?invite=" + encodeURIComponent(inviteToken) : "/account/")
+            emailRedirectTo: authReturnUrl(
+              inviteOk ? "/signup/?mode=login&invite=" + encodeURIComponent(inviteToken) : "/signup/?mode=login",
+              params.get("next"),
+              window.location.href
+            )
           }
         });
         setBusy(button, false);
@@ -346,7 +354,11 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            emailRedirectTo: originPath(inviteEmail() ? "/signup/?invite=" + encodeURIComponent(inviteToken) : "/account/"),
+            emailRedirectTo: authReturnUrl(
+              inviteEmail() ? "/signup/?mode=login&invite=" + encodeURIComponent(inviteToken) : "/signup/?mode=login",
+              params.get("next"),
+              window.location.href
+            ),
             shouldCreateUser: false
           }
         });
