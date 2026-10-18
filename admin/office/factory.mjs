@@ -106,14 +106,15 @@ export function hqPlan() {
     brainSub: "",
     fallback: "client_floor",
     pipeline: [
-      { id: "research", step: "Step 1", title: "Research", color: 0x2a3d55, prop: "research" },
-      { id: "writers_room", step: "Step 2", title: "Writers' Room", color: 0x3a2d4e, prop: "" },
-      { id: "film_studio", step: "Step 3", title: "Film Studio", color: 0x3d3428, prop: "studio" },
-      { id: "edit_bay", step: "Step 4", title: "Edit Bay", color: 0x243e3a, prop: "edit" },
-      { id: "shipping_dock", step: "Step 5", title: "Shipping Dock", color: 0x3a3224, prop: "shipping" }
+      { id: "research", step: "STEP 1", title: "Research", tab: "Research", blurb: "Watch competitors and read transcripts", color: 0x140c16, prop: "research" },
+      { id: "writers_room", step: "STEP 2", title: "Writers' Room", tab: "Writers' Room", blurb: "Scripts get written here", color: 0x160c1c, prop: "" },
+      { id: "film_studio", step: "STEP 3", title: "Film Studio", tab: "Film Studio", blurb: "Record in front of the ring light", color: 0x1c0c18, prop: "studio", far: -2.2, afterGate: true },
+      { id: "edit_bay", step: "STEP 4", title: "Edit Bay", tab: "Edit Bay", blurb: "One take becomes ten cuts", color: 0x120c1a, prop: "edit" },
+      { id: "shipping_dock", step: "STEP 5", title: "Shipping Dock", tab: "Shipping Dock", blurb: "Posts leave from the dock", color: 0x160e14, prop: "shipping" },
+      { id: "mail_room", step: "STEP 6", title: "Mail Room, coming soon", tab: "Mail Room", blurb: "Inbound replies", color: 0x100c14, prop: "mail" }
     ],
-    balcony: { id: "chief_of_staff", label: "Chief of Staff, on the balcony" },
-    side: { id: "client_floor", title: "Client Floor", color: 0x2c3148 }
+    balcony: { id: "chief_of_staff", label: "Chief of Staff, on the balcony", eyebrow: "ON THE BALCONY", title: "Chief of Staff" },
+    side: { id: "client_floor", title: "Client Floor", tab: "Client Floor", blurb: "Client work sits here", color: 0x12101c }
   };
 }
 
@@ -123,13 +124,13 @@ export function setterPlan(name) {
     brainSub: String(name || "").trim(),
     fallback: "qualify",
     pipeline: [
-      { id: "leads_in", step: "Step 1", title: "Leads In", color: 0x2a3d55, prop: "inbox" },
-      { id: "qualify", step: "Step 2", title: "Qualify", color: 0x3a2d4e, prop: "" },
-      { id: "book_call", step: "Step 3", title: "Book Call", color: 0x3d3428, prop: "handset" },
-      { id: "follow_up", step: "Step 4", title: "Follow-up", color: 0x243e3a, prop: "notes" },
-      { id: "report", step: "Step 5", title: "Report", color: 0x3a3224, prop: "chart" }
+      { id: "leads_in", step: "STEP 1", title: "Leads In", tab: "Leads In", blurb: "New DMs land in the inbox", color: 0x140c16, prop: "inbox" },
+      { id: "qualify", step: "STEP 2", title: "Qualify", tab: "Qualify", blurb: "The setter reads the reply", color: 0x160c1c, prop: "" },
+      { id: "book_call", step: "STEP 3", title: "Book Call", tab: "Book Call", blurb: "A time goes on the calendar", color: 0x1c0c18, prop: "handset", afterGate: true },
+      { id: "follow_up", step: "STEP 4", title: "Follow-up", tab: "Follow-up", blurb: "The next note goes out", color: 0x120c1a, prop: "notes" },
+      { id: "report", step: "STEP 5", title: "Report", tab: "Report", blurb: "The week gets a recap", color: 0x160e14, prop: "chart" }
     ],
-    balcony: { id: "overseer", label: "Overseer, on the balcony" },
+    balcony: { id: "overseer", label: "Overseer, on the balcony", eyebrow: "ON THE BALCONY", title: "Overseer" },
     side: null
   };
 }
@@ -152,9 +153,11 @@ export function withAssigned(plan, ids) {
     present.add(id);
     pipeline.push({
       id,
-      step: "Step " + (pipeline.length + 1),
+      step: "STEP " + (pipeline.length + 1),
       title: LABELS[id],
-      color: 0x2c3148,
+      tab: LABELS[id],
+      blurb: "",
+      color: 0x120e18,
       prop: PROPS[id] || ""
     });
   });
@@ -168,11 +171,13 @@ export function pointsFor(plan) {
   const start = -((count - 1) / 2);
   const points = {};
   pipeline.forEach((station, index) => {
-    points[station.id] = at(start + index, 0);
+    points[station.id] = at(start + index, station.far || 0, station.lift || 0);
   });
-  points.approval = at(start + 1.55, 1.35);
+  const gate = pipeline.findIndex((station) => station.afterGate);
+  const gateIndex = gate > 0 ? start + gate - 0.45 : start + 1.55;
+  points.approval = at(gateIndex, 1.35);
   if (plan && plan.side) points[plan.side.id] = at(start - 0.15, -6.4);
-  if (plan && plan.balcony) points[plan.balcony.id] = at(0.15, 5.6, 1.25);
+  if (plan && plan.balcony) points[plan.balcony.id] = at(start + count - 0.15, 7.4, 1.25);
   points.brand_brain = at(0, 11.2, 3.5);
   points.meetup = at(0, 3.1);
   return points;

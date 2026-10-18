@@ -133,20 +133,22 @@ export async function createScene(host, hooks) {
     throw new Error("WebGL is not available.");
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.matchMedia("(max-width: 760px)").matches ? 1.25 : 1.5));
-  renderer.setClearColor(0x0a1226, 1);
+  renderer.setClearColor(0x07060c, 1);
   host.append(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a1226);
-  const camera = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 400);
-  camera.position.set(42, 36, 42);
+  scene.background = new THREE.Color(0x07060c);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 800);
+  camera.position.set(52, 44, 52);
   camera.lookAt(0, 0, 0);
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.target.set(0, 0.4, 0);
+  controls.target.set(0, 0.6, 0);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.minPolarAngle = 0.78;
-  controls.maxPolarAngle = 1.12;
+  controls.minPolarAngle = 0.42;
+  controls.maxPolarAngle = 1.18;
+  controls.minDistance = 14;
+  controls.maxDistance = 180;
   controls.minZoom = 0.55;
   controls.maxZoom = 2.8;
   controls.touches.ONE = THREE.TOUCH.PAN;
@@ -154,12 +156,12 @@ export async function createScene(host, hooks) {
   controls.update();
   renderer.domElement.style.touchAction = "none";
 
-  scene.add(new THREE.HemisphereLight(0xfff6ea, 0x1a2233, 0.88));
-  const sun = new THREE.DirectionalLight(0xfff8f0, 0.72);
-  sun.position.set(-16, 28, 10);
+  scene.add(new THREE.HemisphereLight(0x3a2458, 0x07060c, 0.42));
+  const sun = new THREE.DirectionalLight(0xfff0e6, 0.16);
+  sun.position.set(-18, 32, 12);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xc9d4ea, 0.28);
-  fill.position.set(12, 10, -16);
+  const fill = new THREE.DirectionalLight(0xff4d8d, 0.12);
+  fill.position.set(16, 12, -8);
   scene.add(fill);
 
   const geos = new Map();
@@ -183,7 +185,40 @@ export async function createScene(host, hooks) {
     }
     return mats.get(key);
   };
+  const sphereGeo = (r) => {
+    const key = "s" + r;
+    if (!geos.has(key)) {
+      const geo = new THREE.SphereGeometry(r, 18, 14);
+      geos.set(key, geo);
+      owned.add(geo);
+    }
+    return geos.get(key);
+  };
   const box = (w, h, d, mat) => new THREE.Mesh(boxGeo(w, h, d), mat);
+  let purpleMat = null;
+  let headMat = null;
+  let pinkMat = null;
+  const purple = () => {
+    if (!purpleMat) {
+      purpleMat = new THREE.MeshLambertMaterial({ color: 0x7a4dff, emissive: 0x5b22c8, emissiveIntensity: 0.7 });
+      owned.add(purpleMat);
+    }
+    return purpleMat;
+  };
+  const headGlow = () => {
+    if (!headMat) {
+      headMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.7 });
+      owned.add(headMat);
+    }
+    return headMat;
+  };
+  const pinkBasic = () => {
+    if (!pinkMat) {
+      pinkMat = new THREE.MeshBasicMaterial({ color: 0xff4d8d });
+      owned.add(pinkMat);
+    }
+    return pinkMat;
+  };
   const put = (mesh, x, y, z) => {
     mesh.position.set(x, y, z);
     return mesh;
@@ -198,7 +233,7 @@ export async function createScene(host, hooks) {
   const leafMat2 = lambert(0x2c8a48);
   const cabMat = lambert(0xd8c09a);
   const cabDark = lambert(0xb08960);
-  const chairMat = lambert(0x6d4c32);
+  const chairMat = lambert(0x2a1848);
   const pantsMat = lambert(0x2a3144);
   const skinMat = lambert(0xf2c7a4);
   const hairMat = lambert(0x2b211c);
@@ -229,6 +264,13 @@ export async function createScene(host, hooks) {
   const factoryPlan = factoryMode ? ((hooks && hooks.plan) || hqPlan()) : null;
   const cardItems = new Map();
   let approvalMat = null;
+  const billboards = [];
+  const motes = [];
+  const orbitRings = [];
+  let postsSign = null;
+  let postsCount = Math.max(0, Math.round(Number(hooks && hooks.posts) || 0));
+  let focusId = "overview";
+  let fittedKey = "";
 
   function addPick(object, id) {
     object.userData.pick = id;
@@ -242,6 +284,10 @@ export async function createScene(host, hooks) {
     });
     cardItems.clear();
     approvalMat = null;
+    postsSign = null;
+    billboards.length = 0;
+    motes.length = 0;
+    orbitRings.length = 0;
     built = [];
     pickables = [];
     people.clear();
@@ -331,26 +377,30 @@ function makeChair() {
   return g;
 }
 
-function makeSitter(color) {
-  const g = new THREE.Group();
-  const shirt = lambert(color);
-  g.add(put(box(0.16, 0.14, 0.4, pantsMat), -0.12, 0.52, 0.2));
-    g.add(put(box(0.16, 0.14, 0.4, pantsMat), 0.12, 0.52, 0.2));
-    g.add(put(box(0.15, 0.34, 0.15, pantsMat), -0.12, 0.28, 0.38));
-    g.add(put(box(0.15, 0.34, 0.15, pantsMat), 0.12, 0.28, 0.38));
-    g.add(put(box(0.16, 0.08, 0.22, shoeMat), -0.12, 0.08, 0.42));
-    g.add(put(box(0.16, 0.08, 0.22, shoeMat), 0.12, 0.08, 0.42));
-    g.add(put(box(0.48, 0.46, 0.28, shirt), 0, 0.86, 0));
-    g.add(put(box(0.32, 0.3, 0.3, skinMat), 0, 1.26, 0.02));
-    g.add(put(box(0.34, 0.1, 0.32, hairMat), 0, 1.42, 0));
-    g.add(put(box(0.06, 0.06, 0.03, eyeMat), -0.07, 1.28, 0.17));
-    g.add(put(box(0.06, 0.06, 0.03, eyeMat), 0.07, 1.28, 0.17));
+  function addHead(group, y, robot) {
+    if (robot) {
+      group.add(put(box(0.4, 0.32, 0.32, lambert(0x24182f)), 0, y, 0));
+      const visor = new THREE.MeshBasicMaterial({ color: 0xfff4ea });
+      owned.add(visor);
+      group.add(put(box(0.3, 0.07, 0.05, visor), 0, y, 0.16));
+      return;
+    }
+    group.add(put(new THREE.Mesh(sphereGeo(0.2), headGlow()), 0, y, 0.02));
+  }
+
+  function makeSitter(color, robot) {
+    const g = new THREE.Group();
+    const shirt = purple();
+    g.add(put(new THREE.Mesh(sphereGeo(0.16), shirt), -0.12, 0.36, 0.22));
+    g.add(put(new THREE.Mesh(sphereGeo(0.16), shirt), 0.12, 0.36, 0.22));
+    g.add(put(new THREE.Mesh(sphereGeo(0.34), shirt), 0, 0.78, 0.02));
+    addHead(g, 1.24, robot);
     const armL = new THREE.Group();
-    armL.position.set(-0.32, 1.0, 0.08);
-    armL.add(put(box(0.12, 0.12, 0.36, shirt), 0, -0.08, 0.16));
+    armL.position.set(-0.32, 0.92, 0.08);
+    armL.add(put(new THREE.Mesh(sphereGeo(0.1), shirt), 0, -0.08, 0.16));
     const armR = new THREE.Group();
-    armR.position.set(0.32, 1.0, 0.08);
-    armR.add(put(box(0.12, 0.12, 0.36, shirt), 0, -0.08, 0.16));
+    armR.position.set(0.32, 0.92, 0.08);
+    armR.add(put(new THREE.Mesh(sphereGeo(0.1), shirt), 0, -0.08, 0.16));
     g.add(armL, armR);
     g.userData.arms = [armL, armR];
     return g;
@@ -359,34 +409,30 @@ function makeSitter(color) {
   function limb(y, x, side) {
     const pivot = new THREE.Group();
     pivot.position.set(x, y, 0);
-    const upper = put(box(0.14, 0.42, 0.16, pantsMat), 0, -0.2, 0);
+    const upper = put(new THREE.Mesh(sphereGeo(0.12), purple()), 0, -0.16, 0);
     const shin = new THREE.Group();
-    shin.position.y = -0.4;
-    shin.add(put(box(0.14, 0.38, 0.15, pantsMat), 0, -0.16, 0));
-    shin.add(put(box(0.15, 0.08, 0.24, shoeMat), 0, -0.36, 0.05));
+    shin.position.y = -0.28;
+    shin.add(put(new THREE.Mesh(sphereGeo(0.11), purple()), 0, -0.16, 0));
     pivot.add(upper, shin);
     pivot.userData.shin = shin;
     pivot.userData.side = side;
     return pivot;
   }
 
-  function makeWalker(color) {
+  function makeWalker(color, robot) {
     const g = new THREE.Group();
-    const shirt = lambert(color);
-    const legL = limb(0.84, -0.12, "l");
-    const legR = limb(0.84, 0.12, "r");
-    const torso = put(box(0.46, 0.5, 0.26, shirt), 0, 1.12, 0);
-    const head = put(box(0.32, 0.3, 0.3, skinMat), 0, 1.54, 0);
-    const hair = put(box(0.34, 0.1, 0.32, hairMat), 0, 1.7, 0);
-    const eyeL = put(box(0.06, 0.06, 0.03, eyeMat), -0.07, 1.56, 0.16);
-    const eyeR = put(box(0.06, 0.06, 0.03, eyeMat), 0.07, 1.56, 0.16);
+    const shirt = purple();
+    const legL = limb(0.86, -0.12, "l");
+    const legR = limb(0.86, 0.12, "r");
+    const torso = put(new THREE.Mesh(sphereGeo(0.32), shirt), 0, 1.08, 0);
     const armL = new THREE.Group();
-    armL.position.set(-0.32, 1.28, 0);
-    armL.add(put(box(0.12, 0.42, 0.12, shirt), 0, -0.2, 0));
+    armL.position.set(-0.34, 1.16, 0);
+    armL.add(put(new THREE.Mesh(sphereGeo(0.1), shirt), 0, -0.18, 0));
     const armR = new THREE.Group();
-    armR.position.set(0.32, 1.28, 0);
-    armR.add(put(box(0.12, 0.42, 0.12, shirt), 0, -0.2, 0));
-    g.add(legL, legR, torso, head, hair, eyeL, eyeR, armL, armR);
+    armR.position.set(0.34, 1.16, 0);
+    armR.add(put(new THREE.Mesh(sphereGeo(0.1), shirt), 0, -0.18, 0));
+    g.add(legL, legR, torso, armL, armR);
+    addHead(g, 1.52, robot);
     g.userData.joints = { legL, legR, armL, armR };
     return g;
   }
@@ -418,21 +464,11 @@ function makeSitter(color) {
     return placed;
   }
 
-  function sign(text, width, height, x, y, z) {
+  function sign(text, width, height, x, y, z, tone) {
     const canvas = document.createElement("canvas");
     canvas.width = 512;
     canvas.height = 160;
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, 512, 160);
-    ctx.fillStyle = "rgba(12,18,34,0.88)";
-    ctx.fillRect(16, 28, 480, 104);
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.strokeRect(16.5, 28.5, 479, 103);
-    ctx.fillStyle = "#f4f7ff";
-    ctx.font = "700 46px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(text || "").slice(0, 42), 256, 80);
     const tex = new THREE.CanvasTexture(canvas);
     owned.add(tex);
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
@@ -440,61 +476,172 @@ function makeSitter(color) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
     owned.add(mesh.geometry);
     mesh.position.set(x, y, z);
-    mesh.lookAt(camera.position.x, mesh.position.y, camera.position.z);
+    const paint = (value) => {
+      ctx.clearRect(0, 0, 512, 160);
+      const neon = tone === "yellow" ? "#ffe56a" : "#ff4d8d";
+      const fill = tone === "yellow" ? "rgba(42,28,4,0.82)" : "rgba(8,6,14,0.78)";
+      const ink = tone === "yellow" ? "#ffe56a" : "#fff6fb";
+      ctx.fillStyle = fill;
+      ctx.fillRect(16, 28, 480, 104);
+      ctx.strokeStyle = neon;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(19, 31, 474, 98);
+      ctx.fillStyle = ink;
+      ctx.font = tone === "yellow" ? "800 42px sans-serif" : "700 40px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(value || "").slice(0, 42), 256, 80);
+      tex.needsUpdate = true;
+    };
+    paint(text);
+    mesh.userData.paint = paint;
+    billboards.push(mesh);
     return mesh;
   }
 
+  function glassPanel(step, title, blurb, width, height, x, y, z) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 320;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 768, 320);
+    ctx.fillStyle = "rgba(8,6,14,0.72)";
+    ctx.fillRect(18, 18, 732, 284);
+    ctx.strokeStyle = "#ff4d8d";
+    ctx.lineWidth = 8;
+    ctx.strokeRect(22, 22, 724, 276);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ff8a3d";
+    ctx.font = "700 42px sans-serif";
+    ctx.fillText(String(step || "").slice(0, 16), 384, 88);
+    ctx.fillStyle = "#fff6fb";
+    ctx.font = "700 54px sans-serif";
+    ctx.fillText(String(title || "").slice(0, 28), 384, 164);
+    ctx.fillStyle = "rgba(255,214,236,0.88)";
+    ctx.font = "500 32px sans-serif";
+    ctx.fillText(String(blurb || "").slice(0, 42), 384, 230);
+    const tex = new THREE.CanvasTexture(canvas);
+    owned.add(tex);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+    owned.add(mat);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
+    owned.add(mesh.geometry);
+    mesh.position.set(x, y, z);
+    billboards.push(mesh);
+    return mesh;
+  }
+
+  function faceBillboards() {
+    billboards.forEach((mesh) => {
+      if (mesh && mesh.parent) mesh.lookAt(camera.position.x, mesh.position.y, camera.position.z);
+    });
+  }
+
+  function stationLight(color, x, y, z) {
+    const light = new THREE.PointLight(color, 2.4, 16, 2);
+    light.position.set(x, y, z);
+    scene.add(light);
+    built.push(light);
+  }
+
   function placeProp(prop, spot) {
+    const lift = (along, side, y) => ({
+      x: spot.x + FAR_X * along + RIGHT_X * side,
+      y,
+      z: spot.z + FAR_Z * along + RIGHT_Z * side
+    });
     if (prop === "research") {
-      const watch = sign("Competitor Watch", 2.2, 0.42, spot.x - 1.2, 0.7, spot.z + 1.15);
-      const reader = sign("Transcript Reader", 2.2, 0.42, spot.x + 1.15, 0.7, spot.z + 1.15);
-      scene.add(watch, reader);
-      built.push(watch, reader);
+      const watch = sign("Competitor Watch", 2.2, 0.42, spot.x - 1.2, 0.85, spot.z + 0.2);
+      const reader = sign("Transcript Reader", 2.2, 0.42, spot.x + 1.15, 0.85, spot.z + 0.2);
+      const settyAt = lift(2.35, -0.95, 1.55);
+      const zeroAt = lift(2.35, 0.95, 1.55);
+      const setty = sign("Setty AI", 1.7, 0.48, settyAt.x, settyAt.y, settyAt.z);
+      const zero = sign("Zerochats", 1.7, 0.48, zeroAt.x, zeroAt.y, zeroAt.z);
+      scene.add(watch, reader, setty, zero);
+      built.push(watch, reader, setty, zero);
       return;
     }
     if (prop === "studio") {
-      const ringMat = new THREE.MeshLambertMaterial({ color: 0xfff1d2, emissive: 0xfff4e0, emissiveIntensity: 0.55 });
+      const back = lift(1.35, 0.15, 1.2);
+      const backdropGeo = new THREE.CylinderGeometry(1.9, 1.9, 2.3, 28, 1, true, 0.4, Math.PI * 0.95);
+      owned.add(backdropGeo);
+      const backdropMat = new THREE.MeshBasicMaterial({ color: 0xff4d8d, side: THREE.DoubleSide });
+      owned.add(backdropMat);
+      const backdrop = new THREE.Mesh(backdropGeo, backdropMat);
+      backdrop.position.set(back.x, back.y, back.z);
+      scene.add(backdrop);
+      built.push(backdrop);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xfff1c2 });
       owned.add(ringMat);
-      const ringGeo = new THREE.TorusGeometry(0.72, 0.06, 10, 28);
+      const ringGeo = new THREE.TorusGeometry(0.72, 0.055, 12, 36);
       owned.add(ringGeo);
+      const talent = lift(-0.15, 0.35, 0);
       const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.position.set(spot.x + 0.85, 1.85, spot.z - 0.15);
-      ring.rotation.x = Math.PI / 2.4;
+      ring.position.set(talent.x, 1.7, talent.z);
+      ring.rotation.x = Math.PI / 2.2;
       scene.add(ring);
       built.push(ring);
+      stationLight(0xff4d8d, talent.x, 2.1, talent.z);
       const you = new THREE.Group();
-      you.position.set(spot.x + 0.85, 0, spot.z + 0.15);
-      you.add(put(box(0.7, 0.06, 0.7, lambert(0xe8b04a)), 0, 0.12, 0));
-      you.add(sign("You", 1.1, 0.4, 0, 0.85, 0));
+      you.position.set(talent.x, 0, talent.z);
+      const youMat = new THREE.MeshLambertMaterial({ color: 0xff6a1a, emissive: 0xff6a1a, emissiveIntensity: 0.85 });
+      owned.add(youMat);
+      you.add(put(new THREE.Mesh(sphereGeo(0.28), youMat), 0, 0.85, 0));
+      you.add(put(new THREE.Mesh(sphereGeo(0.16), youMat), 0, 1.28, 0));
+      you.add(sign("You", 1.15, 0.4, 0, 1.75, 0));
       addPick(you, "diego");
       scene.add(you);
       built.push(you);
+      const shelfAt = lift(0.2, -1.35, 0);
       const shelf = new THREE.Group();
-      shelf.position.set(spot.x - 1.35, 0, spot.z + 0.2);
-      shelf.add(put(box(0.9, 1.15, 0.28, lambert(0x8d6a45)), 0, 0.7, 0));
-      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xf4efe4)), 0, 0.95, 0.08));
-      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xd7c4ff)), 0, 0.72, 0.08));
-      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xf7f3ea)), 0, 0.5, 0.08));
-      shelf.add(sign("Script Library", 1.8, 0.4, 0, 1.55, 0));
+      shelf.position.set(shelfAt.x, 0, shelfAt.z);
+      shelf.add(put(box(0.9, 1.15, 0.28, lambert(0x3a2430)), 0, 0.7, 0));
+      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xff8a3d)), 0, 0.95, 0.08));
+      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xff4d8d)), 0, 0.72, 0.08));
+      shelf.add(put(box(0.72, 0.08, 0.22, lambert(0xc040ff)), 0, 0.5, 0.08));
+      shelf.add(sign("Script Library", 1.9, 0.42, 0, 1.55, 0));
       scene.add(shelf);
       built.push(shelf);
       return;
     }
     if (prop === "edit") {
-      const ratio = sign("1 in, 10 out", 1.8, 0.42, spot.x, 0.85, spot.z + 1.2);
+      const ratioAt = lift(1.5, 0, 1.15);
+      const ratio = sign("1 in - 10 out", 2.1, 0.48, ratioAt.x, ratioAt.y, ratioAt.z, "yellow");
       scene.add(ratio);
       built.push(ratio);
       return;
     }
     if (prop === "shipping") {
-      const crates = new THREE.Group();
-      crates.position.set(spot.x + 1.15, 0, spot.z + 0.4);
-      crates.add(put(box(0.55, 0.45, 0.45, lambert(0xc9844a)), 0, 0.3, 0));
-      crates.add(put(box(0.4, 0.35, 0.4, lambert(0x8d6a45)), 0.45, 0.25, 0.2));
-      crates.add(put(box(0.48, 0.4, 0.42, lambert(0xd8c09a)), -0.15, 0.28, 0.45));
-      crates.add(sign("Your Posts", 1.7, 0.42, 0.1, 1.05, 0));
-      scene.add(crates);
-      built.push(crates);
+      const towers = new THREE.Group();
+      const base = lift(0.2, 0.85, 0);
+      towers.position.set(base.x, 0, base.z);
+      const slit = new THREE.MeshBasicMaterial({ color: 0x7af0ff });
+      owned.add(slit);
+      [-0.7, 0, 0.7].forEach((x, index) => {
+        const h = 1.15 + index * 0.18;
+        towers.add(put(box(0.42, h, 0.42, lambert(0x16141f)), x, h / 2, 0));
+        towers.add(put(box(0.28, 0.05, 0.05, slit), x, h * 0.45, 0.22));
+        towers.add(put(box(0.28, 0.05, 0.05, slit), x, h * 0.7, 0.22));
+      });
+      scene.add(towers);
+      built.push(towers);
+      const row = lift(2.15, 0.2, 1.7);
+      postsSign = sign("YOUR POSTS  " + postsCount, 2.4, 0.5, row.x, row.y, row.z);
+      scene.add(postsSign);
+      built.push(postsSign);
+      stationLight(0x9b4dff, base.x, 1.8, base.z);
+      return;
+    }
+    if (prop === "mail") {
+      const slots = new THREE.Group();
+      const at = lift(0.15, 0.4, 0);
+      slots.position.set(at.x, 0, at.z);
+      slots.add(put(box(1.5, 0.9, 0.28, lambert(0x1a1424)), 0, 0.7, 0));
+      [-0.45, 0, 0.45].forEach((x) => {
+        slots.add(put(box(0.32, 0.22, 0.06, lambert(0x07060c)), x, 0.85, 0.16));
+      });
+      scene.add(slots);
+      built.push(slots);
       return;
     }
     if (prop === "inbox") {
@@ -545,7 +692,7 @@ function makeSitter(color) {
     officeBounds = factoryBounds(points);
     const floorW = officeBounds.maxX - officeBounds.minX + 2;
     const floorD = officeBounds.maxZ - officeBounds.minZ + 2;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(floorW, floorD), lambert(0x141a2c));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(floorW, floorD), lambert(0x100c14));
     owned.add(floor.geometry);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set((officeBounds.minX + officeBounds.maxX) / 2, 0, (officeBounds.minZ + officeBounds.maxZ) / 2);
@@ -553,29 +700,31 @@ function makeSitter(color) {
     built.push(floor);
 
     const pipeline = plan.pipeline || [];
-    pipeline.forEach((station) => {
+    pipeline.forEach((station, index) => {
       const spot = points[station.id];
       const pad = new THREE.Group();
       pad.position.set(spot.x, 0, spot.z);
-      pad.add(put(box(4.4, 0.08, 3.3, lambert(station.color || 0x2a3d55)), 0, 0.06, 0));
+      pad.add(put(box(4.7, 0.05, 3.55, pinkBasic()), 0, 0.03, 0));
+      pad.add(put(box(4.35, 0.08, 3.2, lambert(station.color || 0x120e18)), 0, 0.08, 0));
       pad.add(put(box(1.55, 0.08, 0.7, deskMat), 0.2, 0.7, 0.45));
-      pad.add(sign(station.step || "Step", 1.5, 0.42, -1.15, 1.55, -1.15));
-      pad.add(sign(station.title || station.id, 2.5, 0.55, 0.35, 1.7, -1.25));
+      const panel = glassPanel(station.step || "STEP", station.title || station.id, station.blurb || "", 3.35, 1.2, 0.1, 2.15, -1.2);
+      pad.add(panel);
       scene.add(pad);
       built.push(pad);
+      stationLight(index % 2 ? 0xff4d8d : 0xff6a1a, spot.x, 1.6, spot.z);
       if (station.prop) placeProp(station.prop, spot);
     });
 
     for (let i = 0; i < pipeline.length - 1; i += 1) {
       const from = points[pipeline[i].id];
       const to = points[pipeline[i + 1].id];
+      const next = pipeline[i + 1];
       const mid = { x: (from.x + to.x) / 2, z: (from.z + to.z) / 2 };
       const arrow = new THREE.Group();
-      arrow.position.set(mid.x, 0.2, mid.z);
+      arrow.position.set(mid.x, 0.35, mid.z);
       arrow.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
-      arrow.add(put(box(0.16, 0.08, 1.35, lambert(0xff8a3d)), 0, 0, 0));
-      arrow.add(put(box(0.42, 0.08, 0.28, lambert(0xff8a3d)), 0, 0, 0.72));
-      arrow.add(sign("Next step:", 1.7, 0.42, 0, 0.55, 0));
+      arrow.add(put(box(0.1, 0.05, 2.1, pinkBasic()), 0, 0, 0));
+      arrow.add(sign(next.afterGate ? "Next step: Your approval" : "Next step: " + (next.tab || next.title), 2.9, 0.48, 0, 0.55, 0));
       scene.add(arrow);
       built.push(arrow);
     }
@@ -583,12 +732,13 @@ function makeSitter(color) {
     const approval = points.approval;
     const gate = new THREE.Group();
     gate.position.set(approval.x, 0, approval.z);
-    approvalMat = new THREE.MeshLambertMaterial({ color: 0xff4d8d, emissive: 0xff4d8d, emissiveIntensity: 0.2 });
+    approvalMat = new THREE.MeshBasicMaterial({ color: 0xffe56a });
     owned.add(approvalMat);
-    gate.add(put(box(0.16, 1.35, 0.16, approvalMat), -0.7, 0.75, 0));
-    gate.add(put(box(0.16, 1.35, 0.16, approvalMat), 0.7, 0.75, 0));
-    gate.add(put(box(1.7, 0.16, 0.16, approvalMat), 0, 1.4, 0));
-    gate.add(sign("Your Approval", 2.2, 0.46, 0, 1.85, 0));
+    gate.add(put(box(0.14, 1.7, 0.14, approvalMat), -1.15, 0.95, 0));
+    gate.add(put(box(0.14, 1.7, 0.14, approvalMat), 1.15, 0.95, 0));
+    gate.add(put(box(2.45, 0.14, 0.14, approvalMat), 0, 1.75, 0));
+    gate.add(sign("YOUR APPROVAL", 3.5, 0.85, 0, 2.45, 0, "yellow"));
+    stationLight(0xffe56a, approval.x, 2.2, approval.z);
     scene.add(gate);
     built.push(gate);
 
@@ -596,8 +746,9 @@ function makeSitter(color) {
       const client = points[plan.side.id];
       const clientPad = new THREE.Group();
       clientPad.position.set(client.x, 0, client.z);
-      clientPad.add(put(box(4.6, 0.08, 3.4, lambert(plan.side.color || 0x2c3148)), 0, 0.06, 0));
-      clientPad.add(sign(plan.side.title || "Client Floor", 2.3, 0.5, 0, 1.55, -1.2));
+      clientPad.add(put(box(4.8, 0.05, 3.55, pinkBasic()), 0, 0.03, 0));
+      clientPad.add(put(box(4.45, 0.08, 3.25, lambert(plan.side.color || 0x12101c)), 0, 0.08, 0));
+      clientPad.add(glassPanel("", plan.side.title || "Client Floor", plan.side.blurb || "", 3.2, 1.05, 0, 2.05, -1.2));
       scene.add(clientPad);
       built.push(clientPad);
     }
@@ -608,11 +759,18 @@ function makeSitter(color) {
       const chief = points[balconyId];
       balcony = new THREE.Group();
       balcony.position.set(chief.x, 0, chief.z);
-      balcony.add(put(box(5.4, 0.22, 2.5, lambert(0x243049)), 0, 1.15, 0));
+      balcony.add(put(box(5.4, 0.18, 2.6, lambert(0x1a1028)), 0, 1.2, 0));
+      balcony.add(put(box(5.55, 0.06, 2.75, pinkBasic()), 0, 1.32, 0));
       [[-2.3, -1], [2.3, -1], [-2.3, 1], [2.3, 1]].forEach(([x, z]) => {
-        balcony.add(put(box(0.16, 1.15, 0.16, lambert(0x8d6a45)), x, 0.55, z));
+        balcony.add(put(box(0.16, 1.15, 0.16, lambert(0x3a2848)), x, 0.55, z));
       });
-      balcony.add(sign(plan.balcony.label || "Overseer, on the balcony", 3.4, 0.48, 0, 2.15, 0));
+      [-1.6, -0.8, 0, 0.8, 1.6].forEach((x, index) => {
+        balcony.add(put(box(0.62, 0.85, 0.32, lambert(0x2a1c18)), x, 0.48, 1.15));
+        balcony.add(put(box(0.42, 0.5, 0.08, lambert(index % 2 ? 0xff4d8d : 0xff8a3d)), x, 0.7, 1.28));
+      });
+      balcony.add(sign(plan.balcony.eyebrow || "ON THE BALCONY", 3.3, 0.4, 0, 2.45, 0));
+      balcony.add(sign(plan.balcony.title || plan.balcony.label || "Chief of Staff", 3.2, 0.48, 0, 1.9, 0));
+      stationLight(0xc040ff, chief.x, 2.4, chief.z);
       scene.add(balcony);
       built.push(balcony);
     }
@@ -621,56 +779,80 @@ function makeSitter(color) {
     const brain = new THREE.Group();
     brain.position.set(brainPoint.x, brainPoint.y, brainPoint.z);
     const orbMat = new THREE.MeshLambertMaterial({
-      color: 0xff8a3d,
-      emissive: 0xc0409a,
-      emissiveIntensity: 1.2,
+      color: 0xff6a1a,
+      emissive: 0xff6a1a,
+      emissiveIntensity: 1.45,
       transparent: true,
-      opacity: 0.92
+      opacity: 0.96
     });
-    const glowMat = new THREE.MeshLambertMaterial({
-      color: 0xff8a3d,
-      emissive: 0xff4d8d,
-      emissiveIntensity: 0.7,
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xff4d8d,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.16,
       depthWrite: false
     });
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff8a3d });
     owned.add(orbMat);
     owned.add(glowMat);
-    const orbGeo = new THREE.SphereGeometry(1.55, 28, 18);
-    const glowGeo = new THREE.SphereGeometry(2.15, 24, 16);
+    owned.add(ringMat);
+    const orbGeo = new THREE.SphereGeometry(2.05, 32, 22);
+    const glowGeo = new THREE.SphereGeometry(2.7, 24, 16);
+    const ringGeo = new THREE.TorusGeometry(3.15, 0.045, 8, 64);
     owned.add(orbGeo);
     owned.add(glowGeo);
+    owned.add(ringGeo);
     const orb = new THREE.Mesh(orbGeo, orbMat);
     orb.name = "orb";
     const glow = new THREE.Mesh(glowGeo, glowMat);
     brain.add(orb, glow);
-    brain.add(sign("Brand Brain", 2.2, 0.48, 0, 1.7, 0));
-    if (plan.brainSub) brain.add(sign(plan.brainSub, 2.2, 0.4, 0, 2.25, 0));
+    [0.35, 1.15, 1.9].forEach((tilt, index) => {
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = tilt;
+      ring.rotation.y = index * 0.8;
+      ring.userData.spin = 0.35 + index * 0.22;
+      brain.add(ring);
+      orbitRings.push(ring);
+    });
+    brain.add(sign("Brand Brain", 2.6, 0.52, 0, 2.55, 0));
+    if (plan.brainSub) brain.add(sign(plan.brainSub, 2.4, 0.42, 0, 3.15, 0));
     addPick(brain, "brand-brain");
     scene.add(brain);
     built.push(brain);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xff8ad0, transparent: true, opacity: 0.35 });
+    stationLight(0xff6a1a, brainPoint.x, brainPoint.y, brainPoint.z);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.85 });
+    const moteMat = new THREE.MeshBasicMaterial({ color: 0xfff6ea });
     owned.add(lineMat);
+    owned.add(moteMat);
+    const moteGeo = new THREE.SphereGeometry(0.09, 8, 8);
+    owned.add(moteGeo);
     const lineIds = pipeline.map((station) => station.id);
     if (balconyId) lineIds.push(balconyId);
     if (plan.side) lineIds.push(plan.side.id);
     lineIds.forEach((id) => {
       const spot = points[id];
       if (!spot) return;
+      const ax = brainPoint.x;
+      const ay = brainPoint.y;
+      const az = brainPoint.z;
+      const bx = spot.x;
+      const by = 0.8;
+      const bz = spot.z;
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute([
-        brainPoint.x, brainPoint.y, brainPoint.z,
-        spot.x, 0.4, spot.z
-      ], 3));
+      geo.setAttribute("position", new THREE.Float32BufferAttribute([ax, ay, az, bx, by, bz], 3));
       owned.add(geo);
       const line = new THREE.Line(geo, lineMat);
       scene.add(line);
       built.push(line);
+      for (let mote = 0; mote < 3; mote += 1) {
+        const mesh = new THREE.Mesh(moteGeo, moteMat);
+        scene.add(mesh);
+        built.push(mesh);
+        motes.push({ ax, ay, az, bx, by, bz, mesh, t: mote / 3 });
+      }
     });
     people.set("brand-brain", {
       id: "brand-brain",
-      anchor: { x: brainPoint.x, y: brainPoint.y + 1.8, z: brainPoint.z }
+      anchor: { x: brainPoint.x, y: brainPoint.y + 2.7, z: brainPoint.z }
     });
 
     const face = yawOf(0.7, 0.7);
@@ -691,14 +873,17 @@ function makeSitter(color) {
           z: base.z + RIGHT_Z * shift
         };
         const elevated = Boolean(balcony) && home === balconyId;
+        const robot = home === "chief_of_staff";
         const color = hexOf(agent.color);
         const chair = makeChair();
         chair.rotation.y = face;
-        const sitter = makeSitter(color);
+        const sitter = makeSitter(color, robot);
         sitter.rotation.y = face;
         if (elevated) {
-          sitter.add(put(box(0.04, 0.28, 0.04, lambert(0xd7dbe8)), 0, 1.62, 0));
-          sitter.add(put(box(0.12, 0.12, 0.12, lambert(0xff8a3d)), 0, 1.82, 0));
+          if (!robot) {
+            sitter.add(put(box(0.04, 0.28, 0.04, lambert(0xd7dbe8)), 0, 1.62, 0));
+            sitter.add(put(box(0.12, 0.12, 0.12, lambert(0xff8a3d)), 0, 1.82, 0));
+          }
           chair.position.set(shift, 1.32, 0);
           sitter.position.set(shift, 1.32, 0);
           balcony.add(chair, sitter);
@@ -709,7 +894,7 @@ function makeSitter(color) {
           built.push(chair, sitter);
         }
         addPick(sitter, agent.id);
-        const walker = makeWalker(color);
+        const walker = makeWalker(color, robot);
         walker.position.set(seat.x, 0, seat.z);
         walker.visible = false;
         addPick(walker, agent.id);
@@ -745,6 +930,8 @@ function makeSitter(color) {
 
   const RIGHT_X = 0.70710678;
   const RIGHT_Z = -0.70710678;
+  const FAR_X = -0.70710678;
+  const FAR_Z = -0.70710678;
 
   function build(agents) {
     clearBuilt();
@@ -1066,14 +1253,7 @@ function makeSitter(color) {
     return labels;
   }
 
-  function resize() {
-    const width = host.clientWidth || 1;
-    const height = host.clientHeight || 1;
-    const narrow = narrowQuery.matches;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, narrow ? 1.25 : 1.5));
-    renderer.setSize(width, height, false);
-    const aspect = width / Math.max(height, 1);
-    let view = 19.5;
+  function stageSamples() {
     const samples = [
       [officeBounds.minX, 0, officeBounds.minZ],
       [officeBounds.maxX, 0, officeBounds.minZ],
@@ -1083,34 +1263,60 @@ function makeSitter(color) {
     if (layoutPoints) {
       Object.values(layoutPoints).forEach((spot) => samples.push([spot.x, spot.y || 0, spot.z]));
     }
-    if (narrow || layoutPoints) {
-      camera.left = -view * aspect;
-      camera.right = view * aspect;
-      camera.top = view;
-      camera.bottom = -view;
-      camera.updateProjectionMatrix();
-      let minNX = Infinity;
-      let maxNX = -Infinity;
-      let minNY = Infinity;
-      let maxNY = -Infinity;
+    return samples;
+  }
+
+  function stageTarget() {
+    return new THREE.Vector3(
+      (officeBounds.minX + officeBounds.maxX) / 2,
+      0.8,
+      (officeBounds.minZ + officeBounds.maxZ) / 2
+    );
+  }
+
+  function fitKey() {
+    const width = host.clientWidth || 1;
+    const height = host.clientHeight || 1;
+    return [width, height, officeBounds.minX, officeBounds.maxX, officeBounds.minZ, officeBounds.maxZ, focusId].join(":");
+  }
+
+  function fitStage() {
+    const target = stageTarget();
+    controls.target.copy(target);
+    const dir = new THREE.Vector3(1, 0.86, 1).normalize();
+    let dist = narrowQuery.matches ? 86 : 68;
+    const samples = stageSamples();
+    for (let step = 0; step < 10; step += 1) {
+      camera.position.copy(target).addScaledVector(dir, dist);
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+      let overflow = 0;
       samples.forEach(([x, y, z]) => {
         projector.set(x, y, z);
         projector.project(camera);
-        minNX = Math.min(minNX, projector.x);
-        maxNX = Math.max(maxNX, projector.x);
-        minNY = Math.min(minNY, projector.y);
-        maxNY = Math.max(maxNY, projector.y);
+        overflow = Math.max(overflow, Math.abs(projector.x) - 0.9, Math.abs(projector.y) - 0.84);
       });
-      const span = maxNX - minNX;
-      const spanY = maxNY - minNY;
-      if (span > 0.2) view = Math.max(8, view * (span / 1.72));
-      if (layoutPoints && spanY > 0.2) view = Math.max(view, 8, 19.5 * (spanY / 1.55));
+      if (overflow <= 0) break;
+      dist *= 1 + Math.min(0.45, overflow);
     }
-    camera.left = -view * aspect;
-    camera.right = view * aspect;
-    camera.top = view;
-    camera.bottom = -view;
+    dist = Math.min(controls.maxDistance, Math.max(controls.minDistance, dist));
+    camera.position.copy(target).addScaledVector(dir, dist);
+    controls.update();
+    faceBillboards();
+  }
+
+  function resize() {
+    const width = host.clientWidth || 1;
+    const height = host.clientHeight || 1;
+    const narrow = narrowQuery.matches;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, narrow ? 1.25 : 1.5));
+    renderer.setSize(width, height, false);
+    camera.aspect = width / Math.max(height, 1);
     camera.updateProjectionMatrix();
+    const key = fitKey();
+    if (key === fittedKey) return;
+    fittedKey = key;
+    if (focusId === "overview") fitStage();
   }
 
   function pickAt(event) {
@@ -1251,6 +1457,19 @@ function makeSitter(color) {
       if (mesh.userData.label) mesh.userData.label.lookAt(camera.position);
     });
     if (approvalMat) approvalMat.emissiveIntensity = hot ? 0.85 + Math.sin(elapsed * 3) * 0.25 : 0.15;
+    orbitRings.forEach((ring) => {
+      ring.rotation.z += (ring.userData.spin || 0.4) * 0.01;
+    });
+    motes.forEach((mote) => {
+      mote.t = (mote.t + 0.0045) % 1;
+      const t = mote.t;
+      mote.mesh.position.set(
+        mote.ax + (mote.bx - mote.ax) * t,
+        mote.ay + (mote.by - mote.ay) * t,
+        mote.az + (mote.bz - mote.az) * t
+      );
+    });
+    faceBillboards();
     const orb = scene.getObjectByName("orb");
     if (orb) {
       const pulse = 1 + Math.sin(elapsed * 2.1) * 0.06;
@@ -1305,6 +1524,33 @@ function makeSitter(color) {
     zoom(factor) {
       camera.zoom = Math.min(controls.maxZoom, Math.max(controls.minZoom, camera.zoom * factor));
       camera.updateProjectionMatrix();
+    },
+    focus(id) {
+      const next = id && layoutPoints && layoutPoints[id] ? id : "overview";
+      focusId = next;
+      fittedKey = fitKey();
+      if (next === "overview") {
+        camera.zoom = 1;
+        camera.updateProjectionMatrix();
+        fitStage();
+        return;
+      }
+      const spot = layoutPoints[next];
+      const target = new THREE.Vector3(spot.x, (spot.y || 0) + 0.9, spot.z);
+      controls.target.copy(target);
+      const dir = new THREE.Vector3(1, 0.7, 1).normalize();
+      const dist = narrowQuery.matches ? 30 : 24;
+      camera.zoom = 1;
+      camera.updateProjectionMatrix();
+      camera.position.copy(target).addScaledVector(dir, dist);
+      controls.update();
+      faceBillboards();
+    },
+    setPosts(count) {
+      const next = Math.max(0, Math.round(Number(count) || 0));
+      if (next === postsCount) return;
+      postsCount = next;
+      if (postsSign && postsSign.userData.paint) postsSign.userData.paint("YOUR POSTS  " + postsCount);
     },
     destroy() {
       stopped = true;

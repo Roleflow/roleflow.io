@@ -269,6 +269,14 @@ function openTasks(agentId) {
   return state.tasks.filter((task) => shownTask(task) && task.status !== "done" && (!agentId || task.agent_id === agentId));
 }
 
+function statusBubble(work, title) {
+  if (work === "paused") return "Idle";
+  const text = String(title || "").trim();
+  if (text) return /[.!?…]$/.test(text) ? text : text + "...";
+  if (work === "clear" || !work) return "Idle";
+  return "Active";
+}
+
 function sceneWork(agent) {
   if (!agent || agent.status === "paused") return "paused";
   const mine = openTasks(agent.id);
@@ -943,7 +951,7 @@ function meetingPanel() {
 
 function renderOffice() {
   return el("div", { class: "hq-office-view" }, [
-    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Isometric office. Click an agent to assign work." }),
+    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Factory floor. Click an agent to assign work." }),
     el("div", { id: "hq-labels" }),
     el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
       el("h2", { text: "Management" }),
@@ -963,7 +971,21 @@ function renderOffice() {
       el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
       el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
     ]),
+    camBar(hqPlan(), "hq-cam")
   ]);
+}
+
+function camBar(plan, id) {
+  const tabs = [{ id: "overview", label: "Overview" }];
+  (plan.pipeline || []).forEach((station) => tabs.push({ id: station.id, label: station.tab || station.title }));
+  if (plan.side) tabs.push({ id: plan.side.id, label: plan.side.tab || plan.side.title });
+  return el("div", { class: "cam-tabs", id, role: "tablist", "aria-label": "Fly the camera" }, tabs.map((tab, index) => el("button", {
+    type: "button",
+    role: "tab",
+    "data-action": "cam",
+    "data-id": tab.id,
+    "aria-current": index === 0 ? "true" : null
+  }, [tab.label])));
 }
 
 function officeAgents() {
@@ -982,6 +1004,10 @@ function officeAgents() {
       taskId: current ? current.id : ""
     };
   });
+}
+
+function shippingCount() {
+  return (state.tasks || []).filter((task) => task && task.status !== "done" && taskStation(task, agentById(task.agent_id)) === "shipping_dock").length;
 }
 
 function factoryCards() {
@@ -1066,19 +1092,20 @@ function placeOfficeBadges(items) {
     const current = agent ? activeTask(agentTasks(agent.id)) : null;
     const progress = current ? progressOf(current, new Date()) : null;
     const flash = agent ? flashFor(agent.id) : null;
-    const sig = [marker, name, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
+    const bubble = agent ? statusBubble(sceneWork(agent), current && current.title) : "";
+    const sig = [marker, name, bubble, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
     if (node.dataset.sig !== sig) {
       node.dataset.sig = sig;
       const bar = progress ? el("span", { class: "office-progress", "aria-hidden": "true" }, [el("i")]) : null;
       if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
-      node.replaceChildren(
+      node.replaceChildren(...[
         brain || item.id === "meeting" ? el("i", { class: "diamond meet", title: brain ? "Brand Brain" : "Meeting Room" }) : diamond(marker),
         el("span", { class: "office-pill", text: name }),
         flash ? el("span", { class: "office-check", text: "Done · " + flash.title }) : null,
-        current ? el("span", { class: "office-taskline", text: current.title }) : null,
+        bubble ? el("span", { class: "office-taskline", text: bubble }) : null,
         bar,
         progress ? el("span", { class: "office-left", text: leftLabel(progress) }) : null
-      );
+      ].filter((child) => child != null && child !== false));
       const detail = current ? ", " + current.title + ", " + leftLabel(progress) : "";
       node.setAttribute("aria-label", brain ? "Brand Brain" : name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
     }
@@ -1130,6 +1157,7 @@ async function mountOffice() {
     officeHandle = await mod.createScene(host, {
       layout: "factory",
       plan: hqPlan(),
+      posts: shippingCount(),
       onSelect(id) {
         if (id === "meeting") go("#office/meeting");
         else if (id === "brand-brain") go("#office/brand-brain");
@@ -1407,6 +1435,7 @@ function paint() {
   if (current.section === "office" && (officeHandle || officeMounting) && document.getElementById("hq-stage")) {
     if (officeHandle) {
       officeHandle.update(officeAgents(), factoryCards());
+      if (officeHandle.setPosts) officeHandle.setPosts(shippingCount());
       officeHandle.setLoop(() => location.hash === "#standup");
       window.__hqOfficeReady = true;
     }
@@ -1720,6 +1749,13 @@ document.addEventListener("click", async (event) => {
     go(here.section === "office" ? "#office/task:" + id : "#" + (here.section === "needs" ? "needs" : "tasks") + "/" + id);
   }
   else if (action === "replay-standup") officeHandle && officeHandle.replay();
+  else if (action === "cam") {
+    if (officeHandle && officeHandle.focus) officeHandle.focus(id || "overview");
+    document.querySelectorAll("#hq-cam button").forEach((button) => {
+      if (button.dataset.id === (id || "overview")) button.setAttribute("aria-current", "true");
+      else button.removeAttribute("aria-current");
+    });
+  }
   else if (action === "zoom-in") officeHandle && officeHandle.zoom(1.12);
   else if (action === "zoom-out") officeHandle && officeHandle.zoom(0.88);
   else if (action === "approve") decide([{ id, decision: "approved", note: "" }], "Approved. The draft stays here.");

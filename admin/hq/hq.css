@@ -52,9 +52,12 @@ body.hq{--hq-panel:420px}
 .hq-bubble.diego{border-color:rgba(255,138,61,.45)}
 .hq-bubble strong{display:block;font-size:.82rem}
 .hq-stage-wrap{position:relative}
-.hq-stage{position:relative;height:calc(100vh - 210px);min-height:520px;border-radius:18px;overflow:hidden;background:#0d1220;border:1px solid var(--line)}
+.hq-stage{position:relative;height:calc(100vh - 210px);min-height:520px;border-radius:18px;overflow:hidden;background:#07060c;border:1px solid var(--line)}
 .hq-stage canvas{display:block;width:100%;height:100%;touch-action:none}
-.hq-zoom{position:absolute;right:12px;bottom:12px;display:grid;gap:8px;z-index:2}
+.hq-zoom{position:absolute;right:12px;bottom:78px;display:grid;gap:8px;z-index:2}
+.cam-tabs{position:absolute;left:280px;right:72px;bottom:12px;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:6px;background:rgba(8,6,12,.78);border:1px solid rgba(255,77,141,.55);border-radius:999px;box-shadow:0 0 18px rgba(255,77,141,.25)}
+.cam-tabs button{min-height:36px;border:0;border-radius:999px;background:transparent;color:#fff6fb;font:600 .78rem var(--b);padding:6px 12px;white-space:nowrap;cursor:pointer}
+.cam-tabs button[aria-current=true]{background:#ff6a1a;color:#14080a}
 .hq-zoom button{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:rgba(16,26,51,.92);color:#fff;font:700 1.2rem var(--b);cursor:pointer}
 .hq-tip{position:fixed;z-index:40;pointer-events:none;background:#101A33;color:#fff;border:1px solid #ff2d95;border-radius:10px;padding:6px 8px;font:600 .82rem var(--b)}
 .hq-legend{display:flex;flex-wrap:wrap;gap:14px;list-style:none;margin:10px 0 0;padding:0;color:var(--mute);font-size:.85rem}
@@ -91,7 +94,7 @@ body.hq-office #hq-stage{position:absolute;inset:0;width:100%;height:100%;min-he
 body.hq-office #hq-labels{position:absolute;inset:0;pointer-events:none;z-index:2}
 .office-badge{position:absolute;transform:translate(-50%,-120%);display:grid;justify-items:center;gap:4px;background:transparent;border:0;padding:0;cursor:pointer;pointer-events:auto}
 .office-pill{background:rgba(12,16,28,.84);color:#fff;border-radius:999px;padding:4px 10px;font:600 .78rem var(--b);white-space:nowrap;box-shadow:0 8px 18px rgba(0,0,0,.35)}
-.office-taskline{max-width:210px;background:rgba(16,26,51,.92);color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:4px 8px;font:600 .72rem var(--b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.office-taskline{position:relative;max-width:220px;background:rgba(8,6,14,.88);color:#fff;border:1px solid rgba(255,77,141,.85);border-radius:14px 14px 14px 4px;padding:5px 10px;font:600 .75rem var(--b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 0 12px rgba(255,77,141,.35)}
 .office-progress{display:block;width:128px;height:6px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}
 .office-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#FF8A3D,#3dbe6a);border-radius:inherit}
 .office-left{color:#e8edf8;font:600 .68rem var(--b);text-shadow:0 1px 2px rgba(0,0,0,.65)}
@@ -123,7 +126,7 @@ body.hq-office #hq-labels{position:absolute;inset:0;pointer-events:none;z-index:
 .office-tools .btn{margin:0}
 #hq-clock{color:#fff;font:600 .85rem var(--b);background:rgba(10,14,24,.72);border-radius:999px;padding:6px 10px}
 #hq-standup-line{margin:0;color:#c5cbe0;font-size:.82rem;pointer-events:none}
-body.hq-office .hq-zoom{z-index:4}
+body.hq-office .hq-zoom{z-index:4;bottom:78px}
 @media(max-width:980px){
   .hq-stats{grid-template-columns:1fr 1fr}
   .hq-split{grid-template-columns:1fr}
@@ -150,7 +153,8 @@ body.hq-office .hq-zoom{z-index:4}
   body.hq-office .office-tools{left:auto;right:12px;top:12px;max-width:calc(100% - 108px)}
   body.hq-office .office-manage,body.hq-office .office-tracker{display:none}
   #hq-standup-line{display:none}
-  body.hq-office .hq-zoom{right:12px;bottom:12px;z-index:4}
+  body.hq-office .cam-tabs{left:8px;right:8px;bottom:calc(72px + env(safe-area-inset-bottom))}
+  body.hq-office .hq-zoom{right:12px;bottom:calc(132px + env(safe-area-inset-bottom));z-index:4}
   body.hq-office .hq-zoom button{width:44px;height:44px}
 }
 .hq-md{display:grid;gap:8px}

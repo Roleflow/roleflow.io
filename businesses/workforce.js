@@ -327,6 +327,36 @@ function workforceCards() {
   return cards;
 }
 
+function statusBubble(work, title) {
+  if (work === "paused") return "Idle";
+  const text = String(title || "").trim();
+  if (text) return /[.!?…]$/.test(text) ? text : text + "...";
+  if (work === "clear" || !work) return "Idle";
+  return "Active";
+}
+
+function camBar(plan) {
+  const tabs = [{ id: "overview", label: "Overview" }];
+  ((plan && plan.pipeline) || []).forEach((station) => tabs.push({ id: station.id, label: station.tab || station.title }));
+  if (plan && plan.side) tabs.push({ id: plan.side.id, label: plan.side.tab || plan.side.title });
+  const bar = el("div", { class: "cam-tabs", id: "wf-cam", role: "tablist", "aria-label": "Fly the camera" }, tabs.map((tab, index) => el("button", {
+    type: "button",
+    role: "tab",
+    "data-cam": tab.id,
+    "aria-current": index === 0 ? "true" : null
+  }, [tab.label])));
+  bar.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-cam]");
+    if (!button || !officeHandle || !officeHandle.focus) return;
+    officeHandle.focus(button.dataset.cam || "overview");
+    bar.querySelectorAll("button").forEach((item) => {
+      if (item === button) item.setAttribute("aria-current", "true");
+      else item.removeAttribute("aria-current");
+    });
+  });
+  return bar;
+}
+
 function openSelection(id) {
   if (id === "brand-brain") {
     showBrain();
@@ -384,18 +414,19 @@ function placeBadges(items) {
     const current = person.work === "paused" ? null : activeTask(tasks);
     const progress = current ? progressOf(current, new Date()) : null;
     const flash = flashFor(tasks);
-    const sig = [person.name, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
+    const bubble = statusBubble(person.work, current && current.title);
+    const sig = [person.name, bubble, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
     if (node.dataset.sig !== sig) {
       node.dataset.sig = sig;
       const bar = progress ? el("span", { class: "wf-progress", "aria-hidden": "true" }, [el("i")]) : null;
       if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
-      node.replaceChildren(
+      node.replaceChildren(...[
         el("span", { class: "wf-pill", text: person.name }),
         flash ? el("span", { class: "wf-check", text: "Done · " + flash.title }) : null,
-        current ? el("span", { class: "wf-bubble", text: current.title }) : null,
+        el("span", { class: "wf-bubble", text: bubble }),
         bar,
         progress ? el("span", { class: "wf-left", text: leftLabel(progress) }) : null
-      );
+      ].filter((child) => child != null && child !== false));
       node.setAttribute("aria-label", person.name + (current ? ", " + current.title + ", " + leftLabel(progress) : ""));
     }
     node.style.left = item.x + "px";
@@ -446,6 +477,10 @@ export async function mountWorkforce(supabase, agent, host) {
   view.planKey = data.planKey;
   view.agent = agent;
   view.host = host;
+  const office = host.querySelector(".wf-office");
+  const staleCam = document.getElementById("wf-cam");
+  if (staleCam) staleCam.remove();
+  if (office && data.plan) office.append(camBar(data.plan));
   noteTasks(data.tasksById);
   const empty = document.getElementById("wf-empty");
   if (!data.people.length) {
