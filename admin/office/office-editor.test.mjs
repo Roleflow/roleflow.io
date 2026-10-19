@@ -230,7 +230,18 @@ assert.doesNotMatch(sql, /alter table public\.hq_tasks drop constraint/);
 assert.match(sql, /alter publication supabase_realtime add table public\.%I/);
 assert.match(sql, /security definer/);
 assert.match(sql, /hq_log_station_move/);
+assert.match(sql, /public\.hq_actor\(\)/);
+assert.match(sql, /'task\.moved'/);
 assert.match(sql, /moved from /);
+assert.doesNotMatch(sql, /'diego'/);
+assert.doesNotMatch(sql, /'station_move'/);
+assert.match(sql, /create index if not exists hq_tasks_station_idx on public\.hq_tasks \(station_id\)/);
+assert.match(sql, /create index if not exists office_configs_business_idx on public\.office_configs \(business_id\)/);
+assert.match(sql, /create index if not exists office_stations_agent_idx on public\.office_stations \(hq_agent_id\)/);
+assert.match(sql, /create index if not exists office_edges_from_idx on public\.office_edges \(from_station_id\)/);
+assert.match(sql, /create index if not exists office_edges_to_idx on public\.office_edges \(to_station_id\)/);
+assert.match(sql, /create index if not exists office_revisions_restored_idx on public\.office_config_revisions \(restored_from\)/);
+assert.match(sql, /begin\s+insert into public\.office_configs/);
 assert.doesNotMatch(sql, /private\./);
 
 const css = read("admin/hq/hq.css");

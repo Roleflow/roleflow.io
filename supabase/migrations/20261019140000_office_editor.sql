@@ -92,6 +92,13 @@ alter table public.office_configs
 alter table public.hq_tasks
   add column if not exists station_id uuid null references public.office_stations(id) on delete set null;
 
+create index if not exists hq_tasks_station_idx on public.hq_tasks (station_id);
+create index if not exists office_configs_business_idx on public.office_configs (business_id);
+create index if not exists office_stations_agent_idx on public.office_stations (hq_agent_id);
+create index if not exists office_edges_from_idx on public.office_edges (from_station_id);
+create index if not exists office_edges_to_idx on public.office_edges (to_station_id);
+create index if not exists office_revisions_restored_idx on public.office_config_revisions (restored_from);
+
 create or replace function public.office_revisions_append_only()
 returns trigger
 language plpgsql
@@ -445,14 +452,16 @@ begin
     raise exception 'business_id is required';
   end if;
   perform public.office_validate_payload(p_payload);
-  insert into public.office_configs (scope, business_id, version)
-  values (v_scope, p_business_id, 0)
-  returning id into v_id;
+  begin
+    insert into public.office_configs (scope, business_id, version)
+    values (v_scope, p_business_id, 0)
+    returning id into v_id;
+  exception
+    when unique_violation then
+      raise exception 'office already exists';
+  end;
   perform public.save_office_config(v_id, 0, p_payload, 'Created the office', null);
   return v_id;
-exception
-  when unique_violation then
-    raise exception 'office already exists';
 end;
 $fn$;
 
@@ -500,6 +509,7 @@ security definer
 set search_path = ''
 as $fn$
 declare
+  actor text := public.hq_actor();
   v_from text;
   v_to text;
 begin
@@ -521,8 +531,8 @@ begin
   values (
     new.agent_id,
     new.id,
-    'diego',
-    'station_move',
+    actor,
+    'task.moved',
     'moved from ' || coalesce(v_from, '') || ' to ' || coalesce(v_to, '')
   );
   return new;
