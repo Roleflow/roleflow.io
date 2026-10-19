@@ -7,6 +7,8 @@ import { clip, currentDesk, deskSummary, stationVerb } from "../office/desk.mjs"
 import { bindRoster, orgPreviewFixture, rosterCounts, stackModel, unmatchedRoster } from "../office/org.mjs";
 import { leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
+import { fitLabels, loadOfficeConfig, validateOfficeConfig } from "../office/workforce-config.mjs";
+import { businessName, mapWorkforce, pickDefaultBusiness, workforcePreviewFixture } from "../office/workforce-model.mjs";
 
 bindShell();
 const STATUSES = [
@@ -20,10 +22,11 @@ const PRIORITIES = [["low", "Low"], ["normal", "Normal"], ["high", "High"]];
 const DOT = { needs: "#ef4444", typing: "#22c55e", blocked: "#e8b04a", idle: "#64748b", paused: "#64748b" };
 const WORK_LABEL = { needs: "Needs Diego", typing: "In progress", blocked: "Blocked", idle: "Idle", paused: "Paused" };
 const DRAFT = "Outputs are drafts for Diego. Nothing here sends a DM, post, or email.";
-const SECTIONS = ["overview", "office", "tasks", "needs", "schedule", "agents", "activity"];
+const SECTIONS = ["overview", "office", "business", "tasks", "needs", "schedule", "agents", "activity"];
 const TITLES = {
   overview: "Overview",
   office: "Office",
+  business: "AI Workforce",
   tasks: "Tasks",
   needs: "Needs Diego",
   schedule: "Schedule",
@@ -33,6 +36,7 @@ const TITLES = {
 const SUBS = {
   overview: "The team, open work, and what is waiting on you.",
   office: "Brand Brain sends rockets to the chiefs. Each chief sends them on to its specialists.",
+  business: "Each business uses the same office. Stations, roles, and Next-step routes come from that business's office config.",
   tasks: "Drag a card between columns, or change its status from the menu.",
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
@@ -78,7 +82,15 @@ const state = {
   pendingKey: "",
   channel: null,
   timer: 0,
-  poll: 0
+  poll: 0,
+  businesses: [],
+  businessListLoaded: false,
+  businessView: null,
+  businessMounted: "",
+  businessToken: 0,
+  businessLoading: false,
+  businessError: "",
+  previewOffice: false
 };
 
 let officeHandle = null;
@@ -156,14 +168,17 @@ function missingRelation(error) {
 
 function route() {
   const raw = decodeURIComponent(location.hash.replace(/^#/, "")) || "office";
-  if (raw === "standup") return { section: "office", id: "" };
-  if (raw === "meeting") return { section: "office", id: "meeting" };
-  const [section, id] = raw.split("/");
-  if (section === "chat") return { section: "office", id: "" };
-  if (section === "agent" && id) return { section: "office", id };
-  if (section === "task" && id) return { section: "tasks", id };
-  if (!SECTIONS.includes(section)) return { section: "office", id: "" };
-  return { section, id: id || "" };
+  if (raw === "standup") return { section: "office", id: "", station: "" };
+  if (raw === "meeting") return { section: "office", id: "meeting", station: "" };
+  const parts = raw.split("/");
+  const section = parts[0];
+  const id = parts[1] || "";
+  if (section === "business") return { section: "business", id, station: parts[2] || "" };
+  if (section === "chat") return { section: "office", id: "", station: "" };
+  if (section === "agent" && id) return { section: "office", id, station: "" };
+  if (section === "task" && id) return { section: "tasks", id, station: "" };
+  if (!SECTIONS.includes(section)) return { section: "office", id: "", station: "" };
+  return { section, id, station: "" };
 }
 
 function go(hash) {
@@ -483,7 +498,11 @@ function memoryClient(seed) {
     hq_task_comments: structuredClone(seed.comments || []),
     hq_schedules: structuredClone(seed.schedules || []),
     hq_activity: structuredClone(seed.activity || []),
-    hq_agent_keys: structuredClone(seed.keys || [])
+    hq_agent_keys: structuredClone(seed.keys || []),
+    tailortalk_agents: structuredClone(seed.businesses || []),
+    tailortalk_leads: structuredClone(seed.leads || []),
+    tailortalk_agent_stats: structuredClone(seed.stats || []),
+    business_workforce: structuredClone(seed.workforce || [])
   };
 
   function rows(name) {
@@ -520,7 +539,9 @@ function memoryClient(seed) {
       update(payload) { this.op = "update"; this.payload = payload; return this; },
       delete() { this.op = "delete"; return this; },
       eq(column, value) { this.filters.push([column, value]); return this; },
+      in(column, values) { this.filters.push({ op: "in", column, value: new Set(values || []) }); return this; },
       order() { return this; },
+      limit() { return this; },
       maybeSingle() { this.one = "maybe"; return this; },
       single() { this.one = "single"; return this; },
       then(resolve) {
@@ -531,14 +552,19 @@ function memoryClient(seed) {
         }
       },
       run() {
-        const list = rows(name).filter((row) => builder.filters.every(([column, value]) => row[column] === value));
+        const matches = (row, filter) => {
+          if (Array.isArray(filter)) return row[filter[0]] === filter[1];
+          if (filter.op === "in") return filter.value.has(row[filter.column]);
+          return row[filter.column] === filter.value;
+        };
+        const list = rows(name).filter((row) => builder.filters.every((filter) => matches(row, filter)));
         if (builder.op === "select") {
           const data = structuredClone(list);
           if (builder.one) return data[0] || null;
           return data;
         }
         if (builder.op === "delete") {
-          db[name] = rows(name).filter((row) => !builder.filters.every(([column, value]) => row[column] === value));
+          db[name] = rows(name).filter((row) => !builder.filters.every((filter) => matches(row, filter)));
           return null;
         }
         if (builder.op === "insert") {
@@ -677,6 +703,15 @@ function personButton(person, current) {
 
 function paintPanel() {
   const current = route();
+  if (current.section === "business") {
+    if (current.station && state.businessView && !state.businessView.missing) {
+      paintWorkforceStation(current.station);
+      return;
+    }
+    panel.hidden = true;
+    panelBody.replaceChildren();
+    return;
+  }
   let target = null;
   if (current.id && (current.section === "office" || current.section === "tasks" || current.section === "needs")) {
     if (current.section === "office" && current.id === "meeting") target = { kind: "meeting" };
@@ -1736,6 +1771,310 @@ function activityList(rows) {
   return list;
 }
 
+function workforceNode(id) {
+  const view = state.businessView;
+  if (!view || view.missing) return null;
+  if (view.brain && view.brain.id === id) return view.brain;
+  if (view.overseer && view.overseer.id === id) return view.overseer;
+  return (view.stations || []).find((station) => station.id === id) || null;
+}
+
+function workforcePeople(view) {
+  return [view.overseer].concat(view.stations || []).filter(Boolean).map((seat) => ({
+    id: seat.id,
+    color: seat.color || "#ff4d8d",
+    home: seat.id,
+    orgKey: seat.id,
+    outside: false,
+    work: (seat.tasks || []).some((task) => task.status === "in_progress") ? "active" : "paused",
+    errand: "",
+    packet: ""
+  }));
+}
+
+function syncWorkforceScene() {
+  const view = state.businessView;
+  if (!officeHandle || !view || view.missing) return;
+  officeHandle.update(workforcePeople(view), view.cards || []);
+  if (officeHandle.setMotions) officeHandle.setMotions(view.motions || []);
+}
+
+function pickerButtons() {
+  const current = route();
+  return (state.businesses || []).map((business) => el("button", {
+    type: "button",
+    class: "wf-pick",
+    "data-action": "pick-business",
+    "data-id": business.id,
+    "aria-current": business.id === current.id ? "true" : null
+  }, [businessName(business)]));
+}
+
+function readoutNodes() {
+  const view = state.businessView;
+  if (state.businessError) return [el("p", { class: "wf-line", text: state.businessError })];
+  if (!view) return [el("p", { class: "wf-line", text: "Opening this office…" })];
+  if (view.missing) return [el("p", { class: "wf-line", text: "That business is not in the active list." })];
+  const nodes = [view.overseer].concat(view.stations || [], [view.brain]).filter(Boolean);
+  return nodes.map((node) => el("li", {}, [
+    el("button", { type: "button", class: "wf-readout-btn", "data-action": "open-station", "data-id": node.id }, [
+      el("strong", { text: node.role }),
+      el("span", { text: node.detail || node.short || "" })
+    ])
+  ]));
+}
+
+function paintWorkforceHud() {
+  const picker = document.getElementById("wf-picker");
+  const readout = document.getElementById("wf-readout");
+  const routes = document.getElementById("wf-routes");
+  if (picker) picker.replaceChildren(...pickerButtons());
+  if (routes) routes.textContent = (state.businessView && state.businessView.routes) || "";
+  if (readout) readout.replaceChildren(...readoutNodes());
+  const ready = Boolean(state.businessView && !state.businessView.missing && !state.businessError);
+  document.body.dataset.workforce = ready ? "ready" : "loading";
+}
+
+function renderWorkforce() {
+  const view = state.businessView;
+  const ready = Boolean(view && !view.missing);
+  const camPlan = ready ? {
+    pipeline: [],
+    side: null,
+    groups: [{ id: view.overseer.id, tab: view.overseer.role }]
+      .concat((view.stations || []).map((station) => ({ id: station.id, tab: station.role })))
+      .concat([{ id: view.brain.id, tab: view.brain.role }])
+  } : { pipeline: [], groups: [] };
+  return el("div", { class: "hq-office-view" }, [
+    el("div", { class: "wf-bar" }, [
+      state.previewOffice ? el("p", { class: "wf-banner", text: "Fixture preview. Not live data. Figures are the 19 Oct 2026 snapshot, not a database query." }) : null,
+      el("div", { id: "wf-picker", class: "wf-picker", role: "listbox", "aria-label": "Businesses" }),
+      el("p", { id: "wf-routes", class: "wf-routes" })
+    ]),
+    ready ? el("div", { class: "office-stage" }, [
+      el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "AI Workforce office. Routes are the Next-step edges from this business config." }),
+      el("div", { id: "hq-labels" }),
+      el("div", { class: "hq-zoom" }, [
+        el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
+        el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
+      ])
+    ]) : el("div", { class: "wf-wait" }, [
+      el("p", { text: state.businessError || (view && view.missing ? "That business is not in the active list." : "Opening this office…") })
+    ]),
+    el("ul", { id: "wf-readout", class: "wf-readout" }),
+    ready ? camBar(camPlan, "hq-cam") : null
+  ]);
+}
+
+function paintWorkforceStation(id) {
+  const node = workforceNode(id);
+  panel.hidden = false;
+  if (!node) {
+    panelTitle.textContent = "Station";
+    panelBody.replaceChildren(el("p", { text: "That station is not in this office." }));
+    return;
+  }
+  panelTitle.textContent = node.role;
+  const blocks = [
+    el("p", { text: node.description || "" }),
+    el("p", { class: "hq-note", text: node.detail || node.short || "" })
+  ];
+  const tasks = node.tasks || [];
+  tasks.forEach((task) => {
+    blocks.push(el("p", {}, [
+      el("strong", { text: task.title }),
+      el("span", { class: "hq-note", text: " · " + (task.status || "open") + (task.station ? " · " + task.station : "") })
+    ]));
+  });
+  panelBody.replaceChildren(...blocks);
+}
+
+function placeWorkforceBadges(items) {
+  const labels = document.getElementById("hq-labels");
+  const view = state.businessView;
+  if (!labels || !view || view.missing) return;
+  const narrow = window.matchMedia("(max-width: 760px)").matches;
+  const width = labels.clientWidth || 0;
+  const height = labels.clientHeight || 0;
+  const fitted = narrow && width >= 280 && height >= 240 ? fitLabels(view.layout, { width, height }) : null;
+  const boxes = new Map((fitted || []).map((box) => [box.id, box]));
+  const seen = new Set();
+  items.forEach((item) => {
+    const nodeInfo = workforceNode(item.id);
+    if (!nodeInfo) return;
+    seen.add(item.id);
+    let node = officeBadges.get(item.id);
+    if (!node) {
+      node = el("button", { type: "button", class: "office-badge", "data-action": "open-station", "data-id": item.id });
+      labels.append(node);
+      officeBadges.set(item.id, node);
+    }
+    const box = boxes.get(item.id);
+    node.classList.toggle("fitted", Boolean(box));
+    const text = box ? nodeInfo.role : nodeInfo.short || nodeInfo.role;
+    const sig = [nodeInfo.role, text, box ? "fit" : "proj"].join("|");
+    if (node.dataset.sig !== sig) {
+      node.dataset.sig = sig;
+      node.replaceChildren(el("span", { class: "office-tag" }, [
+        el("i", { class: "office-dot idle" }),
+        el("span", { class: "office-pill", text: nodeInfo.role })
+      ]));
+      if (!box && nodeInfo.short) node.append(el("span", { class: "office-card show-card", text: nodeInfo.short }));
+      node.title = nodeInfo.detail || nodeInfo.role;
+      node.setAttribute("aria-label", nodeInfo.role + ". " + (nodeInfo.detail || ""));
+    }
+    node.classList.toggle("show-card", false);
+    if (box) {
+      node.style.left = box.x + "px";
+      node.style.top = box.y + "px";
+      node.style.width = box.w + "px";
+      node.style.height = box.h + "px";
+    } else {
+      node.style.left = item.x + "px";
+      node.style.top = item.y + "px";
+      node.style.width = "";
+      node.style.height = "";
+    }
+    node.hidden = box ? false : !item.visible;
+  });
+  officeBadges.forEach((node, id) => {
+    if (!seen.has(id)) {
+      node.remove();
+      officeBadges.delete(id);
+    }
+  });
+  if (!fitted) separateBadges([...officeBadges.values()]);
+}
+
+function needsWorkforceLoad(current) {
+  if (!state.ready || state.businessLoading || state.businessError) return false;
+  if (!state.businessListLoaded) return true;
+  if (!current.id) return state.businesses.length > 0;
+  if (!state.businessView || state.businessView.businessId !== current.id) return true;
+  return false;
+}
+
+function startWorkforceLoad() {
+  if (state.businessLoading) return;
+  state.businessLoading = true;
+  loadWorkforceScreen().finally(() => {
+    state.businessLoading = false;
+  });
+}
+
+async function loadWorkforceScreen() {
+  if (!state.ready) return;
+  const token = ++state.businessToken;
+  try {
+    if (!state.businessListLoaded) {
+      const listed = await state.supabase.from("tailortalk_agents").select("id, label, agent_name, archived, client_id, profile_id, prompt_sections, prompt_version_id, prompt_updated_at, last_synced_at, last_activity_at").eq("archived", false);
+      if (token !== state.businessToken) return;
+      if (listed.error) throw listed.error;
+      state.businesses = listed.data || [];
+      state.businessListLoaded = true;
+    }
+    let id = route().id;
+    if (!id) {
+      const pick = pickDefaultBusiness(state.businesses);
+      if (!pick) {
+        state.businessView = null;
+        paint();
+        return;
+      }
+      id = pick.id;
+      const next = "#business/" + id;
+      if (location.hash !== next) history.replaceState(null, "", location.pathname + location.search + next);
+    }
+    if (route().section !== "business") return;
+    const business = state.businesses.find((row) => row.id === id);
+    if (!business) {
+      state.businessError = "";
+      state.businessView = { missing: true, businessId: id };
+      paint();
+      return;
+    }
+    const loaded = validateOfficeConfig(await loadOfficeConfig(business.id));
+    if (!loaded.ok) throw new Error(loaded.errors.join(" "));
+    const [leadsRes, statsRes, workRes, taskRes] = await Promise.all([
+      state.supabase.from("tailortalk_leads").select("agent_id, lead_status, category, is_converted, converted_at, last_message_time, total_followups, source").eq("agent_id", business.id),
+      state.supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, computed_at, last_activity_at").eq("agent_id", business.id).maybeSingle(),
+      state.supabase.from("business_workforce").select("agent_id, role, status, updated_at").eq("agent_id", business.id),
+      state.supabase.from("hq_tasks").select("id, business_id, setter_id, station, title, description, status, priority, updated_at, created_at").eq("business_id", business.id)
+    ]);
+    if (token !== state.businessToken) return;
+    const failed = [leadsRes, statsRes, workRes, taskRes].find((result) => result.error);
+    if (failed) throw failed.error;
+    const tasks = taskRes.data || [];
+    let activity = [];
+    const taskIds = tasks.map((task) => task.id).filter(Boolean);
+    if (taskIds.length) {
+      const activityRes = await state.supabase.from("hq_activity").select("id, task_id, action, detail, created_at").in("task_id", taskIds);
+      if (token !== state.businessToken) return;
+      if (activityRes.error) throw activityRes.error;
+      activity = activityRes.data || [];
+    }
+    state.businessError = "";
+    state.businessView = mapWorkforce({
+      business,
+      leads: leadsRes.data || [],
+      stats: statsRes.data || null,
+      workforce: workRes.data || [],
+      tasks,
+      activity,
+      config: loaded.value,
+      now: new Date()
+    });
+    if (token !== state.businessToken || route().section !== "business") return;
+    paint();
+  } catch (error) {
+    if (token !== state.businessToken) return;
+    state.businessError = scrub(error);
+    state.businessView = null;
+    paint();
+  }
+}
+
+async function mountWorkforce() {
+  const view = state.businessView;
+  const host = document.getElementById("hq-stage");
+  if (!view || view.missing || !host) return;
+  const token = ++officeToken;
+  officeMounting = true;
+  state.businessMounted = view.businessId;
+  try {
+    const mod = await import("../office/scene.js");
+    if (token !== officeToken || !host.isConnected) return;
+    officeHandle = await mod.createScene(host, {
+      layout: "factory",
+      plan: {
+        kind: "workforce",
+        fallback: view.overseer.id,
+        workforce: view.layout
+      },
+      onSelect(id) {
+        const here = route();
+        if (here.section === "business" && here.id) go("#business/" + here.id + "/" + id);
+      },
+      onFrame(payload) {
+        placeWorkforceBadges(payload.labels || []);
+      }
+    });
+    if (token !== officeToken) {
+      officeHandle.destroy();
+      officeHandle = null;
+      return;
+    }
+    syncWorkforceScene();
+    window.__hqOfficeReady = true;
+  } catch {
+    if (token !== officeToken || !host.isConnected) return;
+    host.replaceChildren(el("p", { class: "hq-note", text: "This browser could not start the 3D office. The station list below is the same office." }));
+    window.__hqOfficeReady = true;
+  } finally {
+    if (token === officeToken) officeMounting = false;
+  }
+}
+
 function renderActivity() {
   return activityList(state.activity.slice(0, 80));
 }
@@ -1743,6 +2082,7 @@ function renderActivity() {
 function renderSection(section) {
   if (section === "overview") return renderOverview();
   if (section === "office") return renderOffice();
+  if (section === "business") return renderWorkforce();
   if (section === "tasks") return renderTasks();
   if (section === "needs") return renderNeeds();
   if (section === "schedule") return renderSchedule();
@@ -1753,7 +2093,9 @@ function renderSection(section) {
 function paint() {
   noteTaskChanges();
   const current = route();
-  document.body.classList.toggle("hq-office", current.section === "office");
+  const workforce = current.section === "business";
+  document.body.classList.toggle("hq-office", current.section === "office" || workforce);
+  document.body.classList.toggle("hq-workforce", workforce);
   document.body.dataset.hqReady = current.section;
   paintChrome();
   paintPanel();
@@ -1775,11 +2117,20 @@ function paint() {
     window.__hqPainted = current.section;
     return;
   }
-  if (current.section !== "office") {
-    officeBadges.clear();
-    cancelOffice();
-    document.querySelectorAll(".app-top .office-launch").forEach((node) => node.remove());
+  if (workforce && document.getElementById("hq-stage") && state.businessMounted === current.id && (officeHandle || officeMounting)) {
+    if (officeHandle && state.businessView) syncWorkforceScene();
+    paintWorkforceHud();
+    window.__hqPainted = current.section;
+    window.__hqOfficeReady = Boolean(officeHandle);
+    return;
   }
+  if (workforce && state.businessView && current.id && state.businessView.businessId !== current.id) {
+    state.businessView = null;
+  }
+  officeBadges.clear();
+  cancelOffice();
+  state.businessMounted = "";
+  document.querySelectorAll(".app-top .office-launch").forEach((node) => node.remove());
   app.replaceChildren(renderSection(current.section));
   hideBoot();
   if (current.section === "office") {
@@ -1787,6 +2138,11 @@ function paint() {
     paintOrgStack();
     parkOfficeLaunches();
     mountOffice();
+  }
+  if (workforce) {
+    paintWorkforceHud();
+    if (needsWorkforceLoad(current)) startWorkforceLoad();
+    else mountWorkforce();
   }
   window.__hqPainted = current.section;
 }
@@ -2084,6 +2440,11 @@ document.addEventListener("click", async (event) => {
   else if (action === "open-meeting") go("#office/meeting");
   else if (action === "open-brain") go("#office/brand-brain");
   else if (action === "open-diego") go("#office/diego");
+  else if (action === "open-station") {
+    const here = route();
+    if (here.section === "business" && here.id) go("#business/" + here.id + "/" + id);
+  }
+  else if (action === "pick-business") go("#business/" + id);
   else if (action === "open-agent") go("#office/" + id);
   else if (action === "open-task") {
     const here = route();
@@ -2248,6 +2609,10 @@ window.addEventListener("hashchange", () => {
 
 function closePanel() {
   const current = route();
+  if (current.section === "business" && current.station) {
+    go("#business/" + current.id);
+    return;
+  }
   if (current.id && ["office", "tasks", "needs"].includes(current.section)) {
     go("#" + current.section);
     return;
@@ -2295,8 +2660,12 @@ async function boot(supabase, user) {
 async function loadPreviewFixture() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1") return null;
-  if (window.__HQ_FIXTURE && Array.isArray(window.__HQ_FIXTURE.agents)) return window.__HQ_FIXTURE;
   const params = new URLSearchParams(location.search);
+  if (params.get("workforcepreview") === "1") {
+    state.previewOffice = true;
+    return workforcePreviewFixture();
+  }
+  if (window.__HQ_FIXTURE && Array.isArray(window.__HQ_FIXTURE.agents)) return window.__HQ_FIXTURE;
   if (params.get("orgpreview") !== "1") return null;
   try {
     const response = await fetch("live-preview.json", { cache: "no-store" });

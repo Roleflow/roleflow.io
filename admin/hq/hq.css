@@ -213,3 +213,27 @@ body.hq-office .hq-zoom{z-index:4;bottom:78px}
 .hq-md h2,.hq-md h3,.hq-md h4{margin:8px 0 0}
 .hq-md p,.hq-md li{margin:0}
 .hq-md ul{margin:0;padding-left:1.1rem}
+.wf-banner{margin:0;padding:8px 10px;border-radius:12px;background:rgba(255,229,106,.16);border:1px solid rgba(255,229,106,.7);color:#ffe56a;font:700 .78rem/1.35 var(--b)}
+.wf-bar{position:absolute;z-index:6;top:12px;left:12px;width:min(760px,calc(100% - 104px));height:max-content;display:grid;align-content:start;gap:8px;pointer-events:none}
+.wf-bar > *{pointer-events:auto}
+.wf-picker{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%}
+.wf-pick{border:1px solid rgba(255,77,141,.55);background:rgba(12,8,18,.88);color:#fff;border-radius:999px;padding:6px 10px;font:700 .78rem var(--b);cursor:pointer;max-width:100%;white-space:nowrap}
+.wf-pick[aria-current=true]{background:#ff6a1a;color:#14080a;border-color:#ff6a1a}
+.wf-routes{margin:0;color:#ffd0ea;font:700 .78rem/1.35 var(--b);overflow-wrap:anywhere}
+.wf-readout{position:absolute;z-index:5;left:12px;bottom:64px;width:min(300px,calc(100% - 24px));max-height:36%;margin:0;padding:8px;list-style:none;overflow:auto;border-radius:16px;background:rgba(8,6,14,.88);border:1px solid rgba(255,77,141,.45)}
+.wf-readout li{margin:0}
+.wf-readout-btn{display:grid;gap:2px;width:100%;text-align:left;background:transparent;color:#fff;border:0;padding:6px 2px;cursor:pointer;overflow-wrap:anywhere}
+.wf-readout-btn strong{font:700 .82rem var(--h)}
+.wf-readout-btn span{color:#ffd6ef;font:600 .72rem/1.35 var(--b)}
+.wf-wait{padding:24px 16px;color:#fff}
+body.hq-workforce .office-badge.fitted{transform:none;overflow:hidden;display:block}
+body.hq-workforce .office-badge.fitted .office-tag{max-width:100%;height:22px;box-sizing:border-box;padding:1px 6px}
+body.hq-workforce .office-badge.fitted .office-pill{display:block;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+@media(max-width:760px){
+  body.hq-workforce{overflow-x:hidden}
+  body.hq-workforce .wf-bar,body.hq-workforce .wf-readout{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:auto;max-width:100%;max-height:none;margin:8px 12px;overflow:visible}
+  body.hq-workforce .wf-readout{background:rgba(8,6,14,.94)}
+  body.hq-workforce .cam-tabs{max-width:calc(100% - 24px)}
+  body.hq-workforce #hq-labels{bottom:80px}
+  body.hq-workforce .hq-zoom{top:12px;bottom:auto}
+}
