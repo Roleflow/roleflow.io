@@ -39,4 +39,6 @@ assert.equal(
   "2026-10-16T05:30:00.000Z"
 );
 
+assert.fail("throwaway: prove the Node tests check goes red");
+
 console.log("cron ok");
