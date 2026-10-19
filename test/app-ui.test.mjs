@@ -118,7 +118,13 @@ assert.match(homepage, /data-src="https:\/\/share\.descript\.com\/embed\/XJIQMjM
 assert.match(homepage, /loading="lazy"/);
 assert.match(read("vercel.json"), /frame-src 'self' https:\/\/share\.descript\.com/);
 assert.doesNotMatch(homepage, />Menu</);
-assert.match(homepage, /<footer><a href="\/resources\/"/);
+assert.match(homepage, /href="\/resources\/"/);
+assert.match(homepage, /class="foot-social"/);
+assert.match(homepage, /href="https:\/\/www\.instagram\.com\/roleflow\.io" target="_blank" rel="noopener"/);
+assert.match(homepage, /href="https:\/\/www\.tiktok\.com\/@roleflow\.io" target="_blank" rel="noopener"/);
+assert.match(homepage, /href="https:\/\/www\.youtube\.com\/@roleflow" target="_blank" rel="noopener"/);
+assert.match(read("booked/index.html"), /While you wait for your call, see how the system works:/);
+assert.match(read("booked/index.html"), /rel="noopener"/);
 assert.match(read("auth/sidebar.js"), /tagName === "A"/);
 
 for (const file of ["account/index.html", "account/account.js", "account/setter.js", "account/setter-model.js"]) {
