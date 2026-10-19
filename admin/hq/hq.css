@@ -1,4 +1,5 @@
 body.hq{--hq-panel:420px}
+body.hq .btn[hidden]{display:none !important}
 .hq-side{gap:12px}
 .hq-side .btn{margin-top:0}
 .hq-side .app-nav a{justify-content:space-between;gap:8px}
@@ -180,6 +181,11 @@ body.hq-office .hq-zoom{z-index:4;bottom:78px}
 .office-editor-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .office-editor-actions input{flex:1 1 140px;min-width:0;box-sizing:border-box}
 .office-editor-note{margin:0;color:#ffd6ef;font:600 .75rem/1.35 var(--b);overflow-wrap:anywhere}
+.office-editor-save{position:sticky;bottom:0;z-index:2;display:grid;gap:8px;margin:8px -12px -12px;padding:12px;background:rgba(12,8,18,.98);border-top:1px solid rgba(255,77,141,.45)}
+.office-editor-save-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.office-editor-status{margin:0;font:700 .82rem/1.35 var(--b);overflow-wrap:anywhere}
+.office-editor-status[data-kind=bad]{color:#ffb4b4}
+.office-editor-status[data-kind=ok]{color:#b6f3c8}
 .office-editor-tasks,.office-editor-history{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .office-editor-tasks li,.office-editor-history li{display:grid;gap:4px;min-width:0}
 @media(max-width:980px){

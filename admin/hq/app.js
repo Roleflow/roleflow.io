@@ -25,6 +25,7 @@ import {
   restoreOfficeRevision,
   saveOfficeConfig,
   taskWrite,
+  plainSaveNotice,
   validateEditorPayload
 } from "../office/office-editor.mjs";
 import { officeEditorPanel } from "./office-editor-panel.mjs";
@@ -124,6 +125,7 @@ const state = {
     draft: null,
     revisions: [],
     notice: "",
+    noticeKind: "",
     loadedKey: ""
   }
 };
@@ -1929,6 +1931,7 @@ async function ensureOfficeEdit(scope, businessId, fallback) {
     state.officeEdit.config = loaded.config;
     state.officeEdit.revisions = loaded.revisions || [];
     state.officeEdit.notice = loaded.notice || "";
+  state.officeEdit.noticeKind = loaded.notice ? "bad" : "";
     state.officeEdit.loadedKey = key;
     state.officeEdit.draft = loaded.draft || loaded.config;
     state.officeEdit.open = open && loaded.mode === "editable";
@@ -1998,13 +2001,19 @@ async function stationIdFor(key) {
   return row ? row.id : null;
 }
 
+function showSaveNotice(raw, kind) {
+  if (kind !== "ok") console.error(raw || "Couldn't save.");
+  state.officeEdit.noticeKind = kind === "ok" ? "ok" : "bad";
+  state.officeEdit.notice = kind === "ok" ? (raw || "Saved.") : plainSaveNotice(raw);
+}
+
 async function saveOfficeEdit() {
   const edit = state.officeEdit;
   const summaryNode = document.getElementById("editor-summary");
   const summary = summaryNode ? summaryNode.value.trim() : "";
   const checked = validateEditorPayload(edit.draft);
   if (!checked.ok) {
-    edit.notice = checked.errors[0] || "This office is not valid.";
+    showSaveNotice(checked.errors[0] || "This office is not valid.");
     paintOfficeEditor(true);
     return;
   }
@@ -2054,7 +2063,7 @@ async function saveOfficeEdit() {
       edit.loadedKey = "";
       await ensureOfficeEdit(edit.scope, edit.businessId, checked.value);
       state.officeEdit.open = true;
-      state.officeEdit.notice = "Someone else saved first. This is the latest office.";
+      showSaveNotice(result.error || "version conflict: someone else saved first");
       if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
       else paintOfficeEditor(true);
       return;
@@ -2063,10 +2072,11 @@ async function saveOfficeEdit() {
       state.officeEdit.mode = "readonly";
       state.officeEdit.open = false;
       paintOfficeEditor(true);
+      console.error(result.error || "office tables are missing");
       toast("The office tables are not in the database yet. This office stays read-only.");
       return;
     }
-    edit.notice = result.error || "Could not save.";
+    showSaveNotice(result.error || "Could not save.");
     paintOfficeEditor(true);
     return;
   }
@@ -2080,9 +2090,9 @@ async function saveOfficeEdit() {
     state.officeEdit.config = fresh.config;
     state.officeEdit.draft = fresh.draft;
     state.officeEdit.revisions = fresh.revisions;
-    state.officeEdit.notice = "";
   }
   state.officeEdit.open = true;
+  showSaveNotice("Saved.", "ok");
   toast("Office saved.");
   if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
   else paintOfficeEditor(true);
@@ -2099,10 +2109,10 @@ async function restoreOfficeEdit(revisionId) {
       actorName: "Diego Castanedo"
     });
     if (!result.ok) {
-      edit.notice = result.conflict ? "Someone else saved first. This is the latest office." : result.error;
       if (result.conflict) edit.loadedKey = "";
       if (result.conflict) await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
       state.officeEdit.open = true;
+      showSaveNotice(result.conflict ? "version conflict: someone else saved first" : (result.error || "Could not restore."));
       paintOfficeEditor(true);
       return;
     }
@@ -2113,7 +2123,7 @@ async function restoreOfficeEdit(revisionId) {
     state.officeEdit.draft = fresh.draft;
     state.officeEdit.revisions = fresh.revisions;
     state.officeEdit.open = true;
-    state.officeEdit.notice = "";
+    showSaveNotice("Restored.", "ok");
     toast("Revision restored.");
     if (route().section === "business") refreshWorkforceConfig(fresh.config, true);
     else paintOfficeEditor(true);
@@ -2128,16 +2138,18 @@ async function restoreOfficeEdit(revisionId) {
       edit.loadedKey = "";
       await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
       state.officeEdit.open = true;
-      state.officeEdit.notice = "Someone else saved first. This is the latest office.";
+      showSaveNotice(restored.error.message || "version conflict: someone else saved first");
       paintOfficeEditor(true);
       return;
     }
-    toast(restored.error.message || "Could not restore.", "bad");
+    showSaveNotice(restored.error.message || "Could not restore.");
+    paintOfficeEditor(true);
     return;
   }
   edit.loadedKey = "";
   await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
   state.officeEdit.open = true;
+  showSaveNotice("Restored.", "ok");
   toast("Revision restored.");
   if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
   else paintOfficeEditor(true);

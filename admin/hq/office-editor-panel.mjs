@@ -62,7 +62,6 @@ export function officeEditorPanel(el, edit, extras) {
       el("button", { type: "button", class: "office-editor-close", "data-action": "toggle-office-edit", "aria-label": "Close editor" }, ["×"])
     ]),
     extras.floorNote ? el("p", { class: "office-editor-note", text: "The floor stays the org chart. These stations are where tasks land, and HQ keys stay the legacy station names." }) : null,
-    edit.notice ? el("p", { class: "office-editor-note", text: edit.notice }) : null,
     el("h3", { text: "Stations" }),
     stationFields(el, draft.overseer, { agents, actions: el("p", { class: "office-editor-note", text: "Overseer" }) }),
     ...draft.stations.map((station, index) => stationFields(el, station, {
@@ -107,7 +106,17 @@ export function officeEditorPanel(el, edit, extras) {
       el("span", { text: madridStamp(revision.created_at) + " · " + (revision.created_by_name || "Admin") }),
       el("button", { type: "button", class: "btn ghost sm", "data-action": "editor-restore", "data-id": revision.id }, ["Restore"])
     ]))) : el("p", { class: "office-editor-note", text: "No revisions yet. Save to record one." }),
-    field(el, "What changed", el("input", { id: "editor-summary", type: "text", maxlength: "280", placeholder: "Short summary", "aria-label": "Save summary" })),
-    el("button", { type: "button", class: "btn sm", "data-action": "editor-save" }, ["Save"])
+    el("div", { class: "office-editor-save" }, [
+      field(el, "What changed", el("input", { id: "editor-summary", type: "text", maxlength: "280", placeholder: "Short summary", "aria-label": "Save summary" })),
+      el("div", { class: "office-editor-save-row" }, [
+        el("button", { type: "button", class: "btn sm", "data-action": "editor-save" }, ["Save"]),
+        edit.notice ? el("p", {
+          class: "office-editor-status",
+          role: "status",
+          "data-kind": edit.noticeKind === "ok" ? "ok" : "bad",
+          text: edit.notice
+        }) : null
+      ])
+    ])
   ]);
 }

@@ -63,6 +63,38 @@ export function revisionAuthorOk(createdBy, actorUid) {
   return text(createdBy) === text(actorUid);
 }
 
+export function plainSaveNotice(error) {
+  const raw = text(error);
+  if (!raw) return "Couldn't save. Try again.";
+  if (/someone else saved first/i.test(raw)) return "Someone else saved first. This is the latest office.";
+  if (/^saved\.?$/i.test(raw)) return "Saved.";
+  if (/^restored\.?$/i.test(raw)) return "Restored.";
+  const lead = "Couldn't save: ";
+  if (/brandBrain must be an object/i.test(raw)) return lead + "Brand Brain settings are missing.";
+  if (/overseer must be an object|at least one overseer/i.test(raw)) return lead + "Overseer settings are missing.";
+  if (/stations must be a non-empty|stations must be a list/i.test(raw)) return lead + "Add at least one station.";
+  if (/edges must be a list/i.test(raw)) return lead + "The arrows are missing.";
+  if (/too many stations/i.test(raw)) return lead + "There are too many stations.";
+  if (/too many edges/i.test(raw)) return lead + "There are too many arrows.";
+  if (/too large/i.test(raw)) return lead + "This office is too big to save.";
+  if (/must be an object/i.test(raw)) return lead + "Part of this office is missing.";
+  if (/data_source|not an allowed data_source/i.test(raw)) return lead + "A station data source is not allowed.";
+  if (/kind/i.test(raw)) return lead + "An arrow type is not allowed.";
+  if (/not allowed/i.test(raw)) return lead + "You do not have permission to edit this office.";
+  if (/restored_from|another office/i.test(raw)) return lead + "That history entry is for a different office.";
+  if (/duplicate/i.test(raw)) return lead + "Two parts of this office use the same name.";
+  if (/itself/i.test(raw)) return lead + "An arrow cannot point back at the same station.";
+  if (/not a station|point at stations/i.test(raw)) return lead + "An arrow points somewhere that is not a station.";
+  if (/description/i.test(raw)) return lead + "A station needs a description.";
+  if (/1-60|too long|at most/i.test(raw)) return lead + "Some text is too long.";
+  if (/uuid|hqAgentId/i.test(raw)) return lead + "A station is linked to an unknown agent.";
+  if (/color/i.test(raw)) return lead + "A station color is not valid.";
+  if (/already exists/i.test(raw)) return lead + "This office already exists.";
+  if (/not found/i.test(raw)) return lead + "This office could not be found.";
+  if (/forged revision author/i.test(raw)) return lead + "The save could not record who made it.";
+  return lead + "Check the office and try again.";
+}
+
 function nodeExtras(raw) {
   const agent = text(raw && raw.hqAgentId);
   return {

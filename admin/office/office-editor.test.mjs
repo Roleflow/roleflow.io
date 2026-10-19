@@ -18,6 +18,7 @@ import {
   restoreOfficeRevision,
   saveOfficeConfig,
   taskWrite,
+  plainSaveNotice,
   revisionAuthorOk,
   validateEditorPayload,
   OFFICE_EDGE_CAP,
@@ -226,6 +227,10 @@ assert.equal(revisionAuthorOk(null, ACTOR), true);
 assert.equal(revisionAuthorOk("", ACTOR), true);
 assert.equal(revisionAuthorOk(ACTOR, ACTOR), true);
 assert.equal(revisionAuthorOk("00000000-0000-4000-8000-0000000000aa", ACTOR), false);
+assert.equal(plainSaveNotice("brandBrain must be an object."), "Couldn't save: Brand Brain settings are missing.");
+assert.equal(plainSaveNotice("brandBrain must be an object"), "Couldn't save: Brand Brain settings are missing.");
+assert.equal(plainSaveNotice("version conflict: someone else saved first"), "Someone else saved first. This is the latest office.");
+assert.equal(plainSaveNotice("Saved."), "Saved.");
 
 assert.equal(missingOfficeTables({ code: "PGRST205", message: "Could not find the table 'public.office_configs' in the schema cache" }), true);
 assert.equal(missingOfficeTables({ code: "42P01", message: 'relation "public.office_stations" does not exist' }), true);
@@ -326,9 +331,7 @@ assert.match(sql, /revoke all on function public\.hq_log_station_move\(\) from p
 const css = read("admin/hq/hq.css");
 assert.match(css, /bottom:calc\(80px \+ env\(safe-area-inset-bottom\)\)/);
 assert.match(css, /#office-editor:not\(\[hidden\]\)\) \.hq-zoom\{display:none\}/);
-const siteCss = read("auth/site.css");
-assert.match(siteCss, /\.btn\[hidden\]\{display:none !important\}/);
-assert.match(siteCss, /\.btn\{display:inline-block/);
-assert.ok(siteCss.indexOf(".btn[hidden]{display:none !important}") > siteCss.indexOf(".btn{display:inline-block"));
+assert.match(css, /body\.hq \.btn\[hidden\]\{display:none !important\}/);
+assert.doesNotMatch(read("auth/site.css"), /\.btn\[hidden\]/);
 
 console.log("office editor ok");
