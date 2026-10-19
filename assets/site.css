@@ -56,7 +56,8 @@ body.geo .sources a{overflow-wrap:anywhere}
 .geo-foot ul{list-style:none;padding:0;margin:0;display:grid;gap:6px}
 .geo-foot a{color:#E8B04A;text-decoration:none}
 .geo-foot a:hover{text-decoration:underline}
-.geo-foot .social{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:18px}
+.geo-foot .social,body.geo .social-row{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:18px}
+body.geo .social-row a{font-weight:600;min-height:44px;display:inline-flex;align-items:center}
 .geo-foot .fine{margin-top:18px}
 .geo-block{text-align:left}
 .geo-block h2{text-align:center}

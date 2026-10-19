@@ -1,4 +1,4 @@
-import { destinationAfterLogin, getSupabase, isConfigured, originPath, safeNext } from "../auth/supabase.js";
+import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, safeNext } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, setBusy, toast } from "../auth/ui.js";
 
@@ -76,7 +76,7 @@ if (!isConfigured()) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: originPath("/account/"),
+          emailRedirectTo: authReturnUrl("/login/", next, window.location.href),
           shouldCreateUser: false
         }
       });

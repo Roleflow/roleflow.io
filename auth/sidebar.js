@@ -1,4 +1,4 @@
-import { destinationAfterLogin, getSupabase, isConfigured, logout, originPath, signupErrorMessage } from "./supabase.js";
+import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, logout, signupErrorMessage } from "./supabase.js";
 
 const drawer = document.getElementById("site-drawer");
 const toggle = document.getElementById("menu-toggle");
@@ -171,7 +171,7 @@ if (!drawer || !toggle) {
         password,
         options: {
           data: { full_name: name, instagram, access_code: accessCode },
-          emailRedirectTo: originPath("/account/")
+          emailRedirectTo: authReturnUrl("/login/", "/account/", window.location.href)
         }
       });
       button.disabled = false;
@@ -218,7 +218,7 @@ if (!drawer || !toggle) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: originPath("/account/"),
+          emailRedirectTo: authReturnUrl("/login/", "/account/", window.location.href),
           shouldCreateUser: false
         }
       });
