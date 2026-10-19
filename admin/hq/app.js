@@ -1063,25 +1063,25 @@ function renderOffice() {
     el("div", { id: "hq-org-stack", class: "org-stack", "aria-label": "Organization" }),
     el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Organization floor. The Brand Brain launches rockets to the chiefs, and each chief sends them on to its specialists." }),
     el("div", { id: "hq-labels" }),
-    el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
-      el("h2", { text: "Management" }),
-      el("div", { id: "hq-manage" })
+    el("div", { class: "hq-zoom" }, [
+      el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
+      el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
     ]),
+    camBar(hqPlan(activeAgents()), "hq-cam"),
     el("aside", { class: "office-float office-tracker", "aria-label": "Task Tracker" }, [
       el("h2", { text: "Task Tracker" }),
       el("p", { class: "office-pending", id: "hq-pending" }, ["0 ", el("span", { text: "pending" })]),
       el("div", { id: "hq-tracker" })
     ]),
+    el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
+      el("h2", { text: "Management" }),
+      el("div", { id: "hq-manage" })
+    ]),
     el("div", { class: "office-tools" }, [
       el("span", { id: "hq-clock" }),
       el("button", { type: "button", class: "btn ghost sm", "data-action": "replay-standup" }, ["Replay standup"]),
       el("p", { id: "hq-standup-line" })
-    ]),
-    el("div", { class: "hq-zoom" }, [
-      el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
-      el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
-    ]),
-    camBar(hqPlan(activeAgents()), "hq-cam")
+    ])
   ]);
 }
 
@@ -1125,6 +1125,7 @@ function officeAgents() {
       home: seat.station,
       errand: "",
       orgKey: seat.key,
+      zone: seat.zone,
       pulse: Boolean(current && current.status === "in_progress"),
       taskId: current ? current.id : "",
       desk,
@@ -1141,15 +1142,7 @@ function shippingCount() {
 }
 
 function factoryCards() {
-  const cards = [];
-  const seen = new Set();
-  officeAgents().forEach((seat) => {
-    const task = seat.desk && seat.desk.task;
-    if (!task || seen.has(task.id) || task.status === "done") return;
-    seen.add(task.id);
-    cards.push({ id: task.id, title: task.title, spot: seat.orgKey, glow: task.status === "needs_diego" });
-  });
-  return cards;
+  return [];
 }
 
 function paintOfficeHud() {
@@ -1191,9 +1184,64 @@ function paintOfficeHud() {
   });
 }
 
-function placeOfficeBadges(items) {
+function separateBadges(nodes) {
+  const placed = [];
+  nodes.forEach((node) => {
+    if (!node || node.hidden) return;
+    let x = parseFloat(node.style.left) || 0;
+    let y = parseFloat(node.style.top) || 0;
+    const w = Math.max(node.offsetWidth || 0, 78);
+    const h = Math.max(node.offsetHeight || 0, 26);
+    for (let pass = 0; pass < 10; pass += 1) {
+      let moved = false;
+      placed.forEach((other) => {
+        const overlapX = (w + other.w) / 2 + 8 - Math.abs(x - other.x);
+        const overlapY = (h + other.h) / 2 + 6 - Math.abs(y - other.y);
+        if (overlapX <= 0 || overlapY <= 0) return;
+        if (overlapY <= overlapX) y += (y >= other.y ? 1 : -1) * (overlapY + 1);
+        else x += (x >= other.x ? 1 : -1) * (overlapX + 1);
+        moved = true;
+      });
+      if (!moved) break;
+    }
+    node.style.left = x + "px";
+    node.style.top = y + "px";
+    placed.push({ x, y, w, h });
+  });
+}
+
+function dotKind(desk) {
+  if (!desk || desk.kind !== "task") return "idle";
+  if (desk.status === "in_progress" || desk.status === "blocked" || desk.status === "needs_diego" || desk.status === "queued") return desk.status;
+  return "idle";
+}
+
+function placeOfficeBadges(items, focus, distance) {
   const labels = document.getElementById("hq-labels");
   if (!labels) return;
+  const zoneFocus = focus && focus !== "overview" ? focus : "";
+  const close = Number(distance) > 0 && Number(distance) < 26;
+  const reveal = new Set();
+  if (zoneFocus) {
+    items.filter((item) => {
+      const seated = floorById.get(item.id);
+      if (!seated) return false;
+      if (zoneFocus === "chief_of_staff") return seated.orgKey === "cos";
+      return seated.zone === zoneFocus;
+    }).slice(0, 6).forEach((item) => reveal.add(item.id));
+  } else if (close) {
+    const width = labels.clientWidth || 1;
+    const height = labels.clientHeight || 1;
+    items.filter((item) => item.id !== "brand-brain" && item.id !== "meeting")
+      .slice()
+      .sort((a, b) => {
+        const da = Math.hypot((a.x || 0) - width / 2, (a.y || 0) - height / 2);
+        const db = Math.hypot((b.x || 0) - width / 2, (b.y || 0) - height / 2);
+        return da - db;
+      })
+      .slice(0, 6)
+      .forEach((item) => reveal.add(item.id));
+  }
   const seen = new Set();
   items.forEach((item) => {
     seen.add(item.id);
@@ -1212,37 +1260,25 @@ function placeOfficeBadges(items) {
     const brain = item.id === "brand-brain";
     const seated = floorById.get(item.id);
     const agent = item.id === "meeting" || brain ? null : agentById(item.id);
-    const marker = item.id === "meeting" || brain ? "meet" : markerOf(seated ? seated.work : sceneWork(agent));
     const name = item.id === "meeting" ? "Meeting Room" : brain ? "Brand Brain" : (seated ? seated.badge : (agent ? agent.name : ""));
     const full = seated ? seated.name : name;
     const desk = seated && seated.desk ? seated.desk : (agent ? deskOf(agent) : null);
-    const current = desk && desk.task && desk.task.status === "in_progress" ? desk.task : null;
-    const progress = current ? progressOf(current, new Date()) : null;
-    const flash = agent ? flashFor(agent.id) : null;
-    const bubble = desk && !brain && item.id !== "meeting" ? desk.short : "";
-    const chip = desk && desk.chip ? desk.chip : "";
-    const more = desk && desk.more > 0 ? "+" + desk.more + " more" : "";
-    const sig = [marker, name, bubble, chip, more, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
+    const kind = brain || item.id === "meeting" ? "meet" : dotKind(desk);
+    const card = desk && desk.kind === "task" ? deskSummary(desk) : (desk ? desk.short : "");
+    const sig = [name, kind, card, reveal.has(item.id) ? "1" : "0"].join("|");
+    node.classList.toggle("show-card", reveal.has(item.id) && !brain && item.id !== "meeting");
     if (node.dataset.sig !== sig) {
       node.dataset.sig = sig;
-      const bar = progress ? el("span", { class: "office-progress", "aria-hidden": "true" }, [el("i")]) : null;
-      if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
-      const meta = chip || more ? el("span", { class: "office-deskline" }, [
-        chip ? el("span", { class: "office-chip " + (desk.status || ""), text: chip }) : null,
-        more ? el("span", { class: "office-more", text: more }) : null
-      ].filter(Boolean)) : null;
-      node.replaceChildren(...[
-        brain || item.id === "meeting" ? el("i", { class: "diamond meet", title: brain ? "Brand Brain" : "Meeting Room" }) : diamond(marker),
-        el("span", { class: "office-pill", text: name }),
-        flash ? el("span", { class: "office-check", text: "Done · " + flash.title }) : null,
-        bubble ? el("span", { class: "office-taskline", text: bubble, title: desk.full }) : null,
-        meta,
-        bar,
-        progress ? el("span", { class: "office-left", text: leftLabel(progress) }) : null
-      ].filter((child) => child != null && child !== false));
-      const detail = desk && desk.full ? ", " + desk.full : "";
-      node.title = desk && desk.full ? desk.full : "";
-      node.setAttribute("aria-label", brain ? "Brand Brain" : full + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
+      const kids = [
+        el("span", { class: "office-tag" }, [
+          el("i", { class: "office-dot " + kind }),
+          el("span", { class: "office-pill", text: name })
+        ])
+      ];
+      if (card) kids.push(el("span", { class: "office-card", text: card }));
+      node.replaceChildren(...kids);
+      node.title = desk && desk.full ? desk.full : full;
+      node.setAttribute("aria-label", full + (desk && desk.full ? ", " + desk.full : ""));
     }
     node.style.left = item.x + "px";
     node.style.top = item.y + "px";
@@ -1254,6 +1290,7 @@ function placeOfficeBadges(items) {
       officeBadges.delete(id);
     }
   });
+  separateBadges([...officeBadges.values()]);
 }
 
 function phaseLine(phase) {
@@ -1300,7 +1337,7 @@ async function mountOffice() {
         else go("#office/" + id);
       },
       onFrame(payload) {
-        placeOfficeBadges(payload.labels || []);
+        placeOfficeBadges(payload.labels || [], payload.focus, payload.distance);
         phaseLine(payload.phase);
       }
     });
@@ -1311,6 +1348,8 @@ async function mountOffice() {
     }
     officeHandle.setLoop(() => location.hash === "#standup");
     officeHandle.update(agents, factoryCards());
+    const zone = new URLSearchParams(location.search).get("zone");
+    if (zone && officeHandle.focus) officeHandle.focus(zone);
     window.__hqOfficeReady = true;
     if (window.__officeProject) window.__hqProject = window.__officeProject;
   } catch {

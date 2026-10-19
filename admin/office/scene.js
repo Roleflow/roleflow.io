@@ -469,6 +469,28 @@ function makeChair() {
     return placed;
   }
 
+  function floorLabel(text, x, z) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 160;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 768, 160);
+    ctx.fillStyle = "#ffd6ef";
+    ctx.font = "800 92px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(text || "").toUpperCase(), 384, 80);
+    const tex = new THREE.CanvasTexture(canvas);
+    owned.add(tex);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+    owned.add(mat);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.05), mat);
+    owned.add(mesh.geometry);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(x, 0.16, z);
+    return mesh;
+  }
+
   function sign(text, width, height, x, y, z, tone) {
     const canvas = document.createElement("canvas");
     canvas.width = 512;
@@ -1037,10 +1059,6 @@ function makeChair() {
   const FAR_X = -0.70710678;
   const FAR_Z = -0.70710678;
 
-  function packetBudget() {
-    return narrowQuery.matches ? 6 : 12;
-  }
-
   function syncLaunchModes(list) {
     const hot = [];
     (list || []).forEach((agent) => {
@@ -1054,38 +1072,23 @@ function makeChair() {
       item.offset = next.offset;
       const moving = next.mode !== "rest";
       item.mesh.visible = moving;
-      if (item.label) item.label.visible = moving;
-      item.mesh.scale.setScalar(next.mode === "active" ? 1.35 : 1);
+      item.mesh.scale.setScalar(next.mode === "active" ? 1.45 : 1);
     });
   }
 
   function flyRockets(elapsed) {
-    const cap = packetBudget();
-    const flying = [];
     launchItems.forEach((item) => {
       if (item.mode === "rest" || reduceMotion) {
         item.mesh.visible = false;
-        if (item.label) item.label.visible = false;
         return;
       }
-      flying.push(item);
-    });
-    const start = flying.length > cap ? Math.floor(elapsed / 3.2) % flying.length : 0;
-    const shown = new Set();
-    for (let i = 0; i < Math.min(cap, flying.length); i += 1) shown.add(flying[(start + i) % flying.length]);
-    flying.forEach((item) => {
-      const show = shown.has(item);
-      item.mesh.visible = show;
-      if (item.label) item.label.visible = show;
-      if (!show) return;
-      const speed = item.mode === "active" ? 0.42 : 0.16;
+      item.mesh.visible = true;
+      const speed = item.mode === "active" ? 0.38 : 0.14;
       const t = (elapsed * speed + item.offset) % 1;
-      const arc = Math.sin(t * Math.PI) * 0.35;
       const x = item.from.x + (item.to.x - item.from.x) * t;
-      const y = 0.55 + arc;
+      const y = 1.05 + Math.sin(t * Math.PI) * 0.28;
       const z = item.from.z + (item.to.z - item.from.z) * t;
       item.mesh.position.set(x, y, z);
-      if (item.label) item.label.position.set(x, y + 0.42, z);
     });
   }
 
@@ -1093,7 +1096,8 @@ function makeChair() {
     const plan = (factoryPlan && factoryPlan.org) || { edges: [], zones: [], seats: [], points: null };
     const points = plan.points || pointsFor(factoryPlan || hqPlan());
     layoutPoints = points;
-    officeBounds = factoryBounds(points);
+    const edge = 16;
+    officeBounds = { minX: -edge, maxX: edge, minZ: -edge, maxZ: edge };
     const floorW = officeBounds.maxX - officeBounds.minX + 1.2;
     const floorD = officeBounds.maxZ - officeBounds.minZ + 1.2;
     const floorMat = new THREE.MeshLambertMaterial({ color: 0x100814, emissive: 0x1a0830, emissiveIntensity: 0.35 });
@@ -1105,7 +1109,6 @@ function makeChair() {
     scene.add(floor);
     built.push(floor);
 
-    const edge = 12.15;
     const neon = (w, h, d, x, y, z) => {
       const mesh = put(box(w, h, d, pinkBasic()), x, y, z);
       scene.add(mesh);
@@ -1184,17 +1187,16 @@ function makeChair() {
 
     function flowAnchor(key) {
       const spot = points[key] || { x: 0, y: 0, z: 0 };
-      return { x: spot.x, y: 0.12, z: spot.z };
+      return { x: spot.x, y: 0.4, z: spot.z };
     }
 
-    const lineMat = new THREE.LineDashedMaterial({ color: 0xff4d8d, dashSize: 0.32, gapSize: 0.18, transparent: true, opacity: 0.85 });
+    const lineMat = new THREE.LineDashedMaterial({ color: 0xff4d8d, dashSize: 0.45, gapSize: 0.22, transparent: true, opacity: 0.9 });
     owned.add(lineMat);
-    const packetText = new Map((agents || []).map((agent) => [agent.orgKey, agent.packet || ""]));
     (plan.edges || []).forEach((edge) => {
       const from = flowAnchor(edge.from);
       const to = flowAnchor(edge.to);
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute([from.x, 0.1, from.z, to.x, 0.1, to.z], 3));
+      geo.setAttribute("position", new THREE.Float32BufferAttribute([from.x, 0.4, from.z, to.x, 0.4, to.z], 3));
       owned.add(geo);
       const line = new THREE.Line(geo, lineMat);
       line.computeLineDistances();
@@ -1202,19 +1204,15 @@ function makeChair() {
       built.push(line);
       const rocketMat = new THREE.MeshBasicMaterial({ color: edge.hop === "handoff" ? 0xffe56a : 0xfff6ea });
       owned.add(rocketMat);
-      const rocket = new THREE.Mesh(sphereGeo(0.12), rocketMat);
-      rocket.position.set(from.x, 0.55, from.z);
+      const rocket = new THREE.Mesh(sphereGeo(0.16), rocketMat);
+      rocket.position.set(from.x, 1.05, from.z);
       scene.add(rocket);
       built.push(rocket);
-      const label = sign(packetText.get(edge.from) || "Work", 1.7, 0.42, from.x, 1, from.z);
-      scene.add(label);
-      built.push(label);
       launchItems.push({
         id: edge.from + ">" + edge.to,
         from,
         to,
         mesh: rocket,
-        label,
         mode: "idle",
         offset: launchItems.length * 0.17
       });
@@ -1266,15 +1264,11 @@ function makeChair() {
     people.set("brand-brain", { id: "brand-brain", anchor: { x: 0, y: 3.35, z: 0 } });
 
     const platform = new THREE.Group();
-    platform.add(put(box(3.6, 0.22, 3.6, lambert(0x1a1028)), 0, 0.12, 0));
-    platform.add(put(box(3.8, 0.05, 3.8, pinkBasic()), 0, 0.26, 0));
+    platform.add(put(box(6.4, 0.34, 6.4, lambert(0x1a1028)), 0, 0.18, 0));
+    platform.add(put(box(6.7, 0.06, 6.7, pinkBasic()), 0, 0.38, 0));
     scene.add(platform);
     built.push(platform);
-    const cos = points.cos || points.chief_of_staff || { x: 0, y: 0.2, z: 0.85 };
-    const cosSign = sign("Chief of Staff", 2.5, 0.46, cos.x, 2.35, cos.z);
-    scene.add(cosSign);
-    built.push(cosSign);
-    stationLight(0xc040ff, cos.x, 1.8, cos.z);
+    stationLight(0xc040ff, 0, 2.4, 0.6);
 
     (plan.zones || []).forEach((zone) => {
       const members = zone.members || [];
@@ -1292,16 +1286,15 @@ function makeChair() {
       const pad = new THREE.Group();
       const tint = new THREE.MeshLambertMaterial({ color: zone.color, emissive: zone.color, emissiveIntensity: 0.08 });
       owned.add(tint);
-      const width = Math.max(members.length < 2 ? 4.6 : 2.4, maxX - minX + 1.8);
-      const depth = Math.max(members.length < 2 ? 3.8 : 2.1, maxZ - minZ + 1.8);
+      const width = Math.max(members.length < 2 ? 6.2 : 3.4, maxX - minX + 2.4);
+      const depth = Math.max(members.length < 2 ? 5.2 : 3.2, maxZ - minZ + 2.4);
       pad.add(put(box(width + 0.18, 0.05, depth + 0.18, pinkBasic()), (minX + maxX) / 2, 0.04, (minZ + maxZ) / 2));
       pad.add(put(box(width, 0.07, depth, tint), (minX + maxX) / 2, 0.08, (minZ + maxZ) / 2));
       scene.add(pad);
       built.push(pad);
       const chief = points[zone.chief];
-      const reach = members.reduce((max, seat) => Math.max(max, Math.hypot(seat.x, seat.z)), 0) + 1.15;
       const rad = zone.angle * Math.PI / 180;
-      const label = sign(zone.label, zone.below ? 2.7 : 2.1, 0.48, Math.cos(rad) * reach, 2.55, Math.sin(rad) * reach);
+      const label = floorLabel(zone.title, Math.cos(rad) * 13.6, Math.sin(rad) * 13.6);
       scene.add(label);
       built.push(label);
       if (chief) stationLight(zone.color, chief.x, 1.6, chief.z);
@@ -1353,7 +1346,7 @@ function makeChair() {
         path: [{ x: seat.x, z: seat.z }, { x: meetup.x, z: meetup.z }, slot],
         errands: {},
         slot,
-        anchor: { x: seat.x, y: y + 2.15, z: seat.z }
+        anchor: { x: seat.x, y: y + 1.65, z: seat.z }
       });
     });
     syncLaunchModes(agents);
@@ -1714,24 +1707,48 @@ function makeChair() {
   function fitStage() {
     const target = stageTarget();
     controls.target.copy(target);
-    const dir = new THREE.Vector3(1, 0.86, 1).normalize();
-    let dist = narrowQuery.matches ? 86 : 68;
-    const samples = stageSamples();
-    for (let step = 0; step < 10; step += 1) {
+    const dir = new THREE.Vector3(1, 0.78, 1).normalize();
+    const floor = [
+      [officeBounds.minX, 0.2, officeBounds.minZ],
+      [officeBounds.maxX, 0.2, officeBounds.minZ],
+      [officeBounds.minX, 0.2, officeBounds.maxZ],
+      [officeBounds.maxX, 0.2, officeBounds.maxZ]
+    ];
+    const tall = floor.concat([
+      [officeBounds.minX, 5.4, officeBounds.minZ],
+      [officeBounds.maxX, 5.4, officeBounds.minZ]
+    ]);
+    camera.zoom = 1;
+    camera.updateProjectionMatrix();
+    let lo = 10;
+    let hi = 150;
+    let best = 150;
+    for (let step = 0; step < 18; step += 1) {
+      const dist = (lo + hi) / 2;
       camera.position.copy(target).addScaledVector(dir, dist);
       camera.lookAt(target);
       camera.updateMatrixWorld();
-      let overflow = 0;
-      samples.forEach(([x, y, z]) => {
+      let maxX = 0;
+      let maxY = 0;
+      floor.forEach(([x, y, z]) => {
         projector.set(x, y, z);
         projector.project(camera);
-        overflow = Math.max(overflow, Math.abs(projector.x) - 0.9, Math.abs(projector.y) - 0.84);
+        maxX = Math.max(maxX, Math.abs(projector.x));
       });
-      if (overflow <= 0) break;
-      dist *= 1 + Math.min(0.45, overflow);
+      tall.forEach(([x, y, z]) => {
+        projector.set(x, y, z);
+        projector.project(camera);
+        maxY = Math.max(maxY, Math.abs(projector.y));
+      });
+      if (maxX > 0.85 || maxY > 0.9) lo = dist;
+      else {
+        best = dist;
+        hi = dist;
+      }
     }
-    dist = Math.min(controls.maxDistance, Math.max(controls.minDistance, dist));
-    camera.position.copy(target).addScaledVector(dir, dist);
+    camera.position.copy(target).addScaledVector(dir, best);
+    controls.minDistance = 8;
+    controls.maxDistance = 160;
     controls.update();
     faceBillboards();
   }
@@ -1929,7 +1946,12 @@ function makeChair() {
     people.forEach((person) => applyPose(person, phase, elapsed));
     controls.update();
     renderer.render(scene, camera);
-    if (hooks.onFrame) hooks.onFrame({ labels: projectLabels(), phase });
+    if (hooks.onFrame) hooks.onFrame({
+      labels: projectLabels(),
+      phase,
+      focus: focusId,
+      distance: camera.position.distanceTo(controls.target)
+    });
     window.__officePhase = phase;
   }
 
@@ -1986,7 +2008,7 @@ function makeChair() {
       const target = new THREE.Vector3(spot.x, (spot.y || 0) + 0.9, spot.z);
       controls.target.copy(target);
       const dir = new THREE.Vector3(1, 0.7, 1).normalize();
-      const dist = narrowQuery.matches ? 30 : 24;
+      const dist = narrowQuery.matches ? 22 : 18;
       camera.zoom = 1;
       camera.updateProjectionMatrix();
       camera.position.copy(target).addScaledVector(dir, dist);

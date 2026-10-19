@@ -101,7 +101,7 @@ function seat(key) {
 [["lgm", "sdr"], ["smdm", "ces"]].forEach(([manager, report]) => {
   const chief = seat(seat(manager).reportsTo);
   assert.ok(seatDistance(chief) < seatDistance(seat(manager)), manager);
-  assert.ok(Math.hypot(seat(manager).x - seat(report).x, seat(manager).z - seat(report).z) < 2.2, manager + " beside " + report);
+  assert.ok(Math.hypot(seat(manager).x - seat(report).x, seat(manager).z - seat(report).z) < 4.4, manager + " beside " + report);
 });
 
 let nearest = 99;
@@ -112,10 +112,10 @@ for (let i = 0; i < layout.seats.length; i += 1) {
     nearest = Math.min(nearest, Math.hypot(a.x - b.x, a.z - b.z));
   }
 }
-assert.ok(nearest > 1.6, "seats overlapped: " + nearest);
+assert.ok(nearest > 2.5, "seats overlapped: " + nearest);
 
 const cos = seat("cos");
-assert.ok(seatDistance(cos) < 1.2, "Chief of Staff sits on the center platform");
+assert.ok(seatDistance(cos) < 1.5, "Chief of Staff sits on the center platform");
 assert.ok(seatDistance(seat("cro")) > 4);
 assert.ok(seatDistance(seat("cto")) > seatDistance(cos));
 

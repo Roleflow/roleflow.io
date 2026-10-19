@@ -109,18 +109,26 @@ export function zoneLabel(zoneId) {
   return zone.title + " · " + below;
 }
 
+function clusterSpot(angle, index, count) {
+  const perRow = count > 4 ? Math.ceil(count / 2) : count;
+  const row = Math.floor(index / perRow);
+  const col = index - row * perRow;
+  const cols = Math.min(perRow, count - row * perRow);
+  const step = 20;
+  const spread = cols <= 1 ? 0 : (cols - 1) * step;
+  const ang = angle - spread / 2 + (cols <= 1 ? 0 : (spread / (cols - 1)) * col);
+  return polar(ang, row === 0 ? 9.8 : 12.6);
+}
+
 function layoutSeats() {
   const seats = [];
-  seats.push({ key: "cos", x: 0, y: 0.2, z: 0.85, role: "chief" });
+  seats.push({ key: "cos", x: 0, y: 0.55, z: 1.05, role: "chief" });
   ZONES.forEach((zone) => {
-    const chief = polar(zone.angle, 4.9);
+    const chief = polar(zone.angle, 6.2);
     seats.push({ key: zone.chief, x: chief.x, y: 0, z: chief.z, role: "chief" });
     const flat = childrenOf(zone.chief).flatMap((agent) => [agent].concat(childrenOf(agent.key)));
-    const count = flat.length;
-    const spread = count <= 1 ? 0 : Math.min(56, (count - 1) * 14);
     flat.forEach((agent, index) => {
-      const ang = zone.angle - spread / 2 + (count <= 1 ? 0 : (spread / (count - 1)) * index);
-      const spot = polar(ang, 8);
+      const spot = clusterSpot(zone.angle, index, flat.length);
       seats.push({
         key: agent.key,
         x: spot.x,
@@ -271,21 +279,18 @@ export function placeRoster(liveAgents) {
   const used = new Set();
   const cosKey = clusters.cos ? (idToKey.get(clusters.cos.id) || "cos") : "cos";
   const cosSeat = byKey.get(cosKey) || { key: "cos", name: "Chief of Staff", badge: "Chief of Staff", color: "#ff2d95", level: "L1", reportsTo: null };
-  placed.push(Object.assign({}, cosSeat, { x: 0, y: 0.2, z: 0.85, role: "chief", zone: "executive", reportsTo: null }));
+  placed.push(Object.assign({}, cosSeat, { x: 0, y: 0.55, z: 1.05, role: "chief", zone: "executive", reportsTo: null }));
   used.add(cosKey);
   clusters.zones.forEach((cluster) => {
     const meta = ZONES.find((zone) => zone.id === cluster.zone) || ZONES[0];
     const chiefKey = idToKey.get(cluster.chief.id);
     if (!chiefKey || !byKey.get(chiefKey)) return;
-    const chiefPos = polar(meta.angle, 4.9);
+    const chiefPos = polar(meta.angle, 6.2);
     placed.push(Object.assign({}, byKey.get(chiefKey), { x: chiefPos.x, y: 0, z: chiefPos.z, role: "chief", zone: meta.id, reportsTo: cosKey }));
     used.add(chiefKey);
     const members = cluster.members.map((row) => idToKey.get(row.id)).filter((key) => key && byKey.get(key));
-    const count = members.length;
-    const spread = count <= 1 ? 0 : Math.min(56, (count - 1) * 14);
     members.forEach((key, index) => {
-      const ang = meta.angle - spread / 2 + (count <= 1 ? 0 : (spread / (count - 1)) * index);
-      const spot = polar(ang, 8);
+      const spot = clusterSpot(meta.angle, index, members.length);
       const seat = byKey.get(key);
       const parent = cluster.members.find((row) => idToKey.get(row.id) === key);
       const parentKey = parent && idToKey.get(parent.reports_to);

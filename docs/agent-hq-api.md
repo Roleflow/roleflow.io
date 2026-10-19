@@ -31,7 +31,7 @@ Apply migrations in filename order. Agent HQ depends on `public.is_admin()` from
 5. The migration adds the HQ tables to the `supabase_realtime` publication when that publication exists. The admin UI subscribes with the logged-in admin session.
 6. Diego issues a key from **Agents → Edit → Issue API key**. The plaintext is shown once. Only a SHA-256 hash is stored. Issuing a new key revokes the previous active key. Revoke from the same screen.
 
-The live roster is Roleflow Agent, Lead Gen Manager, Outbound Rep, Content Generator, Onboarding & Client Success, and Social Media Manager. Older bots stay in the tables as retired so their tasks and history remain, and Agentic HQ hides them. Website Buildeer and Loom Outreacher were notes, not separate rows.
+The live roster is the 19 Oct 2026 org. Chief of Staff sits over five chiefs: Chief Revenue Officer, Chief Content Officer, Chief Operating Officer, Chief Financial Officer, and Chief Technology Officer. Under them: Lead Generation Manager and Outbound SDR, Inbound Triage Specialist, CRM Database Administrator, Social Media Distribution Manager and Community Engagement Specialist, Paid Media & Partnerships Specialist, Quality Assurance Analyst, Proof & Case Study Specialist, Frontend Engineer, Backend & Database Engineer, Integrations Engineer, QA & Release Engineer, and Security & Access Admin. Sales Operations Manager, Finance Manager, and New Bot are retired and stay in the tables so their history remains. Agentic HQ hides retired rows. Website Buildeer and Loom Outreacher were notes, not separate rows.
 
 ## Call the API
 
