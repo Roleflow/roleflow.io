@@ -9,6 +9,26 @@ import { leftLabel, madridTime, progressOf, recentDone, timeline } from "../offi
 import { standupPhase } from "../office/standup.mjs";
 import { loadOfficeConfig, validateOfficeConfig } from "../office/workforce-config.mjs";
 import { businessName, mapWorkforce, pickDefaultBusiness, workforcePreviewFixture } from "../office/workforce-model.mjs";
+import {
+  addEdge,
+  addStation,
+  createOfficeConfig,
+  createOfficeStore,
+  editorAvailable,
+  hqOfficeConfig,
+  missingOfficeTables,
+  moveStation,
+  officeFromStore,
+  readOffice,
+  removeEdge,
+  removeStation,
+  restoreOfficeRevision,
+  saveOfficeConfig,
+  taskWrite,
+  plainSaveNotice,
+  validateEditorPayload
+} from "../office/office-editor.mjs";
+import { officeEditorPanel } from "./office-editor-panel.mjs";
 
 bindShell();
 const STATUSES = [
@@ -90,12 +110,30 @@ const state = {
   businessToken: 0,
   businessLoading: false,
   businessError: "",
-  previewOffice: false
+  previewOffice: false,
+  workforceSource: null,
+  officeStore: createOfficeStore(),
+  officeChannel: null,
+  officeEdit: {
+    open: false,
+    mode: "unknown",
+    scope: "",
+    businessId: "",
+    configId: null,
+    version: null,
+    config: null,
+    draft: null,
+    revisions: [],
+    notice: "",
+    noticeKind: "",
+    loadedKey: ""
+  }
 };
 
 let officeHandle = null;
 let officeToken = 0;
 let officeMounting = false;
+const officeLoads = new Map();
 let brainToken = 0;
 let brandBrainText = "";
 const officeBadges = new Map();
@@ -1176,9 +1214,11 @@ function renderOffice() {
     ]),
     el("div", { class: "office-tools" }, [
       el("span", { id: "hq-clock" }),
+      el("button", { type: "button", id: "office-edit-toggle", class: "btn ghost sm", "data-action": "toggle-office-edit", hidden: state.officeEdit.mode !== "editable" }, ["Edit office"]),
       el("button", { type: "button", class: "btn ghost sm", "data-action": "replay-standup" }, ["Replay standup"]),
       el("p", { id: "hq-standup-line" })
-    ])
+    ]),
+    el("aside", { id: "office-editor", class: "office-editor", hidden: !(state.officeEdit.open && editorAvailable(state.officeEdit)), "aria-label": "Office editor" })
   ]);
 }
 
@@ -1260,6 +1300,7 @@ function paintOfficeHud() {
       hourCycle: "h23"
     }).format(new Date()) + " Madrid";
   }
+  paintOfficeEditor(false);
   const current = route();
   manage.replaceChildren();
   officeAgents().forEach((seat) => {
@@ -1824,6 +1865,362 @@ function readoutNodes() {
   ]));
 }
 
+function officeTasks() {
+  if (state.officeEdit.scope === "business") {
+    return ((state.workforceSource && state.workforceSource.tasks) || []).filter((task) => task && task.status !== "done");
+  }
+  return (state.tasks || []).filter((task) => task && !task.business_id && task.status !== "done");
+}
+
+function paintOfficeEditor(force) {
+  const button = document.getElementById("office-edit-toggle");
+  if (button) {
+    button.hidden = !editorAvailable(state.officeEdit);
+    button.textContent = state.officeEdit.open ? "Close editor" : "Edit office";
+  }
+  const host = document.getElementById("office-editor");
+  if (!host) return;
+  const show = state.officeEdit.open && editorAvailable(state.officeEdit);
+  host.hidden = !show;
+  if (!show) return;
+  if (!force && host.contains(document.activeElement)) return;
+  const scroll = host.scrollTop;
+  host.replaceChildren(officeEditorPanel(el, state.officeEdit, {
+    tasks: officeTasks(),
+    agents: state.agents || [],
+    floorNote: state.officeEdit.scope === "hq"
+  }));
+  host.scrollTop = scroll;
+}
+
+function subscribeOffice(configId) {
+  if (state.fixture || !configId || state.officeChannel || !state.supabase) return;
+  const channel = state.supabase.channel("office-config-" + configId);
+  ["office_configs", "office_stations", "office_edges"].forEach((table) => {
+    channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
+      const edit = state.officeEdit;
+      if (!edit.scope) return;
+      edit.loadedKey = "";
+      ensureOfficeEdit(edit.scope, edit.businessId, edit.config).then(() => {
+        if (route().section === "business" && state.officeEdit.config) refreshWorkforceConfig(state.officeEdit.config, false);
+        paintOfficeEditor(true);
+      }).catch(() => {});
+    });
+  });
+  channel.subscribe();
+  state.officeChannel = channel;
+}
+
+async function ensureOfficeEdit(scope, businessId, fallback) {
+  const key = scope + ":" + (businessId || "");
+  if (state.officeEdit.loadedKey === key && state.officeEdit.mode !== "unknown") return state.officeEdit;
+  if (officeLoads.has(key)) return officeLoads.get(key);
+  const open = state.officeEdit.open;
+  const job = (async () => {
+    let loaded;
+    if (state.fixture) loaded = officeFromStore(state.officeStore, scope, businessId || "", fallback);
+    else loaded = await readOffice(state.supabase, { scope, businessId, fallback });
+    const here = route();
+    const current = scope === "hq" ? here.section === "office" : here.section === "business" && here.id === (businessId || "");
+    if (!current) return state.officeEdit;
+    state.officeEdit.mode = loaded.mode;
+    state.officeEdit.scope = scope;
+    state.officeEdit.businessId = businessId || "";
+    state.officeEdit.configId = loaded.configId;
+    state.officeEdit.version = loaded.version;
+    state.officeEdit.config = loaded.config;
+    state.officeEdit.revisions = loaded.revisions || [];
+    state.officeEdit.notice = loaded.notice || "";
+  state.officeEdit.noticeKind = loaded.notice ? "bad" : "";
+    state.officeEdit.loadedKey = key;
+    state.officeEdit.draft = loaded.draft || loaded.config;
+    state.officeEdit.open = open && loaded.mode === "editable";
+    if (loaded.mode === "editable" && loaded.configId) subscribeOffice(loaded.configId);
+    return state.officeEdit;
+  })();
+  officeLoads.set(key, job);
+  try {
+    return await job;
+  } finally {
+    if (officeLoads.get(key) === job) officeLoads.delete(key);
+  }
+}
+
+function probeHqOffice() {
+  if (route().section !== "office") return;
+  if (state.officeEdit.loadedKey === "hq:") return;
+  ensureOfficeEdit("hq", "", hqOfficeConfig()).then(() => {
+    if (route().section === "office") paintOfficeEditor(true);
+  }).catch(() => {});
+}
+
+function refreshWorkforceConfig(config, remount) {
+  if (!state.workforceSource) return;
+  const checked = validateOfficeConfig(config);
+  state.businessView = mapWorkforce(Object.assign({}, state.workforceSource, {
+    config: checked.ok ? checked.value : config,
+    now: new Date()
+  }));
+  if (remount) {
+    cancelOffice();
+    state.businessMounted = "";
+    paint();
+  } else {
+    syncWorkforceScene();
+    paintWorkforceHud();
+  }
+  paintOfficeEditor(true);
+}
+
+function applyEditorField(node) {
+  const draft = state.officeEdit.draft;
+  if (!draft || !node) return;
+  const field = node.dataset.edit;
+  const key = node.dataset.key;
+  const index = Number(node.dataset.index);
+  const station = key === draft.overseer.id ? draft.overseer : (draft.stations || []).find((item) => item.id === key);
+  if (field === "label" && station) station.role = node.value;
+  else if (field === "description" && station) station.description = node.value;
+  else if (field === "agent-role" && station) station.agentRole = node.value;
+  else if (field === "agent" && station) station.hqAgentId = node.value || null;
+  else if (field === "edge-from" && draft.edges[index]) draft.edges[index].from = node.value;
+  else if (field === "edge-to" && draft.edges[index]) draft.edges[index].to = node.value;
+  else if (field === "edge-kind" && draft.edges[index]) draft.edges[index].kind = node.value;
+  else if (field === "edge-label" && draft.edges[index]) draft.edges[index].label = node.value;
+}
+
+async function stationIdFor(key) {
+  if (state.fixture) {
+    const row = state.officeStore.stations.find((item) => item.config_id === state.officeEdit.configId && item.key === key && !item.archived_at);
+    return row ? row.id : null;
+  }
+  if (!state.officeEdit.configId) return null;
+  const listed = await state.supabase.from("office_stations").select("id, key, archived_at").eq("config_id", state.officeEdit.configId);
+  if (!listed || listed.error || !Array.isArray(listed.data)) return null;
+  const row = listed.data.find((item) => item.key === key && !item.archived_at);
+  return row ? row.id : null;
+}
+
+function showSaveNotice(raw, kind) {
+  if (kind !== "ok") console.error(raw || "Couldn't save.");
+  state.officeEdit.noticeKind = kind === "ok" ? "ok" : "bad";
+  state.officeEdit.notice = kind === "ok" ? (raw || "Saved.") : plainSaveNotice(raw);
+}
+
+async function saveOfficeEdit() {
+  const edit = state.officeEdit;
+  const summaryNode = document.getElementById("editor-summary");
+  const summary = summaryNode ? summaryNode.value.trim() : "";
+  const checked = validateEditorPayload(edit.draft);
+  if (!checked.ok) {
+    showSaveNotice(checked.errors[0] || "This office is not valid.");
+    paintOfficeEditor(true);
+    return;
+  }
+  edit.draft = checked.value;
+  const actor = (state.user && state.user.id) || "";
+  let result;
+  if (state.fixture) {
+    result = edit.configId
+      ? saveOfficeConfig(state.officeStore, {
+        configId: edit.configId,
+        expectedVersion: edit.version,
+        payload: checked.value,
+        summary: summary || "Saved the office",
+        actor,
+        actorName: "Diego Castanedo"
+      })
+      : createOfficeConfig(state.officeStore, {
+        scope: edit.scope,
+        businessId: edit.businessId,
+        payload: checked.value,
+        summary: summary || "Created the office",
+        actor,
+        actorName: "Diego Castanedo"
+      });
+  } else if (edit.configId) {
+    const saved = await state.supabase.rpc("save_office_config", {
+      p_config_id: edit.configId,
+      p_expected_version: edit.version,
+      p_payload: checked.value,
+      p_summary: summary || "Saved the office"
+    });
+    result = saved.error
+      ? { ok: false, conflict: /version conflict/i.test(saved.error.message || ""), error: saved.error.message || "Could not save." }
+      : { ok: true };
+  } else {
+    const created = await state.supabase.rpc("create_office_config", {
+      p_scope: edit.scope,
+      p_business_id: edit.scope === "business" ? edit.businessId : null,
+      p_payload: checked.value
+    });
+    result = created.error
+      ? { ok: false, conflict: false, error: created.error.message || "Could not save." }
+      : { ok: true };
+  }
+  if (!result.ok) {
+    if (result.conflict) {
+      edit.loadedKey = "";
+      await ensureOfficeEdit(edit.scope, edit.businessId, checked.value);
+      state.officeEdit.open = true;
+      showSaveNotice(result.error || "version conflict: someone else saved first");
+      if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
+      else paintOfficeEditor(true);
+      return;
+    }
+    if (missingOfficeTables({ message: result.error || "" })) {
+      state.officeEdit.mode = "readonly";
+      state.officeEdit.open = false;
+      paintOfficeEditor(true);
+      console.error(result.error || "office tables are missing");
+      toast("The office tables are not in the database yet. This office stays read-only.");
+      return;
+    }
+    showSaveNotice(result.error || "Could not save.");
+    paintOfficeEditor(true);
+    return;
+  }
+  if (!state.fixture) {
+    edit.loadedKey = "";
+    await ensureOfficeEdit(edit.scope, edit.businessId, checked.value);
+  } else {
+    const fresh = officeFromStore(state.officeStore, edit.scope, edit.businessId, checked.value);
+    state.officeEdit.configId = fresh.configId;
+    state.officeEdit.version = fresh.version;
+    state.officeEdit.config = fresh.config;
+    state.officeEdit.draft = fresh.draft;
+    state.officeEdit.revisions = fresh.revisions;
+  }
+  state.officeEdit.open = true;
+  showSaveNotice("Saved.", "ok");
+  toast("Office saved.");
+  if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
+  else paintOfficeEditor(true);
+}
+
+async function restoreOfficeEdit(revisionId) {
+  const edit = state.officeEdit;
+  const actor = (state.user && state.user.id) || "";
+  if (state.fixture) {
+    const result = restoreOfficeRevision(state.officeStore, {
+      revisionId,
+      expectedVersion: edit.version,
+      actor,
+      actorName: "Diego Castanedo"
+    });
+    if (!result.ok) {
+      if (result.conflict) edit.loadedKey = "";
+      if (result.conflict) await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
+      state.officeEdit.open = true;
+      showSaveNotice(result.conflict ? "version conflict: someone else saved first" : (result.error || "Could not restore."));
+      paintOfficeEditor(true);
+      return;
+    }
+    const fresh = officeFromStore(state.officeStore, edit.scope, edit.businessId, result.revision.snapshot);
+    state.officeEdit.configId = fresh.configId;
+    state.officeEdit.version = fresh.version;
+    state.officeEdit.config = fresh.config;
+    state.officeEdit.draft = fresh.draft;
+    state.officeEdit.revisions = fresh.revisions;
+    state.officeEdit.open = true;
+    showSaveNotice("Restored.", "ok");
+    toast("Revision restored.");
+    if (route().section === "business") refreshWorkforceConfig(fresh.config, true);
+    else paintOfficeEditor(true);
+    return;
+  }
+  const restored = await state.supabase.rpc("restore_office_revision", {
+    p_revision_id: revisionId,
+    p_expected_version: edit.version
+  });
+  if (restored.error) {
+    if (/version conflict/i.test(restored.error.message || "")) {
+      edit.loadedKey = "";
+      await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
+      state.officeEdit.open = true;
+      showSaveNotice(restored.error.message || "version conflict: someone else saved first");
+      paintOfficeEditor(true);
+      return;
+    }
+    showSaveNotice(restored.error.message || "Could not restore.");
+    paintOfficeEditor(true);
+    return;
+  }
+  edit.loadedKey = "";
+  await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
+  state.officeEdit.open = true;
+  showSaveNotice("Restored.", "ok");
+  toast("Revision restored.");
+  if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
+  else paintOfficeEditor(true);
+}
+
+async function moveOfficeTask(taskId, key) {
+  if (!key) return;
+  const stationId = await stationIdFor(key);
+  const patch = taskWrite(key, stationId);
+  const result = await state.supabase.from("hq_tasks").update(patch).eq("id", taskId);
+  if (result && result.error) {
+    toast(result.error.message || "Could not move the task.", "bad");
+    return;
+  }
+  if (state.workforceSource) {
+    const listed = await state.supabase.from("hq_tasks").select("*");
+    const rows = (listed && listed.data) || [];
+    state.workforceSource.tasks = rows.filter((task) => task.business_id === state.officeEdit.businessId);
+    if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config || state.businessView && state.businessView.config, false);
+  }
+  try { await reload(); } catch (error) { toast(scrub(error), "bad"); }
+  paintOfficeEditor(true);
+  toast("Task moved.");
+}
+
+async function createOfficeTask() {
+  const titleNode = document.getElementById("editor-task-title");
+  const stationNode = document.getElementById("editor-task-station");
+  const agentNode = document.getElementById("editor-task-agent");
+  const title = titleNode ? titleNode.value.trim() : "";
+  const key = stationNode ? stationNode.value : "";
+  if (!title || !key) {
+    toast("Add a title and a station.", "bad");
+    return;
+  }
+  let agentId = agentNode ? agentNode.value : "";
+  if (!agentId || agentId === "fixture") {
+    if (!state.fixture) {
+      toast("Choose an agent.", "bad");
+      return;
+    }
+    agentId = state.user.id;
+  }
+  const stationId = await stationIdFor(key);
+  const patch = taskWrite(key, stationId);
+  const payload = {
+    agent_id: agentId,
+    title: title.slice(0, 240),
+    description: "",
+    status: "queued",
+    priority: "normal",
+    station: patch.station,
+    station_id: patch.station_id
+  };
+  if (state.officeEdit.scope === "business") payload.business_id = state.officeEdit.businessId;
+  const result = await state.supabase.from("hq_tasks").insert(payload);
+  if (result && result.error) {
+    toast(result.error.message || "Could not create the task.", "bad");
+    return;
+  }
+  if (state.workforceSource) {
+    const listed = await state.supabase.from("hq_tasks").select("*");
+    const rows = (listed && listed.data) || [];
+    state.workforceSource.tasks = rows.filter((task) => task.business_id === state.officeEdit.businessId);
+    if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, false);
+  }
+  try { await reload(); } catch (error) { toast(scrub(error), "bad"); }
+  toast("Task created.");
+  paintOfficeEditor(true);
+}
+
 function paintWorkforceHud() {
   const picker = document.getElementById("wf-picker");
   const readout = document.getElementById("wf-readout");
@@ -1833,6 +2230,7 @@ function paintWorkforceHud() {
   if (readout) readout.replaceChildren(...readoutNodes());
   const ready = Boolean(state.businessView && !state.businessView.missing && !state.businessError);
   document.body.dataset.workforce = ready ? "ready" : "loading";
+  paintOfficeEditor(false);
 }
 
 function renderWorkforce() {
@@ -1849,8 +2247,10 @@ function renderWorkforce() {
     el("div", { class: "wf-bar" }, [
       state.previewOffice ? el("p", { class: "wf-banner", text: "Fixture preview. Not live data. Figures are the 19 Oct 2026 snapshot, not a database query." }) : null,
       el("div", { id: "wf-picker", class: "wf-picker", role: "listbox", "aria-label": "Businesses" }),
-      el("p", { id: "wf-routes", class: "wf-routes" })
+      el("p", { id: "wf-routes", class: "wf-routes" }),
+      el("button", { type: "button", id: "office-edit-toggle", class: "btn ghost sm", "data-action": "toggle-office-edit", hidden: state.officeEdit.mode !== "editable" }, ["Edit office"])
     ]),
+    el("aside", { id: "office-editor", class: "office-editor", hidden: !(state.officeEdit.open && editorAvailable(state.officeEdit)), "aria-label": "Office editor" }),
     ready ? el("div", { class: "office-stage" }, [
       el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "AI Workforce office. Routes are the Next-step edges from this business config." }),
       el("div", { id: "hq-labels" }),
@@ -1980,6 +2380,10 @@ async function loadWorkforceScreen() {
     }
     const loaded = validateOfficeConfig(await loadOfficeConfig(business.id));
     if (!loaded.ok) throw new Error(loaded.errors.join(" "));
+    const office = await ensureOfficeEdit("business", business.id, loaded.value);
+    if (route().section !== "business" || route().id !== business.id) return;
+    const chosen = validateOfficeConfig(office.config || loaded.value);
+    const officeConfig = chosen.ok ? chosen.value : loaded.value;
     const [leadsRes, statsRes, workRes, taskRes] = await Promise.all([
       state.supabase.from("tailortalk_leads").select("agent_id, lead_status, category, is_converted, converted_at, last_message_time, total_followups, source").eq("agent_id", business.id),
       state.supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, computed_at, last_activity_at").eq("agent_id", business.id).maybeSingle(),
@@ -1999,16 +2403,18 @@ async function loadWorkforceScreen() {
       activity = activityRes.data || [];
     }
     state.businessError = "";
-    state.businessView = mapWorkforce({
+    state.workforceSource = {
       business,
       leads: leadsRes.data || [],
       stats: statsRes.data || null,
       workforce: workRes.data || [],
       tasks,
-      activity,
-      config: loaded.value,
+      activity
+    };
+    state.businessView = mapWorkforce(Object.assign({}, state.workforceSource, {
+      config: officeConfig,
       now: new Date()
-    });
+    }));
     if (token !== state.businessToken || route().section !== "business") return;
     paint();
   } catch (error) {
@@ -2099,6 +2505,7 @@ function paint() {
     paintOfficeHud();
     paintOrgStack();
     parkOfficeLaunches();
+    probeHqOffice();
     window.__hqPainted = current.section;
     return;
   }
@@ -2122,6 +2529,7 @@ function paint() {
     paintOfficeHud();
     paintOrgStack();
     parkOfficeLaunches();
+    probeHqOffice();
     mountOffice();
   }
   if (workforce) {
@@ -2410,8 +2818,13 @@ async function issueKey(id) {
 
 document.getElementById("nav-logout").addEventListener("click", () => logout());
 
+function flushEditorField() {
+  const active = document.activeElement;
+  if (active && active.dataset && active.dataset.edit) applyEditorField(active);
+}
+
 document.addEventListener("click", async (event) => {
-  if (document.body.classList.contains("hq-office") && !event.target.closest(".office-launch, .office-float")) {
+  if (document.body.classList.contains("hq-office") && !event.target.closest(".office-launch, .office-float, .office-editor")) {
     closeOfficePanels();
   }
   const trigger = event.target.closest("[data-action]");
@@ -2499,8 +2912,55 @@ document.addEventListener("click", async (event) => {
     } catch {
       toast("Select the key and copy it.", "bad");
     }
-  } else if (action === "close-key") {
+  }   else if (action === "close-key") {
     document.getElementById("hq-key").close();
+  } else if (action === "toggle-office-edit") {
+    if (!editorAvailable(state.officeEdit)) return;
+    state.officeEdit.open = !state.officeEdit.open;
+    paintOfficeEditor(true);
+  } else if (action === "editor-add-station") {
+    flushEditorField();
+    const input = document.getElementById("editor-new-station");
+    const label = input ? input.value.trim() : "";
+    if (!label) {
+      toast("Name the new station.", "bad");
+      return;
+    }
+    state.officeEdit.draft = addStation(state.officeEdit.draft, label);
+    paintOfficeEditor(true);
+  } else if (action === "editor-remove-station") {
+    flushEditorField();
+    const station = (state.officeEdit.draft.stations || []).find((item) => item.id === id);
+    const name = station ? station.role : "this station";
+    if (!window.confirm("Archive " + name + "? Tasks on it stay with the overseer.")) return;
+    state.officeEdit.draft = removeStation(state.officeEdit.draft, id);
+    paintOfficeEditor(true);
+  } else if (action === "editor-up") {
+    flushEditorField();
+    state.officeEdit.draft = moveStation(state.officeEdit.draft, id, -1);
+    paintOfficeEditor(true);
+  } else if (action === "editor-down") {
+    flushEditorField();
+    state.officeEdit.draft = moveStation(state.officeEdit.draft, id, 1);
+    paintOfficeEditor(true);
+  } else if (action === "editor-add-edge") {
+    flushEditorField();
+    const draft = state.officeEdit.draft;
+    const target = (draft.stations[0] && draft.stations[0].id) || draft.overseer.id;
+    state.officeEdit.draft = addEdge(draft, { from: draft.overseer.id, to: target, kind: "assign", label: "Next step" });
+    paintOfficeEditor(true);
+  } else if (action === "editor-remove-edge") {
+    flushEditorField();
+    state.officeEdit.draft = removeEdge(state.officeEdit.draft, Number(trigger.dataset.index));
+    paintOfficeEditor(true);
+  } else if (action === "editor-save") {
+    flushEditorField();
+    await saveOfficeEdit();
+  } else if (action === "editor-restore") {
+    await restoreOfficeEdit(id);
+  } else if (action === "editor-create-task") {
+    flushEditorField();
+    await createOfficeTask();
   }
 });
 
@@ -2519,6 +2979,11 @@ document.addEventListener("submit", (event) => {
 
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.dataset.edit) applyEditorField(target);
+  if (target.dataset.action === "editor-move-task") {
+    moveOfficeTask(target.dataset.id, target.value);
+    return;
+  }
   if (target.dataset.filter) {
     state.filters[target.dataset.filter] = target.value;
     replaceBoard();
@@ -2529,6 +2994,10 @@ document.addEventListener("change", (event) => {
 
 document.addEventListener("input", (event) => {
   const target = event.target;
+  if (target.dataset.edit) {
+    applyEditorField(target);
+    return;
+  }
   if (target.dataset.filter !== "search") return;
   state.filters.search = target.value;
   replaceBoard();

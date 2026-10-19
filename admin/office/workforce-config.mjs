@@ -176,9 +176,9 @@ export function validateOfficeConfig(config) {
   };
 }
 
-// Phase 2: read the saved config for businessId from Supabase in this
-// function only, validate it, and fall back to the default template.
-// Callers and the scene stay the same.
+// Code default for an office that has no saved row. readOffice in
+// office-editor.mjs is the phase 2 read: it loads a saved config and falls
+// back to this template when the office tables are not there yet.
 export async function loadOfficeConfig(businessId) {
   void businessId;
   return clone(DEFAULT_OFFICE_CONFIG);

@@ -1415,22 +1415,27 @@ function makeChair() {
       ctx.fillStyle = "#fff6fb";
       const title = String(role || "").slice(0, 24);
       if (!custom) {
-        ctx.font = "800 62px sans-serif";
-        ctx.fillText(title, 384, 108);
+        ctx.font = "800 78px sans-serif";
+        let titlePx = 78;
+        while (titlePx > 46 && ctx.measureText(title).width > 700) {
+          titlePx -= 4;
+          ctx.font = "800 " + titlePx + "px sans-serif";
+        }
+        ctx.fillText(title, 384, 112);
         ctx.fillStyle = "rgba(255,214,236,0.94)";
-        ctx.font = "600 34px sans-serif";
-        const words = String(detail || "").split(/\s+/).filter(Boolean);
-        const lines = [];
-        let line = "";
-        words.forEach((word) => {
-          const next = line ? line + " " + word : word;
-          if (line && next.length > 36) {
-            lines.push(line);
-            line = word;
-          } else line = next;
-        });
-        if (line) lines.push(line);
-        lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, 40), 384, 188 + row * 46));
+        const detailLine = String(detail || "").replace(/\s+/g, " ").trim();
+        let detailPx = 68;
+        ctx.font = "600 " + detailPx + "px sans-serif";
+        while (detailPx > 42 && ctx.measureText(detailLine).width > 700) {
+          detailPx -= 2;
+          ctx.font = "600 " + detailPx + "px sans-serif";
+        }
+        let shown = detailLine;
+        if (ctx.measureText(shown).width > 700) {
+          while (shown.length > 1 && ctx.measureText(shown + "…").width > 700) shown = shown.slice(0, -1);
+          shown = shown.trim() + "…";
+        }
+        ctx.fillText(shown, 384, 226);
       } else {
         let rolePx = Math.round(canvasH * 0.34);
         ctx.font = "800 " + rolePx + "px sans-serif";
