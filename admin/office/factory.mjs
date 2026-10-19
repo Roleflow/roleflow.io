@@ -1,3 +1,5 @@
+import { orgLayout } from "./org.mjs";
+
 export const STATIONS = [
   "research",
   "writers_room",
@@ -35,19 +37,64 @@ export const STATION_OPTIONS = [
 ];
 
 const HOMES = {
+  "chief of staff": "chief_of_staff",
   "roleflow agent": "chief_of_staff",
-  "lead gen manager": "research",
-  "outbound rep": "writers_room",
+  "roleflow-agent": "chief_of_staff",
+  "chief revenue officer": "sales_desk",
+  cro: "sales_desk",
+  "sales desk": "sales_desk",
+  "sales-desk": "sales_desk",
+  "chief content officer": "writers_room",
+  cco: "writers_room",
   "content generator": "writers_room",
+  "content-generator": "writers_room",
+  "chief operating officer": "client_floor",
+  coo: "client_floor",
+  "saas builder": "client_floor",
   "onboarding & client success": "client_floor",
   "onboarding prompt builder": "client_floor",
+  onboarding: "client_floor",
+  "chief financial officer": "back_office",
+  cfo: "back_office",
+  finance: "back_office",
+  "finance manager": "back_office",
+  "chief technology officer": "back_office",
+  cto: "back_office",
+  "frontend engineer": "back_office",
+  frontend: "back_office",
+  "backend & database engineer": "back_office",
+  backend: "back_office",
+  "integrations engineer": "back_office",
+  integrations: "back_office",
+  "qa & release engineer": "back_office",
+  "qa-release": "back_office",
+  "security & access admin": "back_office",
+  security: "back_office",
+  "lead generation manager": "research",
+  "lead gen manager": "research",
+  "lead-gen": "research",
+  "outbound sdr": "writers_room",
+  "outbound rep": "writers_room",
+  "outbound-rep": "writers_room",
+  "inbound triage specialist": "mail_room",
+  "mail room": "mail_room",
+  "mail-room": "mail_room",
+  "crm database administrator": "sales_desk",
+  "crm-admin": "sales_desk",
+  "social media distribution manager": "shipping_dock",
   "social media manager": "shipping_dock",
   "ads manager": "shipping_dock",
-  "mail room": "mail_room",
-  "sales desk": "sales_desk",
-  finance: "back_office",
+  "ads-manager": "shipping_dock",
+  "community engagement specialist": "shipping_dock",
+  "community-engagement": "shipping_dock",
+  "paid media & partnerships specialist": "shipping_dock",
+  "paid-media": "shipping_dock",
+  "quality assurance analyst": "client_floor",
+  "setter qa": "client_floor",
+  "setter-qa": "client_floor",
+  "proof & case study specialist": "client_floor",
   "proof builder": "client_floor",
-  "setter qa": "client_floor"
+  "proof-builder": "client_floor"
 };
 
 const LABELS = {
@@ -111,48 +158,17 @@ export function cardSpot(task, agent) {
   return taskStation(task, agent) || "";
 }
 
-export function hqPlan() {
+export function hqPlan(liveAgents) {
+  const org = orgLayout(liveAgents);
   return {
-    kind: "hq",
+    kind: "org",
     brainSub: "",
-    fallback: "client_floor",
-    pipeline: [
-      { id: "research", step: "STEP 1", title: "Research", tab: "Research", blurb: "Watch competitors and read transcripts", color: 0x140c16, prop: "research" },
-      { id: "writers_room", step: "STEP 2", title: "Writers' Room", tab: "Writers' Room", blurb: "Scripts get written here", color: 0x160c1c, prop: "" },
-      { id: "film_studio", step: "STEP 3", title: "Film Studio", tab: "Film Studio", blurb: "Record in front of the ring light", color: 0x1c0c18, prop: "studio", far: -2.2, afterGate: true },
-      { id: "edit_bay", step: "STEP 4", title: "Edit Bay", tab: "Edit Bay", blurb: "One take becomes ten cuts", color: 0x120c1a, prop: "edit" },
-      { id: "shipping_dock", step: "STEP 5", title: "Shipping Dock", tab: "Shipping Dock", blurb: "Posts leave from the dock", color: 0x160e14, prop: "shipping" }
-    ],
-    floorLabels: [
-      { title: "Content pipeline", index: 0, far: 3.6, y: 2.85 }
-    ],
-    revenue: {
-      id: "revenue_floor",
-      title: "Revenue Floor",
-      tab: "Revenue Floor",
-      far: -8.2,
-      stations: [
-        { id: "mail_room", title: "Mail Room", blurb: "Inbound replies", color: 0x100c14, prop: "mail" },
-        { id: "sales_desk", title: "Sales Desk", blurb: "Call prep and proposals", color: 0x18101c, prop: "sales", next: "Next step: Sales Desk" },
-        { id: "booked_call", title: "Booked call (You)", you: true, next: "Next step: Booked call (You)" }
-      ]
-    },
-    backOffice: {
-      id: "back_office",
-      title: "Back Office",
-      tab: "Back Office",
-      blurb: "Ledger and invoices",
-      color: 0x14101c,
-      prop: "ledger",
-      index: -3.05,
-      far: -1.6
-    },
-    groups: [
-      { id: "revenue_floor", tab: "Revenue Floor" },
-      { id: "back_office", tab: "Back Office" }
-    ],
-    balcony: { id: "chief_of_staff", label: "Chief of Staff, on the balcony", eyebrow: "ON THE BALCONY", title: "Chief of Staff" },
-    side: { id: "client_floor", title: "Client Floor", tab: "Client Floor", blurb: "Onboarding, proof, and setter QA", color: 0x12101c, width: 6.8, depth: 3.7 }
+    fallback: "chief_of_staff",
+    pipeline: [],
+    groups: org.cameras,
+    balcony: null,
+    side: null,
+    org
   };
 }
 
@@ -211,6 +227,7 @@ export function withAssigned(plan, ids) {
 }
 
 export function pointsFor(plan) {
+  if (plan && plan.kind === "org" && plan.org && plan.org.points) return plan.org.points;
   const pipeline = (plan && plan.pipeline) || [];
   const count = Math.max(pipeline.length, 1);
   const start = -((count - 1) / 2);

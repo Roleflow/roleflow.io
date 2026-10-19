@@ -37,6 +37,19 @@ export function activeTask(tasks) {
   return openQueue(tasks).find((task) => task.status !== "blocked") || null;
 }
 
+const LAUNCH_STATUS = new Set(["queued", "in_progress", "blocked", "needs_diego"]);
+
+export function launchHeat(tasks) {
+  const ids = [];
+  const seen = new Set();
+  (tasks || []).forEach((task) => {
+    if (!task || !task.agent_id || !LAUNCH_STATUS.has(task.status) || seen.has(task.agent_id)) return;
+    seen.add(task.agent_id);
+    ids.push(task.agent_id);
+  });
+  return ids;
+}
+
 export function recentDone(tasks) {
   return (tasks || [])
     .filter((task) => task && task.status === "done")

@@ -1,4 +1,5 @@
 import { factoryBounds, factoryPoints, homeStation, hqPlan, pointsFor } from "./factory.mjs";
+import { launchPlan } from "./org.mjs";
 import { smoothstep, standupPhase, standupReplay } from "./standup.mjs";
 
 const STEP = 8.5;
@@ -268,6 +269,7 @@ export async function createScene(host, hooks) {
   const motes = [];
   const tetherEnds = [];
   const orbitRings = [];
+  let launchItems = [];
   let postsSign = null;
   let postsCount = Math.max(0, Math.round(Number(hooks && hooks.posts) || 0));
   let focusId = "overview";
@@ -290,6 +292,7 @@ export async function createScene(host, hooks) {
     motes.length = 0;
     tetherEnds.length = 0;
     orbitRings.length = 0;
+    launchItems = [];
     built = [];
     pickables = [];
     people.clear();
@@ -464,6 +467,28 @@ function makeChair() {
       placed.push({ agent, col: 2 + Math.floor(slot / 3), row: (slot % 3) - 1 });
     });
     return placed;
+  }
+
+  function floorLabel(text, x, z) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 160;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 768, 160);
+    ctx.fillStyle = "#ffd6ef";
+    ctx.font = "800 92px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(text || "").toUpperCase(), 384, 80);
+    const tex = new THREE.CanvasTexture(canvas);
+    owned.add(tex);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+    owned.add(mat);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.05), mat);
+    owned.add(mesh.geometry);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(x, 0.16, z);
+    return mesh;
   }
 
   function sign(text, width, height, x, y, z, tone) {
@@ -1034,9 +1059,307 @@ function makeChair() {
   const FAR_X = -0.70710678;
   const FAR_Z = -0.70710678;
 
+  function syncLaunchModes(list) {
+    const hot = [];
+    (list || []).forEach((agent) => {
+      if (agent && agent.pulse && agent.orgKey) hot.push(agent.orgKey);
+    });
+    const modes = new Map(launchPlan(hot, reduceMotion).map((edge) => [edge.from + ">" + edge.to, edge]));
+    launchItems.forEach((item) => {
+      const next = modes.get(item.id);
+      if (!next) return;
+      item.mode = next.mode;
+      item.offset = next.offset;
+      const moving = next.mode !== "rest";
+      item.mesh.visible = moving;
+      item.mesh.scale.setScalar(next.mode === "active" ? 1.45 : 1);
+    });
+  }
+
+  function flyRockets(elapsed) {
+    launchItems.forEach((item) => {
+      if (item.mode === "rest" || reduceMotion) {
+        item.mesh.visible = false;
+        return;
+      }
+      item.mesh.visible = true;
+      const speed = item.mode === "active" ? 0.38 : 0.14;
+      const t = (elapsed * speed + item.offset) % 1;
+      const x = item.from.x + (item.to.x - item.from.x) * t;
+      const y = 1.05 + Math.sin(t * Math.PI) * 0.28;
+      const z = item.from.z + (item.to.z - item.from.z) * t;
+      item.mesh.position.set(x, y, z);
+    });
+  }
+
+  function buildOrg(agents) {
+    const plan = (factoryPlan && factoryPlan.org) || { edges: [], zones: [], seats: [], points: null };
+    const points = plan.points || pointsFor(factoryPlan || hqPlan());
+    layoutPoints = points;
+    const edge = 16;
+    officeBounds = { minX: -edge, maxX: edge, minZ: -edge, maxZ: edge };
+    const floorW = officeBounds.maxX - officeBounds.minX + 1.2;
+    const floorD = officeBounds.maxZ - officeBounds.minZ + 1.2;
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x100814, emissive: 0x1a0830, emissiveIntensity: 0.35 });
+    owned.add(floorMat);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(floorW, floorD), floorMat);
+    owned.add(floor.geometry);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set((officeBounds.minX + officeBounds.maxX) / 2, 0, (officeBounds.minZ + officeBounds.maxZ) / 2);
+    scene.add(floor);
+    built.push(floor);
+
+    const neon = (w, h, d, x, y, z) => {
+      const mesh = put(box(w, h, d, pinkBasic()), x, y, z);
+      scene.add(mesh);
+      built.push(mesh);
+    };
+    neon(edge * 2, 0.06, 0.08, 0, 0.05, -edge);
+    neon(edge * 2, 0.06, 0.08, 0, 0.05, edge);
+    neon(0.08, 0.06, edge * 2, -edge, 0.05, 0);
+    neon(0.08, 0.06, edge * 2, edge, 0.05, 0);
+
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x14081c, emissive: 0x220838, emissiveIntensity: 0.45 });
+    owned.add(wallMat);
+    const backWall = put(box(edge * 2, 6.4, 0.16, wallMat), 0, 3.2, -edge);
+    const sideWall = put(box(0.16, 6.4, edge * 2, wallMat), -edge, 3.2, 0);
+    scene.add(backWall, sideWall);
+    built.push(backWall, sideWall);
+    neon(edge * 2, 0.08, 0.1, 0, 6.35, -edge);
+    neon(0.1, 0.08, edge * 2, -edge, 6.35, 0);
+    neon(0.12, 6.4, 0.12, -edge, 3.2, -edge);
+
+    function reelCard(x, y, z, rotY, caption) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 420;
+      const ctx = canvas.getContext("2d");
+      const hue = 280 + (caption.length * 17) % 40;
+      const grad = ctx.createLinearGradient(0, 0, 0, 420);
+      grad.addColorStop(0, "hsl(" + hue + ",72%,46%)");
+      grad.addColorStop(1, "#120610");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 256, 420);
+      ctx.strokeStyle = "#ff4d8d";
+      ctx.lineWidth = 10;
+      ctx.strokeRect(12, 12, 232, 396);
+      ctx.fillStyle = "rgba(255,246,251,0.94)";
+      ctx.beginPath();
+      ctx.moveTo(104, 168);
+      ctx.lineTo(104, 236);
+      ctx.lineTo(168, 202);
+      ctx.closePath();
+      ctx.fill();
+      ctx.font = "700 32px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("REEL", 128, 300);
+      ctx.font = "600 22px sans-serif";
+      ctx.fillStyle = "#ffd0ea";
+      ctx.fillText(caption, 128, 344);
+      const tex = new THREE.CanvasTexture(canvas);
+      owned.add(tex);
+      const mat = new THREE.MeshBasicMaterial({ map: tex });
+      owned.add(mat);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.95), mat);
+      owned.add(mesh.geometry);
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = rotY;
+      scene.add(mesh);
+      built.push(mesh);
+    }
+    [-8.2, -5.4, -2.6, 0.4, 3.4, 6.4].forEach((x, index) => {
+      reelCard(x, index % 2 ? 4.3 : 2.5, -edge + 0.18, 0, index % 2 ? "Draft" : "Reel");
+    });
+    [-6.5, -3.2, 0.4, 4.2].forEach((z, index) => {
+      reelCard(-edge + 0.18, index % 2 ? 4.2 : 2.4, z, Math.PI / 2, "Reel");
+    });
+
+    [[-10.6, -10.6], [-8.8, -10.6]].forEach(([x, z]) => {
+      const rack = new THREE.Group();
+      rack.position.set(x, 0, z);
+      rack.add(put(box(0.7, 2.3, 0.45, lambert(0x1a1028)), 0, 1.15, 0));
+      [0.5, 0.9, 1.3, 1.7].forEach((y, index) => {
+        rack.add(put(box(0.42, 0.08, 0.06, lambert(index % 2 ? 0xff4d8d : 0xc040ff)), 0, y, 0.24));
+      });
+      scene.add(rack);
+      built.push(rack);
+    });
+
+    function flowAnchor(key) {
+      const spot = points[key] || { x: 0, y: 0, z: 0 };
+      return { x: spot.x, y: 0.4, z: spot.z };
+    }
+
+    const lineMat = new THREE.LineDashedMaterial({ color: 0xff4d8d, dashSize: 0.45, gapSize: 0.22, transparent: true, opacity: 0.9 });
+    owned.add(lineMat);
+    (plan.edges || []).forEach((edge) => {
+      const from = flowAnchor(edge.from);
+      const to = flowAnchor(edge.to);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute([from.x, 0.4, from.z, to.x, 0.4, to.z], 3));
+      owned.add(geo);
+      const line = new THREE.Line(geo, lineMat);
+      line.computeLineDistances();
+      scene.add(line);
+      built.push(line);
+      const rocketMat = new THREE.MeshBasicMaterial({ color: edge.hop === "handoff" ? 0xffe56a : 0xfff6ea });
+      owned.add(rocketMat);
+      const rocket = new THREE.Mesh(sphereGeo(0.16), rocketMat);
+      rocket.position.set(from.x, 1.05, from.z);
+      scene.add(rocket);
+      built.push(rocket);
+      launchItems.push({
+        id: edge.from + ">" + edge.to,
+        from,
+        to,
+        mesh: rocket,
+        mode: "idle",
+        offset: launchItems.length * 0.17
+      });
+    });
+
+    const brain = new THREE.Group();
+    const brainPoint = points.brand_brain || { x: 0, y: 1.75, z: 0 };
+    brain.position.set(brainPoint.x, 0, brainPoint.z);
+    brain.add(put(box(1.7, 0.22, 1.7, lambert(0x24102c)), 0, 0.2, 0));
+    brain.add(put(box(1.85, 0.06, 1.85, pinkBasic()), 0, 0.34, 0));
+    brain.add(put(box(0.28, 0.7, 0.28, lambert(0x3a1848)), 0, 0.7, 0));
+    const brainMat = new THREE.MeshLambertMaterial({ color: 0xff4d8d, emissive: 0xff4d8d, emissiveIntensity: 0.85 });
+    const lobeMat = new THREE.MeshLambertMaterial({ color: 0xff8ad0, emissive: 0xff4d8d, emissiveIntensity: 0.55 });
+    owned.add(brainMat);
+    owned.add(lobeMat);
+    const lobeGeo = new THREE.SphereGeometry(0.62, 28, 20);
+    owned.add(lobeGeo);
+    const left = new THREE.Mesh(lobeGeo, brainMat);
+    left.scale.set(1, 0.82, 0.9);
+    left.position.set(-0.28, 1.72, 0);
+    left.name = "orb";
+    const right = new THREE.Mesh(lobeGeo, lobeMat);
+    right.scale.set(0.92, 0.78, 0.86);
+    right.position.set(0.32, 1.66, 0.05);
+    brain.add(left, right);
+    const torusGeo = new THREE.TorusGeometry(1.35, 0.025, 8, 48);
+    owned.add(torusGeo);
+    const torusMat = new THREE.MeshBasicMaterial({ color: 0xff8ad0 });
+    owned.add(torusMat);
+    [0.4, 1.15].forEach((tilt, index) => {
+      const ring = new THREE.Mesh(torusGeo, torusMat);
+      ring.rotation.x = tilt;
+      ring.rotation.y = index * 0.7;
+      ring.position.y = 1.7;
+      ring.userData.spin = 0.28 + index * 0.16;
+      brain.add(ring);
+      orbitRings.push(ring);
+    });
+    const floorRing = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.035, 8, 48), pinkBasic());
+    owned.add(floorRing.geometry);
+    floorRing.rotation.x = Math.PI / 2;
+    floorRing.position.y = 0.07;
+    brain.add(floorRing);
+    brain.add(sign("Brand Brain", 2.5, 0.48, 0, 2.85, 0));
+    addPick(brain, "brand-brain");
+    scene.add(brain);
+    built.push(brain);
+    stationLight(0xff4d8d, 0, 2.2, 0);
+    people.set("brand-brain", { id: "brand-brain", anchor: { x: 0, y: 3.35, z: 0 } });
+
+    const platform = new THREE.Group();
+    platform.add(put(box(6.4, 0.34, 6.4, lambert(0x1a1028)), 0, 0.18, 0));
+    platform.add(put(box(6.7, 0.06, 6.7, pinkBasic()), 0, 0.38, 0));
+    scene.add(platform);
+    built.push(platform);
+    stationLight(0xc040ff, 0, 2.4, 0.6);
+
+    (plan.zones || []).forEach((zone) => {
+      const members = zone.members || [];
+      if (!members.length) return;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      members.forEach((seat) => {
+        minX = Math.min(minX, seat.x);
+        maxX = Math.max(maxX, seat.x);
+        minZ = Math.min(minZ, seat.z);
+        maxZ = Math.max(maxZ, seat.z);
+      });
+      const pad = new THREE.Group();
+      const tint = new THREE.MeshLambertMaterial({ color: zone.color, emissive: zone.color, emissiveIntensity: 0.08 });
+      owned.add(tint);
+      const width = Math.max(members.length < 2 ? 6.2 : 3.4, maxX - minX + 2.4);
+      const depth = Math.max(members.length < 2 ? 5.2 : 3.2, maxZ - minZ + 2.4);
+      pad.add(put(box(width + 0.18, 0.05, depth + 0.18, pinkBasic()), (minX + maxX) / 2, 0.04, (minZ + maxZ) / 2));
+      pad.add(put(box(width, 0.07, depth, tint), (minX + maxX) / 2, 0.08, (minZ + maxZ) / 2));
+      scene.add(pad);
+      built.push(pad);
+      const chief = points[zone.chief];
+      const rad = zone.angle * Math.PI / 180;
+      const label = floorLabel(zone.title, Math.cos(rad) * 13.6, Math.sin(rad) * 13.6);
+      scene.add(label);
+      built.push(label);
+      if (chief) stationLight(zone.color, chief.x, 1.6, chief.z);
+    });
+
+    const byKey = new Map((plan.seats || []).map((seat) => [seat.key, seat]));
+    const roster = agents.filter((agent) => agent && agent.orgKey && byKey.has(agent.orgKey));
+    const meetup = points.meetup || { x: 0, z: 0 };
+    roster.forEach((agent, index) => {
+      const seat = byKey.get(agent.orgKey);
+      const len = Math.hypot(seat.x, seat.z) || 1;
+      const face = yawOf(-seat.x, -seat.z);
+      const y = seat.y || 0;
+      const desk = new THREE.Group();
+      desk.position.set(seat.x - (seat.x / len) * 0.42, y, seat.z - (seat.z / len) * 0.42);
+      desk.rotation.y = face;
+      const top = seat.role === "chief" ? 1.35 : 1.15;
+      desk.add(put(box(top + 0.12, 0.05, 0.78, pinkBasic()), 0, 0.7, 0));
+      desk.add(put(box(top, 0.07, 0.66, lambert(0x1a1024)), 0, 0.76, 0));
+      desk.add(put(box(0.42, 0.28, 0.04, lambert(0xff4d8d)), 0, 1.05, -0.22));
+      scene.add(desk);
+      built.push(desk);
+      const chair = makeChair();
+      chair.position.set(seat.x, y, seat.z);
+      chair.rotation.y = face;
+      const sitter = makeSitter(hexOf(agent.color), true);
+      sitter.position.set(seat.x, y, seat.z);
+      sitter.rotation.y = face;
+      scene.add(chair, sitter);
+      built.push(chair, sitter);
+      addPick(sitter, agent.id);
+      const walker = makeWalker(hexOf(agent.color), true);
+      walker.position.set(seat.x, 0, seat.z);
+      walker.visible = false;
+      addPick(walker, agent.id);
+      scene.add(walker);
+      built.push(walker);
+      const angle = roster.length ? -Math.PI / 2 + (index / roster.length) * Math.PI * 2 : 0;
+      const slot = { x: meetup.x + Math.cos(angle) * 1.8, z: meetup.z + Math.sin(angle) * 1.8 };
+      people.set(agent.id, {
+        id: agent.id,
+        work: agent.work,
+        errand: "",
+        sitter,
+        walker,
+        seat: { x: seat.x, z: seat.z },
+        pace: { x: seat.x, z: seat.z },
+        face,
+        path: [{ x: seat.x, z: seat.z }, { x: meetup.x, z: meetup.z }, slot],
+        errands: {},
+        slot,
+        anchor: { x: seat.x, y: y + 1.65, z: seat.z }
+      });
+    });
+    syncLaunchModes(agents);
+  }
+
   function build(agents) {
     clearBuilt();
     layoutPoints = null;
+    if (factoryMode && factoryPlan && factoryPlan.kind === "org") {
+      buildOrg(agents);
+      resize();
+      return;
+    }
     if (factoryMode) {
       buildFactory(agents);
       resize();
@@ -1384,24 +1707,52 @@ function makeChair() {
   function fitStage() {
     const target = stageTarget();
     controls.target.copy(target);
-    const dir = new THREE.Vector3(1, 0.86, 1).normalize();
-    let dist = narrowQuery.matches ? 86 : 68;
-    const samples = stageSamples();
-    for (let step = 0; step < 10; step += 1) {
+    const dir = new THREE.Vector3(1, 0.78, 1).normalize();
+    const floor = [
+      [officeBounds.minX, 0.2, officeBounds.minZ],
+      [officeBounds.maxX, 0.2, officeBounds.minZ],
+      [officeBounds.minX, 0.2, officeBounds.maxZ],
+      [officeBounds.maxX, 0.2, officeBounds.maxZ]
+    ];
+    const tall = floor.concat([
+      [officeBounds.minX, 5.4, officeBounds.minZ],
+      [officeBounds.maxX, 5.4, officeBounds.minZ]
+    ]);
+    camera.zoom = 1;
+    camera.updateProjectionMatrix();
+    const portrait = (host.clientHeight || 1) > (host.clientWidth || 1);
+    const xLimit = portrait ? 3.2 : 0.85;
+    const yLimit = portrait ? 0.72 : 0.9;
+    const heightSamples = portrait ? floor : tall;
+    let lo = 10;
+    let hi = 150;
+    let best = 150;
+    for (let step = 0; step < 18; step += 1) {
+      const dist = (lo + hi) / 2;
       camera.position.copy(target).addScaledVector(dir, dist);
       camera.lookAt(target);
       camera.updateMatrixWorld();
-      let overflow = 0;
-      samples.forEach(([x, y, z]) => {
+      let maxX = 0;
+      let maxY = 0;
+      floor.forEach(([x, y, z]) => {
         projector.set(x, y, z);
         projector.project(camera);
-        overflow = Math.max(overflow, Math.abs(projector.x) - 0.9, Math.abs(projector.y) - 0.84);
+        maxX = Math.max(maxX, Math.abs(projector.x));
       });
-      if (overflow <= 0) break;
-      dist *= 1 + Math.min(0.45, overflow);
+      heightSamples.forEach(([x, y, z]) => {
+        projector.set(x, y, z);
+        projector.project(camera);
+        maxY = Math.max(maxY, Math.abs(projector.y));
+      });
+      if (maxX > xLimit || maxY > yLimit) lo = dist;
+      else {
+        best = dist;
+        hi = dist;
+      }
     }
-    dist = Math.min(controls.maxDistance, Math.max(controls.minDistance, dist));
-    camera.position.copy(target).addScaledVector(dir, dist);
+    camera.position.copy(target).addScaledVector(dir, best);
+    controls.minDistance = 8;
+    controls.maxDistance = 160;
     controls.update();
     faceBillboards();
   }
@@ -1559,6 +1910,7 @@ function makeChair() {
     });
     if (approvalMat) approvalMat.emissiveIntensity = hot ? 0.85 + Math.sin(elapsed * 3) * 0.25 : 0.15;
     orbitRings.forEach((ring) => {
+      if (reduceMotion) return;
       ring.rotation.z += (ring.userData.spin || 0.4) * 0.01;
     });
     tetherEnds.forEach((end) => {
@@ -1584,8 +1936,9 @@ function makeChair() {
       );
     });
     faceBillboards();
+    flyRockets(elapsed);
     const orb = scene.getObjectByName("orb");
-    if (orb) {
+    if (orb && !reduceMotion) {
       const pulse = 1 + Math.sin(elapsed * 2.1) * 0.06;
       orb.scale.setScalar(pulse);
       if (orb.parent) orb.parent.children.forEach((child) => {
@@ -1597,7 +1950,12 @@ function makeChair() {
     people.forEach((person) => applyPose(person, phase, elapsed));
     controls.update();
     renderer.render(scene, camera);
-    if (hooks.onFrame) hooks.onFrame({ labels: projectLabels(), phase });
+    if (hooks.onFrame) hooks.onFrame({
+      labels: projectLabels(),
+      phase,
+      focus: focusId,
+      distance: camera.position.distanceTo(controls.target)
+    });
     window.__officePhase = phase;
   }
 
@@ -1615,11 +1973,12 @@ function makeChair() {
 
   const handle = {
     update(agents, cards) {
-      const key = agents.map((agent) => agent.id + (agent.outside ? ":o" : ":i") + ":" + agent.color + ":" + (agent.home || "")).join("|");
+      const key = agents.map((agent) => agent.id + (agent.outside ? ":o" : ":i") + ":" + agent.color + ":" + (agent.home || "") + ":" + (agent.orgKey || "") + ":" + (agent.packet || "")).join("|");
       if (key !== builtKey) {
         build(agents);
         builtKey = key;
       }
+      if (factoryPlan && factoryPlan.kind === "org") syncLaunchModes(agents);
       agents.forEach((agent) => {
         const person = people.get(agent.id);
         if (!person) return;
@@ -1653,7 +2012,7 @@ function makeChair() {
       const target = new THREE.Vector3(spot.x, (spot.y || 0) + 0.9, spot.z);
       controls.target.copy(target);
       const dir = new THREE.Vector3(1, 0.7, 1).normalize();
-      const dist = narrowQuery.matches ? 30 : 24;
+      const dist = narrowQuery.matches ? 22 : 18;
       camera.zoom = 1;
       camera.updateProjectionMatrix();
       camera.position.copy(target).addScaledVector(dir, dist);

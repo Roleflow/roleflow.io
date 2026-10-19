@@ -3,12 +3,12 @@ import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession 
 import { bindShell, toast } from "../../auth/ui.js";
 import { cronFieldsValid, nextCron, zonedParts } from "./cron.mjs";
 import { STATION_OPTIONS, STATIONS, cardSpot, homeStation, hqPlan, taskStation } from "../office/factory.mjs";
-import { activeTask, leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
+import { clip, currentDesk, deskSummary, stationVerb } from "../office/desk.mjs";
+import { bindRoster, orgPreviewFixture, rosterCounts, stackModel, unmatchedRoster } from "../office/org.mjs";
+import { leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
 
 bindShell();
-
-const DEPT_ORDER = ["Growth", "Marketing", "Sales", "Delivery & Finance"];
 const STATUSES = [
   ["queued", "Queued"],
   ["in_progress", "In progress"],
@@ -32,7 +32,7 @@ const TITLES = {
 };
 const SUBS = {
   overview: "The team, open work, and what is waiting on you.",
-  office: "The content factory. Each agent works one task at a time, and the card travels with the station.",
+  office: "Brand Brain sends rockets to the chiefs. Each chief sends them on to its specialists.",
   tasks: "Drag a card between columns, or change its status from the menu.",
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
@@ -77,7 +77,8 @@ const state = {
   confirmRetire: "",
   pendingKey: "",
   channel: null,
-  timer: 0
+  timer: 0,
+  poll: 0
 };
 
 let officeHandle = null;
@@ -322,6 +323,17 @@ function lockSvg() {
   return svg;
 }
 
+function peopleSvg() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("fill", "currentColor");
+  path.setAttribute("d", "M9 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 9 11zm7.2.6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3.4 18.6c.5-2.8 2.9-4.4 5.6-4.4s5.1 1.6 5.6 4.4a.9.9 0 0 1-.9 1.1H4.3a.9.9 0 0 1-.9-1.1zm9.2-1c.2-1.5 1.1-2.7 2.5-3.3 1.6.2 3.1.9 3.8 2.4.3.6-.2 1.3-.9 1.3h-4.8a1 1 0 0 1-.6-.4z");
+  svg.append(path);
+  return svg;
+}
+
 function diamond(kind) {
   return el("i", { class: "diamond " + kind, title: MARK[kind] || "Meeting Room" }, [
     kind === "blocked" ? lockSvg() : el("span", { text: kind === "needs" ? "!" : "" })
@@ -423,6 +435,14 @@ function subscribe() {
   });
   channel.subscribe();
   state.channel = channel;
+}
+
+function startDeskPoll() {
+  if (state.fixture || state.poll) return;
+  state.poll = window.setInterval(() => {
+    if (document.hidden || !state.ready) return;
+    scheduleReload();
+  }, 60000);
 }
 
 async function commit(run, okMessage) {
@@ -592,33 +612,50 @@ function paintChrome() {
   paintTree();
 }
 
+function seatWork(seat) {
+  return seat && seat.live ? workOf(seat.live) : "idle";
+}
+
 function paintTree() {
   const root = document.getElementById("hq-tree");
   const current = route();
   root.replaceChildren(el("p", { class: "hq-dept-label", text: "Organization" }));
   root.append(personButton({ id: "diego", name: "Diego Castanedo", title: "CEO", work: "typing" }, current));
-  const active = activeAgents();
-  const used = new Set();
-  const addGroup = (label, members) => {
+  const model = stackModel(activeAgents());
+  root.append(personButton({ id: model.cos.id, name: model.cos.name, title: "Chief of Staff · L1", work: seatWork(model.cos) }, current));
+  model.zones.forEach((zone) => {
+    const block = el("div", { class: "hq-dept" }, [el("p", { class: "hq-dept-label", text: zone.label })]);
+    const addSeat = (seat) => {
+      block.append(personButton({
+        id: seat.id,
+        name: seat.name,
+        title: seat.level + " · reports to " + seat.reportsToLabel,
+        work: seatWork(seat)
+      }, current));
+    };
+    addSeat(zone.chief);
+    const walk = (people) => {
+      people.forEach((person) => {
+        addSeat(person.seat);
+        walk(person.reports);
+      });
+    };
+    walk(zone.people);
+    root.append(block);
+  });
+  const extra = unmatchedRoster(activeAgents());
+  const outside = extra.filter((agent) => agent.outside_org || agent.department === "Outside");
+  const other = extra.filter((agent) => !agent.outside_org && agent.department !== "Outside");
+  const addExtra = (label, members) => {
     if (!members.length) return;
     const block = el("div", { class: "hq-dept" }, [el("p", { class: "hq-dept-label", text: label })]);
     members.forEach((agent) => {
-      used.add(agent.id);
-      const title = (agent.is_lead ? "Lead · " : "") + (agent.title || agent.department);
-      block.append(personButton({ id: agent.id, name: agent.name, title, work: workOf(agent) }, current));
+      block.append(personButton({ id: agent.id, name: agent.name, title: agent.title || agent.department, work: workOf(agent) }, current));
     });
     root.append(block);
   };
-  const byLead = (a, b) => Number(b.is_lead) - Number(a.is_lead) || a.sort_order - b.sort_order || a.name.localeCompare(b.name);
-  addGroup("Executive", active.filter((agent) => !agent.outside_org && agent.department === "Executive").sort(byLead));
-  DEPT_ORDER.forEach((department) => {
-    addGroup(department, active.filter((agent) => !agent.outside_org && agent.department === department).sort(byLead));
-  });
-  const extras = [...new Set(active.filter((agent) => !agent.outside_org && !used.has(agent.id) && agent.department !== "Outside").map((agent) => agent.department))];
-  extras.forEach((department) => {
-    addGroup(department, active.filter((agent) => !agent.outside_org && agent.department === department).sort(byLead));
-  });
-  addGroup("Outside", active.filter((agent) => agent.outside_org || agent.department === "Outside").sort(byLead));
+  addExtra("Also on the roster", other);
+  addExtra("Outside", outside);
 }
 
 function personButton(person, current) {
@@ -676,6 +713,16 @@ function paintPanel() {
   }
   if (target.kind === "agent") {
     const agent = agentById(target.id);
+    const seat = bindRoster(activeAgents()).find((item) => item.id === target.id);
+    if (!agent && seat) {
+      panelTitle.textContent = seat.name;
+      panelBody.replaceChildren(
+        el("p", { class: "hq-note", text: seat.level + " · " + seat.department }),
+        el("p", { text: "Reports to " + seat.reportsToLabel + "." }),
+        el("p", { class: "hq-note", text: "This seat is in the 19 Oct org. It is not on the live roster yet, so there is no task history to open." })
+      );
+      return;
+    }
     panelTitle.textContent = agent ? agent.name : "Agent";
     panelBody.replaceChildren(agent ? agentPanel(agent) : el("p", { text: "That agent is not on the roster." }));
     return;
@@ -949,29 +996,154 @@ function meetingPanel() {
   return wrap;
 }
 
+function deskOf(agent) {
+  if (!agent) return currentDesk({ tasks: [], activity: [], schedules: [], now: new Date() });
+  return currentDesk({
+    tasks: state.tasks.filter((task) => task.agent_id === agent.id),
+    activity: state.activity.filter((row) => row.agent_id === agent.id),
+    schedules: state.schedules.filter((row) => row.agent_id === agent.id),
+    now: new Date()
+  });
+}
+
+function personCard(seat) {
+  const desk = deskOf(seat.live);
+  return el("button", {
+    type: "button",
+    class: "org-person" + (seat.level === "L1" ? " org-chief" : ""),
+    "data-action": "open-agent",
+    "data-id": seat.id,
+    title: desk.full
+  }, [
+    el("strong", { text: seat.name }),
+    el("em", { class: "org-desk", text: deskSummary(desk) }),
+    el("span", { text: seat.level + " · reports to " + seat.reportsToLabel })
+  ]);
+}
+
+function nestList(people) {
+  const list = el("div", { class: "org-nested" });
+  people.forEach((person) => {
+    const wrap = el("div", {});
+    wrap.append(personCard(person.seat));
+    if (person.reports.length) wrap.append(nestList(person.reports));
+    list.append(wrap);
+  });
+  return list;
+}
+
+function orgStackNodes() {
+  const model = stackModel(activeAgents());
+  const counts = rosterCounts(state.agents);
+  const nodes = [
+    el("p", { class: "org-kicker", text: "Organization" }),
+    el("h2", { class: "org-headline", text: counts.headline }),
+    el("button", { type: "button", class: "org-person org-brain", "data-action": "open-brain" }, [
+      el("strong", { text: "Brand Brain" }),
+      el("span", { text: "Launches rockets to every chief" })
+    ]),
+    el("p", { class: "org-flow", text: "Rockets to the chiefs" }),
+    personCard(model.cos),
+    el("p", { class: "org-flow", text: "Each chief sends them on to its specialists" })
+  ];
+  model.zones.forEach((zone) => {
+    const block = el("section", { class: "org-zone" }, [
+      el("h3", { text: zone.label }),
+      personCard(zone.chief)
+    ]);
+    if (zone.people.length) block.append(nestList(zone.people));
+    nodes.push(block);
+  });
+  return nodes;
+}
+
+function closeOfficePanels() {
+  document.querySelectorAll(".office-manage, .office-tracker").forEach((panel) => {
+    panel.hidden = true;
+  });
+  document.querySelectorAll(".office-launch").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleOfficePanel(kind) {
+  const panel = document.getElementById(kind === "manage" ? "hq-manage-panel" : "hq-tracker-panel");
+  const button = document.querySelector(kind === "manage" ? "[data-action=toggle-manage]" : "[data-action=toggle-tasks]");
+  if (!panel || !button) return;
+  const willOpen = panel.hidden;
+  closeOfficePanels();
+  if (!willOpen) return;
+  panel.hidden = false;
+  button.setAttribute("aria-expanded", "true");
+}
+
+function parkOfficeLaunches() {
+  const bar = document.querySelector("body.hq-office .app-top");
+  const manage = document.querySelector(".office-launch-manage");
+  const tasks = document.querySelector(".office-launch-tasks");
+  const view = document.querySelector(".hq-office-view");
+  if (!manage || !tasks || !view) return;
+  const phone = window.matchMedia("(max-width: 760px)").matches;
+  if (phone && bar) {
+    if (manage.parentElement !== bar) bar.append(manage);
+    if (tasks.parentElement !== bar) bar.append(tasks);
+    return;
+  }
+  if (manage.parentElement !== view) view.append(manage);
+  if (tasks.parentElement !== view) view.append(tasks);
+}
+
+function paintOrgStack() {
+  const stack = document.getElementById("hq-org-stack");
+  if (stack) stack.replaceChildren(...orgStackNodes());
+}
+
 function renderOffice() {
   return el("div", { class: "hq-office-view" }, [
-    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Factory floor. Click an agent to assign work." }),
-    el("div", { id: "hq-labels" }),
-    el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
-      el("h2", { text: "Management" }),
-      el("div", { id: "hq-manage" })
+    el("div", { id: "hq-org-stack", class: "org-stack", "aria-label": "Organization" }),
+    el("div", { class: "office-stage" }, [
+      el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Organization floor. The Brand Brain launches rockets to the chiefs, and each chief sends them on to its specialists." }),
+      el("div", { id: "hq-labels" }),
+      el("div", { class: "hq-zoom" }, [
+        el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
+        el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
+      ])
     ]),
-    el("aside", { class: "office-float office-tracker", "aria-label": "Task Tracker" }, [
-      el("h2", { text: "Task Tracker" }),
+    camBar(hqPlan(activeAgents()), "hq-cam"),
+    el("button", {
+      type: "button",
+      class: "office-launch office-launch-tasks",
+      "data-action": "toggle-tasks",
+      "aria-expanded": "false",
+      "aria-controls": "hq-tracker-panel"
+    }, ["Tasks ", el("b", { id: "hq-task-count", text: "0" })]),
+    el("aside", { class: "office-float office-tracker", id: "hq-tracker-panel", hidden: true, "aria-label": "Task Tracker" }, [
+      el("div", { class: "office-float-bar" }, [
+        el("h2", { text: "Task Tracker" }),
+        el("button", { type: "button", class: "office-float-close", "data-action": "close-office-panels", "aria-label": "Close task tracker" }, ["×"])
+      ]),
       el("p", { class: "office-pending", id: "hq-pending" }, ["0 ", el("span", { text: "pending" })]),
       el("div", { id: "hq-tracker" })
+    ]),
+    el("button", {
+      type: "button",
+      class: "office-launch office-launch-manage",
+      "data-action": "toggle-manage",
+      "aria-expanded": "false",
+      "aria-controls": "hq-manage-panel"
+    }, [peopleSvg(), "Management"]),
+    el("aside", { class: "office-float office-manage", id: "hq-manage-panel", hidden: true, "aria-label": "Management" }, [
+      el("div", { class: "office-float-bar" }, [
+        el("h2", { text: "Management" }),
+        el("button", { type: "button", class: "office-float-close", "data-action": "close-office-panels", "aria-label": "Close management" }, ["×"])
+      ]),
+      el("div", { id: "hq-manage" })
     ]),
     el("div", { class: "office-tools" }, [
       el("span", { id: "hq-clock" }),
       el("button", { type: "button", class: "btn ghost sm", "data-action": "replay-standup" }, ["Replay standup"]),
       el("p", { id: "hq-standup-line" })
-    ]),
-    el("div", { class: "hq-zoom" }, [
-      el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
-      el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
-    ]),
-    camBar(hqPlan(), "hq-cam")
+    ])
   ]);
 }
 
@@ -989,22 +1161,42 @@ function camBar(plan, id) {
   }, [tab.label])));
 }
 
+const floorById = new Map();
+
+function seatedRoster() {
+  const bound = bindRoster(activeAgents());
+  const live = bound.filter((seat) => seat.live);
+  return live.length ? live : bound;
+}
+
 function officeAgents() {
-  return activeAgents().map((agent) => {
-    const current = agent.status === "paused" ? null : activeTask(agentTasks(agent.id));
-    const home = homeStation(agent);
-    const station = current ? taskStation(current, agent) : home;
+  const rows = seatedRoster().map((seat) => {
+    const agent = seat.live;
+    const desk = agent ? deskOf(agent) : currentDesk({ now: new Date() });
+    const current = desk.task;
     return {
-      id: agent.id,
-      name: agent.name,
-      color: asObject(agent.avatar).color || "",
-      outside: Boolean(agent.outside_org) || agent.department === "Outside",
-      work: sceneWork(agent),
-      home,
-      errand: current && station && station !== home ? station : "",
-      taskId: current ? current.id : ""
+      id: seat.id,
+      name: seat.name,
+      badge: seat.badge,
+      title: seat.name,
+      reports: seat.reportsToLabel,
+      level: seat.level,
+      color: seat.color,
+      outside: false,
+      work: agent ? sceneWork(agent) : "clear",
+      home: seat.station,
+      errand: "",
+      orgKey: seat.key,
+      zone: seat.zone,
+      pulse: Boolean(current && current.status === "in_progress"),
+      taskId: current ? current.id : "",
+      desk,
+      packet: desk.kind === "task" ? clip(desk.full, 28) : stationVerb((agent && agent.station) || seat.station)
     };
   });
+  floorById.clear();
+  rows.forEach((row) => floorById.set(row.id, row));
+  return rows;
 }
 
 function shippingCount() {
@@ -1012,21 +1204,7 @@ function shippingCount() {
 }
 
 function factoryCards() {
-  const cards = [];
-  const seen = new Set();
-  const push = (task) => {
-    if (!task || seen.has(task.id) || task.status === "done") return;
-    const spot = cardSpot(task, agentById(task.agent_id));
-    if (!spot) return;
-    seen.add(task.id);
-    cards.push({ id: task.id, title: task.title, spot, glow: task.status === "needs_diego" });
-  };
-  activeAgents().forEach((agent) => {
-    if (agent.status === "paused") return;
-    push(activeTask(agentTasks(agent.id)));
-  });
-  needsItems().forEach(push);
-  return cards;
+  return [];
 }
 
 function paintOfficeHud() {
@@ -1037,6 +1215,8 @@ function paintOfficeHud() {
   if (!manage || !tracker || !pending) return;
   const open = openTasks();
   pending.replaceChildren(document.createTextNode(String(open.length) + " "), el("span", { text: "pending" }));
+  const taskCount = document.getElementById("hq-task-count");
+  if (taskCount) taskCount.textContent = String(open.length);
   if (clock) {
     clock.textContent = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/Madrid",
@@ -1047,14 +1227,14 @@ function paintOfficeHud() {
   }
   const current = route();
   manage.replaceChildren();
-  activeAgents().forEach((agent) => {
-    const work = sceneWork(agent);
-    const button = el("button", { type: "button", class: "office-count", "data-action": "open-agent", "data-id": agent.id }, [
+  officeAgents().forEach((seat) => {
+    const work = seat.work;
+    const button = el("button", { type: "button", class: "office-count", "data-action": "open-agent", "data-id": seat.id }, [
       diamond(markerOf(work)),
-      el("span", { class: "who", text: agent.name }),
-      el("b", { text: String(openTasks(agent.id).length) })
+      el("span", { class: "who", text: seat.name }),
+      el("b", { text: String(seat.id.startsWith("org:") ? 0 : openTasks(seat.id).length) })
     ]);
-    if (current.section === "office" && current.id === agent.id) button.setAttribute("aria-current", "true");
+    if (current.section === "office" && current.id === seat.id) button.setAttribute("aria-current", "true");
     manage.append(button);
   });
   tracker.replaceChildren();
@@ -1068,9 +1248,79 @@ function paintOfficeHud() {
   });
 }
 
-function placeOfficeBadges(items) {
+function separateBadges(nodes) {
+  const items = [];
+  nodes.forEach((node) => {
+    if (!node || node.hidden) return;
+    const x = parseFloat(node.style.left) || 0;
+    const y = parseFloat(node.style.top) || 0;
+    items.push({
+      node,
+      x,
+      y,
+      ox: x,
+      oy: y,
+      w: Math.max(node.offsetWidth || 0, 72),
+      h: Math.max(node.offsetHeight || 0, 22)
+    });
+  });
+  const limit = 18;
+  for (let pass = 0; pass < 8; pass += 1) {
+    let moved = false;
+    for (let i = 0; i < items.length; i += 1) {
+      for (let j = 0; j < i; j += 1) {
+        const a = items[i];
+        const b = items[j];
+        const overlapX = (a.w + b.w) / 2 + 6 - Math.abs(a.x - b.x);
+        const overlapY = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapY <= overlapX) a.y += (a.y >= b.y ? 1 : -1) * Math.min(overlapY, 6);
+        else a.x += (a.x >= b.x ? 1 : -1) * Math.min(overlapX, 6);
+        a.x = Math.max(a.ox - limit, Math.min(a.ox + limit, a.x));
+        a.y = Math.max(a.oy - limit, Math.min(a.oy + limit, a.y));
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  items.forEach((item) => {
+    item.node.style.left = item.x + "px";
+    item.node.style.top = item.y + "px";
+  });
+}
+
+function dotKind(desk) {
+  if (!desk || desk.kind !== "task") return "idle";
+  if (desk.status === "in_progress" || desk.status === "blocked" || desk.status === "needs_diego" || desk.status === "queued") return desk.status;
+  return "idle";
+}
+
+function placeOfficeBadges(items, focus, distance) {
   const labels = document.getElementById("hq-labels");
   if (!labels) return;
+  const zoneFocus = focus && focus !== "overview" ? focus : "";
+  const close = Number(distance) > 0 && Number(distance) < 26;
+  const reveal = new Set();
+  if (zoneFocus) {
+    items.filter((item) => {
+      const seated = floorById.get(item.id);
+      if (!seated) return false;
+      if (zoneFocus === "chief_of_staff") return seated.orgKey === "cos";
+      return seated.zone === zoneFocus;
+    }).slice(0, 6).forEach((item) => reveal.add(item.id));
+  } else if (close) {
+    const width = labels.clientWidth || 1;
+    const height = labels.clientHeight || 1;
+    items.filter((item) => item.id !== "brand-brain" && item.id !== "meeting")
+      .slice()
+      .sort((a, b) => {
+        const da = Math.hypot((a.x || 0) - width / 2, (a.y || 0) - height / 2);
+        const db = Math.hypot((b.x || 0) - width / 2, (b.y || 0) - height / 2);
+        return da - db;
+      })
+      .slice(0, 6)
+      .forEach((item) => reveal.add(item.id));
+  }
   const seen = new Set();
   items.forEach((item) => {
     seen.add(item.id);
@@ -1087,28 +1337,27 @@ function placeOfficeBadges(items) {
       officeBadges.set(item.id, node);
     }
     const brain = item.id === "brand-brain";
+    const seated = floorById.get(item.id);
     const agent = item.id === "meeting" || brain ? null : agentById(item.id);
-    const marker = item.id === "meeting" || brain ? "meet" : markerOf(sceneWork(agent));
-    const name = item.id === "meeting" ? "Meeting Room" : brain ? "Brand Brain" : (agent ? agent.name : "");
-    const current = agent ? activeTask(agentTasks(agent.id)) : null;
-    const progress = current ? progressOf(current, new Date()) : null;
-    const flash = agent ? flashFor(agent.id) : null;
-    const bubble = agent ? statusBubble(sceneWork(agent), current && current.title) : "";
-    const sig = [marker, name, bubble, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
+    const name = item.id === "meeting" ? "Meeting Room" : brain ? "Brand Brain" : (seated ? seated.badge : (agent ? agent.name : ""));
+    const full = seated ? seated.name : name;
+    const desk = seated && seated.desk ? seated.desk : (agent ? deskOf(agent) : null);
+    const kind = brain || item.id === "meeting" ? "meet" : dotKind(desk);
+    const card = desk && desk.kind === "task" ? deskSummary(desk) : (desk ? desk.short : "");
+    const sig = [name, kind, card, reveal.has(item.id) ? "1" : "0"].join("|");
+    node.classList.toggle("show-card", reveal.has(item.id) && !brain && item.id !== "meeting");
     if (node.dataset.sig !== sig) {
       node.dataset.sig = sig;
-      const bar = progress ? el("span", { class: "office-progress", "aria-hidden": "true" }, [el("i")]) : null;
-      if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
-      node.replaceChildren(...[
-        brain || item.id === "meeting" ? el("i", { class: "diamond meet", title: brain ? "Brand Brain" : "Meeting Room" }) : diamond(marker),
-        el("span", { class: "office-pill", text: name }),
-        flash ? el("span", { class: "office-check", text: "Done · " + flash.title }) : null,
-        bubble ? el("span", { class: "office-taskline", text: bubble }) : null,
-        bar,
-        progress ? el("span", { class: "office-left", text: leftLabel(progress) }) : null
-      ].filter((child) => child != null && child !== false));
-      const detail = current ? ", " + current.title + ", " + leftLabel(progress) : "";
-      node.setAttribute("aria-label", brain ? "Brand Brain" : name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
+      const kids = [
+        el("span", { class: "office-tag" }, [
+          el("i", { class: "office-dot " + kind }),
+          el("span", { class: "office-pill", text: name })
+        ])
+      ];
+      if (card) kids.push(el("span", { class: "office-card", text: card }));
+      node.replaceChildren(...kids);
+      node.title = desk && desk.full ? desk.full : full;
+      node.setAttribute("aria-label", full + (desk && desk.full ? ", " + desk.full : ""));
     }
     node.style.left = item.x + "px";
     node.style.top = item.y + "px";
@@ -1120,6 +1369,7 @@ function placeOfficeBadges(items) {
       officeBadges.delete(id);
     }
   });
+  separateBadges([...officeBadges.values()]);
 }
 
 function phaseLine(phase) {
@@ -1157,7 +1407,7 @@ async function mountOffice() {
     if (token !== officeToken || !document.body.contains(host)) return;
     officeHandle = await mod.createScene(host, {
       layout: "factory",
-      plan: hqPlan(),
+      plan: hqPlan(activeAgents()),
       posts: shippingCount(),
       onSelect(id) {
         if (id === "meeting") go("#office/meeting");
@@ -1166,7 +1416,7 @@ async function mountOffice() {
         else go("#office/" + id);
       },
       onFrame(payload) {
-        placeOfficeBadges(payload.labels || []);
+        placeOfficeBadges(payload.labels || [], payload.focus, payload.distance);
         phaseLine(payload.phase);
       }
     });
@@ -1177,6 +1427,8 @@ async function mountOffice() {
     }
     officeHandle.setLoop(() => location.hash === "#standup");
     officeHandle.update(agents, factoryCards());
+    const zone = new URLSearchParams(location.search).get("zone");
+    if (zone && officeHandle.focus) officeHandle.focus(zone);
     window.__hqOfficeReady = true;
     if (window.__officeProject) window.__hqProject = window.__officeProject;
   } catch {
@@ -1441,17 +1693,22 @@ function paint() {
       window.__hqOfficeReady = true;
     }
     paintOfficeHud();
+    paintOrgStack();
+    parkOfficeLaunches();
     window.__hqPainted = current.section;
     return;
   }
   if (current.section !== "office") {
     officeBadges.clear();
     cancelOffice();
+    document.querySelectorAll(".app-top .office-launch").forEach((node) => node.remove());
   }
   app.replaceChildren(renderSection(current.section));
   hideBoot();
   if (current.section === "office") {
     paintOfficeHud();
+    paintOrgStack();
+    parkOfficeLaunches();
     mountOffice();
   }
   window.__hqPainted = current.section;
@@ -1736,11 +1993,17 @@ async function issueKey(id) {
 document.getElementById("nav-logout").addEventListener("click", () => logout());
 
 document.addEventListener("click", async (event) => {
+  if (document.body.classList.contains("hq-office") && !event.target.closest(".office-launch, .office-float")) {
+    closeOfficePanels();
+  }
   const trigger = event.target.closest("[data-action]");
   if (!trigger) return;
   const action = trigger.dataset.action;
   const id = trigger.dataset.id || "";
-  if (action === "close-panel") closePanel();
+  if (action === "close-office-panels") closeOfficePanels();
+  else if (action === "toggle-manage") toggleOfficePanel("manage");
+  else if (action === "toggle-tasks") toggleOfficePanel("tasks");
+  else if (action === "close-panel") closePanel();
   else if (action === "open-meeting") go("#office/meeting");
   else if (action === "open-brain") go("#office/brand-brain");
   else if (action === "open-diego") go("#office/diego");
@@ -1883,7 +2146,15 @@ document.addEventListener("keydown", (event) => {
     dialog.close();
     return;
   }
+  if (document.querySelector(".office-manage:not([hidden]), .office-tracker:not([hidden])")) {
+    closeOfficePanels();
+    return;
+  }
   if (!panel.hidden) closePanel();
+});
+
+window.matchMedia("(max-width: 760px)").addEventListener("change", () => {
+  if (document.body.classList.contains("hq-office")) parkOfficeLaunches();
 });
 
 document.addEventListener("focusout", () => {
@@ -1939,12 +2210,31 @@ async function boot(supabase, user) {
     return;
   }
   subscribe();
+  startDeskPoll();
   state.ready = true;
   paint();
 }
 
+async function loadPreviewFixture() {
+  const host = location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1") return null;
+  if (window.__HQ_FIXTURE && Array.isArray(window.__HQ_FIXTURE.agents)) return window.__HQ_FIXTURE;
+  const params = new URLSearchParams(location.search);
+  if (params.get("orgpreview") !== "1") return null;
+  try {
+    const response = await fetch("live-preview.json", { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && Array.isArray(data.agents) && data.agents.length) return data;
+    }
+  } catch {
+    /* fall through to the built-in sample */
+  }
+  return orgPreviewFixture();
+}
+
 const arriving = rememberCallback(window.location.href);
-const fixture = readFixture();
+const fixture = await loadPreviewFixture();
 if (fixture) {
   state.fixture = true;
   await boot(memoryClient(fixture), FIXTURE_USER);
