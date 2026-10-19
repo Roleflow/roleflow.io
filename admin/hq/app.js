@@ -323,6 +323,17 @@ function lockSvg() {
   return svg;
 }
 
+function peopleSvg() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("fill", "currentColor");
+  path.setAttribute("d", "M9 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 9 11zm7.2.6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3.4 18.6c.5-2.8 2.9-4.4 5.6-4.4s5.1 1.6 5.6 4.4a.9.9 0 0 1-.9 1.1H4.3a.9.9 0 0 1-.9-1.1zm9.2-1c.2-1.5 1.1-2.7 2.5-3.3 1.6.2 3.1.9 3.8 2.4.3.6-.2 1.3-.9 1.3h-4.8a1 1 0 0 1-.6-.4z");
+  svg.append(path);
+  return svg;
+}
+
 function diamond(kind) {
   return el("i", { class: "diamond " + kind, title: MARK[kind] || "Meeting Room" }, [
     kind === "blocked" ? lockSvg() : el("span", { text: kind === "needs" ? "!" : "" })
@@ -583,10 +594,7 @@ function paintChrome() {
   const current = route();
   heading.textContent = TITLES[current.section];
   document.title = TITLES[current.section] + " · Agentic HQ · Roleflow";
-  const officeLine = current.section === "office"
-    ? SUBS.office + " " + rosterCounts(state.agents).headline + "."
-    : SUBS[current.section];
-  sub.textContent = officeLine + " " + DRAFT;
+  sub.textContent = SUBS[current.section] + " " + DRAFT;
   document.querySelectorAll("#hq-nav a").forEach((link) => {
     const href = link.getAttribute("href") || "";
     if (!href.startsWith("#")) {
@@ -1049,32 +1057,86 @@ function orgStackNodes() {
   return nodes;
 }
 
+function closeOfficePanels() {
+  document.querySelectorAll(".office-manage, .office-tracker").forEach((panel) => {
+    panel.hidden = true;
+  });
+  document.querySelectorAll(".office-launch").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleOfficePanel(kind) {
+  const panel = document.getElementById(kind === "manage" ? "hq-manage-panel" : "hq-tracker-panel");
+  const button = document.querySelector(kind === "manage" ? "[data-action=toggle-manage]" : "[data-action=toggle-tasks]");
+  if (!panel || !button) return;
+  const willOpen = panel.hidden;
+  closeOfficePanels();
+  if (!willOpen) return;
+  panel.hidden = false;
+  button.setAttribute("aria-expanded", "true");
+}
+
+function parkOfficeLaunches() {
+  const bar = document.querySelector("body.hq-office .app-top");
+  const manage = document.querySelector(".office-launch-manage");
+  const tasks = document.querySelector(".office-launch-tasks");
+  const view = document.querySelector(".hq-office-view");
+  if (!manage || !tasks || !view) return;
+  const phone = window.matchMedia("(max-width: 760px)").matches;
+  if (phone && bar) {
+    if (manage.parentElement !== bar) bar.append(manage);
+    if (tasks.parentElement !== bar) bar.append(tasks);
+    return;
+  }
+  if (manage.parentElement !== view) view.append(manage);
+  if (tasks.parentElement !== view) view.append(tasks);
+}
+
 function paintOrgStack() {
   const stack = document.getElementById("hq-org-stack");
   if (stack) stack.replaceChildren(...orgStackNodes());
 }
 
 function renderOffice() {
-  const counts = rosterCounts(state.agents);
   return el("div", { class: "hq-office-view" }, [
-    el("p", { class: "org-count", id: "hq-org-count" }, [
-      el("strong", { text: counts.headline })
-    ]),
     el("div", { id: "hq-org-stack", class: "org-stack", "aria-label": "Organization" }),
-    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Organization floor. The Brand Brain launches rockets to the chiefs, and each chief sends them on to its specialists." }),
-    el("div", { id: "hq-labels" }),
-    el("div", { class: "hq-zoom" }, [
-      el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
-      el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
+    el("div", { class: "office-stage" }, [
+      el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Organization floor. The Brand Brain launches rockets to the chiefs, and each chief sends them on to its specialists." }),
+      el("div", { id: "hq-labels" }),
+      el("div", { class: "hq-zoom" }, [
+        el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
+        el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
+      ])
     ]),
     camBar(hqPlan(activeAgents()), "hq-cam"),
-    el("aside", { class: "office-float office-tracker", "aria-label": "Task Tracker" }, [
-      el("h2", { text: "Task Tracker" }),
+    el("button", {
+      type: "button",
+      class: "office-launch office-launch-tasks",
+      "data-action": "toggle-tasks",
+      "aria-expanded": "false",
+      "aria-controls": "hq-tracker-panel"
+    }, ["Tasks ", el("b", { id: "hq-task-count", text: "0" })]),
+    el("aside", { class: "office-float office-tracker", id: "hq-tracker-panel", hidden: true, "aria-label": "Task Tracker" }, [
+      el("div", { class: "office-float-bar" }, [
+        el("h2", { text: "Task Tracker" }),
+        el("button", { type: "button", class: "office-float-close", "data-action": "close-office-panels", "aria-label": "Close task tracker" }, ["×"])
+      ]),
       el("p", { class: "office-pending", id: "hq-pending" }, ["0 ", el("span", { text: "pending" })]),
       el("div", { id: "hq-tracker" })
     ]),
-    el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
-      el("h2", { text: "Management" }),
+    el("button", {
+      type: "button",
+      class: "office-launch office-launch-manage",
+      "data-action": "toggle-manage",
+      "aria-expanded": "false",
+      "aria-controls": "hq-manage-panel"
+    }, [peopleSvg(), "Management"]),
+    el("aside", { class: "office-float office-manage", id: "hq-manage-panel", hidden: true, "aria-label": "Management" }, [
+      el("div", { class: "office-float-bar" }, [
+        el("h2", { text: "Management" }),
+        el("button", { type: "button", class: "office-float-close", "data-action": "close-office-panels", "aria-label": "Close management" }, ["×"])
+      ]),
       el("div", { id: "hq-manage" })
     ]),
     el("div", { class: "office-tools" }, [
@@ -1153,6 +1215,8 @@ function paintOfficeHud() {
   if (!manage || !tracker || !pending) return;
   const open = openTasks();
   pending.replaceChildren(document.createTextNode(String(open.length) + " "), el("span", { text: "pending" }));
+  const taskCount = document.getElementById("hq-task-count");
+  if (taskCount) taskCount.textContent = String(open.length);
   if (clock) {
     clock.textContent = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/Madrid",
@@ -1185,28 +1249,43 @@ function paintOfficeHud() {
 }
 
 function separateBadges(nodes) {
-  const placed = [];
+  const items = [];
   nodes.forEach((node) => {
     if (!node || node.hidden) return;
-    let x = parseFloat(node.style.left) || 0;
-    let y = parseFloat(node.style.top) || 0;
-    const w = Math.max(node.offsetWidth || 0, 78);
-    const h = Math.max(node.offsetHeight || 0, 26);
-    for (let pass = 0; pass < 10; pass += 1) {
-      let moved = false;
-      placed.forEach((other) => {
-        const overlapX = (w + other.w) / 2 + 8 - Math.abs(x - other.x);
-        const overlapY = (h + other.h) / 2 + 6 - Math.abs(y - other.y);
-        if (overlapX <= 0 || overlapY <= 0) return;
-        if (overlapY <= overlapX) y += (y >= other.y ? 1 : -1) * (overlapY + 1);
-        else x += (x >= other.x ? 1 : -1) * (overlapX + 1);
+    const x = parseFloat(node.style.left) || 0;
+    const y = parseFloat(node.style.top) || 0;
+    items.push({
+      node,
+      x,
+      y,
+      ox: x,
+      oy: y,
+      w: Math.max(node.offsetWidth || 0, 72),
+      h: Math.max(node.offsetHeight || 0, 22)
+    });
+  });
+  const limit = 18;
+  for (let pass = 0; pass < 8; pass += 1) {
+    let moved = false;
+    for (let i = 0; i < items.length; i += 1) {
+      for (let j = 0; j < i; j += 1) {
+        const a = items[i];
+        const b = items[j];
+        const overlapX = (a.w + b.w) / 2 + 6 - Math.abs(a.x - b.x);
+        const overlapY = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapY <= overlapX) a.y += (a.y >= b.y ? 1 : -1) * Math.min(overlapY, 6);
+        else a.x += (a.x >= b.x ? 1 : -1) * Math.min(overlapX, 6);
+        a.x = Math.max(a.ox - limit, Math.min(a.ox + limit, a.x));
+        a.y = Math.max(a.oy - limit, Math.min(a.oy + limit, a.y));
         moved = true;
-      });
-      if (!moved) break;
+      }
     }
-    node.style.left = x + "px";
-    node.style.top = y + "px";
-    placed.push({ x, y, w, h });
+    if (!moved) break;
+  }
+  items.forEach((item) => {
+    item.node.style.left = item.x + "px";
+    item.node.style.top = item.y + "px";
   });
 }
 
@@ -1615,18 +1694,21 @@ function paint() {
     }
     paintOfficeHud();
     paintOrgStack();
+    parkOfficeLaunches();
     window.__hqPainted = current.section;
     return;
   }
   if (current.section !== "office") {
     officeBadges.clear();
     cancelOffice();
+    document.querySelectorAll(".app-top .office-launch").forEach((node) => node.remove());
   }
   app.replaceChildren(renderSection(current.section));
   hideBoot();
   if (current.section === "office") {
     paintOfficeHud();
     paintOrgStack();
+    parkOfficeLaunches();
     mountOffice();
   }
   window.__hqPainted = current.section;
@@ -1911,11 +1993,17 @@ async function issueKey(id) {
 document.getElementById("nav-logout").addEventListener("click", () => logout());
 
 document.addEventListener("click", async (event) => {
+  if (document.body.classList.contains("hq-office") && !event.target.closest(".office-launch, .office-float")) {
+    closeOfficePanels();
+  }
   const trigger = event.target.closest("[data-action]");
   if (!trigger) return;
   const action = trigger.dataset.action;
   const id = trigger.dataset.id || "";
-  if (action === "close-panel") closePanel();
+  if (action === "close-office-panels") closeOfficePanels();
+  else if (action === "toggle-manage") toggleOfficePanel("manage");
+  else if (action === "toggle-tasks") toggleOfficePanel("tasks");
+  else if (action === "close-panel") closePanel();
   else if (action === "open-meeting") go("#office/meeting");
   else if (action === "open-brain") go("#office/brand-brain");
   else if (action === "open-diego") go("#office/diego");
@@ -2058,7 +2146,15 @@ document.addEventListener("keydown", (event) => {
     dialog.close();
     return;
   }
+  if (document.querySelector(".office-manage:not([hidden]), .office-tracker:not([hidden])")) {
+    closeOfficePanels();
+    return;
+  }
   if (!panel.hidden) closePanel();
+});
+
+window.matchMedia("(max-width: 760px)").addEventListener("change", () => {
+  if (document.body.classList.contains("hq-office")) parkOfficeLaunches();
 });
 
 document.addEventListener("focusout", () => {

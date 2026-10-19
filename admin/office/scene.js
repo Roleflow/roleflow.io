@@ -1720,6 +1720,10 @@ function makeChair() {
     ]);
     camera.zoom = 1;
     camera.updateProjectionMatrix();
+    const portrait = (host.clientHeight || 1) > (host.clientWidth || 1);
+    const xLimit = portrait ? 3.2 : 0.85;
+    const yLimit = portrait ? 0.72 : 0.9;
+    const heightSamples = portrait ? floor : tall;
     let lo = 10;
     let hi = 150;
     let best = 150;
@@ -1735,12 +1739,12 @@ function makeChair() {
         projector.project(camera);
         maxX = Math.max(maxX, Math.abs(projector.x));
       });
-      tall.forEach(([x, y, z]) => {
+      heightSamples.forEach(([x, y, z]) => {
         projector.set(x, y, z);
         projector.project(camera);
         maxY = Math.max(maxY, Math.abs(projector.y));
       });
-      if (maxX > 0.85 || maxY > 0.9) lo = dist;
+      if (maxX > xLimit || maxY > yLimit) lo = dist;
       else {
         best = dist;
         hi = dist;
