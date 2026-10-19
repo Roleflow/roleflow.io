@@ -3,12 +3,12 @@ import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession 
 import { bindShell, toast } from "../../auth/ui.js";
 import { cronFieldsValid, nextCron, zonedParts } from "./cron.mjs";
 import { STATION_OPTIONS, STATIONS, cardSpot, homeStation, hqPlan, taskStation } from "../office/factory.mjs";
-import { activeTask, leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
+import { clip, currentDesk, deskSummary, stationVerb } from "../office/desk.mjs";
+import { bindRoster, orgPreviewFixture, rosterCounts, stackModel, unmatchedRoster } from "../office/org.mjs";
+import { leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
 
 bindShell();
-
-const DEPT_ORDER = ["Growth", "Marketing", "Sales", "Delivery & Finance"];
 const STATUSES = [
   ["queued", "Queued"],
   ["in_progress", "In progress"],
@@ -32,7 +32,7 @@ const TITLES = {
 };
 const SUBS = {
   overview: "The team, open work, and what is waiting on you.",
-  office: "The content factory. Each agent works one task at a time, and the card travels with the station.",
+  office: "Brand Brain sends rockets to the chiefs. Each chief sends them on to its specialists.",
   tasks: "Drag a card between columns, or change its status from the menu.",
   needs: "Answer every pending item here. Nothing is sent until you use it somewhere else.",
   schedule: "Recurring task templates. Europe/Madrid unless you set another timezone.",
@@ -77,7 +77,8 @@ const state = {
   confirmRetire: "",
   pendingKey: "",
   channel: null,
-  timer: 0
+  timer: 0,
+  poll: 0
 };
 
 let officeHandle = null;
@@ -425,6 +426,14 @@ function subscribe() {
   state.channel = channel;
 }
 
+function startDeskPoll() {
+  if (state.fixture || state.poll) return;
+  state.poll = window.setInterval(() => {
+    if (document.hidden || !state.ready) return;
+    scheduleReload();
+  }, 60000);
+}
+
 async function commit(run, okMessage) {
   if (state.saving) return false;
   state.saving = true;
@@ -574,7 +583,10 @@ function paintChrome() {
   const current = route();
   heading.textContent = TITLES[current.section];
   document.title = TITLES[current.section] + " · Agentic HQ · Roleflow";
-  sub.textContent = SUBS[current.section] + " " + DRAFT;
+  const officeLine = current.section === "office"
+    ? SUBS.office + " " + rosterCounts(state.agents).headline + "."
+    : SUBS[current.section];
+  sub.textContent = officeLine + " " + DRAFT;
   document.querySelectorAll("#hq-nav a").forEach((link) => {
     const href = link.getAttribute("href") || "";
     if (!href.startsWith("#")) {
@@ -592,33 +604,50 @@ function paintChrome() {
   paintTree();
 }
 
+function seatWork(seat) {
+  return seat && seat.live ? workOf(seat.live) : "idle";
+}
+
 function paintTree() {
   const root = document.getElementById("hq-tree");
   const current = route();
   root.replaceChildren(el("p", { class: "hq-dept-label", text: "Organization" }));
   root.append(personButton({ id: "diego", name: "Diego Castanedo", title: "CEO", work: "typing" }, current));
-  const active = activeAgents();
-  const used = new Set();
-  const addGroup = (label, members) => {
+  const model = stackModel(activeAgents());
+  root.append(personButton({ id: model.cos.id, name: model.cos.name, title: "Chief of Staff · L1", work: seatWork(model.cos) }, current));
+  model.zones.forEach((zone) => {
+    const block = el("div", { class: "hq-dept" }, [el("p", { class: "hq-dept-label", text: zone.label })]);
+    const addSeat = (seat) => {
+      block.append(personButton({
+        id: seat.id,
+        name: seat.name,
+        title: seat.level + " · reports to " + seat.reportsToLabel,
+        work: seatWork(seat)
+      }, current));
+    };
+    addSeat(zone.chief);
+    const walk = (people) => {
+      people.forEach((person) => {
+        addSeat(person.seat);
+        walk(person.reports);
+      });
+    };
+    walk(zone.people);
+    root.append(block);
+  });
+  const extra = unmatchedRoster(activeAgents());
+  const outside = extra.filter((agent) => agent.outside_org || agent.department === "Outside");
+  const other = extra.filter((agent) => !agent.outside_org && agent.department !== "Outside");
+  const addExtra = (label, members) => {
     if (!members.length) return;
     const block = el("div", { class: "hq-dept" }, [el("p", { class: "hq-dept-label", text: label })]);
     members.forEach((agent) => {
-      used.add(agent.id);
-      const title = (agent.is_lead ? "Lead · " : "") + (agent.title || agent.department);
-      block.append(personButton({ id: agent.id, name: agent.name, title, work: workOf(agent) }, current));
+      block.append(personButton({ id: agent.id, name: agent.name, title: agent.title || agent.department, work: workOf(agent) }, current));
     });
     root.append(block);
   };
-  const byLead = (a, b) => Number(b.is_lead) - Number(a.is_lead) || a.sort_order - b.sort_order || a.name.localeCompare(b.name);
-  addGroup("Executive", active.filter((agent) => !agent.outside_org && agent.department === "Executive").sort(byLead));
-  DEPT_ORDER.forEach((department) => {
-    addGroup(department, active.filter((agent) => !agent.outside_org && agent.department === department).sort(byLead));
-  });
-  const extras = [...new Set(active.filter((agent) => !agent.outside_org && !used.has(agent.id) && agent.department !== "Outside").map((agent) => agent.department))];
-  extras.forEach((department) => {
-    addGroup(department, active.filter((agent) => !agent.outside_org && agent.department === department).sort(byLead));
-  });
-  addGroup("Outside", active.filter((agent) => agent.outside_org || agent.department === "Outside").sort(byLead));
+  addExtra("Also on the roster", other);
+  addExtra("Outside", outside);
 }
 
 function personButton(person, current) {
@@ -676,6 +705,16 @@ function paintPanel() {
   }
   if (target.kind === "agent") {
     const agent = agentById(target.id);
+    const seat = bindRoster(activeAgents()).find((item) => item.id === target.id);
+    if (!agent && seat) {
+      panelTitle.textContent = seat.name;
+      panelBody.replaceChildren(
+        el("p", { class: "hq-note", text: seat.level + " · " + seat.department }),
+        el("p", { text: "Reports to " + seat.reportsToLabel + "." }),
+        el("p", { class: "hq-note", text: "This seat is in the 19 Oct org. It is not on the live roster yet, so there is no task history to open." })
+      );
+      return;
+    }
     panelTitle.textContent = agent ? agent.name : "Agent";
     panelBody.replaceChildren(agent ? agentPanel(agent) : el("p", { text: "That agent is not on the roster." }));
     return;
@@ -949,9 +988,80 @@ function meetingPanel() {
   return wrap;
 }
 
+function deskOf(agent) {
+  if (!agent) return currentDesk({ tasks: [], activity: [], schedules: [], now: new Date() });
+  return currentDesk({
+    tasks: state.tasks.filter((task) => task.agent_id === agent.id),
+    activity: state.activity.filter((row) => row.agent_id === agent.id),
+    schedules: state.schedules.filter((row) => row.agent_id === agent.id),
+    now: new Date()
+  });
+}
+
+function personCard(seat) {
+  const desk = deskOf(seat.live);
+  return el("button", {
+    type: "button",
+    class: "org-person" + (seat.level === "L1" ? " org-chief" : ""),
+    "data-action": "open-agent",
+    "data-id": seat.id,
+    title: desk.full
+  }, [
+    el("strong", { text: seat.name }),
+    el("em", { class: "org-desk", text: deskSummary(desk) }),
+    el("span", { text: seat.level + " · reports to " + seat.reportsToLabel })
+  ]);
+}
+
+function nestList(people) {
+  const list = el("div", { class: "org-nested" });
+  people.forEach((person) => {
+    const wrap = el("div", {});
+    wrap.append(personCard(person.seat));
+    if (person.reports.length) wrap.append(nestList(person.reports));
+    list.append(wrap);
+  });
+  return list;
+}
+
+function orgStackNodes() {
+  const model = stackModel(activeAgents());
+  const counts = rosterCounts(state.agents);
+  const nodes = [
+    el("p", { class: "org-kicker", text: "Organization" }),
+    el("h2", { class: "org-headline", text: counts.headline }),
+    el("button", { type: "button", class: "org-person org-brain", "data-action": "open-brain" }, [
+      el("strong", { text: "Brand Brain" }),
+      el("span", { text: "Launches rockets to every chief" })
+    ]),
+    el("p", { class: "org-flow", text: "Rockets to the chiefs" }),
+    personCard(model.cos),
+    el("p", { class: "org-flow", text: "Each chief sends them on to its specialists" })
+  ];
+  model.zones.forEach((zone) => {
+    const block = el("section", { class: "org-zone" }, [
+      el("h3", { text: zone.label }),
+      personCard(zone.chief)
+    ]);
+    if (zone.people.length) block.append(nestList(zone.people));
+    nodes.push(block);
+  });
+  return nodes;
+}
+
+function paintOrgStack() {
+  const stack = document.getElementById("hq-org-stack");
+  if (stack) stack.replaceChildren(...orgStackNodes());
+}
+
 function renderOffice() {
+  const counts = rosterCounts(state.agents);
   return el("div", { class: "hq-office-view" }, [
-    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Factory floor. Click an agent to assign work." }),
+    el("p", { class: "org-count", id: "hq-org-count" }, [
+      el("strong", { text: counts.headline })
+    ]),
+    el("div", { id: "hq-org-stack", class: "org-stack", "aria-label": "Organization" }),
+    el("div", { id: "hq-stage", class: "hq-stage", role: "application", "aria-label": "Organization floor. The Brand Brain launches rockets to the chiefs, and each chief sends them on to its specialists." }),
     el("div", { id: "hq-labels" }),
     el("aside", { class: "office-float office-manage", "aria-label": "Management" }, [
       el("h2", { text: "Management" }),
@@ -971,7 +1081,7 @@ function renderOffice() {
       el("button", { type: "button", "data-action": "zoom-in", "aria-label": "Zoom in" }, ["+"]),
       el("button", { type: "button", "data-action": "zoom-out", "aria-label": "Zoom out" }, ["−"])
     ]),
-    camBar(hqPlan(), "hq-cam")
+    camBar(hqPlan(activeAgents()), "hq-cam")
   ]);
 }
 
@@ -989,22 +1099,41 @@ function camBar(plan, id) {
   }, [tab.label])));
 }
 
+const floorById = new Map();
+
+function seatedRoster() {
+  const bound = bindRoster(activeAgents());
+  const live = bound.filter((seat) => seat.live);
+  return live.length ? live : bound;
+}
+
 function officeAgents() {
-  return activeAgents().map((agent) => {
-    const current = agent.status === "paused" ? null : activeTask(agentTasks(agent.id));
-    const home = homeStation(agent);
-    const station = current ? taskStation(current, agent) : home;
+  const rows = seatedRoster().map((seat) => {
+    const agent = seat.live;
+    const desk = agent ? deskOf(agent) : currentDesk({ now: new Date() });
+    const current = desk.task;
     return {
-      id: agent.id,
-      name: agent.name,
-      color: asObject(agent.avatar).color || "",
-      outside: Boolean(agent.outside_org) || agent.department === "Outside",
-      work: sceneWork(agent),
-      home,
-      errand: current && station && station !== home ? station : "",
-      taskId: current ? current.id : ""
+      id: seat.id,
+      name: seat.name,
+      badge: seat.badge,
+      title: seat.name,
+      reports: seat.reportsToLabel,
+      level: seat.level,
+      color: seat.color,
+      outside: false,
+      work: agent ? sceneWork(agent) : "clear",
+      home: seat.station,
+      errand: "",
+      orgKey: seat.key,
+      pulse: Boolean(current && current.status === "in_progress"),
+      taskId: current ? current.id : "",
+      desk,
+      packet: desk.kind === "task" ? clip(desk.full, 28) : stationVerb((agent && agent.station) || seat.station)
     };
   });
+  floorById.clear();
+  rows.forEach((row) => floorById.set(row.id, row));
+  return rows;
 }
 
 function shippingCount() {
@@ -1014,18 +1143,12 @@ function shippingCount() {
 function factoryCards() {
   const cards = [];
   const seen = new Set();
-  const push = (task) => {
+  officeAgents().forEach((seat) => {
+    const task = seat.desk && seat.desk.task;
     if (!task || seen.has(task.id) || task.status === "done") return;
-    const spot = cardSpot(task, agentById(task.agent_id));
-    if (!spot) return;
     seen.add(task.id);
-    cards.push({ id: task.id, title: task.title, spot, glow: task.status === "needs_diego" });
-  };
-  activeAgents().forEach((agent) => {
-    if (agent.status === "paused") return;
-    push(activeTask(agentTasks(agent.id)));
+    cards.push({ id: task.id, title: task.title, spot: seat.orgKey, glow: task.status === "needs_diego" });
   });
-  needsItems().forEach(push);
   return cards;
 }
 
@@ -1047,14 +1170,14 @@ function paintOfficeHud() {
   }
   const current = route();
   manage.replaceChildren();
-  activeAgents().forEach((agent) => {
-    const work = sceneWork(agent);
-    const button = el("button", { type: "button", class: "office-count", "data-action": "open-agent", "data-id": agent.id }, [
+  officeAgents().forEach((seat) => {
+    const work = seat.work;
+    const button = el("button", { type: "button", class: "office-count", "data-action": "open-agent", "data-id": seat.id }, [
       diamond(markerOf(work)),
-      el("span", { class: "who", text: agent.name }),
-      el("b", { text: String(openTasks(agent.id).length) })
+      el("span", { class: "who", text: seat.name }),
+      el("b", { text: String(seat.id.startsWith("org:") ? 0 : openTasks(seat.id).length) })
     ]);
-    if (current.section === "office" && current.id === agent.id) button.setAttribute("aria-current", "true");
+    if (current.section === "office" && current.id === seat.id) button.setAttribute("aria-current", "true");
     manage.append(button);
   });
   tracker.replaceChildren();
@@ -1087,28 +1210,39 @@ function placeOfficeBadges(items) {
       officeBadges.set(item.id, node);
     }
     const brain = item.id === "brand-brain";
+    const seated = floorById.get(item.id);
     const agent = item.id === "meeting" || brain ? null : agentById(item.id);
-    const marker = item.id === "meeting" || brain ? "meet" : markerOf(sceneWork(agent));
-    const name = item.id === "meeting" ? "Meeting Room" : brain ? "Brand Brain" : (agent ? agent.name : "");
-    const current = agent ? activeTask(agentTasks(agent.id)) : null;
+    const marker = item.id === "meeting" || brain ? "meet" : markerOf(seated ? seated.work : sceneWork(agent));
+    const name = item.id === "meeting" ? "Meeting Room" : brain ? "Brand Brain" : (seated ? seated.badge : (agent ? agent.name : ""));
+    const full = seated ? seated.name : name;
+    const desk = seated && seated.desk ? seated.desk : (agent ? deskOf(agent) : null);
+    const current = desk && desk.task && desk.task.status === "in_progress" ? desk.task : null;
     const progress = current ? progressOf(current, new Date()) : null;
     const flash = agent ? flashFor(agent.id) : null;
-    const bubble = agent ? statusBubble(sceneWork(agent), current && current.title) : "";
-    const sig = [marker, name, bubble, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
+    const bubble = desk && !brain && item.id !== "meeting" ? desk.short : "";
+    const chip = desk && desk.chip ? desk.chip : "";
+    const more = desk && desk.more > 0 ? "+" + desk.more + " more" : "";
+    const sig = [marker, name, bubble, chip, more, current ? current.id : "", progress ? Math.round(progress.ratio * 100) : "", progress ? leftLabel(progress) : "", flash ? flash.id : ""].join("|");
     if (node.dataset.sig !== sig) {
       node.dataset.sig = sig;
       const bar = progress ? el("span", { class: "office-progress", "aria-hidden": "true" }, [el("i")]) : null;
       if (bar) bar.firstChild.style.width = Math.round(progress.ratio * 100) + "%";
+      const meta = chip || more ? el("span", { class: "office-deskline" }, [
+        chip ? el("span", { class: "office-chip " + (desk.status || ""), text: chip }) : null,
+        more ? el("span", { class: "office-more", text: more }) : null
+      ].filter(Boolean)) : null;
       node.replaceChildren(...[
         brain || item.id === "meeting" ? el("i", { class: "diamond meet", title: brain ? "Brand Brain" : "Meeting Room" }) : diamond(marker),
         el("span", { class: "office-pill", text: name }),
         flash ? el("span", { class: "office-check", text: "Done · " + flash.title }) : null,
-        bubble ? el("span", { class: "office-taskline", text: bubble }) : null,
+        bubble ? el("span", { class: "office-taskline", text: bubble, title: desk.full }) : null,
+        meta,
         bar,
         progress ? el("span", { class: "office-left", text: leftLabel(progress) }) : null
       ].filter((child) => child != null && child !== false));
-      const detail = current ? ", " + current.title + ", " + leftLabel(progress) : "";
-      node.setAttribute("aria-label", brain ? "Brand Brain" : name + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
+      const detail = desk && desk.full ? ", " + desk.full : "";
+      node.title = desk && desk.full ? desk.full : "";
+      node.setAttribute("aria-label", brain ? "Brand Brain" : full + (item.id === "meeting" ? "" : ", " + (MARK[marker] || "") + detail));
     }
     node.style.left = item.x + "px";
     node.style.top = item.y + "px";
@@ -1157,7 +1291,7 @@ async function mountOffice() {
     if (token !== officeToken || !document.body.contains(host)) return;
     officeHandle = await mod.createScene(host, {
       layout: "factory",
-      plan: hqPlan(),
+      plan: hqPlan(activeAgents()),
       posts: shippingCount(),
       onSelect(id) {
         if (id === "meeting") go("#office/meeting");
@@ -1441,6 +1575,7 @@ function paint() {
       window.__hqOfficeReady = true;
     }
     paintOfficeHud();
+    paintOrgStack();
     window.__hqPainted = current.section;
     return;
   }
@@ -1452,6 +1587,7 @@ function paint() {
   hideBoot();
   if (current.section === "office") {
     paintOfficeHud();
+    paintOrgStack();
     mountOffice();
   }
   window.__hqPainted = current.section;
@@ -1939,12 +2075,31 @@ async function boot(supabase, user) {
     return;
   }
   subscribe();
+  startDeskPoll();
   state.ready = true;
   paint();
 }
 
+async function loadPreviewFixture() {
+  const host = location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1") return null;
+  if (window.__HQ_FIXTURE && Array.isArray(window.__HQ_FIXTURE.agents)) return window.__HQ_FIXTURE;
+  const params = new URLSearchParams(location.search);
+  if (params.get("orgpreview") !== "1") return null;
+  try {
+    const response = await fetch("live-preview.json", { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && Array.isArray(data.agents) && data.agents.length) return data;
+    }
+  } catch {
+    /* fall through to the built-in sample */
+  }
+  return orgPreviewFixture();
+}
+
 const arriving = rememberCallback(window.location.href);
-const fixture = readFixture();
+const fixture = await loadPreviewFixture();
 if (fixture) {
   state.fixture = true;
   await boot(memoryClient(fixture), FIXTURE_USER);

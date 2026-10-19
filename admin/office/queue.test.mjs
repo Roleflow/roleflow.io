@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activeTask, leftLabel, openQueue, progressOf, taskSpot, timeline } from "./queue.mjs";
+import { activeTask, launchHeat, leftLabel, openQueue, progressOf, taskSpot, timeline } from "./queue.mjs";
 
 const tasks = [
   { id: "a", title: "Research the ICP list", status: "queued", priority: "normal", created_at: "2026-10-16T10:00:00Z" },
@@ -34,5 +34,17 @@ assert.equal(rows.find((row) => row.task.id === "d").lane, "later");
 assert.equal(rows.find((row) => row.task.id === "a").lane, "next");
 assert.equal(rows.find((row) => row.task.id === "b").lane, "later");
 assert.equal(rows.some((row) => row.task.id === "e"), false);
+
+const heated = [
+  { agent_id: "cro", status: "in_progress" },
+  { agent_id: "cro", status: "queued" },
+  { agent_id: "cfo", status: "done" },
+  { agent_id: "sdr", status: "needs_diego" },
+  { agent_id: "", status: "blocked" },
+  { agent_id: "qa", status: "blocked" }
+];
+assert.deepEqual(launchHeat(heated), ["cro", "sdr", "qa"]);
+assert.deepEqual(launchHeat([]), []);
+assert.deepEqual(launchHeat(null), []);
 
 console.log("queue ok");
