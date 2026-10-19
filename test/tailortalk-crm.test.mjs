@@ -168,7 +168,8 @@ const migrationNames = [
   "20261018130000_hq_task_station.sql",
   "20261018133520_hq_station_revenue_back_office.sql",
   "20261018140000_workforce_stations.sql",
-  "20261019103000_workforce_office_stations.sql"
+  "20261019103000_workforce_office_stations.sql",
+  "20261019140000_office_editor.sql"
 ];
 assert.deepEqual(
   migrationNames,
