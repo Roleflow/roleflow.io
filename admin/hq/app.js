@@ -1264,26 +1264,103 @@ function separateBadges(nodes) {
       h: Math.max(node.offsetHeight || 0, 22)
     });
   });
-  const limit = 18;
-  for (let pass = 0; pass < 8; pass += 1) {
+  const phone = window.matchMedia("(max-width: 760px)").matches;
+  if (!phone) {
+    const limit = 18;
+    for (let pass = 0; pass < 8; pass += 1) {
+      let moved = false;
+      for (let i = 0; i < items.length; i += 1) {
+        for (let j = 0; j < i; j += 1) {
+          const a = items[i];
+          const b = items[j];
+          const overlapX = (a.w + b.w) / 2 + 6 - Math.abs(a.x - b.x);
+          const overlapY = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+          if (overlapY <= overlapX) a.y += (a.y >= b.y ? 1 : -1) * Math.min(overlapY, 6);
+          else a.x += (a.x >= b.x ? 1 : -1) * Math.min(overlapX, 6);
+          a.x = Math.max(a.ox - limit, Math.min(a.ox + limit, a.x));
+          a.y = Math.max(a.oy - limit, Math.min(a.oy + limit, a.y));
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    items.forEach((item) => {
+      item.node.style.left = item.x + "px";
+      item.node.style.top = item.y + "px";
+    });
+    return;
+  }
+  const labels = document.getElementById("hq-labels");
+  const pad = 8;
+  const gap = 3;
+  const boxW = labels ? labels.clientWidth : 0;
+  const boxH = labels ? labels.clientHeight : 0;
+  const limit = 36;
+  items.forEach((item) => {
+    item.w = item.node.offsetWidth || item.w;
+    item.h = item.node.offsetHeight || item.h;
+  });
+  function bounds(item) {
+    const minX = boxW ? pad + item.w / 2 : item.ox - limit;
+    const maxX = boxW ? Math.max(minX, boxW - pad - item.w / 2) : item.ox + limit;
+    const minY = boxH ? pad + item.h * 1.3 : item.oy - limit;
+    const maxY = boxH ? Math.max(minY, boxH - pad + item.h * 0.3) : item.oy + limit;
+    return {
+      minX: Math.max(item.ox - limit, minX),
+      maxX: Math.min(item.ox + limit, maxX),
+      minY: Math.max(item.oy - limit, minY),
+      maxY: Math.min(item.oy + limit, maxY)
+    };
+  }
+  function room(item, axis, sign) {
+    const box = bounds(item);
+    if (axis === "x") return Math.max(0, sign > 0 ? box.maxX - item.x : item.x - box.minX);
+    return Math.max(0, sign > 0 ? box.maxY - item.y : item.y - box.minY);
+  }
+  function visualOverlap(a, b) {
+    const aTop = a.y - a.h * 1.3;
+    const bTop = b.y - b.h * 1.3;
+    return {
+      x: (a.w + b.w) / 2 + gap - Math.abs(a.x - b.x),
+      y: gap + Math.min(aTop + a.h, bTop + b.h) - Math.max(aTop, bTop)
+    };
+  }
+  function separatePair(a, b) {
+    const hit = visualOverlap(a, b);
+    if (hit.x <= 0 || hit.y <= 0) return false;
+    const axes = hit.y <= hit.x ? ["y", "x"] : ["x", "y"];
+    for (let n = 0; n < axes.length; n += 1) {
+      const axis = axes[n];
+      const amount = axis === "y" ? hit.y : hit.x;
+      let sign = Math.sign(a[axis] - b[axis]);
+      if (!sign) sign = 1;
+      const roomA = room(a, axis, sign);
+      const roomB = room(b, axis, -sign);
+      let giveA = Math.min(amount / 2, roomA);
+      let giveB = Math.min(amount - giveA, roomB);
+      const leftover = amount - giveA - giveB;
+      if (leftover > 0) giveA = Math.min(giveA + leftover, roomA);
+      if (giveA + giveB < 0.5) continue;
+      a[axis] += sign * giveA;
+      b[axis] -= sign * giveB;
+      return true;
+    }
+    return false;
+  }
+  for (let pass = 0; pass < 12; pass += 1) {
     let moved = false;
     for (let i = 0; i < items.length; i += 1) {
       for (let j = 0; j < i; j += 1) {
-        const a = items[i];
-        const b = items[j];
-        const overlapX = (a.w + b.w) / 2 + 6 - Math.abs(a.x - b.x);
-        const overlapY = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
-        if (overlapX <= 0 || overlapY <= 0) continue;
-        if (overlapY <= overlapX) a.y += (a.y >= b.y ? 1 : -1) * Math.min(overlapY, 6);
-        else a.x += (a.x >= b.x ? 1 : -1) * Math.min(overlapX, 6);
-        a.x = Math.max(a.ox - limit, Math.min(a.ox + limit, a.x));
-        a.y = Math.max(a.oy - limit, Math.min(a.oy + limit, a.y));
-        moved = true;
+        if (separatePair(items[i], items[j])) moved = true;
       }
     }
     if (!moved) break;
   }
   items.forEach((item) => {
+    const box = bounds(item);
+    item.x = Math.max(box.minX, Math.min(box.maxX, item.x));
+    item.y = Math.max(box.minY, Math.min(box.maxY, item.y));
     item.node.style.left = item.x + "px";
     item.node.style.top = item.y + "px";
   });

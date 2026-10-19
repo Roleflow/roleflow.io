@@ -1701,7 +1701,8 @@ function makeChair() {
   function fitKey() {
     const width = host.clientWidth || 1;
     const height = host.clientHeight || 1;
-    return [width, height, officeBounds.minX, officeBounds.maxX, officeBounds.minZ, officeBounds.maxZ, focusId].join(":");
+    const rosterKey = factoryPlan && factoryPlan.kind === "org" ? people.size : 0;
+    return [width, height, officeBounds.minX, officeBounds.maxX, officeBounds.minZ, officeBounds.maxZ, focusId, rosterKey].join(":");
   }
 
   function fitStage() {
@@ -1721,9 +1722,28 @@ function makeChair() {
     camera.zoom = 1;
     camera.updateProjectionMatrix();
     const portrait = (host.clientHeight || 1) > (host.clientWidth || 1);
-    const xLimit = portrait ? 3.2 : 0.85;
-    const yLimit = portrait ? 0.72 : 0.9;
-    const heightSamples = portrait ? floor : tall;
+    const seats = [];
+    if (portrait && factoryPlan && factoryPlan.kind === "org") {
+      people.forEach((person) => {
+        if (person && person.anchor) seats.push([person.anchor.x, person.anchor.y, person.anchor.z]);
+      });
+    }
+    let xLimit = 0.85;
+    let yLimit = 0.9;
+    let xSamples = floor;
+    let heightSamples = tall;
+    if (seats.length > 1) {
+      const gutter = 8 + 40;
+      const rise = 8 + 30;
+      xLimit = Math.max(0.45, 1 - (gutter * 2) / Math.max(host.clientWidth || 1, 1));
+      yLimit = Math.max(0.55, 1 - (rise * 2) / Math.max(host.clientHeight || 1, 1));
+      xSamples = seats;
+      heightSamples = seats;
+    } else if (portrait) {
+      xLimit = 3.2;
+      yLimit = 0.72;
+      heightSamples = floor;
+    }
     let lo = 10;
     let hi = 150;
     let best = 150;
@@ -1734,7 +1754,7 @@ function makeChair() {
       camera.updateMatrixWorld();
       let maxX = 0;
       let maxY = 0;
-      floor.forEach(([x, y, z]) => {
+      xSamples.forEach(([x, y, z]) => {
         projector.set(x, y, z);
         projector.project(camera);
         maxX = Math.max(maxX, Math.abs(projector.x));

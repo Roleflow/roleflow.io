@@ -178,7 +178,7 @@ body.hq-office .hq-zoom{z-index:4;bottom:78px}
   body.hq .app-shell,body.hq .app-main,body.hq main{max-width:100%;overflow-x:hidden}
   body.hq .app-side{transform:none;left:calc(-1 * min(84vw,280px) - 24px);transition:left .18s ease;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
   body.hq.nav-open .app-side{left:0;transform:none}
-  body.hq #hq-nav.app-nav{position:fixed;z-index:45;left:0;right:0;bottom:0;top:auto;display:flex;flex-direction:row;gap:2px;overflow-x:auto;width:auto;max-width:100%;margin:0;background:rgba(16,26,51,.96);border:0;border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+  body.hq #hq-nav.app-nav{position:fixed;z-index:45;left:0;right:auto;bottom:0;top:auto;display:flex;flex-direction:row;gap:2px;overflow-x:auto;width:100%;max-width:100%;margin:0;box-sizing:border-box;background:rgba(16,26,51,.96);border:0;border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
   body.hq #hq-nav.app-nav a{flex:1 0 auto;min-width:72px;min-height:52px;justify-content:center;text-align:center;font-size:.72rem;padding:6px 8px;border-radius:12px}
   body.hq .toast-stack{bottom:calc(76px + env(safe-area-inset-bottom))}
   .hq-stage{height:auto;min-height:0}
