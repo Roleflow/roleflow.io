@@ -1,4 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
+import { authReturnUrl, safeNext } from "./return-url.js";
+
+export { authReturnUrl, safeNext };
 
 export function supabaseConfig() {
   const cfg = globalThis.ROLEFLOW_SUPABASE || {};
@@ -29,14 +32,6 @@ export function getSupabase() {
   return globalThis.__roleflowSupabase;
 }
 
-export function safeNext(raw) {
-  const value = String(raw || "");
-  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("://")) {
-    return "/account/";
-  }
-  return value;
-}
-
 export async function destinationAfterLogin(supabase, next) {
   let target = safeNext(next);
   const home = target === "/account/" || target === "/account" || target === "/admin/" || target === "/admin" || target.startsWith("/admin/") || target.startsWith("/admin#");
@@ -54,7 +49,7 @@ export async function destinationAfterLogin(supabase, next) {
 }
 
 export function originPath(path) {
-  return window.location.origin + path;
+  return authReturnUrl(path, undefined, typeof window !== "undefined" ? window.location.href : "");
 }
 
 export async function logout() {

@@ -119,11 +119,11 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails.
-site_url = "http://127.0.0.1:4173"
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-# Local only. Production Site URL and redirects are set in the Supabase dashboard.
-additional_redirect_urls = ["http://127.0.0.1:4173/account/", "http://127.0.0.1:4173/reset/", "http://localhost:4173/account/", "http://localhost:4173/reset/"]
+# in emails. This file configures the local CLI only. It does not change the hosted project.
+# The dashboard Site URL must be https://www.roleflow.io, with both wildcard redirect URLs below.
+site_url = "https://www.roleflow.io"
+# Auth providers may redirect to these URLs after authentication.
+additional_redirect_urls = ["https://www.roleflow.io/**", "https://roleflow.io/**", "http://127.0.0.1:4173/**", "http://localhost:4173/**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
