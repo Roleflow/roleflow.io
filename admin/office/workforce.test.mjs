@@ -3,13 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  canvasForWindow,
   fitLabels,
   labelsFit,
   layoutOffice,
   loadOfficeConfig,
   officeConfigWithStations,
+  projectWorkforce,
   routeSummary,
-  validateOfficeConfig
+  SIGN_HALF_WIDTH,
+  validateOfficeConfig,
+  workforceSignNodes
 } from "./workforce-config.mjs";
 import {
   mapWorkforce,
@@ -85,12 +89,64 @@ function assertPhone(config, count) {
 assertPhone(fresh, 5);
 assertPhone(officeConfigWithStations(3), 3);
 assertPhone(officeConfigWithStations(7), 7);
+
+function rectsOverlap(a, b) {
+  const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return overlapX > 0.5 && overlapY > 0.5;
+}
+
+function assertDesktop(config, label) {
+  const checked = validateOfficeConfig(config);
+  assert.equal(checked.ok, true, checked.errors && checked.errors.join("; "));
+  const canvas = canvasForWindow(1440, 900);
+  assert.equal(canvas.width, 1192, "1440 window stage width");
+  assert.equal(canvas.height, 900);
+  const layout = layoutOffice(checked.value);
+  const frame = projectWorkforce(layout, canvas);
+  const boxes = frame.signs.map((box) => Object.assign({ kind: "sign" }, box))
+    .concat(frame.tags.map((box) => Object.assign({ kind: "tag" }, box)));
+  assert.equal(boxes.length, (checked.value.stations.length + 2) * 2, label + " sign and tag count");
+  boxes.forEach((box) => {
+    assert.ok(box.w > 0 && box.h > 0, label + " " + box.id);
+    assert.ok(box.x >= -0.01 && box.y >= -0.01, label + " " + box.kind + " " + box.id + " clipped at the origin");
+    assert.ok(box.x + box.w <= canvas.width + 0.01, label + " " + box.kind + " " + box.id + " clipped on the right");
+    assert.ok(box.y + box.h <= canvas.height + 0.01, label + " " + box.kind + " " + box.id + " clipped on the bottom");
+    assert.equal(rectsOverlap(box, frame.readout), false, label + " " + box.kind + " " + box.id + " intersects the readout");
+  });
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (a.id === b.id && a.kind !== b.kind) continue;
+      assert.equal(rectsOverlap(a, b), false, label + " " + a.kind + " " + a.id + " overlaps " + b.kind + " " + b.id);
+    }
+  }
+  const gutter = frame.readout.x + frame.readout.w;
+  frame.seats.forEach((seat) => {
+    assert.ok(seat.x >= gutter - 0.01, label + " " + seat.id + " sits under the readout");
+  });
+  workforceSignNodes(layout).forEach((node) => {
+    if (node.id === checked.value.brandBrain.id) {
+      assert.ok(node.signY > 3.15, label + " brain sign needs its own height");
+      return;
+    }
+    assert.equal(node.signW / 2, SIGN_HALF_WIDTH, label + " " + node.id + " half-width");
+  });
+}
+
+assert.equal(SIGN_HALF_WIDTH, 2.8);
+assertDesktop(fresh, "default");
+assertDesktop(officeConfigWithStations(7), "7 stations");
 const wide = officeConfigWithStations(7);
 wide.stations[2].role = "Stats Tracking Desk";
 assertPhone(wide, 7);
 
 const scene = read("admin/office/scene.js");
 assert.match(scene, /kind === "workforce"/);
+assert.match(scene, /projectWorkforce/);
+assert.match(scene, /workforce && !portrait/);
+assert.match(scene, /portrait \? 36 : 120/);
 assert.match(scene, /seat\.role/);
 assert.match(scene, /edge\.label/);
 assert.match(scene, /userData\.step = edge\.label/);

@@ -1,6 +1,7 @@
 import { factoryBounds, factoryPoints, homeStation, hqPlan, pointsFor } from "./factory.mjs";
 import { launchPlan } from "./org.mjs";
 import { smoothstep, standupPhase, standupReplay } from "./standup.mjs";
+import { projectWorkforce } from "./workforce-config.mjs";
 
 const STEP = 8.5;
 const ROOM = 6.05;
@@ -1393,41 +1394,73 @@ function makeChair() {
     neon(edge * 2, 0.08, 0.1, 0, 6.2, -edge);
     neon(0.1, 0.08, edge * 2, -edge, 6.2, 0);
 
-    function deskSign(role, detail, y) {
+    function deskSign(role, detail, y, size) {
+      const custom = size && Number.isFinite(size.w) && Number.isFinite(size.h);
+      const planeW = custom ? size.w : 5.6;
+      const planeH = custom ? size.h : 2.34;
+      const canvasW = 768;
+      const canvasH = custom ? Math.max(180, Math.round(canvasW * planeH / planeW)) : 320;
       const canvas = document.createElement("canvas");
-      canvas.width = 768;
-      canvas.height = 320;
+      canvas.width = canvasW;
+      canvas.height = canvasH;
       const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, 768, 320);
+      ctx.clearRect(0, 0, canvasW, canvasH);
       ctx.fillStyle = "rgba(8,6,14,0.84)";
-      ctx.fillRect(10, 12, 748, 296);
+      ctx.fillRect(10, 12, canvasW - 20, canvasH - 24);
       ctx.strokeStyle = "#ff4d8d";
       ctx.lineWidth = 8;
-      ctx.strokeRect(16, 18, 736, 284);
+      ctx.strokeRect(16, 18, canvasW - 32, canvasH - 36);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#fff6fb";
-      ctx.font = "800 62px sans-serif";
-      ctx.fillText(String(role || "").slice(0, 24), 384, 108);
-      ctx.fillStyle = "rgba(255,214,236,0.94)";
-      ctx.font = "600 34px sans-serif";
-      const words = String(detail || "").split(/\s+/).filter(Boolean);
-      const lines = [];
-      let line = "";
-      words.forEach((word) => {
-        const next = line ? line + " " + word : word;
-        if (line && next.length > 36) {
-          lines.push(line);
-          line = word;
-        } else line = next;
-      });
-      if (line) lines.push(line);
-      lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, 40), 384, 188 + row * 46));
+      const title = String(role || "").slice(0, 24);
+      if (!custom) {
+        ctx.font = "800 62px sans-serif";
+        ctx.fillText(title, 384, 108);
+        ctx.fillStyle = "rgba(255,214,236,0.94)";
+        ctx.font = "600 34px sans-serif";
+        const words = String(detail || "").split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = "";
+        words.forEach((word) => {
+          const next = line ? line + " " + word : word;
+          if (line && next.length > 36) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        });
+        if (line) lines.push(line);
+        lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, 40), 384, 188 + row * 46));
+      } else {
+        let rolePx = Math.round(canvasH * 0.34);
+        ctx.font = "800 " + rolePx + "px sans-serif";
+        while (rolePx > 36 && ctx.measureText(title).width > canvasW - 96) {
+          rolePx -= 4;
+          ctx.font = "800 " + rolePx + "px sans-serif";
+        }
+        ctx.fillText(title, canvasW / 2, canvasH * 0.4);
+        ctx.fillStyle = "rgba(255,214,236,0.94)";
+        const detailPx = Math.max(22, Math.round(rolePx * 0.42));
+        ctx.font = "600 " + detailPx + "px sans-serif";
+        const maxChars = Math.max(12, Math.floor((canvasW - 96) / (detailPx * 0.55)));
+        const words = String(detail || "").split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = "";
+        words.forEach((word) => {
+          const next = line ? line + " " + word : word;
+          if (line && next.length > maxChars) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        });
+        if (line) lines.push(line);
+        lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, maxChars + 4), canvasW / 2, canvasH * 0.68 + row * (detailPx + 8)));
+      }
       const tex = new THREE.CanvasTexture(canvas);
       owned.add(tex);
       const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
       owned.add(mat);
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 2.34), mat);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
       owned.add(mesh.geometry);
       mesh.position.set(0, y || 3.15, 0);
       billboards.push(mesh);
@@ -1510,12 +1543,20 @@ function makeChair() {
     const right = new THREE.Mesh(lobeGeo, lobeMat);
     right.scale.set(0.92, 0.78, 0.86);
     right.position.set(0.3, 1.64, 0.04);
-    brainGroup.add(left, right);
-    brainGroup.add(deskSign(brain.role || "", brain.description || "", 3.55));
+    const signY = Number.isFinite(brain.signY) ? brain.signY : 3.55;
+    const signH = Number.isFinite(brain.signH) ? brain.signH : 2.34;
+    const signW = Number.isFinite(brain.signW) ? brain.signW : 5.6;
+    const poleTop = signY - signH / 2;
+    const pole = put(box(0.08, Math.max(0.2, poleTop - 2.2), 0.08, brainMat), 0, (2.2 + poleTop) / 2, 0);
+    brainGroup.add(left, right, pole);
+    brainGroup.add(deskSign(brain.role || "", brain.description || "", signY, { w: signW, h: signH }));
     addPick(brainGroup, brain.id);
     scene.add(brainGroup);
     built.push(brainGroup);
-    people.set(brain.id, { id: brain.id, anchor: { x: brain.x || 0, y: 4.85, z: brain.z || 0 } });
+    people.set(brain.id, {
+      id: brain.id,
+      anchor: { x: brain.x || 0, y: signY + signH / 2 + 0.03, z: brain.z || 0 }
+    });
 
     const lineMat = new THREE.LineDashedMaterial({ color: 0xff4d8d, dashSize: 0.42, gapSize: 0.2, transparent: true, opacity: 0.9 });
     owned.add(lineMat);
@@ -1935,6 +1976,18 @@ function makeChair() {
     camera.updateProjectionMatrix();
     const portrait = (host.clientHeight || 1) > (host.clientWidth || 1);
     const workforce = factoryPlan && factoryPlan.kind === "workforce";
+    if (workforce && !portrait) {
+      const framed = projectWorkforce(factoryPlan.workforce || {}, {
+        width: host.clientWidth || 1,
+        height: host.clientHeight || 1
+      });
+      camera.position.copy(target).addScaledVector(dir, framed.distance);
+      controls.minDistance = 8;
+      controls.maxDistance = 160;
+      controls.update();
+      faceBillboards();
+      return;
+    }
     const seats = [];
     if (factoryPlan && ((portrait && factoryPlan.kind === "org") || workforce)) {
       people.forEach((person) => {

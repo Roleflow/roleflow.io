@@ -189,6 +189,281 @@ function polar(deg, radius) {
   return { x: Math.cos(rad) * radius, z: Math.sin(rad) * radius };
 }
 
+// Behind the ring and above the desk signs. A full-size sign in the middle
+// sits under the Chief of Staff. This spot keeps both the default floor and
+// a 7-station floor clear without pulling the camera back.
+function brainPlacement() {
+  return { x: -4.5, z: -10, signY: 7.2, signH: 1.9, signW: 4 };
+}
+
+export const SIGN_WIDTH = 5.6;
+export const SIGN_HEIGHT = 2.34;
+export const SIGN_HALF_WIDTH = SIGN_WIDTH / 2;
+const STATION_SIGN_Y = 3.15;
+const BRAIN_SIGN_Y = 3.15;
+const TAG_HEIGHT = 20;
+const SIDEBAR_WIDTH = 248;
+
+// The readout is position:absolute; left:12px; width:min(300px, 100% - 24px);
+// bottom:64px; max-height:36%. At a 1440 window the stage is 1192px wide,
+// so the panel is 300px and the content gutter is its right edge plus 8px.
+export const READOUT_LEFT = 12;
+export const READOUT_WIDTH = 300;
+export const READOUT_BOTTOM = 64;
+export const READOUT_MAX_HEIGHT = 0.36;
+
+export function canvasForWindow(windowWidth, windowHeight) {
+  const width = windowWidth > 760 ? windowWidth - SIDEBAR_WIDTH : windowWidth;
+  return { width, height: windowHeight, portrait: windowHeight > windowWidth };
+}
+
+export function readoutRect(canvas) {
+  const height = Math.min(canvas.height * READOUT_MAX_HEIGHT, canvas.height - READOUT_BOTTOM);
+  return {
+    x: READOUT_LEFT,
+    y: canvas.height - READOUT_BOTTOM - height,
+    w: Math.min(READOUT_WIDTH, canvas.width - 24),
+    h: height
+  };
+}
+
+function sub(a, b) {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function cross(a, b) {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x
+  };
+}
+
+function norm(v) {
+  const len = Math.hypot(v.x, v.y, v.z) || 1;
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+}
+
+function addScaled(origin, dir, scale) {
+  return { x: origin.x + dir.x * scale, y: origin.y + dir.y * scale, z: origin.z + dir.z * scale };
+}
+
+export function workforceSignNodes(layout) {
+  const nodes = [];
+  const push = (node, fallbackY) => {
+    if (!node || !node.id) return;
+    const signY = Number.isFinite(node.signY) ? node.signY : fallbackY;
+    const signH = Number.isFinite(node.signH) ? node.signH : SIGN_HEIGHT;
+    const signW = Number.isFinite(node.signW) ? node.signW : SIGN_WIDTH;
+    nodes.push({
+      id: node.id,
+      role: node.role || node.id,
+      x: node.x || 0,
+      z: node.z || 0,
+      signY,
+      signH,
+      signW,
+      anchorY: signY + signH / 2 + 0.03
+    });
+  };
+  (layout.seats || []).forEach((seat) => push(seat, STATION_SIGN_Y));
+  push(layout.overseer, STATION_SIGN_Y);
+  push(layout.brain, BRAIN_SIGN_Y);
+  return nodes;
+}
+
+function cameraBasis(camera, target) {
+  const look = norm(sub(target, camera));
+  const right = norm(cross(look, { x: 0, y: 1, z: 0 }));
+  const up = cross(right, look);
+  return { look, right, up };
+}
+
+function projectPoint(point, camera, basis, canvas) {
+  const fov = 32 * Math.PI / 180;
+  const f = 1 / Math.tan(fov / 2);
+  const aspect = canvas.width / Math.max(canvas.height, 1);
+  const rel = sub(point, camera);
+  const vx = dot(rel, basis.right);
+  const vy = dot(rel, basis.up);
+  const vz = dot(rel, basis.look);
+  const ndcX = (vx / vz) * (f / aspect);
+  const ndcY = (vy / vz) * f;
+  return {
+    x: (ndcX * 0.5 + 0.5) * canvas.width,
+    y: (-ndcY * 0.5 + 0.5) * canvas.height
+  };
+}
+
+function signAxes(node, camera) {
+  const toCam = norm({ x: camera.x - node.x, y: 0, z: camera.z - node.z });
+  const right = norm(cross({ x: 0, y: 1, z: 0 }, toCam));
+  return { right, up: { x: 0, y: 1, z: 0 } };
+}
+
+function rectOf(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  points.forEach((point) => {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  });
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+function overlaps(a, b) {
+  const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return ox > 0.5 && oy > 0.5;
+}
+
+function tagBox(role) {
+  return { w: labelBox(role).w, h: TAG_HEIGHT };
+}
+
+// Desktop pills use translate(-50%, -130%) and may nudge up to 18px.
+function separateDesktopTags(tags) {
+  const items = tags.map((tag) => ({
+    id: tag.id,
+    x: tag.anchorX,
+    y: tag.anchorY,
+    ox: tag.anchorX,
+    oy: tag.anchorY,
+    w: tag.w,
+    h: tag.h
+  }));
+  const limit = 18;
+  for (let pass = 0; pass < 8; pass += 1) {
+    let moved = false;
+    for (let i = 0; i < items.length; i += 1) {
+      for (let j = 0; j < i; j += 1) {
+        const a = items[i];
+        const b = items[j];
+        const overlapX = (a.w + b.w) / 2 + 6 - Math.abs(a.x - b.x);
+        const overlapY = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapY <= overlapX) a.y += (a.y >= b.y ? 1 : -1) * Math.min(overlapY, 6);
+        else a.x += (a.x >= b.x ? 1 : -1) * Math.min(overlapX, 6);
+        a.x = Math.max(a.ox - limit, Math.min(a.ox + limit, a.x));
+        a.y = Math.max(a.oy - limit, Math.min(a.oy + limit, a.y));
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return items.map((item) => ({
+    id: item.id,
+    x: item.x - item.w / 2,
+    y: item.y - item.h * 1.3,
+    w: item.w,
+    h: item.h
+  }));
+}
+
+function fitSamples(nodes, camera) {
+  const samples = [];
+  nodes.forEach((node) => {
+    const axes = signAxes(node, camera);
+    const center = { x: node.x, y: node.signY, z: node.z };
+    samples.push({ x: node.x, y: 0.2, z: node.z });
+    [-1, 1].forEach((side) => {
+      [-1, 1].forEach((vert) => {
+        samples.push({
+          x: center.x + axes.right.x * (node.signW / 2) * side,
+          y: center.y + vert * (node.signH / 2),
+          z: center.z + axes.right.z * (node.signW / 2) * side
+        });
+      });
+    });
+  });
+  return samples;
+}
+
+function cameraFor(target, distance) {
+  const dir = norm({ x: 1, y: 0.78, z: 1 });
+  return addScaled(target, dir, distance);
+}
+
+// Landscape framing. Portrait keeps the scene's existing phone fit.
+export function projectWorkforce(layout, canvas) {
+  const width = canvas.width;
+  const height = canvas.height;
+  const nodes = workforceSignNodes(layout);
+  const target = { x: 0, y: 0.8, z: 0 };
+  const left = READOUT_LEFT + Math.min(READOUT_WIDTH, width - 24) + 8;
+  const right = 8;
+  const top = 150;
+  const bottom = 72;
+  let lo = 10;
+  let hi = 220;
+  let best = 220;
+  for (let step = 0; step < 22; step += 1) {
+    const distance = (lo + hi) / 2;
+    const camera = cameraFor(target, distance);
+    const basis = cameraBasis(camera, target);
+    const samples = fitSamples(nodes, camera);
+    let fits = true;
+    for (let i = 0; i < samples.length; i += 1) {
+      const point = projectPoint(samples[i], camera, basis, canvas);
+      if (point.x < left || point.x > width - right || point.y < top || point.y > height - bottom) {
+        fits = false;
+        break;
+      }
+    }
+    if (fits) {
+      best = distance;
+      hi = distance;
+    } else lo = distance;
+  }
+  const camera = cameraFor(target, best);
+  const basis = cameraBasis(camera, target);
+  const signs = nodes.map((node) => {
+    const axes = signAxes(node, camera);
+    const center = { x: node.x, y: node.signY, z: node.z };
+    const corners = [-1, 1].flatMap((side) => [-1, 1].map((vert) => projectPoint({
+      x: center.x + axes.right.x * (node.signW / 2) * side,
+      y: center.y + vert * (node.signH / 2),
+      z: center.z + axes.right.z * (node.signW / 2) * side
+    }, camera, basis, canvas)));
+    return Object.assign({ id: node.id, role: node.role }, rectOf(corners));
+  });
+  const tags = separateDesktopTags(nodes.map((node) => {
+    const anchor = projectPoint({ x: node.x, y: node.anchorY, z: node.z }, camera, basis, canvas);
+    const box = tagBox(node.role);
+    return { id: node.id, anchorX: anchor.x, anchorY: anchor.y, w: box.w, h: box.h };
+  }));
+  const seats = nodes.map((node) => {
+    const point = projectPoint({ x: node.x, y: 0.2, z: node.z }, camera, basis, canvas);
+    return { id: node.id, x: point.x, y: point.y };
+  });
+  return { distance: best, signs, tags, seats, readout: readoutRect(canvas) };
+}
+
+export function workforceFrameFits(frame, canvas) {
+  const boxes = frame.signs.map((box) => Object.assign({ kind: "sign" }, box))
+    .concat(frame.tags.map((box) => Object.assign({ kind: "tag" }, box)));
+  for (let i = 0; i < boxes.length; i += 1) {
+    const box = boxes[i];
+    if (box.x < -0.01 || box.y < -0.01) return false;
+    if (box.x + box.w > canvas.width + 0.01 || box.y + box.h > canvas.height + 0.01) return false;
+    if (overlaps(box, frame.readout)) return false;
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const other = boxes[j];
+      if (box.id === other.id && box.kind !== other.kind) continue;
+      if (overlaps(box, other)) return false;
+    }
+  }
+  return frame.seats.every((seat) => seat.x >= frame.readout.x + frame.readout.w - 0.01);
+}
+
 export function layoutOffice(config) {
   const stations = (config && config.stations) || [];
   const count = Math.max(stations.length, 1);
@@ -199,7 +474,15 @@ export function layoutOffice(config) {
     return Object.assign({}, station, { x: spot.x, y: 0, z: spot.z, angle });
   });
   const overseer = Object.assign({}, config.overseer, { x: 0, y: 0.55, z: 1.35, center: true });
-  const brain = Object.assign({}, config.brandBrain, { x: 0, y: 1.85, z: -0.35 });
+  const brainSpot = brainPlacement();
+  const brain = Object.assign({}, config.brandBrain, {
+    x: brainSpot.x,
+    y: 1.85,
+    z: brainSpot.z,
+    signY: brainSpot.signY,
+    signH: brainSpot.signH,
+    signW: brainSpot.signW
+  });
   const points = {};
   seats.forEach((seat) => {
     points[seat.id] = { x: seat.x, y: seat.y, z: seat.z };
