@@ -211,6 +211,13 @@ assert.equal(motionFor(config, [], [{ id: "act-2", task_id: "missing", detail: "
 const withActivity = motionFor(config, [task], [{ id: "act-3", task_id: task.id, detail: "Moved" }], VAM_BUSINESS_ID);
 assert.equal(withActivity.length, 1);
 
+const ignore = read(".vercelignore");
+assert.match(ignore, /^test$/m);
+assert.match(ignore, /^supabase\/migrations$/m);
+assert.match(ignore, /^admin\/\*\*\/\*\.test\.mjs$/m);
+const ci = read(".github/workflows/node-tests.yml");
+assert.match(ci, /node --test[^\n]*"test\/\*\.test\.mjs" "admin\/\*\*\/\*\.test\.mjs"/);
+
 const migration = read("supabase/migrations/20261019103000_workforce_office_stations.sql");
 assert.match(migration, /outreach/);
 assert.match(migration, /target_comments/);
