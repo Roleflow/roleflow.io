@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { friendlyAuthError, isLoginTab, readAuthCallback } from "../auth/callback.js";
-import { authReturnUrl, siteOrigin } from "../auth/return-url.js";
+import { authReturnUrl, safeNext, siteOrigin } from "../auth/return-url.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -27,16 +27,68 @@ const pkce = readAuthCallback("https://www.roleflow.io/signup/?next=%2Fbusinesse
 assert.equal(pkce.code, "abc123");
 assert.equal(pkce.hasGrant, false);
 assert.equal(pkce.error, "");
-assert.equal(siteOrigin("http://localhost:3000/signup/?mode=login"), "https://www.roleflow.io");
+assert.equal(siteOrigin("http://localhost:3000/signup/?mode=login"), "http://localhost:3000");
+assert.equal(siteOrigin("http://127.0.0.1:3000/login/"), "http://127.0.0.1:3000");
+assert.equal(siteOrigin("https://roleflow-git-preview.vercel.app/signup/"), "https://roleflow-git-preview.vercel.app");
 assert.equal(siteOrigin("https://roleflow.io/signup/?next=%2Fbusinesses%2F"), "https://www.roleflow.io");
+assert.equal(siteOrigin("https://www.roleflow.io/login/"), "https://www.roleflow.io");
+assert.equal(siteOrigin(""), "https://www.roleflow.io");
 assert.equal(
   authReturnUrl("/signup/?mode=login", "/businesses/", "http://localhost:3000/signup/?next=%2Fbusinesses%2F&mode=login"),
+  "http://localhost:3000/signup/?mode=login&next=%2Fbusinesses%2F"
+);
+assert.equal(
+  authReturnUrl("/signup/?mode=login", "/businesses/", "https://roleflow-git-preview.vercel.app/signup/"),
+  "https://roleflow-git-preview.vercel.app/signup/?mode=login&next=%2Fbusinesses%2F"
+);
+assert.equal(
+  authReturnUrl("/signup/?mode=login", "/businesses/", "https://www.roleflow.io/signup/?mode=login"),
+  "https://www.roleflow.io/signup/?mode=login&next=%2Fbusinesses%2F"
+);
+assert.equal(
+  authReturnUrl("/signup/?mode=login", "/businesses/", "https://roleflow.io/signup/?mode=login"),
   "https://www.roleflow.io/signup/?mode=login&next=%2Fbusinesses%2F"
 );
 assert.equal(
   authReturnUrl("/login/", "https://evil.example/phish", "https://www.roleflow.io/login/"),
   "https://www.roleflow.io/login/?next=%2Faccount%2F"
 );
+assert.equal(
+  authReturnUrl("/reset/", "/\t/evil.example", "https://www.roleflow.io/reset/"),
+  "https://www.roleflow.io/reset/?next=%2Faccount%2F"
+);
+
+const rejectedNext = [
+  ["tab", "/\t/evil.example"],
+  ["tab from query", new URLSearchParams("next=%2F%09%2Fevil.example").get("next")],
+  ["cr", "/\r/evil.example"],
+  ["cr from query", new URLSearchParams("next=%2F%0D%2Fevil.example").get("next")],
+  ["lf", "/\n/evil.example"],
+  ["lf from query", new URLSearchParams("next=%2F%0A%2Fevil.example").get("next")],
+  ["backslash", "/\\evil.example"],
+  ["backslash doubled", "/\\\\evil.example"],
+  ["protocol-relative", "//evil.example"],
+  ["protocol-relative slash", "///evil.example"],
+  ["absolute external", "https://evil.example/phish"],
+  ["absolute external http", "http://evil.example/phish"],
+  ["javascript", "javascript:alert(1)"],
+  ["path that normalizes to protocol-relative", "/login/..//evil.example"]
+];
+for (const [name, value] of rejectedNext) {
+  assert.equal(safeNext(value), "/account/", name);
+  assert.equal(safeNext(value, "http://localhost:3000/login/"), "/account/", name + " on localhost");
+}
+assert.equal(safeNext("/account/"), "/account/");
+assert.equal(safeNext("/businesses/"), "/businesses/");
+assert.equal(safeNext("/businesses/?tab=1#leads"), "/businesses/?tab=1#leads");
+assert.equal(safeNext("/admin/hq/"), "/admin/hq/");
+assert.equal(safeNext("https://www.roleflow.io/account/"), "/account/");
+assert.equal(safeNext("//www.roleflow.io/businesses/"), "/businesses/");
+assert.equal(safeNext("/businesses/", "http://localhost:3000/login/"), "/businesses/");
+assert.equal(safeNext("http://localhost:3000/businesses/", "http://localhost:3000/login/"), "/businesses/");
+assert.equal(safeNext("https://www.roleflow.io/businesses/", "http://localhost:3000/login/"), "/account/");
+assert.equal(safeNext(""), "/account/");
+assert.equal(safeNext(null), "/account/");
 assert.match(read("signup/signup.js"), /authReturnUrl\(/);
 assert.match(read("signup/signup.js"), /\/signup\/\?mode=login/);
 assert.match(read("login/login.js"), /authReturnUrl\("\/login\/", next, window\.location\.href\)/);
