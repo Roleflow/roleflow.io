@@ -7,7 +7,7 @@ import { clip, currentDesk, deskSummary, stationVerb } from "../office/desk.mjs"
 import { bindRoster, orgPreviewFixture, rosterCounts, stackModel, unmatchedRoster } from "../office/org.mjs";
 import { leftLabel, madridTime, progressOf, recentDone, timeline } from "../office/queue.mjs";
 import { standupPhase } from "../office/standup.mjs";
-import { fitLabels, loadOfficeConfig, validateOfficeConfig } from "../office/workforce-config.mjs";
+import { loadOfficeConfig, validateOfficeConfig } from "../office/workforce-config.mjs";
 import { businessName, mapWorkforce, pickDefaultBusiness, workforcePreviewFixture } from "../office/workforce-model.mjs";
 
 bindShell();
@@ -1893,11 +1893,6 @@ function placeWorkforceBadges(items) {
   const labels = document.getElementById("hq-labels");
   const view = state.businessView;
   if (!labels || !view || view.missing) return;
-  const narrow = window.matchMedia("(max-width: 760px)").matches;
-  const width = labels.clientWidth || 0;
-  const height = labels.clientHeight || 0;
-  const fitted = narrow && width >= 280 && height >= 240 ? fitLabels(view.layout, { width, height }) : null;
-  const boxes = new Map((fitted || []).map((box) => [box.id, box]));
   const seen = new Set();
   items.forEach((item) => {
     const nodeInfo = workforceNode(item.id);
@@ -1909,33 +1904,23 @@ function placeWorkforceBadges(items) {
       labels.append(node);
       officeBadges.set(item.id, node);
     }
-    const box = boxes.get(item.id);
-    node.classList.toggle("fitted", Boolean(box));
-    const text = box ? nodeInfo.role : nodeInfo.short || nodeInfo.role;
-    const sig = [nodeInfo.role, text, box ? "fit" : "proj"].join("|");
+    const sig = [nodeInfo.role, nodeInfo.short || ""].join("|");
     if (node.dataset.sig !== sig) {
       node.dataset.sig = sig;
       node.replaceChildren(el("span", { class: "office-tag" }, [
         el("i", { class: "office-dot idle" }),
         el("span", { class: "office-pill", text: nodeInfo.role })
       ]));
-      if (!box && nodeInfo.short) node.append(el("span", { class: "office-card show-card", text: nodeInfo.short }));
       node.title = nodeInfo.detail || nodeInfo.role;
       node.setAttribute("aria-label", nodeInfo.role + ". " + (nodeInfo.detail || ""));
     }
+    node.classList.remove("fitted");
     node.classList.toggle("show-card", false);
-    if (box) {
-      node.style.left = box.x + "px";
-      node.style.top = box.y + "px";
-      node.style.width = box.w + "px";
-      node.style.height = box.h + "px";
-    } else {
-      node.style.left = item.x + "px";
-      node.style.top = item.y + "px";
-      node.style.width = "";
-      node.style.height = "";
-    }
-    node.hidden = box ? false : !item.visible;
+    node.style.left = item.x + "px";
+    node.style.top = item.y + "px";
+    node.style.width = "";
+    node.style.height = "";
+    node.hidden = !item.visible;
   });
   officeBadges.forEach((node, id) => {
     if (!seen.has(id)) {
@@ -1943,7 +1928,7 @@ function placeWorkforceBadges(items) {
       officeBadges.delete(id);
     }
   });
-  if (!fitted) separateBadges([...officeBadges.values()]);
+  separateBadges([...officeBadges.values()]);
 }
 
 function needsWorkforceLoad(current) {

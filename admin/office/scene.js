@@ -1,6 +1,7 @@
 import { factoryBounds, factoryPoints, homeStation, hqPlan, pointsFor } from "./factory.mjs";
 import { launchPlan } from "./org.mjs";
 import { smoothstep, standupPhase, standupReplay } from "./standup.mjs";
+import { projectWorkforce } from "./workforce-config.mjs";
 
 const STEP = 8.5;
 const ROOM = 6.05;
@@ -1366,7 +1367,7 @@ function makeChair() {
     const spec = (factoryPlan && factoryPlan.workforce) || { seats: [], edges: [], points: {}, overseer: null, brain: null };
     const points = spec.points || {};
     layoutPoints = points;
-    const edge = Math.max(16, (spec.radius || 10) + 5.5);
+    const edge = (spec.radius || 8) + 4.2;
     officeBounds = { minX: -edge, maxX: edge, minZ: -edge, maxZ: edge };
     const floorMat = new THREE.MeshLambertMaterial({ color: 0x100814, emissive: 0x1a0830, emissiveIntensity: 0.35 });
     owned.add(floorMat);
@@ -1393,6 +1394,79 @@ function makeChair() {
     neon(edge * 2, 0.08, 0.1, 0, 6.2, -edge);
     neon(0.1, 0.08, edge * 2, -edge, 6.2, 0);
 
+    function deskSign(role, detail, y, size) {
+      const custom = size && Number.isFinite(size.w) && Number.isFinite(size.h);
+      const planeW = custom ? size.w : 5.6;
+      const planeH = custom ? size.h : 2.34;
+      const canvasW = 768;
+      const canvasH = custom ? Math.max(180, Math.round(canvasW * planeH / planeW)) : 320;
+      const canvas = document.createElement("canvas");
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvasW, canvasH);
+      ctx.fillStyle = "rgba(8,6,14,0.84)";
+      ctx.fillRect(10, 12, canvasW - 20, canvasH - 24);
+      ctx.strokeStyle = "#ff4d8d";
+      ctx.lineWidth = 8;
+      ctx.strokeRect(16, 18, canvasW - 32, canvasH - 36);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff6fb";
+      const title = String(role || "").slice(0, 24);
+      if (!custom) {
+        ctx.font = "800 62px sans-serif";
+        ctx.fillText(title, 384, 108);
+        ctx.fillStyle = "rgba(255,214,236,0.94)";
+        ctx.font = "600 34px sans-serif";
+        const words = String(detail || "").split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = "";
+        words.forEach((word) => {
+          const next = line ? line + " " + word : word;
+          if (line && next.length > 36) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        });
+        if (line) lines.push(line);
+        lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, 40), 384, 188 + row * 46));
+      } else {
+        let rolePx = Math.round(canvasH * 0.34);
+        ctx.font = "800 " + rolePx + "px sans-serif";
+        while (rolePx > 36 && ctx.measureText(title).width > canvasW - 96) {
+          rolePx -= 4;
+          ctx.font = "800 " + rolePx + "px sans-serif";
+        }
+        ctx.fillText(title, canvasW / 2, canvasH * 0.4);
+        ctx.fillStyle = "rgba(255,214,236,0.94)";
+        const detailPx = Math.max(22, Math.round(rolePx * 0.42));
+        ctx.font = "600 " + detailPx + "px sans-serif";
+        const maxChars = Math.max(12, Math.floor((canvasW - 96) / (detailPx * 0.55)));
+        const words = String(detail || "").split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = "";
+        words.forEach((word) => {
+          const next = line ? line + " " + word : word;
+          if (line && next.length > maxChars) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        });
+        if (line) lines.push(line);
+        lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, maxChars + 4), canvasW / 2, canvasH * 0.68 + row * (detailPx + 8)));
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      owned.add(tex);
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+      owned.add(mat);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+      owned.add(mesh.geometry);
+      mesh.position.set(0, y || 3.15, 0);
+      billboards.push(mesh);
+      return mesh;
+    }
+
     function placePad(seat, wide) {
       if (!seat || !seat.id) return;
       const color = hexOf(seat.color || "#ff4d8d");
@@ -1405,7 +1479,7 @@ function makeChair() {
       owned.add(tint);
       pad.add(put(box(w, 0.08, d, tint), 0, 0.08, 0));
       pad.add(put(box(1.15, 0.08, 0.62, deskMat), 0.1, 0.62, 0.25));
-      pad.add(glassPanel("", seat.role || "", seat.description || "", Math.min(3.15, w - 0.25), 1.05, 0, 1.85, -0.15));
+      pad.add(deskSign(seat.role || "", seat.description || ""));
       addPick(pad, seat.id);
       scene.add(pad);
       built.push(pad);
@@ -1446,7 +1520,7 @@ function makeChair() {
         path: [{ x: seat.x || 0, z: seat.z || 0 }],
         errands: {},
         slot: { x: seat.x || 0, z: seat.z || 0 },
-        anchor: { x: seat.x || 0, y: (seat.y || 0) + 2.15, z: seat.z || 0 }
+        anchor: { x: seat.x || 0, y: 4.35, z: seat.z || 0 }
       });
     }
 
@@ -1469,16 +1543,24 @@ function makeChair() {
     const right = new THREE.Mesh(lobeGeo, lobeMat);
     right.scale.set(0.92, 0.78, 0.86);
     right.position.set(0.3, 1.64, 0.04);
-    brainGroup.add(left, right);
-    brainGroup.add(sign(brain.role || "", 2.4, 0.46, 0, 2.7, 0));
+    const signY = Number.isFinite(brain.signY) ? brain.signY : 3.55;
+    const signH = Number.isFinite(brain.signH) ? brain.signH : 2.34;
+    const signW = Number.isFinite(brain.signW) ? brain.signW : 5.6;
+    const poleTop = signY - signH / 2;
+    const pole = put(box(0.08, Math.max(0.2, poleTop - 2.2), 0.08, brainMat), 0, (2.2 + poleTop) / 2, 0);
+    brainGroup.add(left, right, pole);
+    brainGroup.add(deskSign(brain.role || "", brain.description || "", signY, { w: signW, h: signH }));
     addPick(brainGroup, brain.id);
     scene.add(brainGroup);
     built.push(brainGroup);
-    people.set(brain.id, { id: brain.id, anchor: { x: brain.x || 0, y: 3.2, z: brain.z || 0 } });
+    people.set(brain.id, {
+      id: brain.id,
+      anchor: { x: brain.x || 0, y: signY + signH / 2 + 0.03, z: brain.z || 0 }
+    });
 
     const lineMat = new THREE.LineDashedMaterial({ color: 0xff4d8d, dashSize: 0.42, gapSize: 0.2, transparent: true, opacity: 0.9 });
     owned.add(lineMat);
-    (spec.edges || []).forEach((edge, index) => {
+    (spec.edges || []).forEach((edge) => {
       const from = points[edge.from];
       const to = points[edge.to];
       if (!from || !to) return;
@@ -1496,11 +1578,9 @@ function makeChair() {
       head.rotation.y = Math.atan2(dx, dz);
       scene.add(head);
       built.push(head);
-      if (edge.label) {
-        const plate = sign(edge.label, 2.7, 0.4, from.x + dx * 0.58, 0.85 + (index % 3) * 0.32, from.z + dz * 0.58);
-        scene.add(plate);
-        built.push(plate);
-      }
+      // Route names stay on the legend line. A plate on the floor was too
+      // small to read at the overview zoom, so the dashed edge keeps the path.
+      line.userData.step = edge.label || "";
       const rocketMat = new THREE.MeshBasicMaterial({ color: edge.kind === "handoff" ? 0xffe56a : 0xfff6ea });
       owned.add(rocketMat);
       const rocket = new THREE.Mesh(sphereGeo(0.16), rocketMat);
@@ -1895,10 +1975,25 @@ function makeChair() {
     camera.zoom = 1;
     camera.updateProjectionMatrix();
     const portrait = (host.clientHeight || 1) > (host.clientWidth || 1);
+    const workforce = factoryPlan && factoryPlan.kind === "workforce";
+    if (workforce && !portrait) {
+      const framed = projectWorkforce(factoryPlan.workforce || {}, {
+        width: host.clientWidth || 1,
+        height: host.clientHeight || 1
+      });
+      camera.position.copy(target).addScaledVector(dir, framed.distance);
+      controls.minDistance = 8;
+      controls.maxDistance = 160;
+      controls.update();
+      faceBillboards();
+      return;
+    }
     const seats = [];
-    if (portrait && factoryPlan && (factoryPlan.kind === "org" || factoryPlan.kind === "workforce")) {
+    if (factoryPlan && ((portrait && factoryPlan.kind === "org") || workforce)) {
       people.forEach((person) => {
-        if (person && person.anchor) seats.push([person.anchor.x, person.anchor.y, person.anchor.z]);
+        if (!person || !person.anchor) return;
+        seats.push([person.anchor.x, person.anchor.y, person.anchor.z]);
+        if (person.seat) seats.push([person.seat.x, 0.2, person.seat.z]);
       });
     }
     let xLimit = 0.85;
@@ -1906,8 +2001,8 @@ function makeChair() {
     let xSamples = floor;
     let heightSamples = tall;
     if (seats.length > 1) {
-      const gutter = 8 + 40;
-      const rise = 8 + 30;
+      const gutter = workforce ? 8 + 64 : 8 + 40;
+      const rise = workforce ? 8 + (portrait ? 36 : 120) : 8 + 30;
       xLimit = Math.max(0.45, 1 - (gutter * 2) / Math.max(host.clientWidth || 1, 1));
       yLimit = Math.max(0.55, 1 - (rise * 2) / Math.max(host.clientHeight || 1, 1));
       xSamples = seats;
