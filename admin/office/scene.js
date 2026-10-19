@@ -1366,7 +1366,7 @@ function makeChair() {
     const spec = (factoryPlan && factoryPlan.workforce) || { seats: [], edges: [], points: {}, overseer: null, brain: null };
     const points = spec.points || {};
     layoutPoints = points;
-    const edge = Math.max(16, (spec.radius || 10) + 5.5);
+    const edge = (spec.radius || 8) + 4.2;
     officeBounds = { minX: -edge, maxX: edge, minZ: -edge, maxZ: edge };
     const floorMat = new THREE.MeshLambertMaterial({ color: 0x100814, emissive: 0x1a0830, emissiveIntensity: 0.35 });
     owned.add(floorMat);
@@ -1393,6 +1393,47 @@ function makeChair() {
     neon(edge * 2, 0.08, 0.1, 0, 6.2, -edge);
     neon(0.1, 0.08, edge * 2, -edge, 6.2, 0);
 
+    function deskSign(role, detail, y) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 768;
+      canvas.height = 320;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, 768, 320);
+      ctx.fillStyle = "rgba(8,6,14,0.84)";
+      ctx.fillRect(10, 12, 748, 296);
+      ctx.strokeStyle = "#ff4d8d";
+      ctx.lineWidth = 8;
+      ctx.strokeRect(16, 18, 736, 284);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff6fb";
+      ctx.font = "800 62px sans-serif";
+      ctx.fillText(String(role || "").slice(0, 24), 384, 108);
+      ctx.fillStyle = "rgba(255,214,236,0.94)";
+      ctx.font = "600 34px sans-serif";
+      const words = String(detail || "").split(/\s+/).filter(Boolean);
+      const lines = [];
+      let line = "";
+      words.forEach((word) => {
+        const next = line ? line + " " + word : word;
+        if (line && next.length > 36) {
+          lines.push(line);
+          line = word;
+        } else line = next;
+      });
+      if (line) lines.push(line);
+      lines.slice(0, 2).forEach((text, row) => ctx.fillText(text.slice(0, 40), 384, 188 + row * 46));
+      const tex = new THREE.CanvasTexture(canvas);
+      owned.add(tex);
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+      owned.add(mat);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 2.34), mat);
+      owned.add(mesh.geometry);
+      mesh.position.set(0, y || 3.15, 0);
+      billboards.push(mesh);
+      return mesh;
+    }
+
     function placePad(seat, wide) {
       if (!seat || !seat.id) return;
       const color = hexOf(seat.color || "#ff4d8d");
@@ -1405,7 +1446,7 @@ function makeChair() {
       owned.add(tint);
       pad.add(put(box(w, 0.08, d, tint), 0, 0.08, 0));
       pad.add(put(box(1.15, 0.08, 0.62, deskMat), 0.1, 0.62, 0.25));
-      pad.add(glassPanel("", seat.role || "", seat.description || "", Math.min(3.15, w - 0.25), 1.05, 0, 1.85, -0.15));
+      pad.add(deskSign(seat.role || "", seat.description || ""));
       addPick(pad, seat.id);
       scene.add(pad);
       built.push(pad);
@@ -1446,7 +1487,7 @@ function makeChair() {
         path: [{ x: seat.x || 0, z: seat.z || 0 }],
         errands: {},
         slot: { x: seat.x || 0, z: seat.z || 0 },
-        anchor: { x: seat.x || 0, y: (seat.y || 0) + 2.15, z: seat.z || 0 }
+        anchor: { x: seat.x || 0, y: 4.35, z: seat.z || 0 }
       });
     }
 
@@ -1470,15 +1511,15 @@ function makeChair() {
     right.scale.set(0.92, 0.78, 0.86);
     right.position.set(0.3, 1.64, 0.04);
     brainGroup.add(left, right);
-    brainGroup.add(sign(brain.role || "", 2.4, 0.46, 0, 2.7, 0));
+    brainGroup.add(deskSign(brain.role || "", brain.description || "", 3.55));
     addPick(brainGroup, brain.id);
     scene.add(brainGroup);
     built.push(brainGroup);
-    people.set(brain.id, { id: brain.id, anchor: { x: brain.x || 0, y: 3.2, z: brain.z || 0 } });
+    people.set(brain.id, { id: brain.id, anchor: { x: brain.x || 0, y: 4.85, z: brain.z || 0 } });
 
     const lineMat = new THREE.LineDashedMaterial({ color: 0xff4d8d, dashSize: 0.42, gapSize: 0.2, transparent: true, opacity: 0.9 });
     owned.add(lineMat);
-    (spec.edges || []).forEach((edge, index) => {
+    (spec.edges || []).forEach((edge) => {
       const from = points[edge.from];
       const to = points[edge.to];
       if (!from || !to) return;
@@ -1496,11 +1537,9 @@ function makeChair() {
       head.rotation.y = Math.atan2(dx, dz);
       scene.add(head);
       built.push(head);
-      if (edge.label) {
-        const plate = sign(edge.label, 2.7, 0.4, from.x + dx * 0.58, 0.85 + (index % 3) * 0.32, from.z + dz * 0.58);
-        scene.add(plate);
-        built.push(plate);
-      }
+      // Route names stay on the legend line. A plate on the floor was too
+      // small to read at the overview zoom, so the dashed edge keeps the path.
+      line.userData.step = edge.label || "";
       const rocketMat = new THREE.MeshBasicMaterial({ color: edge.kind === "handoff" ? 0xffe56a : 0xfff6ea });
       owned.add(rocketMat);
       const rocket = new THREE.Mesh(sphereGeo(0.16), rocketMat);
@@ -1895,10 +1934,13 @@ function makeChair() {
     camera.zoom = 1;
     camera.updateProjectionMatrix();
     const portrait = (host.clientHeight || 1) > (host.clientWidth || 1);
+    const workforce = factoryPlan && factoryPlan.kind === "workforce";
     const seats = [];
-    if (portrait && factoryPlan && (factoryPlan.kind === "org" || factoryPlan.kind === "workforce")) {
+    if (factoryPlan && ((portrait && factoryPlan.kind === "org") || workforce)) {
       people.forEach((person) => {
-        if (person && person.anchor) seats.push([person.anchor.x, person.anchor.y, person.anchor.z]);
+        if (!person || !person.anchor) return;
+        seats.push([person.anchor.x, person.anchor.y, person.anchor.z]);
+        if (person.seat) seats.push([person.seat.x, 0.2, person.seat.z]);
       });
     }
     let xLimit = 0.85;
@@ -1906,8 +1948,8 @@ function makeChair() {
     let xSamples = floor;
     let heightSamples = tall;
     if (seats.length > 1) {
-      const gutter = 8 + 40;
-      const rise = 8 + 30;
+      const gutter = workforce ? 8 + 64 : 8 + 40;
+      const rise = workforce ? 8 + (portrait ? 36 : 120) : 8 + 30;
       xLimit = Math.max(0.45, 1 - (gutter * 2) / Math.max(host.clientWidth || 1, 1));
       yLimit = Math.max(0.55, 1 - (rise * 2) / Math.max(host.clientHeight || 1, 1));
       xSamples = seats;

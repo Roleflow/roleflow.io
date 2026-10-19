@@ -93,11 +93,15 @@ const scene = read("admin/office/scene.js");
 assert.match(scene, /kind === "workforce"/);
 assert.match(scene, /seat\.role/);
 assert.match(scene, /edge\.label/);
+assert.match(scene, /userData\.step = edge\.label/);
 assert.match(scene, /spec\.brain/);
 assert.match(scene, /spec\.overseer/);
 assert.doesNotMatch(scene, /DM Setter|Follow-ups|Target Comments|Stats Tracking|Next step: DM/);
 
 const hq = read("admin/hq/app.js");
+const place = hq.slice(hq.indexOf("function placeWorkforceBadges"), hq.indexOf("function needsWorkforceLoad"));
+assert.match(place, /separateBadges/);
+assert.doesNotMatch(place, /fitLabels/);
 assert.match(hq, /loadOfficeConfig/);
 assert.match(hq, /validateOfficeConfig/);
 assert.match(hq, /workforcepreview/);
