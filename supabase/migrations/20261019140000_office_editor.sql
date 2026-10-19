@@ -6,6 +6,18 @@
 -- Additive only. Does not change hq_tasks_station_check, existing policies,
 -- or the private schema. No seed rows: an office with no row keeps the
 -- code default.
+--
+-- A revision row can be deleted only when a foreign-key cascade is already
+-- inside another trigger (pg_trigger_depth() > 1) and its office_configs
+-- parent is gone. No session setting opens that path.
+--
+-- Payload caps, enforced by office_validate_payload: 262144 bytes of text,
+-- at most 100 stations (the overseer is separate), at most 400 edges.
+-- metric is the station data_source. It must match ^[a-z0-9_]{1,40}$, and
+-- none is stored on the station row as null. The revision snapshot keeps
+-- only known keys.
+-- actor_uid stores auth.uid() with no foreign key, beside the nullable
+-- profile columns created_by and updated_by.
 
 create table if not exists public.office_configs (
   id uuid primary key default gen_random_uuid(),
@@ -14,6 +26,7 @@ create table if not exists public.office_configs (
   version integer not null default 1,
   current_revision_id uuid null,
   updated_by uuid null references public.profiles(id),
+  actor_uid uuid null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint office_configs_scope_check check (scope in ('hq', 'business')),
@@ -42,6 +55,7 @@ create table if not exists public.office_stations (
   sort_order integer not null,
   position jsonb null,
   data_source text null,
+  constraint office_stations_data_source_check check (data_source is null or data_source ~ '^[a-z0-9_]{1,40}$'),
   archived_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -75,6 +89,7 @@ create table if not exists public.office_config_revisions (
   summary text not null default '',
   restored_from uuid null references public.office_config_revisions(id),
   created_by uuid null references public.profiles(id),
+  actor_uid uuid null,
   created_at timestamptz not null default now(),
   constraint office_revisions_summary_check check (char_length(summary) <= 280),
   constraint office_revisions_number_key unique (config_id, revision_no)
@@ -106,7 +121,9 @@ security invoker
 set search_path = ''
 as $fn$
 begin
-  if tg_op = 'DELETE' and current_setting('office.allow_revision_delete', true) = 'on' then
+  if tg_op = 'DELETE'
+     and pg_trigger_depth() > 1
+     and not exists (select 1 from public.office_configs where id = old.config_id) then
     return old;
   end if;
   raise exception 'office revisions are append-only';
@@ -118,22 +135,55 @@ create trigger office_revisions_no_change
   before update or delete on public.office_config_revisions
   for each row execute function public.office_revisions_append_only();
 
-create or replace function public.office_config_allow_revision_delete()
+create or replace function public.office_revisions_guard()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $fn$
+declare
+  v_owner uuid;
+begin
+  if new.created_by is not null and (
+    new.created_by is distinct from auth.uid()
+    or not exists (select 1 from public.profiles where id = auth.uid())
+  ) then
+    raise exception 'forged revision author';
+  end if;
+  if new.restored_from is not null then
+    select config_id into v_owner
+    from public.office_config_revisions
+    where id = new.restored_from;
+    if v_owner is null or v_owner is distinct from new.config_id then
+      raise exception 'restored_from must belong to this office';
+    end if;
+  end if;
+  new.actor_uid := auth.uid();
+  return new;
+end;
+$fn$;
+
+drop trigger if exists office_revisions_guard on public.office_config_revisions;
+create trigger office_revisions_guard
+  before insert on public.office_config_revisions
+  for each row execute function public.office_revisions_guard();
+
+create or replace function public.office_configs_record_actor()
 returns trigger
 language plpgsql
 security invoker
 set search_path = ''
 as $fn$
 begin
-  perform set_config('office.allow_revision_delete', 'on', true);
-  return old;
+  new.actor_uid := auth.uid();
+  return new;
 end;
 $fn$;
 
-drop trigger if exists office_configs_before_delete on public.office_configs;
-create trigger office_configs_before_delete
-  before delete on public.office_configs
-  for each row execute function public.office_config_allow_revision_delete();
+drop trigger if exists office_configs_record_actor on public.office_configs;
+create trigger office_configs_record_actor
+  before insert or update on public.office_configs
+  for each row execute function public.office_configs_record_actor();
 
 create or replace function public.office_edge_same_config()
 returns trigger
@@ -167,9 +217,12 @@ set search_path = ''
 as $fn$
 declare
   v_overseer jsonb;
-  v_station jsonb;
-  v_edge jsonb;
+  v_brain_node jsonb;
   v_brain text;
+  v_stations jsonb := '[]'::jsonb;
+  v_edges jsonb := '[]'::jsonb;
+  v_node jsonb;
+  v_clean jsonb;
   v_keys text[] := '{}';
   v_key text;
   v_from text;
@@ -177,76 +230,225 @@ declare
   v_kind text;
   v_seen text[] := '{}';
   v_pair text;
+  v_i integer;
+  v_j integer;
+  v_label text;
+  v_desc text;
+  v_color text;
+  v_metric text;
+  v_wrole text;
+  v_agent text;
+  v_agent_role text;
+  v_tasks jsonb;
+  v_task text;
+  v_path text;
 begin
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
     raise exception 'config must be an object';
   end if;
-  v_overseer := p_payload->'overseer';
-  if v_overseer is null or jsonb_typeof(v_overseer) <> 'object' or btrim(coalesce(v_overseer->>'id', '')) = '' then
-    raise exception 'at least one overseer station';
-  end if;
-  v_key := btrim(v_overseer->>'id');
-  if v_key !~ '^[a-z0-9_]{1,40}$' then
-    raise exception 'overseer id must be a lowercase key';
-  end if;
-  if char_length(btrim(coalesce(v_overseer->>'role', ''))) not between 1 and 60 then
-    raise exception 'overseer label must be 1-60 characters';
-  end if;
-  if btrim(coalesce(v_overseer->>'description', '')) = '' or char_length(v_overseer->>'description') > 2000 then
-    raise exception 'overseer description is required';
-  end if;
-  if char_length(btrim(coalesce(v_overseer->>'agentRole', ''))) > 80 then
-    raise exception 'role is too long';
-  end if;
-  v_keys := array_append(v_keys, v_key);
-  v_brain := btrim(coalesce(p_payload#>>'{brandBrain,id}', ''));
-  if v_brain <> '' then
-    if v_brain = any (v_keys) then
-      raise exception 'duplicate station key %', v_brain;
-    end if;
-    v_keys := array_append(v_keys, v_brain);
+  if octet_length(p_payload::text) > 262144 then
+    raise exception 'config is too large';
   end if;
   if p_payload->'stations' is null or jsonb_typeof(p_payload->'stations') <> 'array' or jsonb_array_length(p_payload->'stations') < 1 then
     raise exception 'stations must be a non-empty list';
   end if;
-  for v_station in select value from jsonb_array_elements(p_payload->'stations')
-  loop
-    v_key := btrim(coalesce(v_station->>'id', ''));
+  if jsonb_array_length(p_payload->'stations') > 100 then
+    raise exception 'too many stations';
+  end if;
+  if p_payload->'edges' is null or jsonb_typeof(p_payload->'edges') <> 'array' then
+    raise exception 'edges must be a list';
+  end if;
+  if jsonb_array_length(p_payload->'edges') > 400 then
+    raise exception 'too many edges';
+  end if;
+  v_overseer := p_payload->'overseer';
+  v_brain_node := p_payload->'brandBrain';
+  if v_brain_node is null or jsonb_typeof(v_brain_node) <> 'object' then
+    raise exception 'brandBrain must be an object';
+  end if;
+  for v_i in 0 .. jsonb_array_length(p_payload->'stations') loop
+    if v_i = 0 then
+      v_node := v_overseer;
+      v_path := 'overseer';
+      if v_node is null or jsonb_typeof(v_node) <> 'object' or btrim(coalesce(v_node->>'id', '')) = '' then
+        raise exception 'at least one overseer station';
+      end if;
+    else
+      v_node := p_payload->'stations'->(v_i - 1);
+      v_path := 'station';
+      if v_node is null or jsonb_typeof(v_node) <> 'object' then
+        raise exception 'station must be an object';
+      end if;
+    end if;
+    v_key := btrim(coalesce(v_node->>'id', ''));
     if v_key !~ '^[a-z0-9_]{1,40}$' then
-      raise exception 'station id must be a lowercase key';
+      raise exception '% id must be a lowercase key', v_path;
     end if;
     if v_key = any (v_keys) then
       raise exception 'duplicate station key %', v_key;
     end if;
-    if char_length(btrim(coalesce(v_station->>'role', ''))) not between 1 and 60 then
-      raise exception 'station label must be 1-60 characters';
+    v_label := btrim(coalesce(v_node->>'role', ''));
+    if char_length(v_label) not between 1 and 60 then
+      raise exception '% label must be 1-60 characters', v_path;
     end if;
-    if btrim(coalesce(v_station->>'description', '')) = '' or char_length(coalesce(v_station->>'description', '')) > 2000 then
-      raise exception 'station description is required';
+    v_desc := btrim(coalesce(v_node->>'description', ''));
+    if v_desc = '' or char_length(v_desc) > 2000 then
+      raise exception '% description is required', v_path;
     end if;
-    if char_length(btrim(coalesce(v_station->>'agentRole', ''))) > 80 then
+    v_agent_role := btrim(coalesce(v_node->>'agentRole', ''));
+    if char_length(v_agent_role) > 80 then
       raise exception 'role is too long';
     end if;
+    v_wrole := btrim(coalesce(v_node->>'workforceRole', ''));
+    if char_length(v_wrole) > 80 then
+      raise exception 'workforce role is too long';
+    end if;
+    v_color := nullif(btrim(coalesce(v_node->>'color', '')), '');
+    if v_color is null then
+      v_color := '#ff4d8d';
+    elsif v_color !~ '^#[0-9a-fA-F]{6}$' then
+      raise exception 'color must be #rrggbb';
+    end if;
+    v_metric := nullif(btrim(coalesce(v_node->>'metric', '')), '');
+    if v_metric is null then
+      v_metric := 'none';
+    elsif v_metric !~ '^[a-z0-9_]{1,40}$' then
+      raise exception 'data_source must be a lowercase key';
+    end if;
+    v_agent := nullif(btrim(coalesce(v_node->>'hqAgentId', '')), '');
+    if v_agent is not null and v_agent !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      raise exception 'hqAgentId must be a uuid';
+    end if;
+    v_tasks := '[]'::jsonb;
+    if v_node->'taskStations' is null or jsonb_typeof(v_node->'taskStations') = 'null' then
+      v_tasks := '[]'::jsonb;
+    elsif jsonb_typeof(v_node->'taskStations') <> 'array' then
+      raise exception 'taskStations must be a list';
+    elsif jsonb_array_length(v_node->'taskStations') > 40 then
+      raise exception 'too many task stations';
+    else
+      for v_j in 0 .. jsonb_array_length(v_node->'taskStations') - 1 loop
+        v_task := btrim(coalesce(v_node->'taskStations'->>v_j, ''));
+        if v_task !~ '^[a-z0-9_]{1,40}$' then
+          raise exception 'task station must be a lowercase key';
+        end if;
+        v_tasks := v_tasks || jsonb_build_array(v_task);
+      end loop;
+    end if;
     v_keys := array_append(v_keys, v_key);
+    v_clean := jsonb_build_object(
+      'id', v_key,
+      'role', v_label,
+      'description', v_desc,
+      'color', v_color,
+      'taskStations', v_tasks,
+      'workforceRole', v_wrole,
+      'metric', v_metric,
+      'hqAgentId', case when v_agent is null then 'null'::jsonb else to_jsonb(v_agent) end,
+      'agentRole', v_agent_role
+    );
+    if v_i = 0 then
+      v_overseer := v_clean;
+    else
+      v_stations := v_stations || jsonb_build_array(v_clean);
+    end if;
   end loop;
-  if p_payload->'edges' is null or jsonb_typeof(p_payload->'edges') <> 'array' then
-    raise exception 'edges must be a list';
+  v_node := v_brain_node;
+  v_key := btrim(coalesce(v_node->>'id', ''));
+  if v_key !~ '^[a-z0-9_]{1,40}$' then
+    raise exception 'brandBrain id must be a lowercase key';
   end if;
-  for v_edge in select value from jsonb_array_elements(p_payload->'edges')
-  loop
-    v_from := btrim(coalesce(v_edge->>'from', ''));
-    v_to := btrim(coalesce(v_edge->>'to', ''));
+  if v_key = any (v_keys) then
+    raise exception 'duplicate station key %', v_key;
+  end if;
+  v_brain := v_key;
+  v_label := btrim(coalesce(v_node->>'role', ''));
+  if char_length(v_label) not between 1 and 60 then
+    raise exception 'brandBrain label must be 1-60 characters';
+  end if;
+  v_desc := btrim(coalesce(v_node->>'description', ''));
+  if v_desc = '' or char_length(v_desc) > 2000 then
+    raise exception 'brandBrain description is required';
+  end if;
+  v_agent_role := btrim(coalesce(v_node->>'agentRole', ''));
+  if char_length(v_agent_role) > 80 then
+    raise exception 'role is too long';
+  end if;
+  v_wrole := btrim(coalesce(v_node->>'workforceRole', ''));
+  if char_length(v_wrole) > 80 then
+    raise exception 'workforce role is too long';
+  end if;
+  v_color := nullif(btrim(coalesce(v_node->>'color', '')), '');
+  if v_color is null then
+    v_color := '#ff4d8d';
+  elsif v_color !~ '^#[0-9a-fA-F]{6}$' then
+    raise exception 'color must be #rrggbb';
+  end if;
+  v_metric := nullif(btrim(coalesce(v_node->>'metric', '')), '');
+  if v_metric is null then
+    v_metric := 'none';
+  elsif v_metric !~ '^[a-z0-9_]{1,40}$' then
+    raise exception 'data_source must be a lowercase key';
+  end if;
+  v_agent := nullif(btrim(coalesce(v_node->>'hqAgentId', '')), '');
+  if v_agent is not null and v_agent !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    raise exception 'hqAgentId must be a uuid';
+  end if;
+  v_tasks := '[]'::jsonb;
+  if v_node->'taskStations' is null or jsonb_typeof(v_node->'taskStations') = 'null' then
+    v_tasks := '[]'::jsonb;
+  elsif jsonb_typeof(v_node->'taskStations') <> 'array' then
+    raise exception 'taskStations must be a list';
+  elsif jsonb_array_length(v_node->'taskStations') > 40 then
+    raise exception 'too many task stations';
+  else
+    for v_j in 0 .. jsonb_array_length(v_node->'taskStations') - 1 loop
+      v_task := btrim(coalesce(v_node->'taskStations'->>v_j, ''));
+      if v_task !~ '^[a-z0-9_]{1,40}$' then
+        raise exception 'task station must be a lowercase key';
+      end if;
+      v_tasks := v_tasks || jsonb_build_array(v_task);
+    end loop;
+  end if;
+  v_keys := array_append(v_keys, v_brain);
+  v_brain_node := jsonb_build_object(
+    'id', v_brain,
+    'role', v_label,
+    'description', v_desc,
+    'color', v_color,
+    'taskStations', v_tasks,
+    'workforceRole', v_wrole,
+    'metric', v_metric,
+    'hqAgentId', case when v_agent is null then 'null'::jsonb else to_jsonb(v_agent) end,
+    'agentRole', v_agent_role
+  );
+  for v_i in 0 .. jsonb_array_length(p_payload->'edges') - 1 loop
+    v_node := p_payload->'edges'->v_i;
+    if v_node is null or jsonb_typeof(v_node) <> 'object' then
+      raise exception 'edge must be an object';
+    end if;
+    v_from := btrim(coalesce(v_node->>'from', ''));
+    v_to := btrim(coalesce(v_node->>'to', ''));
     if v_from = '' or v_to = '' or v_from = v_to then
       raise exception 'an edge cannot point at itself';
     end if;
     if v_from = v_brain or v_to = v_brain or not (v_from = any (v_keys)) or not (v_to = any (v_keys)) then
       raise exception 'edges must point at stations in the payload';
     end if;
-    v_kind := btrim(coalesce(v_edge->>'kind', ''));
-    if v_kind not in ('assign', 'handoff', 'read', 'sends', 'hands_off', 'reads') then
+    v_kind := case btrim(coalesce(v_node->>'kind', ''))
+      when 'assign' then 'assign'
+      when 'sends' then 'assign'
+      when 'handoff' then 'handoff'
+      when 'hands_off' then 'handoff'
+      when 'read' then 'read'
+      when 'reads' then 'read'
+      else ''
+    end;
+    if v_kind = '' then
       raise exception 'edge kind is not allowed';
     end if;
-    if char_length(btrim(coalesce(v_edge->>'label', ''))) not between 1 and 60 then
+    v_label := btrim(coalesce(v_node->>'label', ''));
+    if char_length(v_label) not between 1 and 60 then
       raise exception 'edge label must be 1-60 characters';
     end if;
     v_pair := v_from || '>' || v_to;
@@ -254,8 +456,20 @@ begin
       raise exception 'duplicate edge';
     end if;
     v_seen := array_append(v_seen, v_pair);
+    v_edges := v_edges || jsonb_build_array(jsonb_build_object(
+      'from', v_from,
+      'to', v_to,
+      'kind', v_kind,
+      'label', v_label
+    ));
   end loop;
-  return p_payload;
+  return jsonb_build_object(
+    'id', coalesce(nullif(btrim(coalesce(p_payload->>'id', '')), ''), 'default'),
+    'overseer', v_overseer,
+    'brandBrain', v_brain_node,
+    'stations', v_stations,
+    'edges', v_edges
+  );
 end;
 $fn$;
 
@@ -300,6 +514,12 @@ begin
   end if;
   if v_version <> p_expected_version then
     raise exception 'version conflict: someone else saved first';
+  end if;
+  if p_restored_from is not null and not exists (
+    select 1 from public.office_config_revisions
+    where id = p_restored_from and config_id = p_config_id
+  ) then
+    raise exception 'restored_from must belong to this office';
   end if;
   v_doc := public.office_validate_payload(p_payload);
   v_user := auth.uid();
@@ -407,15 +627,16 @@ begin
   where config_id = p_config_id;
 
   insert into public.office_config_revisions (
-    config_id, revision_no, snapshot, summary, restored_from, created_by
+    config_id, revision_no, snapshot, summary, restored_from, created_by, actor_uid
   )
-  values (p_config_id, v_no, v_doc, v_summary, p_restored_from, v_user)
+  values (p_config_id, v_no, v_doc, v_summary, p_restored_from, v_user, auth.uid())
   returning id into v_revision;
 
   update public.office_configs
   set version = version + 1,
       current_revision_id = v_revision,
       updated_by = v_user,
+      actor_uid = auth.uid(),
       updated_at = now()
   where id = p_config_id
   returning version into v_version;
@@ -599,14 +820,15 @@ create policy office_revisions_select on public.office_config_revisions
 create policy office_revisions_insert on public.office_config_revisions
   for insert to authenticated with check (public.is_admin());
 
-revoke all on function public.office_validate_payload(jsonb) from public, anon;
-revoke all on function public.save_office_config(uuid, integer, jsonb, text, uuid) from public, anon;
-revoke all on function public.create_office_config(text, uuid, jsonb) from public, anon;
-revoke all on function public.restore_office_revision(uuid, integer) from public, anon;
-revoke all on function public.office_revisions_append_only() from public, anon, authenticated;
-revoke all on function public.office_config_allow_revision_delete() from public, anon, authenticated;
-revoke all on function public.office_edge_same_config() from public, anon, authenticated;
-revoke all on function public.hq_log_station_move() from public, anon, authenticated;
+revoke all on function public.office_validate_payload(jsonb) from public, anon, service_role;
+revoke all on function public.save_office_config(uuid, integer, jsonb, text, uuid) from public, anon, service_role;
+revoke all on function public.create_office_config(text, uuid, jsonb) from public, anon, service_role;
+revoke all on function public.restore_office_revision(uuid, integer) from public, anon, service_role;
+revoke all on function public.office_revisions_append_only() from public, anon, authenticated, service_role;
+revoke all on function public.office_revisions_guard() from public, anon, authenticated, service_role;
+revoke all on function public.office_configs_record_actor() from public, anon, authenticated, service_role;
+revoke all on function public.office_edge_same_config() from public, anon, authenticated, service_role;
+revoke all on function public.hq_log_station_move() from public, anon, authenticated, service_role;
 
 grant execute on function public.office_validate_payload(jsonb) to authenticated;
 grant execute on function public.save_office_config(uuid, integer, jsonb, text, uuid) to authenticated;

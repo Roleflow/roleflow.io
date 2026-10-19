@@ -6,6 +6,10 @@
 import { validateOfficeConfig } from "./workforce-config.mjs";
 
 export const KEY_RE = /^[a-z0-9_]{1,40}$/;
+export const OFFICE_PAYLOAD_MAX_BYTES = 262144;
+export const OFFICE_STATION_CAP = 100;
+export const OFFICE_EDGE_CAP = 400;
+const METRIC_RE = /^[a-z0-9_]{1,40}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const LEGACY_STATION_KEYS = [
@@ -48,6 +52,15 @@ function uuid() {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function payloadBytes(value) {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
+export function revisionAuthorOk(createdBy, actorUid) {
+  if (createdBy == null || createdBy === "") return true;
+  return text(createdBy) === text(actorUid);
 }
 
 function nodeExtras(raw) {
@@ -131,11 +144,17 @@ export function editorDocument(config) {
 
 export function validateEditorPayload(config) {
   const errors = [];
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return { ok: false, errors: ["Config must be an object."], value: null };
+  }
+  const rawStations = Array.isArray(config.stations) ? config.stations : [];
+  const rawEdges = Array.isArray(config.edges) ? config.edges : [];
+  if (payloadBytes(config) > OFFICE_PAYLOAD_MAX_BYTES) errors.push("config is too large.");
+  if (rawStations.length > OFFICE_STATION_CAP) errors.push("too many stations.");
+  if (rawEdges.length > OFFICE_EDGE_CAP) errors.push("too many edges.");
+  if (errors.length) return { ok: false, errors, value: null };
   const base = validateOfficeConfig(config);
   if (!base.ok) errors.push(...base.errors);
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    return { ok: false, errors: errors.length ? errors : ["Config must be an object."], value: null };
-  }
   const source = base.ok ? base.value : config;
   const overseer = source.overseer || {};
   const stations = Array.isArray(source.stations) ? source.stations : [];
@@ -156,18 +175,25 @@ export function validateEditorPayload(config) {
     if (agent && !UUID_RE.test(agent)) errors.push(path + ".hqAgentId must be a uuid.");
     if (text(node && node.agentRole).length > 80) errors.push(path + ".agentRole must be at most 80 characters.");
   };
+  const checkMetric = (node, path) => {
+    const metric = text(node && node.metric) || "none";
+    if (!METRIC_RE.test(metric)) errors.push(path + ".metric is not an allowed data_source.");
+  };
   checkKey(overseer.id, "overseer.id");
+  checkMetric(config.overseer, "overseer");
   checkLabel(overseer.role, "overseer.role");
   checkDescription(overseer.description, "overseer.description");
   checkAgent(config.overseer, "overseer");
   checkKey(brain.id, "brandBrain.id");
   checkLabel(brain.role, "brandBrain.role");
   checkDescription(brain.description, "brandBrain.description");
+  checkMetric(config.brandBrain, "brandBrain");
   stations.forEach((station, index) => {
     checkKey(station.id, "stations[" + index + "].id");
     checkLabel(station.role, "stations[" + index + "].role");
     checkDescription(station.description, "stations[" + index + "].description");
     checkAgent((config.stations || [])[index], "stations[" + index + "]");
+    checkMetric((config.stations || [])[index], "stations[" + index + "]");
   });
   const edges = Array.isArray(source.edges) ? source.edges : [];
   edges.forEach((edge, index) => {
@@ -177,7 +203,7 @@ export function validateEditorPayload(config) {
     if (label.length > 60) errors.push("edges[" + index + "].label must be at most 60 characters.");
   });
   if (errors.length || !base.ok) return { ok: false, errors, value: null };
-  const rawStations = new Map((config.stations || []).map((station) => [station && station.id, station]));
+  const rawById = new Map((config.stations || []).map((station) => [station && station.id, station]));
   return {
     ok: true,
     errors: [],
@@ -185,7 +211,7 @@ export function validateEditorPayload(config) {
       id: text(config.id) || base.value.id || "default",
       overseer: withExtras(base.value.overseer, config.overseer),
       brandBrain: withExtras(base.value.brandBrain, config.brandBrain),
-      stations: base.value.stations.map((station) => withExtras(station, rawStations.get(station.id))),
+      stations: base.value.stations.map((station) => withExtras(station, rawById.get(station.id))),
       edges: base.value.edges.map((edge) => ({
         from: edge.from,
         to: edge.to,
@@ -388,6 +414,10 @@ export function saveOfficeConfig(store, input) {
   if (config.version !== input.expectedVersion) {
     return { ok: false, conflict: true, error: "version conflict: someone else saved first" };
   }
+  if (input.restoredFrom) {
+    const prior = store.revisions.find((row) => row.id === input.restoredFrom);
+    if (!prior || prior.config_id !== config.id) return fail("restored_from must belong to this office");
+  }
   const checked = validateEditorPayload(input.payload);
   if (!checked.ok) return fail(checked.errors[0] || "config is not valid");
   const summary = text(input.summary).slice(0, 280);
@@ -401,6 +431,7 @@ export function saveOfficeConfig(store, input) {
     summary,
     restored_from: input.restoredFrom || null,
     created_by: actor,
+    actor_uid: actor,
     created_by_name: text(input.actorName) || "Admin",
     created_at: nowIso()
   };
@@ -408,6 +439,7 @@ export function saveOfficeConfig(store, input) {
   config.version += 1;
   config.current_revision_id = revision.id;
   config.updated_by = actor;
+  config.actor_uid = actor;
   config.updated_at = revision.created_at;
   return { ok: true, conflict: false, error: "", version: config.version, configId: config.id, revision };
 }

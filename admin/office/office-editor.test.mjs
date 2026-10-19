@@ -18,7 +18,11 @@ import {
   restoreOfficeRevision,
   saveOfficeConfig,
   taskWrite,
-  validateEditorPayload
+  revisionAuthorOk,
+  validateEditorPayload,
+  OFFICE_EDGE_CAP,
+  OFFICE_PAYLOAD_MAX_BYTES,
+  OFFICE_STATION_CAP
 } from "./office-editor.mjs";
 import { layoutOffice, loadOfficeConfig, validateOfficeConfig } from "./workforce-config.mjs";
 import { VAM_BUSINESS_ID } from "./workforce-model.mjs";
@@ -90,6 +94,8 @@ const created = createOfficeConfig(store, {
 });
 assert.equal(created.ok, true, created.error);
 assert.equal(created.version, 1);
+assert.equal(created.revision.actor_uid, ACTOR);
+assert.equal(store.configs[0].actor_uid, ACTOR);
 assert.equal(store.revisions.length, 1);
 assert.equal(store.stations.filter((row) => !row.archived_at).length, 6);
 assert.equal(store.edges.length, doc.value.edges.length);
@@ -165,6 +171,61 @@ const anon = saveOfficeConfig(store, {
 });
 assert.equal(anon.ok, false);
 assert.match(anon.error, /not allowed/);
+
+const other = createOfficeConfig(store, {
+  scope: "hq",
+  payload: hq.value,
+  summary: "HQ",
+  actor: ACTOR,
+  actorName: "Diego Castanedo"
+});
+assert.equal(other.ok, true, other.error);
+const crossed = saveOfficeConfig(store, {
+  configId: created.configId,
+  expectedVersion: 3,
+  payload: doc.value,
+  summary: "Wrong history",
+  actor: ACTOR,
+  restoredFrom: other.revision.id
+});
+assert.equal(crossed.ok, false);
+assert.match(crossed.error, /this office/);
+assert.equal(store.configs.find((row) => row.id === created.configId).version, 3);
+
+const dirty = structuredClone(doc.value);
+dirty.injected = "no";
+dirty.overseer = Object.assign({}, dirty.overseer, { injected: "no" });
+dirty.edges[0] = Object.assign({}, dirty.edges[0], { injected: "no" });
+const clean = validateEditorPayload(dirty);
+assert.equal(clean.ok, true, clean.errors.join("; "));
+assert.equal("injected" in clean.value, false);
+assert.equal("injected" in clean.value.overseer, false);
+assert.equal("injected" in clean.value.edges[0], false);
+assert.deepEqual(Object.keys(clean.value.stations[0]).sort(), ["agentRole", "color", "description", "hqAgentId", "id", "metric", "role", "taskStations", "workforceRole"]);
+
+const badMetric = structuredClone(doc.value);
+badMetric.stations[0] = Object.assign({}, badMetric.stations[0], { metric: "Not Allowed" });
+assert.match(validateEditorPayload(badMetric).errors.join(" "), /data_source/);
+const keptMetric = structuredClone(doc.value);
+keptMetric.stations[0] = Object.assign({}, keptMetric.stations[0], { metric: "instagram_dm" });
+const kept = validateEditorPayload(keptMetric);
+assert.equal(kept.ok, true, kept.errors.join("; "));
+assert.equal(kept.value.stations[0].metric, "instagram_dm");
+
+const tooBig = structuredClone(doc.value);
+tooBig.blob = "x".repeat(OFFICE_PAYLOAD_MAX_BYTES);
+assert.match(validateEditorPayload(tooBig).errors.join(" "), /too large/);
+const tooManyStations = structuredClone(doc.value);
+tooManyStations.stations = Array.from({ length: OFFICE_STATION_CAP + 1 }, () => ({}));
+assert.match(validateEditorPayload(tooManyStations).errors.join(" "), /too many stations/);
+const tooManyEdges = structuredClone(doc.value);
+tooManyEdges.edges = Array.from({ length: OFFICE_EDGE_CAP + 1 }, () => ({}));
+assert.match(validateEditorPayload(tooManyEdges).errors.join(" "), /too many edges/);
+
+assert.equal(revisionAuthorOk(null, ACTOR), true);
+assert.equal(revisionAuthorOk("", ACTOR), true);
+assert.equal(revisionAuthorOk(ACTOR, ACTOR), true);
+assert.equal(revisionAuthorOk("00000000-0000-4000-8000-0000000000aa", ACTOR), false);
 
 assert.equal(missingOfficeTables({ code: "PGRST205", message: "Could not find the table 'public.office_configs' in the schema cache" }), true);
 assert.equal(missingOfficeTables({ code: "42P01", message: 'relation "public.office_stations" does not exist' }), true);
@@ -243,8 +304,31 @@ assert.match(sql, /create index if not exists office_edges_to_idx on public\.off
 assert.match(sql, /create index if not exists office_revisions_restored_idx on public\.office_config_revisions \(restored_from\)/);
 assert.match(sql, /begin\s+insert into public\.office_configs/);
 assert.doesNotMatch(sql, /private\./);
+assert.doesNotMatch(sql, /allow_revision_delete/);
+assert.doesNotMatch(sql, /set_config\(/);
+assert.match(sql, /pg_trigger_depth\(\) > 1/);
+assert.match(sql, /not exists \(select 1 from public\.office_configs where id = old\.config_id\)/);
+assert.match(sql, /forged revision author/);
+assert.match(sql, /restored_from must belong to this office/);
+assert.match(sql, /actor_uid uuid null/);
+assert.match(sql, /octet_length\(p_payload::text\) > 262144/);
+assert.match(sql, /too many stations/);
+assert.match(sql, /too many edges/);
+assert.match(sql, /data_source must be a lowercase key/);
+assert.match(sql, /office_stations_data_source_check/);
+assert.match(sql, /revoke all on function public\.save_office_config\(uuid, integer, jsonb, text, uuid\) from public, anon, service_role/);
+assert.match(sql, /revoke all on function public\.create_office_config\(text, uuid, jsonb\) from public, anon, service_role/);
+assert.match(sql, /revoke all on function public\.restore_office_revision\(uuid, integer\) from public, anon, service_role/);
+assert.match(sql, /revoke all on function public\.office_revisions_append_only\(\) from public, anon, authenticated, service_role/);
+assert.match(sql, /revoke all on function public\.office_revisions_guard\(\) from public, anon, authenticated, service_role/);
+assert.match(sql, /revoke all on function public\.hq_log_station_move\(\) from public, anon, authenticated, service_role/);
 
 const css = read("admin/hq/hq.css");
 assert.match(css, /bottom:calc\(80px \+ env\(safe-area-inset-bottom\)\)/);
+assert.match(css, /#office-editor:not\(\[hidden\]\)\) \.hq-zoom\{display:none\}/);
+const siteCss = read("auth/site.css");
+assert.match(siteCss, /\.btn\[hidden\]\{display:none !important\}/);
+assert.match(siteCss, /\.btn\{display:inline-block/);
+assert.ok(siteCss.indexOf(".btn[hidden]{display:none !important}") > siteCss.indexOf(".btn{display:inline-block"));
 
 console.log("office editor ok");

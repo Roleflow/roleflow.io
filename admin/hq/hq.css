@@ -219,6 +219,7 @@ body.hq-office .hq-zoom{z-index:4;bottom:78px}
   body.hq-office .office-tools{display:flex;position:relative;left:auto;right:auto;top:auto;max-width:none;margin:8px 12px 16px}
   body.hq-office .cam-tabs{display:flex;position:relative;left:auto;right:auto;bottom:auto;margin:12px;flex-wrap:wrap}
   body.hq-office .hq-zoom,body.hq-workforce .hq-zoom{position:fixed;top:auto;bottom:calc(80px + env(safe-area-inset-bottom));right:12px;z-index:6;display:grid;height:auto}
+  body.hq-office:has(#office-editor:not([hidden])) .hq-zoom{display:none}
   body.hq-office .office-editor{position:relative;top:auto;right:auto;width:auto;max-width:100%;max-height:min(46dvh,420px);margin:8px 12px;overflow:auto}
   body.hq-office .hq-zoom button{width:44px;height:44px}
   body.hq-office .office-pill{font-size:.62rem}
