@@ -22,10 +22,10 @@ export const ROLES = [
   { id: "icp_acquisition", name: "ICP Target Acquisition", detail: "20–30 Instagram accounts a day. Bio CTA, 5k–200k followers." },
   { id: "engagement_warmup", name: "Engagement Warm-Up", detail: "Day 1 follow, likes, Reel comment. Days 2–3 stories. Day 4 unfollow." },
   { id: "personalised_outreach", name: "Personalised Outreach", detail: "Send or skip after warm-up. Personal voice note on the opener." },
-  { id: "comment_to_dm", name: "Comment-to-DM Conversion", detail: "Roleflow replies to comments in your Instagram DMs. No TailorTalk." },
+  { id: "comment_to_dm", name: "Comment-to-DM Conversion", detail: "Turns comments into DMs. Runs on TailorTalk or Roleflow's Meta engine, whichever this business selected." },
   { id: "qualification", name: "Qualification & Gap-Building", detail: "One question at a time: budget, timeline, decision-maker, fit." },
   { id: "conversation_recovery", name: "Conversation Recovery", detail: "Up to 3 follow-ups, about 6 hours apart, inside the 24-hour window." },
-  { id: "appointment_booking", name: "Appointment Booking & Show-Up", detail: "Offers two real calendar slots, then locks the call." }
+  { id: "appointment_booking", name: "Appointment Booking & Show-Up", detail: "Books the call. On TailorTalk, a booking in TailorTalk becomes an appointment here." }
 ];
 
 export const BOOKING_FALLBACK_URL = "https://calendar.app.google/8i1gomkozavqYU5b8";

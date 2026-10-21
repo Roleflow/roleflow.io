@@ -186,8 +186,85 @@ function paintPrompts(host, ctx) {
   }
 }
 
+function paintTailorTalk(host, ctx) {
+  const { state, el, button, field, toast, bootBusiness } = ctx;
+  const link = state.setterLink || { status: "disconnected" };
+  const card = el("article", { class: "agent" });
+  card.append(el("h3", { text: "TailorTalk setter" }));
+  const hint = link.agent_hint ? " · agent …" + link.agent_hint : "";
+  const tested = link.last_test_error ? " · " + link.last_test_error : "";
+  card.append(el("p", { text: "Status: " + (link.status || "disconnected") + hint + tested }));
+  card.append(el("p", { class: "mute", text: "Until a Meta app is available, Comment-to-DM, qualification, recovery, and booking can run on TailorTalk. Enter the API key from TailorTalk Developer → API Keys and the agent id. The key is encrypted and is not shown again." }));
+  if (link.last_synced_at) {
+    const counts = link.last_sync_counts || {};
+    const note = counts.reason === "paused" ? "Last sync skipped because those four agents are off." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + link.last_sync_error : "");
+    card.append(el("p", { text: note }));
+  }
+  if (state.ttWebhook && state.ttWebhookBusiness === state.businessId) {
+    card.append(el("p", { class: "key-once", text: "Paste this webhook into TailorTalk Developer → Webhooks for First Message, On Warm, On Hot, On Converted, and Every Message: " + state.ttWebhook }));
+  }
+  if (state.canEdit && state.supabase) {
+    const apiKey = field("TailorTalk API key", "");
+    apiKey.input.type = "password";
+    apiKey.input.autocomplete = "off";
+    const agentId = field("TailorTalk agent id", "");
+    agentId.input.autocomplete = "off";
+    card.append(apiKey.label, agentId.label);
+    const row = el("div", { class: "filters" });
+    row.append(button("Connect TailorTalk", async () => {
+      try {
+        const result = await callTailorTalk(ctx, "connect", { api_key: apiKey.input.value.trim(), agent_id: agentId.input.value.trim() });
+        state.ttWebhook = result.webhook_url || "";
+        state.ttWebhookBusiness = state.businessId;
+        apiKey.input.value = "";
+        toast("TailorTalk connected. Copy the webhook URL.");
+        await bootBusiness(state.businessId);
+        ctx.go(state.tab || "integrations");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }));
+    row.append(button("Test connection", async () => {
+      try {
+        const result = await callTailorTalk(ctx, "test", {});
+        state.ttWebhook = result.webhook_url || "";
+        state.ttWebhookBusiness = state.businessId;
+        toast("TailorTalk responded.");
+        await bootBusiness(state.businessId);
+        ctx.go(state.tab || "integrations");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }));
+    row.append(button("Sync now", async () => {
+      try {
+        await callTailorTalk(ctx, "sync_one", {});
+        toast("Sync finished.");
+        await bootBusiness(state.businessId);
+        ctx.go(state.tab || "integrations");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }));
+    row.append(button("Disconnect", async () => {
+      try {
+        await callTailorTalk(ctx, "disconnect", {});
+        state.ttWebhook = "";
+        toast("TailorTalk disconnected. The setter is the Meta engine.");
+        await bootBusiness(state.businessId);
+        ctx.go(state.tab || "integrations");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }));
+    card.append(row);
+  }
+  host.append(card);
+}
+
 function paintIntegrations(host, ctx) {
   const { state, el, button, field, toast, bootBusiness } = ctx;
+  paintTailorTalk(host, ctx);
   const ig = state.ig || { status: "disconnected" };
   const google = state.google || { status: "disconnected" };
   const igCard = el("article", { class: "agent" });
@@ -392,6 +469,7 @@ function paintBilling(host, ctx) {
 
 function paintOnboarding(host, ctx) {
   const { state, el, button, toast, bootBusiness } = ctx;
+  paintTailorTalk(host, ctx);
   const settings = state.settings || {};
   const step = STEPS.includes(settings.onboarding_step) ? settings.onboarding_step : "instagram";
   const progress = el("div", { class: "steps" });
@@ -466,6 +544,26 @@ async function startOauth(ctx, action) {
   } catch (error) {
     ctx.toast(error.message, "bad");
   }
+}
+
+export async function callTailorTalk(ctx, action, extra) {
+  if (!ctx.state.supabase) throw new Error("Sign in to use this.");
+  const session = await ctx.state.supabase.auth.getSession();
+  const token = session.data.session && session.data.session.access_token;
+  const root = globalThis.ROLEFLOW_SUPABASE || {};
+  const base = String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/acq-tailortalk";
+  const response = await fetch(base, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + (token || ""),
+      apikey: root.SUPABASE_ANON_KEY || "",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ action, business_id: ctx.state.businessId, ...(extra || {}) })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Request failed.");
+  return payload;
 }
 
 async function callEngine(ctx, action, extra) {

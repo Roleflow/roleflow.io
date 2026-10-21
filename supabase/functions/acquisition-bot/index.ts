@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
     const payload = result.data || {};
     if (payload.ok === false) return json(payload.status || 400, { error: payload.error || "Request failed." });
     await signQueue(service, payload);
+    await addFindTargets(service, agentId, payload);
     return json(200, payload);
   }
   if (action === "report") {
@@ -137,6 +138,21 @@ async function call(service: ReturnType<typeof createClient>, name: string, args
   const payload = result.data || {};
   if (payload.ok === false) return json(payload.status || 400, { error: payload.error || "Request failed." });
   return json(200, payload);
+}
+
+async function addFindTargets(service: ReturnType<typeof createClient>, agentId: string, payload: Record<string, unknown>) {
+  if (payload.blocked_reason) return;
+  const remaining = Number(payload.cap_remaining);
+  if (!Number.isFinite(remaining) || remaining <= 0) return;
+  const role = await service.from("business_workforce").select("status").eq("agent_id", agentId).eq("role", "icp_acquisition").maybeSingle();
+  if (role.error || !role.data || role.data.status !== "active") return;
+  const queue = Array.isArray(payload.queue) ? payload.queue : [];
+  queue.unshift({
+    kind: "find_targets",
+    count: remaining,
+    rules: "CTA in bio, 5,000–200,000 followers"
+  });
+  payload.queue = queue;
 }
 
 async function signQueue(service: ReturnType<typeof createClient>, payload: Record<string, unknown>) {

@@ -12,12 +12,28 @@ Roleflow’s acquisition product lives in each signed-in user’s account at `/a
 | ICP Target Acquisition | Outreach worker (`acquisition-bot`). Not the Meta app. |
 | Engagement Warm-Up | Outreach worker. |
 | Personalised Outreach | Outreach worker. Sends the owner’s recorded opener. |
-| Comment-to-DM | Roleflow conversation engine on the official Instagram API. |
-| Qualification & Gap-Building | Conversation engine. |
-| Conversation Recovery | Conversation engine. Up to 3 follow-ups, about 6 hours apart, inside 24 hours. |
-| Appointment Booking & Show-Up | Conversation engine plus Google Calendar. The owner marks show-up. |
+| Comment-to-DM | Setter provider: TailorTalk, or Roleflow's Meta engine when the business selects `roleflow_meta`. |
+| Qualification & Gap-Building | Same setter provider. |
+| Conversation Recovery | Same setter provider. Up to 3 follow-ups, about 6 hours apart, inside 24 hours on the Meta engine. |
+| Appointment Booking & Show-Up | Same setter provider. On the Meta engine, Google Calendar. The owner marks show-up. |
 
-TailorTalk tables and `tailortalk-sync` stay as a legacy client cache. New workspaces do not need them. The engine does not call TailorTalk.
+Each business picks `acq_settings.setter_provider`: `roleflow_meta` (default) or `tailortalk`. The Meta conversation engine stays in the product. TailorTalk is the provider while a Meta app cannot be created. HQ `tailortalk-sync` and the `tailortalk_*` cache stay as they are. The account panel does not call that function.
+
+## TailorTalk provider
+
+On Integrations and Setup, an editor enters the TailorTalk API key (Developer → API Keys) and the agent id, then uses Test connection. The key, agent id, and webhook secret are encrypted with `extensions.pgp_sym_encrypt` under `private.tt_business_secrets`. The panel stores only a status row in `acq_setter_links`.
+
+`acq-tailortalk` pulls Get Leads and Get Contacts into `acq_contacts`, `acq_conversations`, `acq_messages`, and the existing targets, bookings, and audit log. Mark Converted uses `https://service.tailortalk.ai/api/v1/mark_converted`. Mark Order uses `https://api.tailortalk.ai/api/v1/mark_order`. A won deal in the panel calls both when the amount is above zero, and Mark Converted when the amount is zero. The 5-minute cron retries deals still marked pending or error.
+
+Webhook URL (shown after connect and after Test connection):
+
+`https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/acq-tailortalk/webhook?business=<workspace uuid>&token=<per-business secret>`
+
+Subscribe that URL in TailorTalk to First Message, On Warm, On Hot, On Converted, and Every Message. TailorTalk does not sign webhooks. The secret in the URL, `X-Roleflow-Webhook-Secret`, or `Authorization: Bearer` is compared to the stored secret. A wrong secret returns 401.
+
+Pausing all four setter agents makes the sync record `paused` and skip writes. Pausing one agent still syncs the CRM and only writes the audit count for agents that are on. The agent inside TailorTalk has to be paused there as well, or it keeps messaging.
+
+`TAILORTALK_CRON_SECRET` is optional. The cron job sends the existing acquisition cron secret from `private.acquisition_settings`. Do not print that secret.
 
 New accounts do not use the old “Build your DM setter” form. Account navigation sends them to `/account/acquisition/`. That form stays only for a setter submission that already has answers, or one that was submitted. If `XAI_API_KEY` is missing, `generate-setter-prompt` keeps the saved answers and returns that the prompt was not written. It does not answer with HTTP 500, and the form does not call that a failed save.
 
@@ -37,9 +53,9 @@ If a lead asks whether they are talking to a bot or an AI, the answer is: Diego�
 
 ## Hosting
 
-The site is static on Vercel. Privileged work runs as Supabase edge functions, same as the existing sync and HQ functions. A one-minute `pg_cron` job calls `roleflow-acquisition/tick`. The cron secret is generated in `private.acquisition_settings` and is not an environment variable.
+The site is static on Vercel. Privileged work runs as Supabase edge functions, same as the existing sync and HQ functions. A one-minute `pg_cron` job calls `roleflow-acquisition/tick`. A separate job, `acq-tailortalk-sync`, runs every 5 minutes and POSTs `{"action":"sync"}` to `acq-tailortalk`. Both send the cron secret from `private.acquisition_settings`. That secret is not an environment variable. The hourly HQ job `tailortalk-sync-hourly` is unchanged.
 
-`acquisition-bot` is deployed with its source in the function. `roleflow-acquisition` is deployed with `verify_jwt` off. Its entrypoint imports commit `c8e84c91f400dfd0a5f23bb3b0ee8a41d3e033a6` from jsDelivr. That pin is a full commit, not a branch, and it is the commit that defaults the conversation model to `grok-4.3` at `https://api.x.ai/v1`. A cold start still fetches that commit, including the prompt seed. Re-deploy the one-line import when this code changes. After that deploy: a webhook handshake without the verify token returns 403, a wrong cron bearer returns 401, and an unknown deletion code returns `{ok:false}`.
+`acquisition-bot` and `acq-tailortalk` are deployed with their source in the function. `acq-tailortalk` has `verify_jwt` off. `roleflow-acquisition` is deployed with `verify_jwt` off. Its entrypoint imports commit `c8e84c91f400dfd0a5f23bb3b0ee8a41d3e033a6` from jsDelivr. That pin is a full commit, not a branch, and it is the commit that defaults the conversation model to `grok-4.3` at `https://api.x.ai/v1`. A cold start still fetches that commit, including the prompt seed. Re-deploy the one-line import when this code changes. After that deploy: a webhook handshake without the verify token returns 403, a wrong cron bearer returns 401, and an unknown deletion code returns `{ok:false}`.
 
 ## Meta app
 
@@ -92,6 +108,7 @@ Set these on the Supabase project. None are committed. The product still loads w
 | `OPENAI_MODEL` | Optional. Default `gpt-4.1-mini` |
 | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Used when `LLM_PROVIDER=gemini`, or when xAI and OpenAI are unset |
 | `GEMINI_MODEL` | Optional. Default `gemini-2.0-flash` |
+| `TAILORTALK_CRON_SECRET` | Optional alternate bearer for `acq-tailortalk` action `sync`. The scheduled job does not need it. |
 
 When `XAI_API_KEY` is set and `LLM_PROVIDER` is empty, the engine calls `https://api.x.ai/v1/chat/completions` with JSON output. The default model is `grok-4.3`: on the October 2026 xAI price table it is the cheapest general model that documents structured output. `grok-build-0.1` is cheaper and is the coding model. Set `LLM_PROVIDER=openai` or `gemini` to use those keys instead.
 

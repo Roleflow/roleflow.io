@@ -1,6 +1,6 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
-import { renderEngine } from "./engine-ui.js";
+import { callTailorTalk, renderEngine } from "./engine-ui.js";
 import {
   JOURNEY,
   LEAD_STATUSES,
@@ -57,6 +57,11 @@ const state = {
   members: [],
   isAdmin: false,
   issuedKey: "",
+  setterLink: null,
+  contacts: [],
+  ttMessageCount: 0,
+  ttWebhook: "",
+  ttWebhookBusiness: "",
   openThread: "",
   promptRole: "qualification",
   tab: "overview",
@@ -183,7 +188,7 @@ async function loadAll(id) {
   const q = state.supabase;
   const workspace = state.businesses.find((row) => row.id === id);
   const legacyId = workspace && workspace.tailortalk_agent_id;
-  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, stats, leads, threads, ig, google, workers, dnc] = await Promise.all([
+  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, stats, leads, threads, ig, google, workers, dnc, setterLink, contacts, messages] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
     q.from("acq_targets").select("*").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
@@ -202,7 +207,10 @@ async function loadAll(id) {
     q.from("ig_connections").select("business_id, username, expires_at, status, last_error, connected_at").eq("business_id", id).maybeSingle(),
     q.from("google_connections").select("business_id, email, calendar_id, expires_at, status, last_error, connected_at").eq("business_id", id).maybeSingle(),
     q.from("acq_workers").select("id, label, key_prefix, enabled, status, last_heartbeat_at, pause_reason").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false })
+    q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_setter_links").select("business_id, provider, agent_hint, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_hint").eq("business_id", id).maybeSingle(),
+    q.from("acq_contacts").select("id, lead_status, last_message_at").eq("business_id", id).limit(1000),
+    q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id)
   ]);
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
   if (firstError) {
@@ -228,6 +236,13 @@ async function loadAll(id) {
   state.google = google.error ? null : google.data;
   state.workers = workers.error ? [] : workers.data || [];
   state.dnc = dnc.error ? [] : dnc.data || [];
+  state.setterLink = setterLink.error ? null : setterLink.data;
+  state.contacts = contacts.error ? [] : contacts.data || [];
+  state.ttMessageCount = messages.error ? 0 : messages.count || 0;
+  if (state.ttWebhookBusiness !== id) {
+    state.ttWebhook = "";
+    state.ttWebhookBusiness = "";
+  }
   return true;
 }
 
@@ -303,16 +318,19 @@ function overview() {
     head.append(toggle);
     card.append(head, el("p", { text: role.detail }));
     card.append(el("p", { text: "Today " + (row.daily_count || 0) + " · last run " + when(row.last_run_at) }));
-    if (role.id === "comment_to_dm") {
+    const setterRole = role.id === "comment_to_dm" || role.id === "qualification" || role.id === "conversation_recovery" || role.id === "appointment_booking";
+    const poweredByTailorTalk = setterRole && state.settings && state.settings.setter_provider === "tailortalk";
+    if (poweredByTailorTalk) {
+      card.append(el("p", { text: "Powered by TailorTalk" }));
+      card.append(el("p", { text: setterStats(role.id) }));
+      card.append(el("p", { class: "mute", text: "Pausing stops Roleflow from applying TailorTalk updates for this agent. Pause the agent in TailorTalk too, or it keeps messaging." }));
+    } else if (role.id === "comment_to_dm") {
       card.append(el("p", { text: state.threads.filter((item) => item.state === "comment_to_dm").length + " comment threads in the inbox" }));
-    }
-    if (role.id === "qualification") {
+    } else if (role.id === "qualification") {
       card.append(el("p", { text: state.threads.filter((item) => item.state === "qualification").length + " threads in qualification" }));
-    }
-    if (role.id === "conversation_recovery") {
+    } else if (role.id === "conversation_recovery") {
       card.append(el("p", { text: state.threads.filter((item) => item.state === "recovery").length + " threads in recovery" }));
-    }
-    if (role.id === "appointment_booking") {
+    } else if (role.id === "appointment_booking") {
       card.append(el("p", { text: state.threads.filter((item) => item.state === "booking" || item.state === "booked").length + " booking threads" }));
     }
     if (state.stats && role.id === "chief_of_staff") {
@@ -565,10 +583,30 @@ function reports() {
   return wrap;
 }
 
+function setterStats(roleId) {
+  const contacts = state.contacts || [];
+  const count = (status) => contacts.filter((row) => row.lead_status === status).length;
+  if (roleId === "comment_to_dm") return count("cold") + " cold contacts · " + (state.ttMessageCount || 0) + " messages synced";
+  if (roleId === "qualification") return count("warm") + " warm · " + count("hot") + " hot";
+  if (roleId === "conversation_recovery") return contacts.filter((row) => row.lead_status === "cold" && row.last_message_at).length + " cold contacts with a message";
+  const bookings = state.bookings.filter((row) => row.source === "tailortalk").length;
+  return bookings + " TailorTalk bookings · " + count("converted") + " converted";
+}
+
 function controls() {
   const settings = state.settings || {};
   const form = el("form", { class: "agent" });
   form.append(el("h3", { text: "System" }));
+  const providerWrap = el("label", { text: "Setter for comment-to-DM, qualification, recovery, and booking" });
+  const provider = el("select", { "aria-label": "Setter provider" });
+  [["roleflow_meta", "Roleflow Meta engine"], ["tailortalk", "TailorTalk"]].forEach(([value, label]) => {
+    const option = el("option", { value, text: label });
+    if ((settings.setter_provider || "roleflow_meta") === value) option.setAttribute("selected", "");
+    provider.append(option);
+  });
+  provider.disabled = !state.canEdit;
+  providerWrap.append(provider);
+  form.append(providerWrap, el("p", { class: "mute", text: "TailorTalk runs those four agents until a Meta app is connected. Connect the API key on Integrations or Setup. Switching back to the Meta engine leaves the TailorTalk key stored until you disconnect it. Pausing all four stops the sync from writing. Pause the agent inside TailorTalk as well, or it keeps messaging." }));
   const enabled = el("label", { class: "switch", text: " System on" });
   const enabledInput = el("input", { type: "checkbox" });
   enabledInput.checked = settings.system_enabled === true;
@@ -594,7 +632,7 @@ function controls() {
   const futureInput = el("input", { type: "checkbox", disabled: true, "aria-disabled": "true" });
   future.prepend(futureInput);
   form.append(future, el("p", { class: "mute", text: "Off, and it stays off. Personal voice notes are the recordings above. Nothing here calls a voice provider." }));
-  if (state.canEdit) form.append(button("Save controls", (event) => saveControls(event, { enabledInput, cap, tz, quietStart, quietEnd, likes, spacing, delay, followHours, followCount, fallback, publicInput })));
+  if (state.canEdit) form.append(button("Save controls", (event) => saveControls(event, { enabledInput, cap, tz, quietStart, quietEnd, likes, spacing, delay, followHours, followCount, fallback, publicInput, provider })));
   const chief = state.workforce.find((row) => row.role === "chief_of_staff");
   const stuck = field("Days before a stage is stuck", (chief && chief.parameters && chief.parameters.stuck_days) || 3, "number");
   const hint = field("Reel comment hint", (state.workforce.find((row) => row.role === "engagement_warmup") || {}).parameters?.comment_hint || "");
@@ -646,7 +684,8 @@ async function saveControls(event, fields) {
     followup_hours: Math.min(23, Math.max(1, Number(fields.followHours.input.value) || 6)),
     followup_count: Math.min(5, Math.max(1, Number(fields.followCount.input.value) || 3)),
     booking_fallback_url: fields.fallback.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
-    public_comment_replies: fields.publicInput.checked
+    public_comment_replies: fields.publicInput.checked,
+    setter_provider: fields.provider.value === "tailortalk" ? "tailortalk" : "roleflow_meta"
   }).eq("agent_id", state.businessId);
   if (saved.error) toast(saved.error.message, "bad");
   else {
@@ -714,10 +753,18 @@ async function saveDeal(event, targetId, amount, note) {
     notes: note.input.value.trim(),
     attributed: true,
     entered_by: state.user.id
-  });
+  }).select("id").single();
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Revenue recorded. The 10% share updates with it.");
+    if (state.settings && state.settings.setter_provider === "tailortalk") {
+      try {
+        await callTailorTalk(engineCtx(), "mark_won", { deal_id: saved.data.id });
+        toast("TailorTalk marked this lead converted.");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }
     await bootBusiness(state.businessId);
   }
 }

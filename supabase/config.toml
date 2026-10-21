@@ -351,6 +351,12 @@ verify_jwt = false
 [functions.acquisition-bot]
 verify_jwt = false
 
+# acq-tailortalk checks the acquisition cron secret, a user JWT, or the
+# per-business webhook secret itself. TailorTalk cannot send a user JWT.
+# Optional TAILORTALK_CRON_SECRET is an alternate bearer for action "sync".
+[functions.acq-tailortalk]
+verify_jwt = false
+
 # roleflow-acquisition checks webhook signatures, OAuth state, user JWTs,
 # and the cron secret itself. Instagram and Google cannot send a user JWT.
 # Conversation replies: LLM_PROVIDER=xai (default), XAI_API_KEY, optional
