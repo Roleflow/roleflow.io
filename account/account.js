@@ -85,11 +85,19 @@ if (arriving.type === "recovery") {
         const subRes = await supabase.from("onboarding_submissions").select("*").eq("user_id", user.id).maybeSingle();
         if (subRes.error && !missingTable(subRes.error)) {
           showGate(subRes.error.message);
+        } else if (!usesLegacySetter(subRes.data)) {
+          const setup = window.location.hash.startsWith("#onboarding") ? "?onboarding=1" : "";
+          window.location.replace("/account/acquisition/" + setup);
         } else {
           submission = subRes.data;
           if (!submission) {
             const inserted = await supabase.from("onboarding_submissions").insert({ user_id: user.id }).select("*").single();
             submission = inserted.data;
+          }
+          const onboardNav = document.getElementById("nav-onboarding");
+          if (onboardNav) {
+            onboardNav.href = "/account/#onboarding";
+            onboardNav.textContent = "Onboarding";
           }
           const statusNow = submission?.status || "not_started";
           const leaveForBusinesses = (statusNow === "submitted" || statusNow === "integrated" || statusNow === "live") && !window.location.hash.startsWith("#onboarding");
@@ -159,6 +167,14 @@ if (arriving.type === "recovery") {
   }
 }
 
+function usesLegacySetter(submission) {
+  if (!submission) return false;
+  const status = submission.status || "not_started";
+  if (status === "submitted" || status === "integrated" || status === "live") return true;
+  const answers = submission.answers && typeof submission.answers === "object" ? submission.answers : {};
+  return Object.values(answers).some((value) => String(value || "").trim());
+}
+
 async function saveProgress(supabase, userId, snapshot) {
   const status = snapshot.status || "in_progress";
   const patch = {
@@ -186,6 +202,11 @@ async function saveProgress(supabase, userId, snapshot) {
 async function generatePrompt(supabase, userId, snapshot) {
   await saveProgress(supabase, userId, { ...snapshot, status: "submitted" });
   const { data, error } = await supabase.functions.invoke("generate-setter-prompt", { body: {} });
+  if (!error && data && data.ok === false) {
+    const skipped = new Error(data.error || "The prompt could not be written. Your answers are saved.");
+    skipped.saved = true;
+    throw skipped;
+  }
   if (error) {
     let message = error.message || "The prompt could not be written.";
     const context = error.context;
@@ -196,7 +217,9 @@ async function generatePrompt(supabase, userId, snapshot) {
       } catch (_readError) { /* the status text is enough */ }
     }
     if (!/answers are saved/i.test(message)) message += " Your answers are saved.";
-    throw new Error(message);
+    const failed = new Error(message);
+    failed.saved = /answers are saved/i.test(message);
+    throw failed;
   }
   return data || {};
 }

@@ -97,3 +97,17 @@ assert.match(engineSql, /extensions\.gen_random_bytes/);
 assert.match(engineSql, /extensions\.digest/);
 assert.doesNotMatch(engineSql, /(?<![.\w])gen_random_bytes/);
 assert.doesNotMatch(engineSql, /(?<![.\w])digest\(/);
+
+const tail = await import("node:fs").then((fs) => fs.readFileSync(new URL("../scripts/pages_tail.py", import.meta.url), "utf8"));
+assert.doesNotMatch(tail, /cloned-voice|cloned voice/);
+for (const page of [
+  "for/coaches/index.html",
+  "for/consultants/index.html",
+  "for/agency-owners/index.html",
+  "for/course-creators/index.html",
+  "vs/mochi/index.html",
+  "vs/ripdrip/index.html"
+]) {
+  const html = await import("node:fs").then((fs) => fs.readFileSync(new URL("../" + page, import.meta.url), "utf8"));
+  assert.doesNotMatch(html, /cloned-voice/, page);
+}

@@ -19,6 +19,8 @@ Roleflow’s acquisition product lives in each signed-in user’s account at `/a
 
 TailorTalk tables and `tailortalk-sync` stay as a legacy client cache. New workspaces do not need them. The engine does not call TailorTalk.
 
+New accounts do not use the old “Build your DM setter” form. Account navigation sends them to `/account/acquisition/`. That form stays only for a setter submission that already has answers, or one that was submitted. If `XAI_API_KEY` is missing, `generate-setter-prompt` keeps the saved answers and returns that the prompt was not written. It does not answer with HTTP 500, and the form does not call that a failed save.
+
 ## What the account panel includes
 
 Workforce (all eight, with on/off), inbox, pipeline, voice notes, reports, integrations (Instagram, Google Calendar, outreach worker), billing, prompts with a test box that does not send, and setup.

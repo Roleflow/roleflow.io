@@ -124,7 +124,12 @@ Deno.serve(async (req) => {
       email_error: "Prompt was not written, so no email was sent.",
       prompt_text: previousPrompt || null
     });
-    return json(500, { error: "XAI_API_KEY is not set. Your answers are saved." });
+    // Answers are already stored. A missing model key is not a failed save.
+    return json(200, {
+      ok: false,
+      saved: true,
+      error: "XAI_API_KEY is not set. Your answers are saved."
+    });
   }
 
   let prompt = "";
