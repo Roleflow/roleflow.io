@@ -3,7 +3,7 @@ import { liveSections } from "../account/setter-model.js";
 import { toast } from "../auth/ui.js";
 
 function shown(message) {
-  return String(message || "").replace(/tailortalk/ig, "the setter service");
+  return String(message || "");
 }
 
 function el(tag, attrs, children) {
@@ -102,7 +102,7 @@ export function loadTemplateSends(supabase, agentId) {
 }
 
 async function invoke(supabase, body) {
-  const { data, error } = await supabase.functions.invoke("tailortalk-sync", { body });
+  const { data, error } = await supabase.functions.invoke("setter-engine", { body });
   if (error) {
     let message = error.message || "The request failed.";
     const context = error.context;
@@ -142,8 +142,8 @@ export async function renderCrm(supabase, user, { app, hello }) {
 
   async function load() {
     const [agentRes, statRes, profileRes] = await Promise.all([
-      supabase.from("tailortalk_agents").select("id, tailortalk_agent_id, agent_name, label, profile_id, client_id, channels, prompt_version_id, prompt_updated_at, tailortalk_created_at, archived, last_synced_at, last_sync_error, last_activity_at").order("agent_name"),
-      supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day"),
+      supabase.from("engine_registry").select("id, external_agent_id, agent_name, label, profile_id, client_id, channels, prompt_version_id, prompt_updated_at, created_remote, archived, last_synced_at, last_sync_error, last_activity_at").order("agent_name"),
+      supabase.from("engine_lead_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day"),
       supabase.from("profiles").select("id, full_name, email, instagram").order("full_name")
     ]);
     const error = agentRes.error || statRes.error || profileRes.error;
@@ -656,9 +656,9 @@ export async function renderCrm(supabase, user, { app, hello }) {
     const series = asSeries(row?.leads_per_day);
     const categories = asObject(row?.by_category);
     const salesKnown = Object.keys(categories).length > 0;
-    const promptRes = await supabase.from("tailortalk_agents").select("prompt_sections").eq("id", agent.id).maybeSingle();
-    const historyRes = await supabase.from("tailortalk_prompt_versions").select("version_id, deployed_at, sections").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
-    const leadsRes = await supabase.from("tailortalk_leads").select("external_id, lead_name, username, lead_contact, lead_status, category, source, last_message_time, joined_at, total_followups, is_converted, converted_at").eq("agent_id", agent.id).order("last_message_time", { ascending: false }).limit(500);
+    const promptRes = await supabase.from("engine_registry").select("prompt_sections").eq("id", agent.id).maybeSingle();
+    const historyRes = await supabase.from("engine_prompt_history").select("version_id, deployed_at, sections").eq("agent_id", agent.id).order("deployed_at", { ascending: false });
+    const leadsRes = await supabase.from("engine_lead_cache").select("external_id, lead_name, username, lead_contact, lead_status, category, source, last_message_time, joined_at, total_followups, is_converted, converted_at").eq("agent_id", agent.id).order("last_message_time", { ascending: false }).limit(500);
     if (generation !== paintGeneration) return;
     const leads = leadsRes.data || [];
     root.append(el("h2", {}, [agentName(agent)]));
@@ -808,7 +808,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
     const settings = el("dl");
     [
       ["Status", agent.archived ? "Paused" : "Active"],
-      ["Created", when(agent.tailortalk_created_at)],
+      ["Created", when(agent.created_remote)],
       ["Prompt updated", when(agent.prompt_updated_at)],
       ["Live version", agent.prompt_version_id || "—"],
       ["Linked client", clientLabel(profileOf(agent))]

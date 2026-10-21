@@ -1,7 +1,8 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
-import { callTailorTalk, renderEngine } from "./engine-ui.js";
+import { callSetterEngine, renderEngine } from "./engine-ui.js";
 import {
+  ENGINE_HINT,
   JOURNEY,
   LEAD_STATUSES,
   ROLES,
@@ -60,10 +61,9 @@ const state = {
   setterLink: null,
   contacts: [],
   conversations: [],
-  ttMessages: [],
-  ttMessageCount: 0,
-  ttWebhook: "",
-  ttWebhookBusiness: "",
+  engineMessages: [],
+  messageCount: 0,
+  outbox: [],
   openThread: "",
   promptRole: "qualification",
   tab: "overview",
@@ -130,7 +130,7 @@ async function boot() {
   }
   const adminRes = await state.supabase.from("admins").select("user_id").eq("user_id", state.user.id).maybeSingle();
   state.isAdmin = Boolean(adminRes.data);
-  let listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, tailortalk_agent_id").order("created_at", { ascending: true });
+  let listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").order("created_at", { ascending: true });
   if (listed.error && missing(listed.error)) {
     showMessage("Pipeline is not ready", "Apply the acquisition migrations, then refresh.");
     return;
@@ -145,7 +145,7 @@ async function boot() {
       showMessage("Could not open a workspace", opened.error.message);
       return;
     }
-    listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, tailortalk_agent_id").order("created_at", { ascending: true });
+    listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").order("created_at", { ascending: true });
   }
   state.businesses = (listed.data || []).map((row) => ({ ...row, agent_name: row.name || "Acquisition" }));
   if (!state.businesses.length) {
@@ -188,10 +188,10 @@ async function bootBusiness(id) {
 
 async function loadAll(id) {
   const q = state.supabase;
-  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, threadMessages] = await Promise.all([
+  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, threadMessages, outbox] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
-    q.from("acq_targets").select("*").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
+    q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
     q.from("acq_outreach").select("*").eq("agent_id", id).limit(500),
     q.from("acq_warmup_steps").select("id, target_id, day_number, action, status, scheduled_for, action_count").eq("agent_id", id).limit(1000),
     q.from("acq_bookings").select("*").eq("agent_id", id),
@@ -206,11 +206,12 @@ async function loadAll(id) {
     q.from("google_connections").select("business_id, email, calendar_id, expires_at, status, last_error, connected_at").eq("business_id", id).maybeSingle(),
     q.from("acq_workers").select("id, label, key_prefix, enabled, status, last_heartbeat_at, pause_reason").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_setter_links").select("business_id, provider, agent_hint, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_hint, webhook_seen_at").eq("business_id", id).maybeSingle(),
+    q.from("acq_setter_links").select("business_id, provider, agent_hint, external_agent_id, requested_handle, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_seen_at").eq("business_id", id).maybeSingle(),
     q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
-    q.from("acq_messages").select("conversation_id, role, body, sent_at, created_at").eq("business_id", id).order("created_at", { ascending: true }).limit(400)
+    q.from("acq_messages").select("conversation_id, role, body, sent_at, created_at").eq("business_id", id).order("created_at", { ascending: true }).limit(400),
+    q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(20)
   ]);
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
   if (firstError) {
@@ -238,13 +239,10 @@ async function loadAll(id) {
   state.dnc = dnc.error ? [] : dnc.data || [];
   state.setterLink = setterLink.error ? null : setterLink.data;
   state.contacts = contacts.error ? [] : contacts.data || [];
-  state.ttMessageCount = messages.error ? 0 : messages.count || 0;
+  state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
-  state.ttMessages = threadMessages.error ? [] : threadMessages.data || [];
-  if (state.ttWebhookBusiness !== id) {
-    state.ttWebhook = "";
-    state.ttWebhookBusiness = "";
-  }
+  state.engineMessages = threadMessages.error ? [] : threadMessages.data || [];
+  state.outbox = outbox.error ? [] : outbox.data || [];
   return true;
 }
 
@@ -315,7 +313,7 @@ function overview() {
   if (!state.targets.length) {
     const empty = el("section", { class: "agent" });
     empty.append(el("h3", { text: "No contacts in the CRM yet" }));
-    empty.append(el("p", { text: "Qualified profiles land here at stage Target after Grok scores them. Replies from TailorTalk show on the same contact." }));
+    empty.append(el("p", { text: "Qualified profiles land here at stage Target after Grok scores them. Replies from the Instagram DM engine show on the same contact." }));
     empty.append(el("a", { class: "btn sm", href: "#onboarding" }, ["Set up this business"]));
     wrap.append(empty);
   }
@@ -336,11 +334,11 @@ function overview() {
     card.append(head, el("p", { text: role.detail }));
     card.append(el("p", { text: "Today " + (row.daily_count || 0) + " · last run " + when(row.last_run_at) }));
     const setterRole = role.id === "comment_to_dm" || role.id === "qualification" || role.id === "conversation_recovery" || role.id === "appointment_booking";
-    const poweredByTailorTalk = setterRole && state.settings && state.settings.setter_provider === "tailortalk";
-    if (poweredByTailorTalk) {
-      card.append(el("p", { text: "Powered by TailorTalk" }));
+    if (setterRole && usesEngine()) {
+      card.append(el("p", { text: "Instagram DM engine" }));
       card.append(el("p", { text: setterStats(role.id) }));
-      card.append(el("p", { class: "mute", text: "Pausing stops Roleflow from applying TailorTalk updates for this agent. Pause the agent in TailorTalk too, or it keeps messaging." }));
+      if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));
+      card.append(el("p", { class: "mute", text: "Pausing sends the pause to the Instagram DM engine. Roleflow stops applying updates for this agent while it is off." }));
     } else if (role.id === "comment_to_dm") {
       card.append(el("p", { text: state.threads.filter((item) => item.state === "comment_to_dm").length + " comment threads in the inbox" }));
     } else if (role.id === "qualification") {
@@ -475,7 +473,7 @@ function leadDetail(target) {
   if (outreach && outreach.handed_off_at) box.append(el("p", { text: "Replies continue with the setter provider." }));
   const contact = (state.contacts || []).find((row) => row.target_id === target.id || (row.ig_handle && String(row.ig_handle).toLowerCase().replace(/^@/, "") === target.handle));
   const conversationIds = (state.conversations || []).filter((row) => contact && row.contact_id === contact.id).map((row) => row.id);
-  const thread = (state.ttMessages || []).filter((row) => conversationIds.includes(row.conversation_id));
+  const thread = (state.engineMessages || []).filter((row) => conversationIds.includes(row.conversation_id));
   box.append(setterDetail(contact, target, thread));
   if (thread.length) {
     const talk = el("div", { class: "audit" });
@@ -544,7 +542,7 @@ function leadDetail(target) {
   return box;
 }
 
-const PULL_HINT = "Starter pulls status and a summary every 5 minutes. Chat history and extracted attributes appear after a paid-plan webhook.";
+const PULL_HINT = ENGINE_HINT;
 
 const ATTR_LABELS = [
   ["budget", "Budget"],
@@ -579,7 +577,7 @@ function setterDetail(contact, target, thread) {
     wrap.append(el("p", { text: "Status " + status + " · " + category + " · follow-ups " + followups + (source ? " · " + source : "") + converted }));
     return wrap;
   }
-  wrap.append(el("p", { class: "mute", text: "Full history and extracted attributes from the TailorTalk webhook." }));
+  wrap.append(el("p", { class: "mute", text: "Full history and extracted attributes from the Instagram DM engine." }));
   const attrs = contact.attributes || {};
   if (attrs.chat_summary) wrap.append(el("p", { text: attrs.chat_summary }));
   const lines = ATTR_LABELS.filter(([key]) => attrs[key]).map(([key, label]) => label + ": " + attrs[key]);
@@ -594,7 +592,7 @@ function voiceQueue() {
   section.append(el("p", { class: "mute", text: PULL_HINT }));
   const waiting = (state.contacts || []).filter((row) => row.attributes && row.attributes.voice_note_slot);
   if (!waiting.length) {
-    section.append(el("p", { text: "No voice notes are waiting. A slot shows up here when a webhook sends voice_note_slot." }));
+    section.append(el("p", { text: "No voice notes are waiting. A slot shows up here when the engine sends voice_note_slot." }));
     return section;
   }
   waiting.slice(0, 40).forEach((row) => {
@@ -720,12 +718,27 @@ function reports() {
 function setterStats(roleId) {
   const contacts = state.contacts || [];
   const count = (status) => contacts.filter((row) => row.lead_status === status).length;
-  if (roleId === "comment_to_dm") return count("cold") + " cold contacts · " + (state.ttMessageCount || 0) + " messages synced";
+  if (roleId === "comment_to_dm") return count("cold") + " cold contacts · " + (state.messageCount || 0) + " messages synced";
   if (roleId === "qualification") return count("warm") + " warm · " + count("hot") + " hot";
   if (roleId === "conversation_recovery") return contacts.filter((row) => row.lead_status === "cold" && row.last_message_at).length + " cold contacts with a message";
-  const bookings = state.bookings.filter((row) => row.source === "tailortalk").length;
+  const bookings = state.bookings.filter((row) => row.source === "engine").length;
   const converted = contacts.filter((row) => row.is_converted === true || row.lead_status === "converted").length;
-  return bookings + " TailorTalk bookings · " + converted + " converted";
+  return bookings + " engine bookings · " + converted + " converted";
+}
+
+function usesEngine() {
+  return Boolean(state.settings && state.settings.setter_provider === "engine");
+}
+
+const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
+
+async function enqueueEngine(kind, payload) {
+  const saved = await state.supabase.rpc("acq_engine_enqueue", {
+    p_business: state.businessId,
+    p_kind: kind,
+    p_payload: payload || {}
+  });
+  if (saved.error) throw new Error(saved.error.message);
 }
 
 function controls() {
@@ -734,14 +747,14 @@ function controls() {
   form.append(el("h3", { text: "System" }));
   const providerWrap = el("label", { text: "Setter for comment-to-DM, qualification, recovery, and booking" });
   const provider = el("select", { "aria-label": "Setter provider" });
-  [["roleflow_meta", "Roleflow Meta engine"], ["tailortalk", "TailorTalk"]].forEach(([value, label]) => {
+  [["roleflow_meta", "Roleflow Meta engine"], ["engine", "Roleflow Setter Engine"]].forEach(([value, label]) => {
     const option = el("option", { value, text: label });
     if ((settings.setter_provider || "roleflow_meta") === value) option.setAttribute("selected", "");
     provider.append(option);
   });
   provider.disabled = !state.canEdit;
   providerWrap.append(provider);
-  form.append(providerWrap, el("p", { class: "mute", text: "TailorTalk runs those four agents until a Meta app is connected. Connect the API key on Integrations or Setup. Switching back to the Meta engine leaves the TailorTalk key stored until you disconnect it. Pausing all four stops the sync from writing. Pause the agent inside TailorTalk as well, or it keeps messaging." }));
+  form.append(providerWrap, el("p", { class: "mute", text: "The Roleflow Setter Engine runs those four agents until a Meta app is connected. Connect Instagram on Integrations or Setup. Switching back to the Meta engine keeps the engine link until an admin disconnects it. Pausing an agent sends that pause to the engine." }));
   const enabled = el("label", { class: "switch", text: " System on" });
   const enabledInput = el("input", { type: "checkbox" });
   enabledInput.checked = settings.system_enabled === true;
@@ -762,12 +775,22 @@ function controls() {
   publicInput.checked = settings.public_comment_replies === true;
   publicInput.disabled = !state.canEdit;
   publicReplies.prepend(publicInput);
-  form.append(enabled, cap.label, tz.label, quietStart.label, quietEnd.label, likes.label, spacing.label, delay.label, followHours.label, followCount.label, fallback.label, publicReplies);
+  const comment = roleParams("comment_to_dm");
+  const qual = roleParams("qualification");
+  const keywords = field("Comment trigger keywords", comment.trigger_keywords || "");
+  const triggerMessage = field("Comment-to-DM message", comment.trigger_message || "");
+  const budgetRule = field("Budget rule", qual.budget_rule || "");
+  const timelineRule = field("Timeline rule", qual.timeline_rule || "");
+  const makerRule = field("Decision-maker rule", qual.decision_maker_rule || "");
+  const fitRule = field("Fit rule", qual.fit_rule || "");
+  const statuses = field("Lead statuses", qual.lead_statuses || LEAD_STATUSES.join(", "));
+  form.append(enabled, cap.label, tz.label, quietStart.label, quietEnd.label, likes.label, spacing.label, delay.label, followHours.label, followCount.label, fallback.label, publicReplies, keywords.label, triggerMessage.label, budgetRule.label, timelineRule.label, makerRule.label, fitRule.label, statuses.label);
+  form.append(el("p", { class: "mute", text: "Voice-note slots are the recordings on the Voice tab: " + SLOTS.map((slot) => slot.label).join(", ") + "." }));
   const future = el("label", { class: "switch placeholder-ai", text: " AI voice (future)" });
   const futureInput = el("input", { type: "checkbox", disabled: true, "aria-disabled": "true" });
   future.prepend(futureInput);
   form.append(future, el("p", { class: "mute", text: "Off, and it stays off. Personal voice notes are the recordings above. Nothing here calls a voice provider." }));
-  if (state.canEdit) form.append(button("Save controls", (event) => saveControls(event, { enabledInput, cap, tz, quietStart, quietEnd, likes, spacing, delay, followHours, followCount, fallback, publicInput, provider })));
+  if (state.canEdit) form.append(button("Save controls", (event) => saveControls(event, { enabledInput, cap, tz, quietStart, quietEnd, likes, spacing, delay, followHours, followCount, fallback, publicInput, provider, keywords, triggerMessage, budgetRule, timelineRule, makerRule, fitRule, statuses })));
   const chief = state.workforce.find((row) => row.role === "chief_of_staff");
   const stuck = field("Days before a stage is stuck", (chief && chief.parameters && chief.parameters.stuck_days) || 3, "number");
   const hint = field("Reel comment hint", (state.workforce.find((row) => row.role === "engagement_warmup") || {}).parameters?.comment_hint || "");
@@ -793,10 +816,26 @@ function activityList(rows, title) {
   return block;
 }
 
+function roleParams(role) {
+  const row = state.workforce.find((item) => item.role === role);
+  return (row && row.parameters) || {};
+}
+
 async function setRole(role, on) {
   const saved = await state.supabase.from("business_workforce").update({ status: on ? "active" : "paused", updated_at: new Date().toISOString() }).eq("agent_id", state.businessId).eq("role", role);
-  if (saved.error) toast(saved.error.message, "bad");
-  else toast(on ? "Agent on." : "Agent off.");
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    await bootBusiness(state.businessId);
+    return;
+  }
+  if (usesEngine() && SETTER_ROLES.includes(role)) {
+    try {
+      await enqueueEngine("pause_agent", { role, status: on ? "active" : "paused" });
+      toast("Syncing…");
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  } else toast(on ? "Agent on." : "Agent off.");
   await bootBusiness(state.businessId);
 }
 
@@ -820,11 +859,44 @@ async function saveControls(event, fields) {
     followup_count: Math.min(5, Math.max(1, Number(fields.followCount.input.value) || 3)),
     booking_fallback_url: fields.fallback.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
     public_comment_replies: fields.publicInput.checked,
-    setter_provider: fields.provider.value === "tailortalk" ? "tailortalk" : "roleflow_meta"
+    setter_provider: fields.provider.value === "engine" ? "engine" : "roleflow_meta"
   }).eq("agent_id", state.businessId);
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Controls saved.");
+    if (fields.provider.value === "engine") {
+      try {
+        await mergeParams("comment_to_dm", {
+          trigger_keywords: fields.keywords.input.value.trim(),
+          trigger_message: fields.triggerMessage.input.value.trim()
+        });
+        await mergeParams("qualification", {
+          budget_rule: fields.budgetRule.input.value.trim(),
+          timeline_rule: fields.timelineRule.input.value.trim(),
+          decision_maker_rule: fields.makerRule.input.value.trim(),
+          fit_rule: fields.fitRule.input.value.trim(),
+          lead_statuses: fields.statuses.input.value.trim() || LEAD_STATUSES.join(", ")
+        });
+        await enqueueEngine("update_settings", {
+          timezone: fields.tz.input.value.trim() || "Europe/Madrid",
+          reply_delay_seconds: Math.min(300, Math.max(0, Number(fields.delay.input.value) || 0)),
+          followup_hours: Math.min(23, Math.max(1, Number(fields.followHours.input.value) || 6)),
+          followup_count: Math.min(5, Math.max(1, Number(fields.followCount.input.value) || 3)),
+          booking_link: fields.fallback.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
+          trigger_keywords: fields.keywords.input.value.trim(),
+          trigger_message: fields.triggerMessage.input.value.trim(),
+          budget_rule: fields.budgetRule.input.value.trim(),
+          timeline_rule: fields.timelineRule.input.value.trim(),
+          decision_maker_rule: fields.makerRule.input.value.trim(),
+          fit_rule: fields.fitRule.input.value.trim(),
+          lead_statuses: fields.statuses.input.value.trim() || LEAD_STATUSES.join(", "),
+          voice_note_slots: SLOTS.map((slot) => slot.id)
+        });
+        toast("Syncing…");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }
     await bootBusiness(state.businessId);
   }
 }
@@ -858,6 +930,22 @@ async function saveQualification(event, id, fields) {
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Qualification saved.");
+    if (usesEngine()) {
+      try {
+        await enqueueEngine("update_settings", {
+          target_id: id,
+          budget: fields.budget.input.value.trim(),
+          timeline: fields.timeline.input.value.trim(),
+          fit: fields.fit.input.value.trim(),
+          qual_score: Number.isFinite(qual) ? qual : null,
+          lead_status: fields.status.value,
+          decision_maker: fields.makerInput.checked
+        });
+        toast("Syncing…");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }
     await bootBusiness(state.businessId);
   }
 }
@@ -869,6 +957,14 @@ async function saveShowStatus(target, booking, showStatus) {
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Show-up saved.");
+    if (usesEngine() && (showStatus === "scheduled" || showStatus === "showed")) {
+      try {
+        await callSetterEngine(engineCtx(), "mark_booked", { target_id: target.id });
+        toast("The Instagram DM engine marked this lead booked.");
+      } catch (error) {
+        toast(error.message, "bad");
+      }
+    }
     await bootBusiness(state.businessId);
   }
 }
@@ -892,10 +988,10 @@ async function saveDeal(event, targetId, amount, note) {
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Revenue recorded. The 10% share updates with it.");
-    if (state.settings && state.settings.setter_provider === "tailortalk") {
+    if (usesEngine()) {
       try {
-        await callTailorTalk(engineCtx(), "mark_won", { deal_id: saved.data.id });
-        toast("TailorTalk marked this lead converted.");
+        await callSetterEngine(engineCtx(), "mark_won", { deal_id: saved.data.id });
+        toast("The Instagram DM engine marked this lead converted.");
       } catch (error) {
         toast(error.message, "bad");
       }

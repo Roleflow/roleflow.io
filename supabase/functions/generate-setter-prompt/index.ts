@@ -1,6 +1,6 @@
 // generate-setter-prompt
 //
-// Builds a Tailortalk DM setter prompt from a client's short onboarding
+// Builds an Instagram DM setter prompt from a client's short onboarding
 // answers, stores it on onboarding_submissions, and emails it to Diego.
 //
 // Do not deploy from the repo. Deploy this folder with the Supabase
@@ -260,7 +260,7 @@ function assembleSections(drafted: Record<string, unknown>, email: string) {
 }
 
 function validateSections(sections: Record<string, string>, prompt: string) {
-  if (SECTIONS.length !== 9) return "The section list is not the nine Tailortalk blocks.";
+  if (SECTIONS.length !== 9) return "The section list is not the nine setter blocks.";
   for (const section of SECTIONS) {
     const block = String(sections[section.id] || "").trim();
     if (!block.startsWith("# " + section.title)) return "Missing section: " + section.title;
@@ -289,7 +289,7 @@ function briefOf(input: {
   answers: Record<string, unknown>;
 }) {
   const lines = [
-    "Write the Tailortalk prompt for this client. Use only these facts.",
+    "Write the Instagram DM setter prompt for this client. Use only these facts.",
     "Name: " + input.name,
     "Email (for your context only — do not put this address anywhere in the prompt): " + (input.email || "[CONFIRM]"),
     "Instagram: " + input.handle,
@@ -317,7 +317,7 @@ function briefOf(input: {
 
 function systemPrompt(example: string) {
   return [
-    "You write Tailortalk-ready Instagram DM setter prompts for Roleflow.",
+    "You write Instagram DM setter prompts for Roleflow.",
     "Return JSON only. Each property is one section body, in markdown, without a level-1 heading.",
     "The high priority rules are added after you reply. Do not include them.",
     "Match the example's depth and style. Write in first person. The setter IS the client. Instagram DMs only.",
@@ -376,7 +376,7 @@ async function draftSections(apiKey: string, model: string, example: string, inp
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: "tailortalk_sections",
+          name: "setter_sections",
           strict: true,
           schema: sectionSchema()
         }

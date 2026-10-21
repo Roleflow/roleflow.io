@@ -165,9 +165,9 @@ assert.match(read("admin/crm.js"), /id: "crm-confirm"/);
 assert.match(read("admin/crm.js"), /action: "mark_booked"/);
 assert.match(read("admin/crm.js"), /action: "send_template"/);
 assert.match(read("admin/crm.js"), /Message history is not included/);
-const crmLiterals = [...read("admin/crm.js").matchAll(/"([^"\\]|\\.)*"/g)].map((match) => match[0]);
-const branded = crmLiterals.filter((text) => /tailortalk/i.test(text) && !/tailortalk-sync|tailortalk_/.test(text));
-assert.deepEqual(branded, []);
+assert.doesNotMatch(read("admin/crm.js"), /tailortalk/i);
+assert.match(read("admin/crm.js"), /engine_registry/);
+assert.match(read("admin/crm.js"), /setter-engine/);
 assert.match(read("admin/crm.js"), /id: "crm-link-" \+ agent\.id/);
 assert.match(read("admin/crm.js"), /client_id: select\.value \|\| null/);
 assert.doesNotMatch(read("admin/crm.js"), /token_encrypted/);
@@ -211,7 +211,8 @@ const migrationNames = [
   "20261021160000_pgcrypto_schema.sql",
   "20261021180000_tailortalk_provider.sql",
   "20261021200000_live_acquisition.sql",
-  "20261021220000_tailortalk_facts.sql"
+  "20261021220000_tailortalk_facts.sql",
+  "20261021230000_engine_outbox.sql"
 ];
 assert.deepEqual(
   migrationNames,

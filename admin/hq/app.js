@@ -537,9 +537,9 @@ function memoryClient(seed) {
     hq_schedules: structuredClone(seed.schedules || []),
     hq_activity: structuredClone(seed.activity || []),
     hq_agent_keys: structuredClone(seed.keys || []),
-    tailortalk_agents: structuredClone(seed.businesses || []),
-    tailortalk_leads: structuredClone(seed.leads || []),
-    tailortalk_agent_stats: structuredClone(seed.stats || []),
+    engine_registry: structuredClone(seed.businesses || []),
+    engine_lead_cache: structuredClone(seed.leads || []),
+    engine_lead_stats: structuredClone(seed.stats || []),
     business_workforce: structuredClone(seed.workforce || [])
   };
 
@@ -2352,7 +2352,7 @@ async function loadWorkforceScreen() {
   const token = ++state.businessToken;
   try {
     if (!state.businessListLoaded) {
-      const listed = await state.supabase.from("tailortalk_agents").select("id, label, agent_name, archived, client_id, profile_id, prompt_sections, prompt_version_id, prompt_updated_at, last_synced_at, last_activity_at").eq("archived", false);
+      const listed = await state.supabase.from("engine_registry").select("id, label, agent_name, archived, client_id, profile_id, prompt_sections, prompt_version_id, prompt_updated_at, last_synced_at, last_activity_at").eq("archived", false);
       if (token !== state.businessToken) return;
       if (listed.error) throw listed.error;
       state.businesses = listed.data || [];
@@ -2385,8 +2385,8 @@ async function loadWorkforceScreen() {
     const chosen = validateOfficeConfig(office.config || loaded.value);
     const officeConfig = chosen.ok ? chosen.value : loaded.value;
     const [leadsRes, statsRes, workRes, taskRes] = await Promise.all([
-      state.supabase.from("tailortalk_leads").select("agent_id, lead_status, category, is_converted, converted_at, last_message_time, total_followups, source").eq("agent_id", business.id),
-      state.supabase.from("tailortalk_agent_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, computed_at, last_activity_at").eq("agent_id", business.id).maybeSingle(),
+      state.supabase.from("engine_lead_cache").select("agent_id, lead_status, category, is_converted, converted_at, last_message_time, total_followups, source").eq("agent_id", business.id),
+      state.supabase.from("engine_lead_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, computed_at, last_activity_at").eq("agent_id", business.id).maybeSingle(),
       state.supabase.from("business_workforce").select("agent_id, role, status, updated_at").eq("agent_id", business.id),
       state.supabase.from("hq_tasks").select("id, business_id, setter_id, station, title, description, status, priority, updated_at, created_at").eq("business_id", business.id)
     ]);

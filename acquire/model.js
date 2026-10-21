@@ -17,15 +17,17 @@ export const STAGE_LABELS = {
 
 export const LEAD_STATUSES = ["cold", "warm", "hot", "converted", "dead"];
 
+export const ENGINE_HINT = "The Instagram DM engine refreshes status and a summary every 5 minutes. Chat history and extracted attributes appear after the full event stream is connected.";
+
 export const ROLES = [
   { id: "chief_of_staff", name: "Chief of Staff", detail: "Cap, bottlenecks, daily summary, weekly report." },
   { id: "icp_acquisition", name: "ICP Target Acquisition", detail: "20–30 Instagram accounts a day. Bio CTA, 5k–200k followers." },
   { id: "engagement_warmup", name: "Engagement Warm-Up", detail: "Day 1 follow, likes, Reel comment. Days 2–3 stories. Day 4 unfollow." },
   { id: "personalised_outreach", name: "Personalised Outreach", detail: "Send or skip after warm-up. Personal voice note on the opener." },
-  { id: "comment_to_dm", name: "Comment-to-DM Conversion", detail: "Turns comments into DMs. Runs on TailorTalk or Roleflow's Meta engine, whichever this business selected." },
+  { id: "comment_to_dm", name: "Comment-to-DM Conversion", detail: "Turns comments into DMs. Runs on the Roleflow Setter Engine or Roleflow's Meta engine, whichever this business selected." },
   { id: "qualification", name: "Qualification & Gap-Building", detail: "One question at a time: budget, timeline, decision-maker, fit." },
   { id: "conversation_recovery", name: "Conversation Recovery", detail: "Up to 3 follow-ups, about 6 hours apart, inside the 24-hour window." },
-  { id: "appointment_booking", name: "Appointment Booking & Show-Up", detail: "Books the call. On TailorTalk, a booking in TailorTalk becomes an appointment here." }
+  { id: "appointment_booking", name: "Appointment Booking & Show-Up", detail: "Books the call. A booking in the Instagram DM engine becomes an appointment here." }
 ];
 
 export const BOOKING_FALLBACK_URL = "https://calendar.app.google/8i1gomkozavqYU5b8";

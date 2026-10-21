@@ -115,7 +115,7 @@ export function windowSeries(series, days, now = new Date()) {
 }
 
 export function scrub(message) {
-  return String(message || "").replace(/tailortalk|zerochats/ig, "the setter service");
+  return String(message || "").replace(/zerochats/ig, "the setter service");
 }
 
 const PROOF_PLACEHOLDER = {

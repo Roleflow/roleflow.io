@@ -1,3 +1,5 @@
+import { ENGINE_HINT, SLOTS } from "./model.js";
+
 const PROMPT_ROLES = [
   ["comment_to_dm", "Comment-to-DM"],
   ["qualification", "Qualification"],
@@ -89,8 +91,19 @@ function fillThread(ctx, pane, thread) {
   }));
   row.append(button("Send reply", async () => {
     try {
-      await callEngine(ctx, "inbox_send", { thread_id: thread.id, text: reply.input.value });
-      toast("Reply queued. It sends on the next minute if the messaging window allows it.");
+      const text = reply.input.value;
+      if (state.settings && state.settings.setter_provider === "engine") {
+        const queued = await state.supabase.rpc("acq_engine_enqueue", {
+          p_business: state.businessId,
+          p_kind: "message_lead_draft",
+          p_payload: { thread_id: thread.id, text }
+        });
+        if (queued.error) throw new Error(queued.error.message);
+        toast("Syncing…");
+      } else {
+        await callEngine(ctx, "inbox_send", { thread_id: thread.id, text });
+        toast("Reply queued. It sends on the next minute if the messaging window allows it.");
+      }
       reply.input.value = "";
       await ctx.bootBusiness(state.businessId);
       ctx.go("inbox");
@@ -137,7 +150,15 @@ function paintPrompts(host, ctx) {
       });
       try {
         const saved = await callEngine(ctx, "prompts_save", { role: role.value, sections });
-        toast("Saved version " + (saved.version || "") + ".");
+        if (state.settings && state.settings.setter_provider === "engine" && PROMPT_ROLES.some(([id]) => id === role.value)) {
+          const queued = await state.supabase.rpc("acq_engine_enqueue", {
+            p_business: state.businessId,
+            p_kind: "update_workflow",
+            p_payload: { role: role.value, sections, voice_note_slots: SLOTS.map((slot) => slot.id) }
+          });
+          if (queued.error) throw new Error(queued.error.message);
+          toast("Syncing…");
+        } else toast("Saved version " + (saved.version || "") + ".");
         state.prompts = (await callEngine(ctx, "prompts_get")).roles || [];
       } catch (error) {
         toast(error.message, "bad");
@@ -184,75 +205,66 @@ function paintPrompts(host, ctx) {
   }
 }
 
-function paintTailorTalk(host, ctx) {
+function activationLabel(status) {
+  if (status === "pending") return "Pending activation";
+  if (status === "connected") return "Connected";
+  if (status === "error") return "Needs attention";
+  return "Not connected";
+}
+
+function paintSetterEngine(host, ctx) {
   const { state, el, button, field, toast, bootBusiness } = ctx;
   const link = state.setterLink || { status: "disconnected" };
   const card = el("article", { class: "agent" });
-  card.append(el("h3", { text: "TailorTalk setter" }));
-  const hint = link.agent_hint ? " · agent …" + link.agent_hint : "";
+  card.append(el("h3", { text: "Roleflow Setter Engine" }));
+  card.append(el("p", { class: "mute", text: "Instagram DM engine" }));
+  const handle = link.requested_handle ? " · @" + link.requested_handle : "";
   const tested = link.last_test_error ? " · " + link.last_test_error : "";
-  card.append(el("p", { text: "Status: " + (link.status || "disconnected") + hint + tested }));
-  card.append(el("p", { class: "mute", text: "Until a Meta app is available, Comment-to-DM, qualification, recovery, and booking can run on TailorTalk. Enter the API key from TailorTalk Developer → API Keys and the agent id. The key is encrypted and is not shown again." }));
-  card.append(el("p", { class: "mute", text: "Starter pulls status and a summary every 5 minutes. Chat history and extracted attributes appear after a paid-plan webhook." }));
+  card.append(el("p", { text: activationLabel(link.status) + handle + tested }));
+  card.append(el("p", { class: "mute", text: "Comment-to-DM, qualification, recovery, and booking run here until a Meta app is connected. Enter the Instagram handle. An admin links the engine agent on the server. The access token is not shown again." }));
+  card.append(el("p", { class: "mute", text: ENGINE_HINT }));
+  if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));
+  const failed = (state.outbox || []).find((row) => row.status === "failed" && row.error);
+  if (failed) card.append(el("p", { text: failed.error }));
   if (link.webhook_seen_at) {
-    card.append(el("p", { text: "Webhook is delivering full history and extracted attributes. Last event " + ctx.when(link.webhook_seen_at) + "." }));
+    card.append(el("p", { text: "Full history and extracted attributes are arriving. Last event " + ctx.when(link.webhook_seen_at) + "." }));
   }
   if (link.last_synced_at) {
     const counts = link.last_sync_counts || {};
     const note = counts.reason === "paused" ? "Last sync skipped because those four agents are off." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + link.last_sync_error : "");
     card.append(el("p", { text: note }));
   }
-  if (state.ttWebhook && state.ttWebhookBusiness === state.businessId) {
-    card.append(el("p", { class: "key-once", text: "After a paid plan upgrade, paste this webhook into TailorTalk Developer → Webhooks for First Message, On Warm, On Hot, On Converted, and Every Message. The secret is the k= value. Starter does not send webhooks. " + state.ttWebhook }));
-  }
   if (state.canEdit && state.supabase) {
-    const apiKey = field("TailorTalk API key", "");
-    apiKey.input.type = "password";
-    apiKey.input.autocomplete = "off";
-    const agentId = field("TailorTalk agent id", "");
-    agentId.input.autocomplete = "off";
-    card.append(apiKey.label, agentId.label);
+    const igHandle = field("Instagram handle", link.requested_handle || "");
+    igHandle.input.autocomplete = "off";
+    card.append(igHandle.label);
     const row = el("div", { class: "filters" });
-    row.append(button("Connect TailorTalk", async () => {
+    row.append(button("Request activation", async () => {
       try {
-        const result = await callTailorTalk(ctx, "connect", { api_key: apiKey.input.value.trim(), agent_id: agentId.input.value.trim() });
-        state.ttWebhook = result.webhook_url || "";
-        state.ttWebhookBusiness = state.businessId;
-        apiKey.input.value = "";
-        toast("TailorTalk connected. Copy the webhook URL.");
+        await callSetterEngine(ctx, "request_activation", { ig_handle: igHandle.input.value.trim() });
+        toast("Pending activation");
         await bootBusiness(state.businessId);
         ctx.go(state.tab || "integrations");
       } catch (error) {
         toast(error.message, "bad");
       }
     }));
-    row.append(button("Test connection", async () => {
-      try {
-        const result = await callTailorTalk(ctx, "test", {});
-        state.ttWebhook = result.webhook_url || "";
-        state.ttWebhookBusiness = state.businessId;
-        toast("TailorTalk responded.");
-        await bootBusiness(state.businessId);
-        ctx.go(state.tab || "integrations");
-      } catch (error) {
-        toast(error.message, "bad");
-      }
-    }));
-    row.append(button("Sync now", async () => {
-      try {
-        await callTailorTalk(ctx, "sync_one", {});
-        toast("Sync finished.");
-        await bootBusiness(state.businessId);
-        ctx.go(state.tab || "integrations");
-      } catch (error) {
-        toast(error.message, "bad");
-      }
-    }));
+    if (link.status === "connected") {
+      row.append(button("Sync now", async () => {
+        try {
+          await callSetterEngine(ctx, "sync_one", {});
+          toast("Sync finished.");
+          await bootBusiness(state.businessId);
+          ctx.go(state.tab || "integrations");
+        } catch (error) {
+          toast(error.message, "bad");
+        }
+      }));
+    }
     row.append(button("Disconnect", async () => {
       try {
-        await callTailorTalk(ctx, "disconnect", {});
-        state.ttWebhook = "";
-        toast("TailorTalk disconnected. The setter is the Meta engine.");
+        await callSetterEngine(ctx, "disconnect", {});
+        toast("Instagram DM engine disconnected. The setter is the Meta engine.");
         await bootBusiness(state.businessId);
         ctx.go(state.tab || "integrations");
       } catch (error) {
@@ -260,13 +272,33 @@ function paintTailorTalk(host, ctx) {
       }
     }));
     card.append(row);
+    if (state.isAdmin) {
+      const agentId = field("Engine agent id", link.external_agent_id || "");
+      const token = field("Engine access token", "");
+      token.input.type = "password";
+      token.input.autocomplete = "off";
+      agentId.input.autocomplete = "off";
+      card.append(el("h3", { text: "Admin link" }));
+      card.append(agentId.label, token.label);
+      card.append(button("Link engine", async () => {
+        try {
+          await callSetterEngine(ctx, "link_agent", { agent_id: agentId.input.value.trim(), api_key: token.input.value });
+          token.input.value = "";
+          toast("Engine linked.");
+          await bootBusiness(state.businessId);
+          ctx.go(state.tab || "integrations");
+        } catch (error) {
+          toast(error.message, "bad");
+        }
+      }));
+    }
   }
   host.append(card);
 }
 
 function paintIntegrations(host, ctx) {
   const { state, el, button, field, toast, bootBusiness } = ctx;
-  paintTailorTalk(host, ctx);
+  paintSetterEngine(host, ctx);
   const ig = state.ig || { status: "disconnected" };
   const google = state.google || { status: "disconnected" };
   const igCard = el("article", { class: "agent" });
@@ -563,9 +595,9 @@ function paintOnboarding(host, ctx) {
 
   if (step === "connect") {
     card.append(el("h3", { text: "Connect Instagram" }));
-    card.append(el("p", { text: "Use TailorTalk with an API key and agent id, or the Roleflow Meta app when that app is available. Setting agents follow whichever provider you save." }));
+    card.append(el("p", { text: "Enter the Instagram handle. Status stays on Pending activation until an admin links the engine agent. The Roleflow Meta app is the other path when that app is available." }));
     host.append(card);
-    paintTailorTalk(host, ctx);
+    paintSetterEngine(host, ctx);
     const meta = el("article", { class: "agent" });
     meta.append(el("h3", { text: "Roleflow Meta engine" }));
     meta.append(el("p", { text: "Connect the professional Instagram account when the Meta app is available. The token stays on the server." }));
@@ -672,12 +704,12 @@ async function startOauth(ctx, action) {
   }
 }
 
-export async function callTailorTalk(ctx, action, extra) {
+export async function callSetterEngine(ctx, action, extra) {
   if (!ctx.state.supabase) throw new Error("Sign in to use this.");
   const session = await ctx.state.supabase.auth.getSession();
   const token = session.data.session && session.data.session.access_token;
   const root = globalThis.ROLEFLOW_SUPABASE || {};
-  const base = String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/acq-tailortalk";
+  const base = String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/setter-engine";
   const response = await fetch(base, {
     method: "POST",
     headers: {

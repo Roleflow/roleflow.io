@@ -1,4 +1,4 @@
-/* Turns the short intake into the Tailortalk section contract.
+/* Turns the short intake into the setter section contract.
    The live prompt is written by the edge function. This builder is the
    structure check and the local sample: same section order, same depth. */
 (function (root) {
@@ -285,7 +285,7 @@
     var offer = text(data.offerCall);
     var rules = text(config.HIGH_PRIORITY_RULES);
     var banner = options && options.testBanner
-      ? "> TEST DATA. Fictional client. This sample shows the required Tailortalk structure. It was not emailed and it is not a live model response.\n\n"
+      ? "> TEST DATA. Fictional client. This sample shows the required setter structure. It was not emailed and it is not a live model response.\n\n"
       : "";
     var sections = [
       "# HIGH PRIORITY RULE",

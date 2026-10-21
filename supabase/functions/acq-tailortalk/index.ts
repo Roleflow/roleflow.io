@@ -78,15 +78,26 @@ Deno.serve(async (req) => {
     if (action === "disconnect") return json(200, await disconnect(service, businessId));
     if (action === "sync_one") return json(200, await syncBusiness(service, businessId));
     if (action === "mark_won") return json(200, await markWon(service, businessId, String(body.deal_id || "")));
+    if (action === "mark_booked") return json(200, await markBooked(service, businessId, String(body.target_id || "")));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed.";
-    return json(400, { error: message.slice(0, 300) });
+    return json(400, { error: publicError(message) });
   }
   return json(400, { error: "Unknown action." });
 });
 
+function publicError(message: string) {
+  return message
+    .replace(/https?:\/\/api\.tailortalk\.ai\S*/gi, "the setter engine")
+    .replace(/tailortalk/gi, "setter engine")
+    .slice(0, 300);
+}
+
 function json(status: number, payload: Record<string, unknown>) {
-  return new Response(JSON.stringify(payload), { status, headers: cors });
+  const body = { ...payload };
+  delete body.webhook_url;
+  if (typeof body.error === "string") body.error = publicError(body.error);
+  return new Response(JSON.stringify(body), { status, headers: cors });
 }
 
 function timingSafeEqual(a: string, b: string) {
@@ -129,7 +140,7 @@ async function ttPost(url: string, apiKey: string, body: Record<string, unknown>
   });
   const payload = await response.json().catch(() => ({})) as Record<string, any>;
   if (!response.ok || payload.success === false) {
-    const message = payload.message || payload.error || `TailorTalk returned ${response.status}.`;
+    const message = payload.message || payload.error || `The setter engine returned ${response.status}.`;
     throw new Error(String(message).slice(0, 300));
   }
   return payload;
@@ -139,19 +150,19 @@ async function readSecret(service: ReturnType<typeof createClient>, businessId: 
   const result = await service.rpc("acq_read_tt_secret", { p_business: businessId });
   if (result.error) throw new Error(result.error.message);
   const row = result.data || {};
-  if (row.ok !== true || !row.api_key) throw new Error("TailorTalk is not connected for this business.");
+  if (row.ok !== true || !row.api_key) throw new Error("The Instagram DM engine is not connected for this business.");
   return row as { api_key: string; agent_id: string; webhook_secret: string };
 }
 
 async function connect(service: ReturnType<typeof createClient>, supabaseUrl: string, businessId: string, body: Record<string, unknown>) {
   const apiKey = String(body.api_key || "").trim();
   const agentId = String(body.agent_id || "").trim();
-  if (apiKey.length < 8) throw new Error("Enter the TailorTalk API key.");
-  if (!agentId) throw new Error("Enter the TailorTalk agent id.");
+  if (apiKey.length < 8) throw new Error("Enter the engine access token.");
+  if (!agentId) throw new Error("Enter the engine agent id.");
   const probe = await ttPost(LEADS_URL, apiKey, { limit: 1 });
   const sample = leadsFrom(probe)[0] as Record<string, unknown> | undefined;
   const returned = sample && (sample.agent_id || sample.agentId);
-  if (returned && String(returned) !== agentId) throw new Error("That API key belongs to a different TailorTalk agent.");
+  if (returned && String(returned) !== agentId) throw new Error("That access token belongs to a different engine agent.");
   const hook = randomSecret();
   const saved = await service.rpc("acq_put_tt_secret", {
     p_business: businessId,
@@ -163,8 +174,9 @@ async function connect(service: ReturnType<typeof createClient>, supabaseUrl: st
   await service.rpc("acq_ensure", { p_agent: businessId });
   const link = await service.from("acq_setter_links").upsert({
     business_id: businessId,
-    provider: "tailortalk",
+    provider: "engine",
     agent_hint: agentId.slice(-4),
+    external_agent_id: agentId,
     status: "connected",
     last_tested_at: new Date().toISOString(),
     last_test_ok: true,
@@ -173,15 +185,14 @@ async function connect(service: ReturnType<typeof createClient>, supabaseUrl: st
     updated_at: new Date().toISOString()
   }, { onConflict: "business_id" });
   if (link.error) throw new Error(link.error.message);
-  const provider = await service.from("acq_settings").update({ setter_provider: "tailortalk" }).eq("agent_id", businessId);
+  const provider = await service.from("acq_settings").update({ setter_provider: "engine" }).eq("agent_id", businessId);
   if (provider.error) throw new Error(provider.error.message);
   await registerAgent(service, businessId, { api_key: apiKey, agent_id: agentId });
   await kickSync(service, agentId);
   return {
     ok: true,
     status: "connected",
-    agent_hint: agentId.slice(-4),
-    webhook_url: webhookUrl(supabaseUrl, businessId, hook)
+    agent_hint: agentId.slice(-4)
   };
 }
 
@@ -200,16 +211,15 @@ async function testConnection(service: ReturnType<typeof createClient>, supabase
     return {
       ok: true,
       status: "connected",
-      agent_hint: String(secret.agent_id || "").slice(-4),
-      webhook_url: webhookUrl(supabaseUrl, businessId, secret.webhook_secret)
+      agent_hint: String(secret.agent_id || "").slice(-4)
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Connection failed.";
+    const message = publicError(error instanceof Error ? error.message : "Connection failed.");
     await service.from("acq_setter_links").update({
       status: "error",
       last_tested_at: new Date().toISOString(),
       last_test_ok: false,
-      last_test_error: message.slice(0, 300),
+      last_test_error: message,
       updated_at: new Date().toISOString()
     }).eq("business_id", businessId);
     throw new Error(message);
@@ -221,7 +231,7 @@ async function disconnect(service: ReturnType<typeof createClient>, businessId: 
   if (removed.error) throw new Error(removed.error.message);
   await service.from("acq_setter_links").upsert({
     business_id: businessId,
-    provider: "tailortalk",
+    provider: "engine",
     status: "disconnected",
     last_test_ok: null,
     last_test_error: null,
@@ -240,7 +250,7 @@ async function activeRoles(service: ReturnType<typeof createClient>, businessId:
 async function businessName(service: ReturnType<typeof createClient>, businessId: string, fallback: string) {
   const row = await service.from("acq_workspaces").select("name").eq("id", businessId).maybeSingle();
   const name = String(row.data?.name || "").trim();
-  return (name || fallback || "TailorTalk").slice(0, 80);
+  return (name || fallback || "Roleflow").slice(0, 80);
 }
 
 async function registerAgent(
@@ -293,7 +303,7 @@ async function kickSync(service: ReturnType<typeof createClient>, tailortalkAgen
 }
 
 async function syncAll(service: ReturnType<typeof createClient>) {
-  const settings = await service.from("acq_settings").select("agent_id").eq("setter_provider", "tailortalk");
+  const settings = await service.from("acq_settings").select("agent_id").in("setter_provider", ["engine", "tailortalk"]);
   const links = await service.from("acq_setter_links").select("business_id").eq("status", "connected");
   const connected = new Set((links.data || []).map((row) => row.business_id));
   const ids = (settings.data || []).map((row) => row.agent_id).filter((id) => connected.has(id));
@@ -305,12 +315,12 @@ async function syncAll(service: ReturnType<typeof createClient>) {
       const reported = await reportPendingDeals(service, id, secret);
       results.push({ business_id: id, ok: true, deals_reported: reported });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Sync failed.";
+      const message = publicError(error instanceof Error ? error.message : "Sync failed.");
       await service.from("acq_setter_links").update({
         last_synced_at: new Date().toISOString(),
-        last_sync_error: message.slice(0, 300)
+        last_sync_error: message
       }).eq("business_id", id);
-      results.push({ business_id: id, ok: false, error: message.slice(0, 300) });
+      results.push({ business_id: id, ok: false, error: message });
     }
   }
   return { ok: true, businesses: ids.length, results };
@@ -318,7 +328,7 @@ async function syncAll(service: ReturnType<typeof createClient>) {
 
 async function syncBusiness(service: ReturnType<typeof createClient>, businessId: string) {
   const settings = await service.from("acq_settings").select("setter_provider").eq("agent_id", businessId).maybeSingle();
-  if (settings.data?.setter_provider !== "tailortalk") {
+  if (settings.data?.setter_provider !== "engine" && settings.data?.setter_provider !== "tailortalk") {
     return { ok: true, skipped: true, reason: "provider" };
   }
   const secret = await readSecret(service, businessId);
@@ -402,7 +412,7 @@ async function markWon(service: ReturnType<typeof createClient>, businessId: str
   const deal = await service.from("acq_deals").select("id, agent_id, amount_cents, currency, target_id, tt_report_status").eq("id", dealId).eq("agent_id", businessId).maybeSingle();
   if (deal.error || !deal.data) throw new Error("Deal not found.");
   const settings = await service.from("acq_settings").select("setter_provider").eq("agent_id", businessId).maybeSingle();
-  if (settings.data?.setter_provider !== "tailortalk") {
+  if (settings.data?.setter_provider !== "engine" && settings.data?.setter_provider !== "tailortalk") {
     await service.from("acq_deals").update({ tt_report_status: "skipped", tt_report_error: null }).eq("id", dealId);
     return { ok: true, status: "skipped" };
   }
@@ -463,11 +473,28 @@ async function reportDeal(
       tt_order_id: amount > 0 ? deal.id : null
     }).eq("id", deal.id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "TailorTalk report failed.";
+    const message = publicError(error instanceof Error ? error.message : "The setter engine report failed.");
     await service.from("acq_deals").update({
       tt_report_status: "error",
-      tt_report_error: message.slice(0, 300)
+      tt_report_error: message
     }).eq("id", deal.id);
     throw new Error(message);
   }
+}
+
+function usesEngineProvider(value: string | null | undefined) {
+  return value === "engine" || value === "tailortalk";
+}
+
+async function markBooked(service: ReturnType<typeof createClient>, businessId: string, targetId: string) {
+  if (!UUID.test(targetId)) throw new Error("target_id must be a UUID.");
+  const settings = await service.from("acq_settings").select("setter_provider").eq("agent_id", businessId).maybeSingle();
+  if (!usesEngineProvider(settings.data?.setter_provider)) return { ok: true, status: "skipped" };
+  const secret = await readSecret(service, businessId);
+  const target = await service.from("acq_targets").select("handle, tailortalk_external_id").eq("id", targetId).maybeSingle();
+  const contact = await service.from("acq_contacts").select("contact, external_id, ig_handle").eq("business_id", businessId).eq("target_id", targetId).limit(1);
+  const contactId = contactIdFor((contact.data || [])[0], target.data);
+  if (!contactId) throw new Error("mark_converted needs the Instagram user id.");
+  await ttPost(MARK_CONVERTED_URL, secret.api_key, { contact_ids: [contactId] });
+  return { ok: true, status: "reported" };
 }

@@ -1,4 +1,4 @@
-// Turns TailorTalk and HQ rows into one office view.
+// Turns setter-engine rows and HQ rows into one office view.
 // Counts come only from the rows passed in. No task row, no moving token.
 
 import { layoutOffice, routeSummary } from "./workforce-config.mjs";
@@ -191,10 +191,10 @@ function metricBlock(station, input) {
     const rate = stats.conversion_rate == null || stats.conversion_rate === "" ? "" : "conversion rate " + stats.conversion_rate;
     const convertedLeads = leads.filter((lead) => lead && (lead.is_converted || String(lead.lead_status || "").toLowerCase() === "converted")).length;
     const picked = (stats.converted_count == null ? 0 : stats.converted_count) + " converted";
-    const source = "From tailortalk_agent_stats";
+    const source = "From the setter engine";
     const when = timed(stats.computed_at, now, "Computed");
     const mismatch = Number(stats.converted_count) !== convertedLeads
-      ? "lead_status converted is " + convertedLeads + " in tailortalk_leads; this number is converted_count from tailortalk_agent_stats."
+      ? "lead_status converted is " + convertedLeads + " in the lead cache; this number is converted_count from the setter engine."
       : "";
     return desk([
       (stats.total_leads == null ? 0 : stats.total_leads) + " leads",

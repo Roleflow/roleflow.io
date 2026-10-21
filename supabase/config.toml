@@ -353,9 +353,14 @@ verify_jwt = false
 verify_jwt = false
 
 # acq-tailortalk checks the acquisition cron secret, a user JWT, or the
-# per-business webhook secret itself. TailorTalk cannot send a user JWT.
-# Optional TAILORTALK_CRON_SECRET is an alternate bearer for action "sync".
+# per-business webhook secret itself. The setter engine cannot send a user JWT.
+# An optional cron bearer is an alternate for action "sync".
 [functions.acq-tailortalk]
+verify_jwt = false
+
+# setter-engine is what the browser and the outbox assistant call.
+# It checks a user JWT, an admin JWT, or ENGINE_OUTBOX_SECRET itself.
+[functions.setter-engine]
 verify_jwt = false
 
 # roleflow-acquisition checks webhook signatures, OAuth state, user JWTs,
