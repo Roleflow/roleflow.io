@@ -419,6 +419,7 @@ create index if not exists acq_voice_sends_note_idx
 create or replace function public.acq_touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   new.updated_at = now();
@@ -432,6 +433,7 @@ create or replace function public.acq_stage_rank(p_stage text)
 returns integer
 language sql
 immutable
+set search_path = public
 as $$
   select case p_stage
     when 'target' then 1
@@ -451,6 +453,7 @@ revoke all on function public.acq_stage_rank(text) from public, anon, authentica
 create or replace function public.acq_guard_target()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   if tg_op = 'UPDATE' then
@@ -515,6 +518,7 @@ create or replace function public.acq_local_today(p_tz text)
 returns date
 language sql
 stable
+set search_path = public
 as $$
   select (now() at time zone coalesce(nullif(btrim(p_tz), ''), 'Europe/Madrid'))::date;
 $$;
@@ -523,6 +527,7 @@ create or replace function public.acq_in_quiet_hours(p_tz text, p_start time, p_
 returns boolean
 language plpgsql
 stable
+set search_path = public
 as $$
 declare
   local_time time;
@@ -542,6 +547,7 @@ create or replace function public.acq_normalize_handle(raw text)
 returns text
 language plpgsql
 immutable
+set search_path = public
 as $$
 declare
   h text := lower(btrim(coalesce(raw, '')));
@@ -563,6 +569,7 @@ create or replace function public.acq_cta_detected(p_bio text)
 returns boolean
 language sql
 immutable
+set search_path = public
 as $$
   select coalesce(p_bio, '') ~* '(coach|coaching|agency|\msystem\M|dm me|book( a| your)? call|\mapply\M|link in bio|work with me|calendar|consult)';
 $$;
@@ -571,6 +578,7 @@ create or replace function public.acq_icp_score(p_followers integer, p_cta boole
 returns integer
 language sql
 immutable
+set search_path = public
 as $$
   select least(100, greatest(0,
     case when p_followers between 5000 and 200000 then 45 else 0 end
@@ -1634,6 +1642,7 @@ create or replace function public.acq_lead_status(raw text)
 returns text
 language sql
 immutable
+set search_path = public
 as $$
   select case lower(btrim(coalesce(raw, '')))
     when 'hot' then 'hot'
@@ -1649,6 +1658,7 @@ create or replace function public.acq_advance_stage(p_current text, p_incoming t
 returns text
 language sql
 immutable
+set search_path = public
 as $$
   select case
     when p_current = 'closed' then 'closed'
@@ -2106,3 +2116,18 @@ exception
     raise notice 'acq-voice bucket was not created (%).', sqlerrm;
 end
 $bucket$;
+
+revoke truncate, references, trigger on table
+  public.acq_settings,
+  public.acq_targets,
+  public.acq_warmup_steps,
+  public.acq_outreach,
+  public.acq_bookings,
+  public.acq_deals,
+  public.acq_reports,
+  public.acq_exceptions,
+  public.acq_activity,
+  public.acq_voice_library,
+  public.acq_voice_sends,
+  public.acq_workspaces
+from anon, authenticated;

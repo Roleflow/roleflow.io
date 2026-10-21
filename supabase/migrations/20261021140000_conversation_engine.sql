@@ -571,7 +571,7 @@ revoke all on table public.ig_send_log from public, anon, authenticated;
 revoke all on table public.acq_prompt_versions from public, anon;
 revoke all on table public.acq_prompt_current from public, anon;
 revoke all on table public.acq_dnc from public, anon;
-revoke all on table public.acq_workers from public, anon;
+revoke all on table public.acq_workers from public, anon, authenticated;
 revoke all on table public.meta_deletion_requests from public, anon;
 
 grant select, update on table public.ig_connections to authenticated;
@@ -587,6 +587,37 @@ grant select (
   last_error, pause_reason, created_at, rotated_at
 ) on table public.acq_workers to authenticated;
 grant select on table public.meta_deletion_requests to authenticated;
+
+grant select, insert, update, delete on table public.ig_connections to service_role;
+grant select, insert, update, delete on table public.google_connections to service_role;
+grant select, insert, update, delete on table public.acq_oauth_states to service_role;
+grant select, insert, update, delete on table public.ig_webhook_events to service_role;
+grant select, insert, update, delete on table public.ig_threads to service_role;
+grant select, insert, update, delete on table public.ig_messages to service_role;
+grant select, insert, update, delete on table public.ig_outbox to service_role;
+grant select, insert, update, delete on table public.ig_send_log to service_role;
+grant select, insert, update, delete on table public.acq_prompt_versions to service_role;
+grant select, insert, update, delete on table public.acq_prompt_current to service_role;
+grant select, insert, update, delete on table public.acq_dnc to service_role;
+grant select, insert, update, delete on table public.acq_workers to service_role;
+grant select, insert, update, delete on table public.meta_deletion_requests to service_role;
+
+revoke truncate, references, trigger on table
+  public.ig_connections,
+  public.google_connections,
+  public.acq_oauth_states,
+  public.ig_webhook_events,
+  public.ig_threads,
+  public.ig_messages,
+  public.ig_outbox,
+  public.ig_send_log,
+  public.acq_prompt_versions,
+  public.acq_prompt_current,
+  public.acq_dnc,
+  public.acq_workers,
+  public.meta_deletion_requests,
+  public.acq_members
+from anon, authenticated;
 
 drop policy if exists ig_connections_select on public.ig_connections;
 create policy ig_connections_select on public.ig_connections
