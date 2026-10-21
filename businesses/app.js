@@ -468,6 +468,7 @@ function paintSide(user, agents, route, isAdmin, roles) {
   if (!document.getElementById("admin-links")) {
     const onboarding = el("a", { href: "/account/#onboarding" }, ["Edit onboarding"]);
     links.append(onboarding);
+    links.append(el("a", { href: "/account/acquisition/" }, ["Acquisition"]));
   }
   const adminLinks = document.getElementById("admin-links");
   if (adminLinks) adminLinks.after(block);

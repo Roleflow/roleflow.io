@@ -1,6 +1,6 @@
 # Roleflow
 
-> Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends voice notes in your cloned voice, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates.
+> Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates.
 
 Roleflow (en español: setter con IA para DMs de Instagram, hecho para ti) is built for high-ticket coaches, consultants, course creators and agency owners whose personal brand drives sales on Instagram.
 

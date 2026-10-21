@@ -10,7 +10,7 @@ from pages_data import PAGES
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://www.roleflow.io"
 BOOK = "https://calendar.app.google/8i1gomkozavqYU5b8"
-ONE = "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends voice notes in your cloned voice, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
+ONE = "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends voice notes with personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
 IG = "https://www.instagram.com/roleflow.io"
 TT = "https://www.tiktok.com/@roleflow.io"
 YT = "https://www.youtube.com/@roleflow"
@@ -129,7 +129,7 @@ def head(page, lang):
 
 def org_node(lang):
     desc = page_desc = {
-        "en": "Done-for-you AI DM setter for Instagram: instant replies, voice notes in your cloned voice, follow-ups and booked calls. $0 setup, paid on results.",
+        "en": "Done-for-you AI DM setter for Instagram: instant replies, voice notes with personal voice notes you record, follow-ups and booked calls. $0 setup, paid on results.",
         "es": "Setter con IA para DMs de Instagram, hecho para ti: respuestas al instante, notas de voz con tu voz clonada, seguimientos y llamadas agendadas. $0 de setup, cobrado sobre resultados.",
     }[lang]
     return {
@@ -148,7 +148,7 @@ def org_node(lang):
 
 def app_node(lang):
     if lang == "en":
-        desc = "$0 setup and $0 retainer; 5–7% of revenue generated"
+        desc = "$0 setup and $0 retainer; 10% of revenue generated"
         features = [
             "Replies to Instagram DMs in seconds, 24/7",
             "Voice notes in the owner's cloned voice",
@@ -158,10 +158,10 @@ def app_node(lang):
             "Done-for-you setup and management",
         ]
     else:
-        desc = "$0 de setup y $0 de cuota mensual; entre el 5 % y el 7 % de los ingresos generados"
+        desc = "$0 de setup y $0 de cuota mensual; el 10 % de los ingresos generados"
         features = [
             "Responde DMs de Instagram en segundos, 24/7",
-            "Notas de voz con la voz clonada del dueño",
+            "Notas de voz con grabaciones personales del dueño",
             "Seguimientos automáticos",
             "Calificación de leads",
             "Agenda llamadas calificadas en tu calendario",
@@ -425,7 +425,7 @@ def images():
     draw.text((72, 150), "Roleflow", font=bold, fill="#EEF1FA")
     draw.text((72, 250), "Done-for-you AI DM setter", font=regular, fill="#E8B04A")
     draw.text((72, 300), "for Instagram.", font=regular, fill="#E8B04A")
-    blurb = "Replies in seconds. Voice notes in your cloned voice.\n$0 setup, paid as a % of revenue it generates."
+    blurb = "Replies in seconds. Voice notes with personal voice notes you record.\n$0 setup, paid as a % of revenue it generates."
     draw.multiline_text((72, 400), blurb, font=regular, fill="#EEF1FA", spacing=10)
     im.save(ROOT / "og-image.png")
 
@@ -495,7 +495,7 @@ def patch_home():
     path = ROOT / "index.html"
     text = path.read_text(encoding="utf-8")
     title = "Roleflow: Done-for-You AI DM Setter for Instagram | $0 Setup, Pay on Results"
-    desc = "Done-for-you AI DM setter for Instagram: replies in seconds, voice notes in your cloned voice, follow-ups and booked calls. $0 setup, pay 5–7% of revenue."
+    desc = "Done-for-you AI DM setter for Instagram: replies in seconds, voice notes with personal voice notes you record, follow-ups and booked calls. $0 setup, pay 10% of revenue."
     if len(desc) < 150 or len(desc) > 160:
         raise SystemExit(len(desc))
     head_extra = f'''<title>{title}</title>
@@ -536,8 +536,8 @@ def patch_home():
         1,
     )
     text = text.replace(
-        '<p class="sub">We build and run your Instagram DM system. It answers every lead in seconds and sends voice notes in your own voice. You pay 5 to 7% of what it earns. Answer 4 questions to see if you qualify.</p>',
-        '<p class="sub">Roleflow is a done-for-you AI DM setter for Instagram. It answers every lead in seconds and sends voice notes in your own voice. You pay 5 to 7% of what it earns. Answer 4 questions to see if you qualify.</p>',
+        '<p class="sub">We build and run your Instagram DM system. It answers every lead in seconds and sends voice notes in your own voice. You pay 10% of what it earns. Answer 4 questions to see if you qualify.</p>',
+        '<p class="sub">Roleflow is a done-for-you AI DM setter for Instagram. It answers every lead in seconds and sends voice notes in your own voice. You pay 10% of what it earns. Answer 4 questions to see if you qualify.</p>',
         1,
     )
     text = text.replace(
@@ -545,7 +545,7 @@ def patch_home():
         '<div id="quiz"><div class="panel" id="start"><div id="qz" tabindex="-1" style="outline:0" aria-live="polite"></div></div></div>',
         1,
     )
-    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends voice notes in your cloned voice, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow is paid 5–7% of the revenue the system generates. The rate is set on the demo call."
+    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends voice notes with personal voice notes you record, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow is paid 10% of the revenue the system generates. The rate is set on the demo call."
     if not 40 <= words(answer) <= 60:
         raise SystemExit(f"home answer {words(answer)}")
     home = next(p for p in PAGES if p.get("home"))
@@ -555,14 +555,14 @@ def patch_home():
 <h2>What Roleflow does</h2>
 <div class="geo-grid">
 <article><h3>Replies in seconds, 24/7</h3><p>Every Instagram DM gets an answer, including nights and weekends.</p></article>
-<article><h3>Voice notes in your own voice</h3><p>Leads hear a voice note in your cloned voice, not a generic template.</p></article>
+<article><h3>Voice notes in your own voice</h3><p>Leads hear a personal voice note you recorded, not a generic template.</p></article>
 <article><h3>Follow-ups and booked calls</h3><p>Quiet leads get follow-ups. Qualified leads land on your calendar.</p></article>
-<article><h3>$0 upfront, pay on results</h3><p>$0 setup and $0 retainer. Roleflow is paid 5–7% of the revenue it generates, and the team builds and runs the system.</p></article>
+<article><h3>$0 upfront, pay on results</h3><p>$0 setup and $0 retainer. Roleflow is paid 10% of the revenue it generates, and the team builds and runs the system.</p></article>
 </div>
 </div></section>
 <section class="geo-block" id="pricing-summary"><div class="wrap">
-<h2>Pricing: $0 setup, $0 retainer, 5–7% of revenue</h2>
-<p class="sub" style="margin-top:14px">No setup fee. No monthly retainer. If the system generates nothing, you owe nothing. The rate is set on the demo call. <a href="/pricing/">Read the pricing page</a>. [CONFIRM whether 5–7% is the final published range.]</p>
+<h2>Pricing: $0 setup, $0 retainer, 10% of revenue</h2>
+<p class="sub" style="margin-top:14px">No setup fee. No monthly retainer. If the system generates nothing, you owe nothing. The rate is set on the demo call. <a href="/pricing/">Read the pricing page</a>. [CONFIRM whether 10% is the final published range.]</p>
 </div></section>
 <section class="geo-block"><div class="wrap">
 <h2>Who it is for, and who it is not for</h2>

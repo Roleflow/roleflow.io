@@ -347,6 +347,15 @@ verify_jwt = true
 [functions.agent-hq]
 verify_jwt = false
 
+# acquisition-bot checks a per-business worker key or the service role.
+[functions.acquisition-bot]
+verify_jwt = false
+
+# roleflow-acquisition checks webhook signatures, OAuth state, user JWTs,
+# and the cron secret itself. Instagram and Google cannot send a user JWT.
+[functions.roleflow-acquisition]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

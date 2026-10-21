@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Data deletion · Roleflow</title>
+<meta name="description" content="Request deletion of Roleflow Instagram and account data, and check the status of a Meta deletion callback.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+</head>
+<body class="app">
+<main class="wrap" style="padding:48px 22px;text-align:left;display:grid;gap:14px">
+  <p class="mute"><a href="/">Roleflow</a></p>
+  <h1>Data deletion</h1>
+  <p class="sub">Use this page to ask Roleflow to delete Instagram and account data, or to check a confirmation code from Meta.</p>
+  <h2>Ask Roleflow directly</h2>
+  <p>Email <a href="mailto:diego@roleflow.io">diego@roleflow.io</a> from the address on the account. Say whether to delete one business workspace, disconnect Instagram, or delete the login. We delete the message threads we store, the encrypted Instagram or Google token for that workspace, and uploaded voice notes when the request covers them. Records a customer entered as closed revenue can be removed with the workspace.</p>
+  <h2>Meta callback</h2>
+  <p>Instagram’s data-deletion callback for the Roleflow Meta app is:</p>
+  <p><code>https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/roleflow-acquisition/deletion</code></p>
+  <p>Meta sends a signed request. Roleflow checks the signature, deletes threads and messages for that Instagram user id, and disconnects the account when the id is the connected professional profile. The response includes a confirmation code and a link back to this page.</p>
+  <h2>Status</h2>
+  <p id="deletion-status" role="status">Add <code>?code=</code> to this URL to check a confirmation code.</p>
+  <p class="links"><a href="/privacy/">Privacy</a> · <a href="/">Home</a></p>
+</main>
+<script src="/supabase/config.js"></script>
+<script type="module">
+import { getSupabase, isConfigured } from "/auth/supabase.js";
+const node = document.getElementById("deletion-status");
+const code = new URLSearchParams(location.search).get("code");
+if (!code) {
+  node.textContent = "No confirmation code in this link yet. Email diego@roleflow.io to ask for deletion, or open the link Meta returns after a callback.";
+} else if (!isConfigured()) {
+  node.textContent = "This build cannot check status. Email diego@roleflow.io with code " + code + ".";
+} else {
+  const supabase = getSupabase();
+  const result = await supabase.rpc("meta_deletion_status", { p_code: code });
+  if (result.error || !result.data || result.data.ok === false) {
+    node.textContent = "No deletion request matches that code.";
+  } else {
+    const when = result.data.received_at ? new Date(result.data.received_at).toLocaleString() : "";
+    node.textContent = "Status: " + result.data.status + (when ? " · received " + when : "") + ".";
+  }
+}
+</script>
+</body>
+</html>

@@ -318,7 +318,7 @@ if (!isConfigured()) {
         if (error) return showError(friendlyAuthError(error));
         if (created.session) {
           if (inviteOk && await landFromInvite()) return;
-          window.location.replace(inviteOk ? "/businesses/" : "/account/");
+          window.location.replace(inviteOk ? "/businesses/" : "/account/acquisition/?onboarding=1");
           return;
         }
         okEl.textContent = inviteOk

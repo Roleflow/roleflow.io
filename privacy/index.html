@@ -4,18 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Privacy · Roleflow</title>
-<meta name="robots" content="noindex">
+<meta name="description" content="How Roleflow handles account, Instagram, calendar, and voice-note data for the client acquisition system.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 </head>
 <body class="app">
-<main class="wrap" style="padding:48px 22px;text-align:left">
-  <p class="mute">Diego to review</p>
+<main class="wrap" style="padding:48px 22px;text-align:left;display:grid;gap:14px">
+  <p class="mute"><a href="/">Roleflow</a></p>
   <h1>Privacy</h1>
-  <p class="sub">This is a placeholder page. It is not a privacy policy yet. Diego needs to replace this text before it is treated as the live policy.</p>
-  <p class="links"><a href="/signup/">Back to sign up</a></p>
+  <p class="sub">This policy describes the data Roleflow processes to run the Instagram client-acquisition system at roleflow.io. Contact <a href="mailto:diego@roleflow.io">diego@roleflow.io</a>.</p>
+  <h2>Who we are</h2>
+  <p>Roleflow provides a done-for-you Instagram acquisition workforce. Diego operates the product and reviews conversations. Each signed-in customer has a business workspace. That customer connects their own professional Instagram account and, if they choose, Google Calendar.</p>
+  <h2>Data we process</h2>
+  <ul>
+    <li>Account data: name, email, Instagram handle given at signup, and workspace membership.</li>
+    <li>Instagram data the customer authorizes: professional account id and username, messages, comments, mentions, reactions, and the replies Roleflow sends.</li>
+    <li>Calendar data the customer authorizes: free/busy times and the events Roleflow creates, including a Meet link when booking is on.</li>
+    <li>Voice notes the customer records and uploads, plus which note was sent.</li>
+    <li>Pipeline data the customer or the system stores: handles, qualification answers, bookings, and cash the customer records on deals this system sourced.</li>
+    <li>A scoped worker key hash for the separate outreach worker. Roleflow does not ask for or store Instagram passwords.</li>
+  </ul>
+  <h2>Why</h2>
+  <p>We use this data to reply to Instagram conversations, qualify leads, book calls, send the customer’s own voice notes, and show that customer their pipeline, reports, and the 10% share of growth they record. Instagram and Google tokens are encrypted and stored on the server. The browser does not receive those tokens.</p>
+  <h2>Instagram and Meta</h2>
+  <p>Connection uses Instagram Login and Meta’s Instagram APIs, under a Meta app owned by Roleflow. Each business authorizes that app for its own professional account. We request instagram_business_basic, instagram_business_manage_messages, and instagram_business_manage_comments. Webhooks deliver messages, postbacks, reactions, comments, and mentions. We do not sell this data. We do not use it to advertise to the people who message a customer.</p>
+  <h2>How long we keep it</h2>
+  <p>We keep workspace data while the customer uses Roleflow. Disconnecting Instagram removes the stored token and clears the Instagram user id on that connection so the account can be connected elsewhere. A deletion request removes the message threads Roleflow holds for the Instagram user id in the request. If that id is the connected professional account, we also disconnect it.</p>
+  <h2>Deletion</h2>
+  <p>People can ask Roleflow to delete data at <a href="/data-deletion/">roleflow.io/data-deletion</a>, or email <a href="mailto:diego@roleflow.io">diego@roleflow.io</a>. Meta’s data-deletion callback is <code>https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/roleflow-acquisition/deletion</code>. A status check on the deletion page shows only whether the request was received and its status. It does not show the Instagram user id.</p>
+  <h2>Sharing</h2>
+  <p>Infrastructure providers process data for us: Supabase (database and server functions), Meta (Instagram), and Google (Calendar), plus the model provider used to draft replies when an API key is configured. Customers can read and export their own workspace from the account panel. Admins at Roleflow can read workspaces to operate the product.</p>
+  <p class="links"><a href="/data-deletion/">Data deletion</a> · <a href="/terms/">Terms</a> · <a href="/signup/">Sign up</a></p>
 </main>
 </body>
 </html>

@@ -20,8 +20,8 @@ Work on a feature branch, open a PR, and do **not** merge to `main` without Dieg
 2. **Keep the brand guidelines.** Reuse the existing colors, fonts, spacing, buttons, logo and tone from `index.html` and its CSS. Extract them into a shared stylesheet (for example `/assets/site.css`) if that helps, but new pages must look like the same site. Put a shared header (logo, nav: AI DM Setter · Pricing · FAQ · Compare · Menu, EN|ES switcher) and a shared footer on every page.
 3. **No invented facts.** Don't add statistics, reviews, testimonials, ratings, customer names, case studies, client logos, or `AggregateRating`/`Review` schema. Every competitor claim must come from the source files or from the competitor's own site, with a source URL and a "checked on <date>" note. If a fact can't be verified, write `[CONFIRM]` instead of guessing.
 4. **Keep every `[CONFIRM]` / `[CONFIRMAR]` placeholder verbatim** in the page copy and JSON-LD. Don't delete them or fill them in. (Section 9 lists them.) Exception: for `sameAs` URLs that contain `[CONFIRM]`, keep them in the code as a commented-out TODO block if a validator rejects them. Don't publish broken URLs.
-5. **Positioning, stated consistently everywhere:** Roleflow is *the only done-for-you AI DM setter for Instagram that sends voice notes in the owner's cloned voice*, with **$0 setup, $0 retainer, and 5–7% of the revenue it generates** (rate set on the demo call). Instagram DMs only. Canonical one-liner (use it verbatim in meta, llms.txt, About and footer):
-   > Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends voice notes in your cloned voice, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates.
+5. **Positioning, stated consistently everywhere:** Roleflow is *the only done-for-you AI DM setter for Instagram that sends personal voice notes the owner records*, with **$0 setup, $0 retainer, and 10% of the growth it generates** (rate set on the demo call). Instagram DMs only. Canonical one-liner (use it verbatim in meta, llms.txt, About and footer):
+   > Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates.
    (Say "the only…" as positioning on Roleflow's own pages. On comparison pages, state concrete feature differences rather than absolute superiority claims about named competitors.)
 6. **Content must live in the server HTML,** not be rendered by JS. LLM crawlers don't run scripts.
 7. Write the Spanish natively in neutral Spanish ("setter", "agendar llamadas", "hecho para ti"), not machine-translated word for word.
@@ -82,7 +82,7 @@ Static folders with `index.html` each. EN at the root, ES under `/es/`.
 |---|---|---|---|
 | 1 | `/` (existing `index.html`) | `/es/` | Homepage. Keep the quiz, calculator, Menu and auth. The ES home may link to the EN onboarding/auth flow if those aren't translated. |
 | 2 | `/what-is-an-ai-dm-setter` | `/es/que-es-un-setter-con-ia` | Definition page |
-| 3 | `/pricing` | `/es/precios` | 5–7% model |
+| 3 | `/pricing` | `/es/precios` | 10% model |
 | 4 | `/faq` | `/es/preguntas-frecuentes` | FAQPage schema |
 | 5 | `/best-ai-dm-setters` | `/es/mejores-setters-con-ia` | Honest listicle |
 | 6 | `/vs/setsmart` | `/es/vs/setsmart` | Comparison |
@@ -128,7 +128,7 @@ Niches come from `geo-plan.md` §3. `icp.md` also infers mindset/dating coaches 
 ```
 - Every canonical is self-referencing and absolute on www. Hreflang is reciprocal on both pages of each pair.
 - **Homepage title:** `Roleflow: Done-for-You AI DM Setter for Instagram | $0 Setup, Pay on Results` (it must contain "Done-for-You AI DM Setter for Instagram").
-- Homepage meta (example, ~155 chars): `Done-for-you AI DM setter for Instagram: replies in seconds, voice notes in your cloned voice, follow-ups and booked calls. $0 setup, pay 5–7% of revenue.`
+- Homepage meta (example, ~155 chars): `Done-for-you AI DM setter for Instagram: replies in seconds, personal voice notes you record, follow-ups and booked calls. $0 setup, pay 10% of growth.`
 - ES home title: `Roleflow: Setter con IA para DMs de Instagram, hecho para ti | $0 de setup`
 - Create `og-image.png` and confirm `/logo.png` exists (the schema references it). If it doesn't, export the existing logo to that path.
 - **Language switcher** in the header: links to the counterpart page (not to `/es/` home), shows `EN | ES` with `hreflang` and `lang` attributes, and needs no JS.
@@ -139,7 +139,7 @@ Niches come from `geo-plan.md` §3. `icp.md` also infers mindset/dating coaches 
 ## 4. Structured data (JSON-LD)
 
 Base it on `geo/schema-jsonld.html`, keeping its `[CONFIRM]` values verbatim.
-- **Homepage (EN and ES):** `@graph` with `Organization` (`@id https://www.roleflow.io/#org`) and `SoftwareApplication` (`@id …/#app`, offers price 0 USD + description "$0 setup and $0 retainer; 5–7% of revenue generated"), plus `FAQPage` **only if** the homepage shows those FAQ items visibly. Add `WebSite` with `inLanguage`. Write ES descriptions in Spanish.
+- **Homepage (EN and ES):** `@graph` with `Organization` (`@id https://www.roleflow.io/#org`) and `SoftwareApplication` (`@id …/#app`, offers price 0 USD + description "$0 setup and $0 retainer; 10% of growth generated"), plus `FAQPage` **only if** the homepage shows those FAQ items visibly. Add `WebSite` with `inLanguage`. Write ES descriptions in Spanish.
 - **/faq and /es/preguntas-frecuentes:** `FAQPage` with every visible Q&A from `faq-en-es.md`. For Q&As whose answer is only a `[CONFIRM]` placeholder, show them on the page but leave them **out of the JSON-LD** until confirmed.
 - **Other pages:** reference the Organization by `@id` and add `BreadcrumbList`. Add `Article` on the listicle (author = Organization, `datePublished`/`dateModified`), and `FAQPage` on any page that has a visible FAQ block.
 - No `AggregateRating`, `Review` or invented `sameAs`.
@@ -154,7 +154,7 @@ Shared pattern for every content page: an H1 with the target keyword, then a **4
 ### 5.1 Homepage `/`
 - Keep the current hero, calculator, quiz, Menu drawer with Sign up/Log in tabs, and auth.
 - Make sure the H1 or hero subhead includes "Done-for-you AI DM setter for Instagram".
-- Add (server-rendered): a short "What Roleflow does" block with the 4 value props from icp.md, a "Pricing: $0 setup, $0 retainer, 5–7% of revenue" block, a "Who it's for / not for" block (qualification: 20+ DMs/day, offer > $1k, close rate > 20%, $30k+/month collected; not for WhatsApp/email/phone sellers, low ticket or low DM volume), a 4–5-item FAQ, and footer links to every new page.
+- Add (server-rendered): a short "What Roleflow does" block with the 4 value props from icp.md, a "Pricing: $0 setup, $0 retainer, 10% of growth" block, a "Who it's for / not for" block (qualification: 20+ DMs/day, offer > $1k, close rate > 20%, $30k+/month collected; not for WhatsApp/email/phone sellers, low ticket or low DM volume), a 4–5-item FAQ, and footer links to every new page.
 - Don't add the "$50K/mo" calculator figure as a factual statistic anywhere new. It stays only as the existing calculator framing.
 
 ### 5.2 `/what-is-an-ai-dm-setter` · `/es/que-es-un-setter-con-ia`
@@ -163,7 +163,7 @@ Shared pattern for every content page: an H1 with the target keyword, then a **4
 - End with Roleflow as the done-for-you option and links to pricing and the listicle.
 
 ### 5.3 `/pricing` · `/es/precios`
-- $0 setup, $0 retainer, 5–7% of revenue generated, with the rate set on the demo call. Explain how attribution works using **`[CONFIRM: attribution method, e.g. booked calls sourced from Roleflow conversations that close.]`** verbatim.
+- $0 setup, $0 retainer, 10% of growth generated, with the rate set on the demo call. Explain how attribution works using **`You record the cash collected on deals this system sourced. Roleflow's share is 10% of that amount.`** verbatim.
 - Cover qualification criteria and when % of revenue makes sense vs a flat fee.
 - Compare with the cost of a human setter **only qualitatively**, unless Diego supplies sourced numbers.
 - Don't invent example dollar calculations presented as real outcomes. An illustrative formula is fine if it's clearly labeled "illustrative".
@@ -234,11 +234,11 @@ No fake niche testimonials or results. Each page must be substantively unique (�
 1. Founder name(s): Organization schema, /about
 2. Founding date/year
 3. Social/profile URLs: LinkedIn company, X handle, Instagram handle, Crunchbase (`sameAs`, `twitter:site`, /about)
-4. Attribution method for "revenue generated" (EN `[CONFIRM: …]`, ES `[CONFIRMAR método de atribución.]`)
+4. Attribution method for "revenue generated" (EN `[CONFIRM: …]`, ES `Registras el efectivo cobrado en los tratos que este sistema originó. La parte de Roleflow es el 10 %.`)
 5. Voice-note/reply review or approval process
 6. Instagram account safety: official Meta API or not, messaging-window compliance (EN + `[CONFIRMAR API oficial de Meta.]`)
 7. Setup time (`[CONFIRM]`)
-8. Exact price range: 5–7% is stated. The plan asks to "publish real ranges only", so confirm whether 5–7% is final.
+8. Exact price range: 10% is stated. The plan asks to "publish real ranges only", so confirm whether 10% is final.
 9. Every competitor fact (prices, channels, features) not yet verified, marked `[CONFIRM]` per cell
 
 ---
@@ -252,7 +252,7 @@ No fake niche testimonials or results. Each page must be substantively unique (�
 - [ ] Organization, SoftwareApplication and FAQPage JSON-LD validate with no errors, and the FAQPage Q&As match the visible text
 - [ ] All 17 EN + 17 ES pages in the URL map exist and return 200, with content in the raw HTML (`curl` shows the text)
 - [ ] Every content page has a 40–60-word direct answer at the top
-- [ ] Positioning ($0 setup, $0 retainer, 5–7%, cloned-voice voice notes, done-for-you, Instagram DMs only) is consistent on all pages
+- [ ] Positioning ($0 setup, $0 retainer, 10%, personal voice notes, done-for-you, Instagram DMs only) is consistent on all pages
 - [ ] `grep -r "\[CONFIRM"` finds every placeholder from section 9. None were removed.
 - [ ] No invented stats, reviews, testimonials, ratings or unsourced competitor claims. Every competitor fact has a source URL and a check date.
 - [ ] The listicle discloses Roleflow authorship and has a "wrong for" line for every tool, Roleflow included
