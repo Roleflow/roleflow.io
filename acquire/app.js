@@ -206,8 +206,8 @@ async function loadAll(id) {
     q.from("google_connections").select("business_id, email, calendar_id, expires_at, status, last_error, connected_at").eq("business_id", id).maybeSingle(),
     q.from("acq_workers").select("id, label, key_prefix, enabled, status, last_heartbeat_at, pause_reason").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_setter_links").select("business_id, provider, agent_hint, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_hint").eq("business_id", id).maybeSingle(),
-    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at").eq("business_id", id).limit(1000),
+    q.from("acq_setter_links").select("business_id, provider, agent_hint, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_hint, webhook_seen_at").eq("business_id", id).maybeSingle(),
+    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("conversation_id, role, body, sent_at, created_at").eq("business_id", id).order("created_at", { ascending: true }).limit(400)
@@ -476,6 +476,7 @@ function leadDetail(target) {
   const contact = (state.contacts || []).find((row) => row.target_id === target.id || (row.ig_handle && String(row.ig_handle).toLowerCase().replace(/^@/, "") === target.handle));
   const conversationIds = (state.conversations || []).filter((row) => contact && row.contact_id === contact.id).map((row) => row.id);
   const thread = (state.ttMessages || []).filter((row) => conversationIds.includes(row.conversation_id));
+  box.append(setterDetail(contact, target, thread));
   if (thread.length) {
     const talk = el("div", { class: "audit" });
     talk.append(el("h3", { text: "Conversation" }));
@@ -543,11 +544,77 @@ function leadDetail(target) {
   return box;
 }
 
+const PULL_HINT = "Starter pulls status and a summary every 5 minutes. Chat history and extracted attributes appear after a paid-plan webhook.";
+
+const ATTR_LABELS = [
+  ["budget", "Budget"],
+  ["timeline", "Timeline"],
+  ["decision_maker", "Decision-maker"],
+  ["fit", "Fit"],
+  ["ig_handle", "Instagram"],
+  ["offer", "Offer"],
+  ["monthly_revenue", "Monthly revenue"],
+  ["niche", "Niche"],
+  ["offer_price", "Offer price"],
+  ["dm_volume", "DM volume"],
+  ["current_dm_handling", "Current DM handling"],
+  ["gap", "Gap"],
+  ["objections", "Objections"],
+  ["time_zone", "Time zone"],
+  ["booking_email", "Booking email"],
+  ["booking_date", "Booking date"],
+  ["voice_note_slot", "Voice note slot"]
+];
+
+function setterDetail(contact, target, thread) {
+  const wrap = el("div");
+  const webhook = contact && contact.detail_source === "webhook";
+  if (!webhook) {
+    wrap.append(el("p", { class: "mute", text: PULL_HINT }));
+    const status = (contact && contact.lead_status) || target.lead_status || "cold";
+    const category = (contact && contact.category) || target.tt_category || "no category";
+    const followups = contact && contact.followups != null ? contact.followups : (target.followups || 0);
+    const source = (contact && contact.source_detail) || target.source_detail || target.source || "";
+    const converted = contact && contact.is_converted === true ? " · converted" : "";
+    wrap.append(el("p", { text: "Status " + status + " · " + category + " · follow-ups " + followups + (source ? " · " + source : "") + converted }));
+    return wrap;
+  }
+  wrap.append(el("p", { class: "mute", text: "Full history and extracted attributes from the TailorTalk webhook." }));
+  const attrs = contact.attributes || {};
+  if (attrs.chat_summary) wrap.append(el("p", { text: attrs.chat_summary }));
+  const lines = ATTR_LABELS.filter(([key]) => attrs[key]).map(([key, label]) => label + ": " + attrs[key]);
+  if (lines.length) wrap.append(el("p", { text: lines.join(" · ") }));
+  if (!thread.length) wrap.append(el("p", { class: "mute", text: "No chat messages stored for this lead yet." }));
+  return wrap;
+}
+
+function voiceQueue() {
+  const section = el("section", { class: "agent" });
+  section.append(el("h3", { text: "Voice notes to record and send" }));
+  section.append(el("p", { class: "mute", text: PULL_HINT }));
+  const waiting = (state.contacts || []).filter((row) => row.attributes && row.attributes.voice_note_slot);
+  if (!waiting.length) {
+    section.append(el("p", { text: "No voice notes are waiting. A slot shows up here when a webhook sends voice_note_slot." }));
+    return section;
+  }
+  waiting.slice(0, 40).forEach((row) => {
+    const raw = String(row.attributes.voice_note_slot);
+    const slot = SLOTS.find((item) => item.id === raw || item.label.toLowerCase() === raw.toLowerCase());
+    const note = pickVoiceNote(state.voices, slot ? slot.id : raw, row.attributes.niche || "", "");
+    const handle = String(row.ig_handle || row.name || "lead").replace(/^@/, "");
+    const label = slot ? slot.label : raw;
+    const ready = note ? "Recording ready: " + note.title : "Record this note";
+    section.append(el("p", { text: "@" + handle + " · " + label + " · " + ready }));
+  });
+  return section;
+}
+
 function voiceLibrary() {
   const wrap = el("div", { class: "acq" });
   wrap.append(el("section", { class: "banner gold" }, [
     el("p", { text: "You record the notes. Agents pick the active recording for the slot — opener, gap, follow-up, booking, reminder. A cloned voice is not used." })
   ]));
+  wrap.append(voiceQueue());
   if (state.canEdit && state.supabase) wrap.append(voiceForm());
   const grid = el("div", { class: "agents" });
   if (!state.voices.length) grid.append(el("p", { class: "mute", text: "No personal voice notes yet." }));
@@ -657,7 +724,8 @@ function setterStats(roleId) {
   if (roleId === "qualification") return count("warm") + " warm · " + count("hot") + " hot";
   if (roleId === "conversation_recovery") return contacts.filter((row) => row.lead_status === "cold" && row.last_message_at).length + " cold contacts with a message";
   const bookings = state.bookings.filter((row) => row.source === "tailortalk").length;
-  return bookings + " TailorTalk bookings · " + count("converted") + " converted";
+  const converted = contacts.filter((row) => row.is_converted === true || row.lead_status === "converted").length;
+  return bookings + " TailorTalk bookings · " + converted + " converted";
 }
 
 function controls() {

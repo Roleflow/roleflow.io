@@ -60,17 +60,31 @@ export function roleForTrigger(trigger, status, followups) {
 
 function bagsOf(lead) {
   const row = lead || {};
-  return [row, row.attributes, row.custom_attributes, row.extracted, row.data];
+  const data = row.data && typeof row.data === "object" && !Array.isArray(row.data) ? row.data : null;
+  return [
+    row.lead_attributes,
+    data && data.lead_attributes,
+    row.attributes,
+    row.custom_attributes,
+    row.extracted,
+    row,
+    data
+  ];
 }
 
-export function pickAttr(lead, keys) {
+export function pickAttr(lead, keys, limit = 500) {
   for (const key of keys) {
     for (const bag of bagsOf(lead)) {
       if (!bag || typeof bag !== "object" || Array.isArray(bag)) continue;
       const value = bag[key];
       if (value == null || value === "") continue;
+      if (Array.isArray(value)) {
+        const text = value.map((item) => (item == null ? "" : String(item))).filter(Boolean).join("; ").slice(0, limit);
+        if (text) return text;
+        continue;
+      }
       if (typeof value === "object") continue;
-      return String(value).slice(0, 500);
+      return String(value).slice(0, limit);
     }
   }
   return null;
@@ -84,16 +98,63 @@ export function asBool(value) {
   return null;
 }
 
+export const ATTRIBUTE_KEYS = [
+  ["budget", ["budget"]],
+  ["timeline", ["timeline"]],
+  ["decision_maker", ["decision_maker", "decisionMaker"]],
+  ["fit", ["fit"]],
+  ["ig_handle", ["ig_handle", "instagram_handle", "instagram", "username"]],
+  ["offer", ["offer"]],
+  ["monthly_revenue", ["monthly_revenue", "monthlyRevenue"]],
+  ["niche", ["niche"]],
+  ["offer_price", ["offer_price", "offerPrice"]],
+  ["dm_volume", ["dm_volume", "dmVolume"]],
+  ["current_dm_handling", ["current_dm_handling", "currentDmHandling"]],
+  ["gap", ["gap"]],
+  ["objections", ["objections"]],
+  ["time_zone", ["time_zone", "timezone", "timeZone"]],
+  ["booking_email", ["booking_email", "bookingEmail"]],
+  ["booking_date", ["booking_date", "bookingDate"]],
+  ["voice_note_slot", ["voice_note_slot", "voiceNoteSlot"]]
+];
+
 export function extractAttributes(lead) {
-  return {
-    budget: pickAttr(lead, ["budget"]),
-    timeline: pickAttr(lead, ["timeline"]),
-    decision_maker: pickAttr(lead, ["decision_maker", "decisionMaker"]),
-    fit: pickAttr(lead, ["fit"]),
-    ig_handle: pickAttr(lead, ["ig_handle", "instagram_handle", "instagram", "username"]),
-    offer: pickAttr(lead, ["offer"]),
-    monthly_revenue: pickAttr(lead, ["monthly_revenue", "monthlyRevenue"])
-  };
+  const out = {};
+  ATTRIBUTE_KEYS.forEach(([name, keys]) => {
+    out[name] = pickAttr(lead, keys);
+  });
+  return out;
+}
+
+export function compactAttributes(attributes) {
+  const out = {};
+  Object.entries(attributes || {}).forEach(([key, value]) => {
+    if (value == null || value === "") return;
+    out[key] = value;
+  });
+  return out;
+}
+
+export function instagramUserId(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (/^\d{5,20}$/.test(text)) return text;
+  return "";
+}
+
+const WEBHOOK_MAX_SKEW_MS = 5 * 60 * 1000;
+
+export function webhookTimestampFresh(value, now = Date.now()) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return false;
+  let ms = NaN;
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    ms = raw.length >= 13 ? n : n * 1000;
+  } else {
+    ms = Date.parse(raw);
+  }
+  if (!Number.isFinite(ms)) return false;
+  return Math.abs(now - ms) <= WEBHOOK_MAX_SKEW_MS;
 }
 
 export function normalizeHandle(value) {
@@ -141,8 +202,9 @@ export function messagesFrom(lead) {
 
 export function bookingsFrom(lead) {
   const row = lead || {};
+  const data = row.data && typeof row.data === "object" ? row.data : null;
   const found = [];
-  [row.bookings, row.appointments, row.booking].forEach((item) => {
+  [row.bookings, row.appointments, row.booking, data && data.bookings].forEach((item) => {
     if (Array.isArray(item)) found.push(...item);
     else if (item && typeof item === "object") found.push(item);
   });
@@ -224,20 +286,29 @@ export function orderAmount(cents) {
 }
 
 export function contactIdFor(contact, target) {
-  const handle = normalizeHandle(contact && contact.ig_handle) || normalizeHandle(target && target.handle);
-  if (handle && !handle.startsWith("tt")) return handle;
-  const raw = String((contact && contact.contact) || "").trim();
-  if (raw && !raw.includes("*") && raw.length >= 3) return raw.slice(0, 120);
-  const ext = String((contact && contact.external_id) || (target && target.tailortalk_external_id) || "").trim();
-  if (ext && !ext.includes("*")) return ext.slice(0, 120);
-  return handle || "";
+  const row = contact || {};
+  const fromTarget = target || {};
+  const candidates = [
+    row.instagram_user_id,
+    row.ig_user_id,
+    row.igsid,
+    row.contact,
+    fromTarget.instagram_user_id,
+    fromTarget.igsid
+  ];
+  for (const value of candidates) {
+    const id = instagramUserId(value);
+    if (id) return id;
+  }
+  return "";
 }
 
-export function toSyncRow(lead, contact, trigger) {
+export function toSyncRow(lead, contact, trigger, detail = "webhook") {
   const merged = mergeContact(lead, contact);
+  const mode = detail === "summary" ? "summary" : "webhook";
   const externalId = externalIdOf(merged);
-  const attributes = extractAttributes(merged);
-  const direct = normalizeHandle(attributes.ig_handle)
+  const extracted = extractAttributes(merged);
+  const direct = normalizeHandle(extracted.ig_handle)
     || normalizeHandle(merged.username)
     || normalizeHandle(merged.instagram_username)
     || normalizeHandle(merged.lead_contact);
@@ -245,35 +316,44 @@ export function toSyncRow(lead, contact, trigger) {
   const status = mapLeadStatus(merged);
   const followups = Number(merged.total_followups || merged.followups || 0) || 0;
   const last = merged.last_message_time || merged.last_message_at || null;
+  const rawContact = String(merged.lead_contact || merged.phone_number || "").trim();
+  const igUser = instagramUserId(rawContact)
+    || instagramUserId(merged.instagram_user_id)
+    || instagramUserId(merged.ig_user_id)
+    || instagramUserId(merged.igsid);
+  const attributes = mode === "summary" ? {} : compactAttributes(extracted);
+  if (mode === "webhook") {
+    const chatSummary = pickAttr(merged, ["chat_summary"], 2000);
+    if (chatSummary) attributes.chat_summary = chatSummary;
+  }
   return {
     external_id: externalId,
     name: String(merged.lead_name || merged.name || "").slice(0, 200),
-    contact: String(merged.lead_contact || merged.phone_number || "").slice(0, 200),
+    contact: (igUser || rawContact).slice(0, 200),
     handle,
     lead_status: status,
     stage: stageForStatus(status),
     category: String(merged.category || "").slice(0, 40),
     source_detail: String(merged.integration || merged.lead_source || merged.source || "").slice(0, 200),
-    budget: attributes.budget,
-    timeline: attributes.timeline,
-    decision_maker: asBool(attributes.decision_maker),
-    fit: attributes.fit,
-    offer: attributes.offer,
-    monthly_revenue: attributes.monthly_revenue,
-    ig_handle: attributes.ig_handle,
+    detail: mode,
+    budget: mode === "summary" ? null : extracted.budget,
+    timeline: mode === "summary" ? null : extracted.timeline,
+    decision_maker: mode === "summary" ? null : asBool(extracted.decision_maker),
+    fit: mode === "summary" ? null : extracted.fit,
+    offer: mode === "summary" ? null : extracted.offer,
+    monthly_revenue: mode === "summary" ? null : extracted.monthly_revenue,
+    ig_handle: mode === "summary" ? null : extracted.ig_handle,
     attributes,
     last_message_at: last ? String(last) : null,
     followups,
     recovery_due: recoveryDue(status, followups, last),
     role: roleForTrigger(trigger, status, followups),
-    messages: messagesFrom(merged),
-    bookings: bookingsFrom(merged)
+    messages: mode === "summary" ? null : messagesFrom(merged),
+    bookings: mode === "summary" ? null : bookingsFrom(merged)
   };
 }
 
-export function eventKey(trigger, lead, occurredAt) {
-  const id = externalIdOf(lead);
-  const messages = messagesFrom(lead);
-  const last = messages.length ? messages[messages.length - 1].external_id : "";
-  return [trigger || "event", id || "lead", occurredAt || "", last].join(":").slice(0, 300);
+export function eventKey(lead, occurredAt) {
+  const id = externalIdOf(lead) || "lead";
+  return [id, occurredAt || ""].join(":").slice(0, 300);
 }

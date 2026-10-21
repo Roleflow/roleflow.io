@@ -44,6 +44,9 @@ assert.equal(usernameOf({ integration: "instagram", lead_contact: "555****12" })
 assert.equal(usernameOf({ integration: "whatsapp", lead_contact: "+15551212" }), null);
 assert.equal(usernameOf({ integration: "instagram", username: "@kept", lead_contact: "other" }), "kept");
 assert.equal(usernameOf({ integration: "web", lead_contact: "visitor" }), null);
+assert.equal(usernameOf({ integration: "instagram", username: "ada.coach", lead_contact: null }), "ada.coach");
+assert.equal(usernameOf({ integration: "instagram", lead_contact: "178414058221234" }), null);
+assert.match(leadSource, /often null/);
 
 const empty = computeStats([], now);
 assert.equal(empty.conversion_rate, null);
@@ -91,6 +94,39 @@ assert.doesNotMatch(fn, /get_contacts response had no contacts array/);
 assert.doesNotMatch(fn, /username:\s*name/);
 assert.doesNotMatch(fn, /service\.tailortalk\.ai/);
 assert.doesNotMatch(fn, /message_count/);
+assert.match(fn, /acq_tt_apply_batch/);
+assert.match(fn, /acq_tt_businesses_for_tt_agent/);
+assert.match(fn, /tailortalk_agent_id/);
+assert.match(fn, /limit 200 is the API maximum/);
+assert.match(fn, /detail: "summary"/);
+
+const facts = read("supabase/migrations/20261021220000_tailortalk_facts.sql");
+assert.match(facts, /'\*\/5 \* \* \* \*'/);
+assert.match(facts, /tailortalk-sync-hourly/);
+
+const { summaryRow } = await import("../supabase/functions/tailortalk-sync/crm.js");
+const summary = summaryRow({
+  id: "lead-2",
+  lead_name: "Ada",
+  lead_contact: null,
+  username: "ada.coach",
+  integration: "instagram",
+  lead_status: "warm",
+  is_converted: false,
+  category: "sales",
+  last_message_time: "2026-10-21T12:00:00Z",
+  total_followups: 1,
+  chat_history: [{ role: "user", content: "hidden" }],
+  lead_attributes: { budget: "8k", voice_note_slot: "gap_building" }
+}, Date.parse("2026-10-21T12:00:00Z"));
+assert.equal(summary.detail, "summary");
+assert.equal(summary.handle, "ada.coach");
+assert.equal(summary.contact, "");
+assert.equal(summary.messages, null);
+assert.deepEqual(summary.attributes, {});
+assert.equal(summary.lead_status, "warm");
+assert.equal(summary.stage, "qualified");
+assert.equal(summaryRow({ id: "lead-3", is_converted: true, integration: "instagram" }).lead_status, "converted");
 
 const registry = read("supabase/migrations/20261014180000_tailortalk_registry.sql");
 assert.match(registry, /tailortalk_agent_id/);
@@ -174,7 +210,8 @@ const migrationNames = [
   "20261021140000_conversation_engine.sql",
   "20261021160000_pgcrypto_schema.sql",
   "20261021180000_tailortalk_provider.sql",
-  "20261021200000_live_acquisition.sql"
+  "20261021200000_live_acquisition.sql",
+  "20261021220000_tailortalk_facts.sql"
 ];
 assert.deepEqual(
   migrationNames,

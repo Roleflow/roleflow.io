@@ -17,19 +17,23 @@ Roleflow’s acquisition product lives in each signed-in user’s account at `/a
 | Conversation Recovery | Same setter provider. Up to 3 follow-ups, about 6 hours apart, inside 24 hours on the Meta engine. |
 | Appointment Booking & Show-Up | Same setter provider. On the Meta engine, Google Calendar. The owner marks show-up. |
 
-Each business picks `acq_settings.setter_provider`: `roleflow_meta` (default) or `tailortalk`. The Meta conversation engine stays in the product. TailorTalk is the provider while a Meta app cannot be created. HQ `tailortalk-sync` and the `tailortalk_*` cache stay as they are. The account panel does not call that function.
+Each business picks `acq_settings.setter_provider`: `roleflow_meta` (default) or `tailortalk`. The Meta conversation engine stays in the product. TailorTalk is the provider while a Meta app cannot be created. HQ `tailortalk-sync` still owns Get Leads and Get Contacts. After each agent sync it projects summary rows into every connected business whose TailorTalk agent id matches. Sync now asks that function to pull one agent.
 
 ## TailorTalk provider
 
 On Integrations and Setup, an editor enters the TailorTalk API key (Developer → API Keys) and the agent id, then uses Test connection. The key, agent id, and webhook secret are encrypted with `extensions.pgp_sym_encrypt` under `private.tt_business_secrets`. The panel stores only a status row in `acq_setter_links`.
 
-`acq-tailortalk` pulls Get Leads and Get Contacts into `acq_contacts`, `acq_conversations`, `acq_messages`, and the existing targets, bookings, and audit log. Mark Converted uses `https://service.tailortalk.ai/api/v1/mark_converted`. Mark Order uses `https://api.tailortalk.ai/api/v1/mark_order`. A won deal in the panel calls both when the amount is above zero, and Mark Converted when the amount is zero. The 5-minute cron retries deals still marked pending or error.
+Get Leads is `POST https://api.tailortalk.ai/api/v1/get_leads` with `Authorization: Agent <token>`. The body can send `start_after`, `lead_status`, `lead_source`, and `limit` (max 200). The sync pages backwards by `last_message_time` and does not send empty filters. The response is summary fields only: id, name, contact (often null on Instagram), status, category, `is_converted` / `converted_at`, last message time, follow-up count, integration, source, and username. It has no chat history and no extracted attributes. Customers are counted when `is_converted` is true.
 
-Webhook URL (shown after connect and after Test connection):
+On connect, the business agent is registered in `tailortalk_agents` so that pull covers it. `tailortalk-sync` then writes summary rows (`detail: summary`) through `acq_tt_apply_batch`. A later summary keeps webhook attributes, messages, and `detail_source`. Mark Converted is `POST https://api.tailortalk.ai/api/v1/mark_converted` with `{contact_ids:[...]}` of Instagram user ids. A handle or a TailorTalk lead id is not sent. Mark Order stays on `https://api.tailortalk.ai/api/v1/mark_order`. A won deal calls both when the amount is above zero, and Mark Converted when the amount is zero. `acq-tailortalk-sync` still runs every 5 minutes and only retries deals marked pending or error, plus re-registers the agent. It does not page Get Leads.
 
-`https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/acq-tailortalk/webhook?business=<workspace uuid>&token=<per-business secret>`
+Webhook URL (shown after connect and after Test connection). Webhooks need a paid TailorTalk plan. Starter, which Diego is on, does not send them:
 
-Subscribe that URL in TailorTalk to First Message, On Warm, On Hot, On Converted, and Every Message. TailorTalk does not sign webhooks. The secret in the URL, `X-Roleflow-Webhook-Secret`, or `Authorization: Bearer` is compared to the stored secret. A wrong secret returns 401.
+`https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/acq-tailortalk/webhook?business=<workspace uuid>&k=<per-business secret>`
+
+Subscribe that URL to First Message, On Warm, On Hot, On Converted, Every Message, and custom. The JSON body has `webhook_trigger`, `event_type: lead`, `occurred_at`, and `data` (the full lead: `chat_history` with role, content, message_id, and time, `chat_summary`, `lead_attributes`, escalation and lock state, and bookings). Headers include `User-Agent: TailorTalk-Webhook/1.0`, `X-Webhook-Version: v1`, and `X-Webhook-Timestamp`. There is no signature. The `k` query value is the per-business secret. A missing or wrong secret, or a timestamp more than 5 minutes off, returns 401. Bad JSON returns 400. Any other `event_type` returns 200 and is ignored. Events are deduped on lead id plus `occurred_at`. The handler returns 2xx after the row is stored and does not call TailorTalk. A database failure returns 500 so TailorTalk retries. 4xx is not retried.
+
+Extracted attribute keys on Diego's agent: budget, timeline, decision_maker, fit, ig_handle, offer, monthly_revenue, niche, offer_price, dm_volume, current_dm_handling, gap, objections, time_zone, booking_email, booking_date, voice_note_slot. `voice_note_slot` fills the voice-notes queue in the panel. With no webhook, the CRM shows the pull's status and summary and says so. With a webhook, that lead shows the conversation, the summary, and the attributes.
 
 Pausing all four setter agents makes the sync record `paused` and skip writes. Pausing one agent still syncs the CRM and only writes the audit count for agents that are on. The agent inside TailorTalk has to be paused there as well, or it keeps messaging.
 
@@ -53,7 +57,7 @@ If a lead asks whether they are talking to a bot or an AI, the answer is: Diego�
 
 ## Hosting
 
-The site is static on Vercel. Privileged work runs as Supabase edge functions, same as the existing sync and HQ functions. A one-minute `pg_cron` job calls `roleflow-acquisition/tick`. A separate job, `acq-tailortalk-sync`, runs every 5 minutes and POSTs `{"action":"sync"}` to `acq-tailortalk`. Both send the cron secret from `private.acquisition_settings`. That secret is not an environment variable. The hourly HQ job `tailortalk-sync-hourly` is unchanged.
+The site is static on Vercel. Privileged work runs as Supabase edge functions, same as the existing sync and HQ functions. A one-minute `pg_cron` job calls `roleflow-acquisition/tick`. A separate job, `acq-tailortalk-sync`, runs every 5 minutes and POSTs `{"action":"sync"}` to `acq-tailortalk`. That job sends the cron secret from `private.acquisition_settings`. That secret is not an environment variable. The registry job keeps the name `tailortalk-sync-hourly` and runs every 5 minutes (`*/5 * * * *`). It still sends `TAILORTALK_CRON_SECRET` from `private.tailortalk_settings`. The schedule change copies the existing command inside the database.
 
 Chief of Staff runs once a day as `acq-chief-daily` (`15 6 * * *` UTC). It builds the warm-up queue for qualified targets still at stage `target`, up to the daily cap, drafts any missing openers with `grok-4.3`, and writes the daily summary. The panel button "Run daily summary" calls the same job for the signed-in business. Discovered profiles are scored on ingest and stored at stage `target` before that queue runs.
 

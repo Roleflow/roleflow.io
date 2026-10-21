@@ -2,31 +2,34 @@
 // verify_jwt is false. This function checks the caller itself:
 //   cron bearer (acquisition cron secret, or optional TAILORTALK_CRON_SECRET)
 //   a signed-in editor JWT for connect, test, disconnect, sync_one, mark_won
-//   a per-business webhook secret on POST /webhook
+//   a per-business webhook secret on POST /webhook?k=
 // The TailorTalk API key never returns to the browser after it is saved.
-// HQ tailortalk-sync is a different function and is not called from here.
+// Get Leads pagination lives in tailortalk-sync. This function registers the
+// business agent into that registry, asks that function to sync one agent,
+// and retries Mark Order / Mark Converted. Mark Converted is
+// POST https://api.tailortalk.ai/api/v1/mark_converted with Instagram user ids.
+// TailorTalk webhooks send User-Agent TailorTalk-Webhook/1.0 and
+// X-Webhook-Version v1. There is no signature. The timestamp header is required.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import {
   SETTER_ROLES,
   contactIdFor,
-  contactsFrom,
   eventKey,
   externalIdOf,
   leadsFrom,
-  matchContact,
   orderAmount,
-  toSyncRow
+  toSyncRow,
+  webhookTimestampFresh
 } from "./map.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
-const CONTACTS_URL = "https://api.tailortalk.ai/api/v1/get_contacts";
 const MARK_ORDER_URL = "https://api.tailortalk.ai/api/v1/mark_order";
-const MARK_CONVERTED_URL = "https://service.tailortalk.ai/api/v1/mark_converted";
+const MARK_CONVERTED_URL = "https://api.tailortalk.ai/api/v1/mark_converted";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-roleflow-webhook-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json"
 };
@@ -109,7 +112,7 @@ async function cronOk(service: ReturnType<typeof createClient>, bearer: string) 
 
 function webhookUrl(supabaseUrl: string, businessId: string, secret: string) {
   const base = supabaseUrl.replace(/\/$/, "");
-  return `${base}/functions/v1/acq-tailortalk/webhook?business=${businessId}&token=${encodeURIComponent(secret)}`;
+  return `${base}/functions/v1/acq-tailortalk/webhook?business=${businessId}&k=${encodeURIComponent(secret)}`;
 }
 
 function randomSecret() {
@@ -172,6 +175,8 @@ async function connect(service: ReturnType<typeof createClient>, supabaseUrl: st
   if (link.error) throw new Error(link.error.message);
   const provider = await service.from("acq_settings").update({ setter_provider: "tailortalk" }).eq("agent_id", businessId);
   if (provider.error) throw new Error(provider.error.message);
+  await registerAgent(service, businessId, { api_key: apiKey, agent_id: agentId });
+  await kickSync(service, agentId);
   return {
     ok: true,
     status: "connected",
@@ -184,6 +189,7 @@ async function testConnection(service: ReturnType<typeof createClient>, supabase
   const secret = await readSecret(service, businessId);
   try {
     await ttPost(LEADS_URL, secret.api_key, { limit: 1 });
+    await registerAgent(service, businessId, secret);
     await service.from("acq_setter_links").update({
       status: "connected",
       last_tested_at: new Date().toISOString(),
@@ -231,6 +237,61 @@ async function activeRoles(service: ReturnType<typeof createClient>, businessId:
   return (result.data || []).filter((row) => row.status === "active").map((row) => row.role);
 }
 
+async function businessName(service: ReturnType<typeof createClient>, businessId: string, fallback: string) {
+  const row = await service.from("acq_workspaces").select("name").eq("id", businessId).maybeSingle();
+  const name = String(row.data?.name || "").trim();
+  return (name || fallback || "TailorTalk").slice(0, 80);
+}
+
+async function registerAgent(
+  service: ReturnType<typeof createClient>,
+  businessId: string,
+  secret: { api_key: string; agent_id: string }
+) {
+  const name = await businessName(service, businessId, secret.agent_id);
+  const saved = await service.rpc("tailortalk_register_business_agent", {
+    p_tailortalk_agent_id: secret.agent_id,
+    p_agent_name: name,
+    p_access_token: secret.api_key
+  });
+  if (saved.error) throw new Error(saved.error.message);
+  return saved.data;
+}
+
+async function triggerRegistrySync(service: ReturnType<typeof createClient>, tailortalkAgentId: string) {
+  const secret = await service.rpc("tailortalk_read_cron_secret");
+  if (secret.error || typeof secret.data !== "string" || !secret.data) {
+    throw new Error("The setter sync secret is not configured.");
+  }
+  const urlRes = await service.rpc("tailortalk_read_sync_url");
+  const base = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const url = (typeof urlRes.data === "string" && urlRes.data) || (base + "/functions/v1/tailortalk-sync");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + secret.data,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ trigger: "cron", tailortalk_agent_id: tailortalkAgentId })
+  });
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof payload.error === "string" ? payload.error : "Setter sync failed.";
+    throw new Error(message.slice(0, 300));
+  }
+  return payload;
+}
+
+async function kickSync(service: ReturnType<typeof createClient>, tailortalkAgentId: string) {
+  const job = triggerRegistrySync(service, tailortalkAgentId);
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+  if (runtime && typeof runtime.waitUntil === "function") {
+    runtime.waitUntil(job.catch(() => {}));
+    return;
+  }
+  await job;
+}
+
 async function syncAll(service: ReturnType<typeof createClient>) {
   const settings = await service.from("acq_settings").select("agent_id").eq("setter_provider", "tailortalk");
   const links = await service.from("acq_setter_links").select("business_id").eq("status", "connected");
@@ -239,11 +300,13 @@ async function syncAll(service: ReturnType<typeof createClient>) {
   const results = [];
   for (const id of ids) {
     try {
-      results.push({ business_id: id, ...(await syncBusiness(service, id)) });
+      const secret = await readSecret(service, id);
+      await registerAgent(service, id, secret);
+      const reported = await reportPendingDeals(service, id, secret);
+      results.push({ business_id: id, ok: true, deals_reported: reported });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Sync failed.";
       await service.from("acq_setter_links").update({
-        status: "error",
         last_synced_at: new Date().toISOString(),
         last_sync_error: message.slice(0, 300)
       }).eq("business_id", id);
@@ -258,64 +321,11 @@ async function syncBusiness(service: ReturnType<typeof createClient>, businessId
   if (settings.data?.setter_provider !== "tailortalk") {
     return { ok: true, skipped: true, reason: "provider" };
   }
-  const roles = await activeRoles(service, businessId);
-  if (!roles.length) {
-    await service.from("acq_setter_links").update({
-      last_synced_at: new Date().toISOString(),
-      last_sync_error: null,
-      last_sync_counts: { skipped: true, reason: "paused" }
-    }).eq("business_id", businessId);
-    return { ok: true, skipped: true, reason: "paused" };
-  }
   const secret = await readSecret(service, businessId);
-  const leads = await pullLeads(secret.api_key);
-  let contacts: unknown[] = [];
-  try {
-    contacts = contactsFrom(await ttPost(CONTACTS_URL, secret.api_key, { limit: 200 }));
-  } catch {
-    contacts = [];
-  }
-  const rows = leads.map((lead) => toSyncRow(lead, matchContact(lead, contacts))).filter((row) => row.external_id);
-  const counts = { contacts: 0, messages: 0, bookings: 0, logged: 0, leads: rows.length };
-  for (let i = 0; i < rows.length; i += 50) {
-    const applied = await service.rpc("acq_tt_apply_batch", {
-      p_business: businessId,
-      p_rows: rows.slice(i, i + 50),
-      p_active_roles: roles
-    });
-    if (applied.error) throw new Error(applied.error.message);
-    const data = applied.data || {};
-    counts.contacts += Number(data.contacts) || 0;
-    counts.messages += Number(data.messages) || 0;
-    counts.bookings += Number(data.bookings) || 0;
-    counts.logged += Number(data.logged) || 0;
-  }
+  await registerAgent(service, businessId, secret);
+  await triggerRegistrySync(service, secret.agent_id);
   const reported = await reportPendingDeals(service, businessId, secret);
-  await service.from("acq_setter_links").update({
-    status: "connected",
-    last_synced_at: new Date().toISOString(),
-    last_sync_error: null,
-    last_sync_counts: { ...counts, deals_reported: reported }
-  }).eq("business_id", businessId);
-  return { ok: true, counts, deals_reported: reported };
-}
-
-async function pullLeads(apiKey: string) {
-  const all: unknown[] = [];
-  let startAfter = "";
-  for (let page = 0; page < 3; page += 1) {
-    const body: Record<string, unknown> = { limit: 200 };
-    if (startAfter) body.start_after = startAfter;
-    const payload = await ttPost(LEADS_URL, apiKey, body);
-    const leads = leadsFrom(payload);
-    all.push(...leads);
-    if (leads.length < 200) break;
-    const last = leads[leads.length - 1] as Record<string, unknown>;
-    const next = String(last.last_message_time || last.last_message_at || "");
-    if (!next || next === startAfter) break;
-    startAfter = next;
-  }
-  return all;
+  return { ok: true, synced: true, deals_reported: reported };
 }
 
 async function webhook(req: Request, service: ReturnType<typeof createClient>, url: URL) {
@@ -329,9 +339,9 @@ async function webhook(req: Request, service: ReturnType<typeof createClient>, u
   }
   const businessId = url.searchParams.get("business") || "";
   if (!UUID.test(businessId)) return json(401, { error: "Unauthorized." });
-  const header = req.headers.get("X-Roleflow-Webhook-Secret") || "";
-  const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
-  const token = url.searchParams.get("token") || header || bearer;
+  const stamped = req.headers.get("X-Webhook-Timestamp") || "";
+  if (!webhookTimestampFresh(stamped)) return json(401, { error: "Unauthorized." });
+  const token = url.searchParams.get("k") || "";
   let secret: { api_key: string; agent_id: string; webhook_secret: string };
   try {
     secret = await readSecret(service, businessId);
@@ -339,11 +349,15 @@ async function webhook(req: Request, service: ReturnType<typeof createClient>, u
     return json(401, { error: "Unauthorized." });
   }
   if (!timingSafeEqual(token, secret.webhook_secret)) return json(401, { error: "Unauthorized." });
+  const eventType = String(body.event_type || "lead");
+  if (eventType !== "lead") return json(200, { ok: true, ignored: true });
   const trigger = String(body.webhook_trigger || "custom").toLowerCase();
-  if (!trigger) return json(400, { error: "Missing webhook trigger." });
-  const lead = (body.data && typeof body.data === "object" ? body.data : body) as Record<string, unknown>;
-  const key = eventKey(trigger, lead, String(body.occurred_at || ""));
+  const lead = (body.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data : body) as Record<string, unknown>;
+  const occurredAt = String(body.occurred_at || "");
+  if (!externalIdOf(lead) || !occurredAt) return json(400, { error: "Lead id and occurred_at are required." });
+  const key = eventKey(lead, occurredAt);
   const existing = await service.from("acq_tt_events").select("id, applied").eq("business_id", businessId).eq("event_key", key).maybeSingle();
+  if (existing.error) return json(500, { error: "Could not store that lead." });
   if (existing.data?.applied) return json(200, { ok: true, duplicate: true });
   const roles = await activeRoles(service, businessId);
   const summary = {
@@ -353,16 +367,17 @@ async function webhook(req: Request, service: ReturnType<typeof createClient>, u
     occurred_at: body.occurred_at || null
   };
   if (!roles.length) {
-    await service.from("acq_tt_events").upsert({
+    const paused = await service.from("acq_tt_events").upsert({
       business_id: businessId,
       event_key: key,
       trigger,
       payload: summary,
       applied: false
     }, { onConflict: "business_id,event_key" });
+    if (paused.error) return json(500, { error: "Could not store that lead." });
     return json(200, { ok: true, skipped: "paused" });
   }
-  const row = toSyncRow(lead, null, trigger);
+  const row = toSyncRow(lead, null, trigger, "webhook");
   if (row.external_id) {
     const applied = await service.rpc("acq_tt_apply_batch", {
       p_business: businessId,
@@ -371,13 +386,14 @@ async function webhook(req: Request, service: ReturnType<typeof createClient>, u
     });
     if (applied.error) return json(500, { error: "Could not store that lead." });
   }
-  await service.from("acq_tt_events").upsert({
+  const stored = await service.from("acq_tt_events").upsert({
     business_id: businessId,
     event_key: key,
     trigger,
     payload: summary,
     applied: true
   }, { onConflict: "business_id,event_key" });
+  if (stored.error) return json(500, { error: "Could not store that lead." });
   return json(200, { ok: true });
 }
 
@@ -426,9 +442,9 @@ async function reportDeal(
   if (!contactId) {
     await service.from("acq_deals").update({
       tt_report_status: "error",
-      tt_report_error: "No TailorTalk contact id on this deal."
+      tt_report_error: "mark_converted needs the Instagram user id."
     }).eq("id", deal.id);
-    throw new Error("No TailorTalk contact id on this deal.");
+    throw new Error("mark_converted needs the Instagram user id.");
   }
   const amount = orderAmount(deal.amount_cents);
   try {

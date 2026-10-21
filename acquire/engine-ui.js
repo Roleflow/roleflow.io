@@ -193,13 +193,17 @@ function paintTailorTalk(host, ctx) {
   const tested = link.last_test_error ? " · " + link.last_test_error : "";
   card.append(el("p", { text: "Status: " + (link.status || "disconnected") + hint + tested }));
   card.append(el("p", { class: "mute", text: "Until a Meta app is available, Comment-to-DM, qualification, recovery, and booking can run on TailorTalk. Enter the API key from TailorTalk Developer → API Keys and the agent id. The key is encrypted and is not shown again." }));
+  card.append(el("p", { class: "mute", text: "Starter pulls status and a summary every 5 minutes. Chat history and extracted attributes appear after a paid-plan webhook." }));
+  if (link.webhook_seen_at) {
+    card.append(el("p", { text: "Webhook is delivering full history and extracted attributes. Last event " + ctx.when(link.webhook_seen_at) + "." }));
+  }
   if (link.last_synced_at) {
     const counts = link.last_sync_counts || {};
     const note = counts.reason === "paused" ? "Last sync skipped because those four agents are off." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + link.last_sync_error : "");
     card.append(el("p", { text: note }));
   }
   if (state.ttWebhook && state.ttWebhookBusiness === state.businessId) {
-    card.append(el("p", { class: "key-once", text: "Paste this webhook into TailorTalk Developer → Webhooks for First Message, On Warm, On Hot, On Converted, and Every Message: " + state.ttWebhook }));
+    card.append(el("p", { class: "key-once", text: "After a paid plan upgrade, paste this webhook into TailorTalk Developer → Webhooks for First Message, On Warm, On Hot, On Converted, and Every Message. The secret is the k= value. Starter does not send webhooks. " + state.ttWebhook }));
   }
   if (state.canEdit && state.supabase) {
     const apiKey = field("TailorTalk API key", "");
