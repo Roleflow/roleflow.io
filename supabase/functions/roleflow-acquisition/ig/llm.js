@@ -1,16 +1,28 @@
 export const DISCLOSURE = "Diego's team uses an AI assistant to keep up with conversations. Diego personally reviews them and takes the calls.";
 
+// grok-4.3 is the cheapest general model on the xAI text API (Oct 2026) that
+// documents structured outputs and instruction following. grok-build-0.1 is
+// cheaper and is the coding model, so it is not the conversation default.
+export const DEFAULT_XAI_MODEL = "grok-4.3";
+const XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions";
+
 export function resolveProvider(env) {
-  const forced = String(env.LLM_PROVIDER || "").trim().toLowerCase();
-  if (forced === "openai") return env.OPENAI_API_KEY ? "openai" : null;
-  if (forced === "gemini") return env.GEMINI_API_KEY || env.GOOGLE_API_KEY ? "gemini" : null;
-  if (env.OPENAI_API_KEY) return "openai";
-  if (env.GEMINI_API_KEY || env.GOOGLE_API_KEY) return "gemini";
+  const source = env || {};
+  const forced = String(source.LLM_PROVIDER || "").trim().toLowerCase();
+  const xai = Boolean(source.XAI_API_KEY);
+  const openai = Boolean(source.OPENAI_API_KEY);
+  const gemini = Boolean(source.GEMINI_API_KEY || source.GOOGLE_API_KEY);
+  if (forced === "xai" || forced === "grok") return xai ? "xai" : null;
+  if (forced === "openai") return openai ? "openai" : null;
+  if (forced === "gemini") return gemini ? "gemini" : null;
+  if (xai) return "xai";
+  if (openai) return "openai";
+  if (gemini) return "gemini";
   return null;
 }
 
 export function providerHelp() {
-  return "Set OPENAI_API_KEY (optional OPENAI_MODEL, default gpt-4.1-mini) or GEMINI_API_KEY / GOOGLE_API_KEY (optional GEMINI_MODEL, default gemini-2.0-flash). Optional LLM_PROVIDER=openai|gemini.";
+  return "Set XAI_API_KEY (optional XAI_MODEL, default grok-4.3). Alternatives: OPENAI_API_KEY (optional OPENAI_MODEL, default gpt-4.1-mini) or GEMINI_API_KEY / GOOGLE_API_KEY (optional GEMINI_MODEL, default gemini-2.0-flash). LLM_PROVIDER defaults to xai when XAI_API_KEY is set. Set openai or gemini to use those instead.";
 }
 
 export function systemPrompt(sections) {
@@ -38,22 +50,23 @@ export async function completeJson({ env, system, messages, fetchImpl }) {
     throw error;
   }
   const fetchFn = fetchImpl || fetch;
-  if (provider === "openai") {
-    const response = await fetchFn("https://api.openai.com/v1/chat/completions", {
+  if (provider === "xai" || provider === "openai") {
+    const xai = provider === "xai";
+    const response = await fetchFn(xai ? XAI_CHAT_URL : "https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: "Bearer " + env.OPENAI_API_KEY,
+        Authorization: "Bearer " + (xai ? env.XAI_API_KEY : env.OPENAI_API_KEY),
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: env.OPENAI_MODEL || "gpt-4.1-mini",
+        model: xai ? (env.XAI_MODEL || DEFAULT_XAI_MODEL) : (env.OPENAI_MODEL || "gpt-4.1-mini"),
         temperature: 0.4,
         response_format: { type: "json_object" },
         messages: [{ role: "system", content: system }, ...(messages || [])]
       })
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload?.error?.message || "OpenAI request failed.");
+    if (!response.ok) throw new Error(payload?.error?.message || (xai ? "xAI request failed." : "OpenAI request failed."));
     return payload?.choices?.[0]?.message?.content || "";
   }
   const key = env.GEMINI_API_KEY || env.GOOGLE_API_KEY;

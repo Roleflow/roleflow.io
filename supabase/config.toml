@@ -353,6 +353,9 @@ verify_jwt = false
 
 # roleflow-acquisition checks webhook signatures, OAuth state, user JWTs,
 # and the cron secret itself. Instagram and Google cannot send a user JWT.
+# Conversation replies: LLM_PROVIDER=xai (default), XAI_API_KEY, optional
+# XAI_MODEL (default grok-4.3) against https://api.x.ai/v1.
+# Alternatives: OPENAI_API_KEY / OPENAI_MODEL, or GEMINI_API_KEY / GEMINI_MODEL.
 [functions.roleflow-acquisition]
 verify_jwt = false
 

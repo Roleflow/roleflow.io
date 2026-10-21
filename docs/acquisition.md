@@ -83,11 +83,15 @@ Set these on the Supabase project. None are committed. The product still loads w
 | `GOOGLE_CLIENT_SECRET` | Calendar OAuth secret |
 | `GOOGLE_REDIRECT_URI` | Optional override |
 | `GOOGLE_TOKEN_KEY` | Encrypts Google tokens. Falls back to `META_TOKEN_KEY`. |
-| `LLM_PROVIDER` | Optional `openai` or `gemini` |
-| `OPENAI_API_KEY` | Used when present |
+| `LLM_PROVIDER` | Optional. `xai` (default when `XAI_API_KEY` is set), `openai`, or `gemini` |
+| `XAI_API_KEY` | Default provider. Chat completions at `https://api.x.ai/v1` |
+| `XAI_MODEL` | Optional. Default `grok-4.3` |
+| `OPENAI_API_KEY` | Used when `LLM_PROVIDER=openai`, or when no xAI key is set |
 | `OPENAI_MODEL` | Optional. Default `gpt-4.1-mini` |
-| `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Used when OpenAI is unset |
+| `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Used when `LLM_PROVIDER=gemini`, or when xAI and OpenAI are unset |
 | `GEMINI_MODEL` | Optional. Default `gemini-2.0-flash` |
+
+When `XAI_API_KEY` is set and `LLM_PROVIDER` is empty, the engine calls `https://api.x.ai/v1/chat/completions` with JSON output. The default model is `grok-4.3`: on the October 2026 xAI price table it is the cheapest general model that documents structured output. `grok-build-0.1` is cheaper and is the coding model. Set `LLM_PROVIDER=openai` or `gemini` to use those keys instead.
 
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ANON_KEY` are injected into edge functions.
 

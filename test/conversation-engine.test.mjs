@@ -10,7 +10,7 @@ import { planTurn } from "../supabase/functions/roleflow-acquisition/ig/engine.j
 import { qualifiersPass } from "../supabase/functions/roleflow-acquisition/ig/qualify.js";
 import { parseSignedRequest, signRequest } from "../supabase/functions/roleflow-acquisition/ig/deletion.js";
 import { pickSlots } from "../supabase/functions/roleflow-acquisition/ig/slots.js";
-import { resolveProvider } from "../supabase/functions/roleflow-acquisition/ig/llm.js";
+import { completeJson, resolveProvider, DEFAULT_XAI_MODEL } from "../supabase/functions/roleflow-acquisition/ig/llm.js";
 import { encryptToken, decryptToken } from "../supabase/functions/roleflow-acquisition/ig/crypto.js";
 import { seedSections } from "../supabase/functions/roleflow-acquisition/ig/prompt-seed.js";
 
@@ -126,9 +126,32 @@ assert.match(slots[0].label, /Wednesday/);
 assert.match(slots[1].label, /Thursday/);
 assert.equal(slots[0].start.includes("T10:00:00.000Z"), true);
 
+assert.equal(DEFAULT_XAI_MODEL, "grok-4.3");
+assert.equal(resolveProvider({ XAI_API_KEY: "x" }), "xai");
+assert.equal(resolveProvider({ XAI_API_KEY: "x", OPENAI_API_KEY: "sk", GEMINI_API_KEY: "g" }), "xai");
+assert.equal(resolveProvider({ LLM_PROVIDER: "xai", OPENAI_API_KEY: "sk" }), null);
+assert.equal(resolveProvider({ LLM_PROVIDER: "openai", XAI_API_KEY: "x", OPENAI_API_KEY: "sk" }), "openai");
+assert.equal(resolveProvider({ LLM_PROVIDER: "gemini", XAI_API_KEY: "x", GEMINI_API_KEY: "g" }), "gemini");
 assert.equal(resolveProvider({ OPENAI_API_KEY: "sk" }), "openai");
 assert.equal(resolveProvider({ GEMINI_API_KEY: "g" }), "gemini");
 assert.equal(resolveProvider({}), null);
+const xaiCalls = [];
+const xaiText = await completeJson({
+  env: { XAI_API_KEY: "xai-test", OPENAI_API_KEY: "sk" },
+  system: "reply json",
+  messages: [{ role: "user", content: "hello" }],
+  fetchImpl: async (url, init) => {
+    xaiCalls.push({ url, init });
+    return { ok: true, json: async () => ({ choices: [{ message: { content: "{\"bubbles\":[\"ok\"]}" } }] }) };
+  }
+});
+assert.equal(xaiText, "{\"bubbles\":[\"ok\"]}");
+assert.equal(xaiCalls.length, 1);
+assert.equal(xaiCalls[0].url, "https://api.x.ai/v1/chat/completions");
+const xaiBody = JSON.parse(xaiCalls[0].init.body);
+assert.equal(xaiBody.model, "grok-4.3");
+assert.equal(xaiBody.response_format.type, "json_object");
+assert.equal(xaiCalls[0].init.headers.Authorization, "Bearer xai-test");
 assert.equal(retryPlan(429, 1).retry, true);
 assert.equal(retryPlan(400, 1).retry, false);
 assert.equal(underRateLimit(19), true);
