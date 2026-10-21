@@ -16,8 +16,6 @@ const SECTIONS = [
   ["notes", "Notes"]
 ];
 
-const STEPS = ["instagram", "calendar", "voice", "knowledge", "caps", "live"];
-
 export function renderEngine(tab, host, ctx) {
   host.replaceChildren();
   if (tab === "inbox") paintInbox(host, ctx);
@@ -467,40 +465,163 @@ function paintBilling(host, ctx) {
   host.append(el("a", { class: "btn sm", href: "#pipeline" }, ["Open the pipeline"]));
 }
 
+const WIZARD = ["profile", "offer", "connect", "worker", "voice", "live"];
+
+function wizardStep(settings) {
+  const raw = (settings && settings.onboarding_step) || "profile";
+  if (WIZARD.includes(raw)) return raw;
+  if (raw === "knowledge") return "offer";
+  if (raw === "voice") return "voice";
+  if (raw === "live") return "live";
+  return "connect";
+}
+
 function paintOnboarding(host, ctx) {
-  const { state, el, button, toast, bootBusiness } = ctx;
-  paintTailorTalk(host, ctx);
+  const { state, el, button, field, toast, bootBusiness } = ctx;
   const settings = state.settings || {};
-  const step = STEPS.includes(settings.onboarding_step) ? settings.onboarding_step : "instagram";
+  const step = wizardStep(settings);
   const progress = el("div", { class: "steps" });
-  STEPS.forEach((id) => {
-    const labels = { instagram: "Instagram", calendar: "Calendar", voice: "Voice notes", knowledge: "Offer", caps: "Daily cap", live: "Go live" };
-    progress.append(el("span", { class: id === step ? "now" : "", text: labels[id] }));
-  });
+  const labels = { profile: "Business", offer: "Offer", connect: "Instagram", worker: "Worker", voice: "Voice notes", live: "Go live" };
+  WIZARD.forEach((id) => progress.append(el("span", { class: id === step ? "now" : "", text: labels[id] })));
   host.append(progress);
   const card = el("article", { class: "agent" });
-  if (step === "instagram") {
-    card.append(el("h3", { text: "Connect the professional Instagram account" }), el("p", { text: "This business authorizes Roleflow’s Meta app. The token stays on the server." }));
-    if (state.canEdit && state.supabase) card.append(button("Connect Instagram", () => startOauth(ctx, "meta_start")));
+
+  if (step === "profile") {
+    card.append(el("h3", { text: "Business and ICP" }));
+    card.append(el("p", { text: "Grok scores discovered profiles against this niche, follower range, and the CTA keywords in the bio." }));
+    const business = (state.businesses || []).find((row) => row.id === state.businessId);
+    const name = field("Business name", (business && business.agent_name) || "");
+    const niche = field("Niche", settings.niche || "");
+    const min = field("Follower minimum", settings.follower_min || 5000, "number");
+    const max = field("Follower maximum", settings.follower_max || 200000, "number");
+    const keywords = field("CTA keywords", settings.cta_keywords || "");
+    min.input.min = "5000";
+    min.input.max = "200000";
+    max.input.min = "5000";
+    max.input.max = "200000";
+    keywords.input.placeholder = "DM me, book a call, link in bio";
+    card.append(name.label, niche.label, min.label, max.label, keywords.label);
+    if (state.canEdit && state.supabase) {
+      card.append(button("Save and continue", async () => {
+        const followerMin = Number(min.input.value);
+        const followerMax = Number(max.input.value);
+        if (followerMin < 5000 || followerMax > 200000 || followerMax < followerMin) {
+          toast("Followers stay between 5,000 and 200,000, and the maximum is at least the minimum.", "bad");
+          return;
+        }
+        if (name.input.value.trim()) {
+          const label = name.input.value.trim();
+          await state.supabase.from("acq_workspaces").update({ name: label }).eq("id", state.businessId);
+          if (business) {
+            business.name = label;
+            business.agent_name = label;
+          }
+        }
+        const saved = await state.supabase.from("acq_settings").update({
+          niche: niche.input.value.trim(),
+          follower_min: followerMin,
+          follower_max: followerMax,
+          cta_keywords: keywords.input.value.trim(),
+          onboarding_step: "offer"
+        }).eq("agent_id", state.businessId);
+        if (saved.error) toast(saved.error.message, "bad");
+        else {
+          toast("ICP saved.");
+          await bootBusiness(state.businessId);
+          ctx.go("onboarding");
+        }
+      }));
+    }
   }
-  if (step === "calendar") {
-    card.append(el("h3", { text: "Connect Google Calendar" }), el("p", { text: "Slot booking uses free time on this calendar. You can skip and use the public booking link until Calendar is connected." }));
-    if (state.canEdit && state.supabase) card.append(button("Connect Google Calendar", () => startOauth(ctx, "google_start")));
+
+  if (step === "offer") {
+    card.append(el("h3", { text: "Offer and booking link" }));
+    card.append(el("p", { text: "The opener and the setter may use only this offer. The booking link is sent when Google Calendar is not connected." }));
+    const offer = area(ctx, "Offer", settings.offer_summary || "");
+    const booking = field("Booking link", settings.booking_fallback_url || "https://calendar.app.google/8i1gomkozavqYU5b8");
+    card.append(offer.label, booking.label);
+    if (state.canEdit && state.supabase) {
+      card.append(button("Save and continue", async () => {
+        const saved = await state.supabase.from("acq_settings").update({
+          offer_summary: offer.input.value.trim(),
+          booking_fallback_url: booking.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
+          onboarding_step: "connect"
+        }).eq("agent_id", state.businessId);
+        if (saved.error) toast(saved.error.message, "bad");
+        else {
+          toast("Offer saved.");
+          await bootBusiness(state.businessId);
+          ctx.go("onboarding");
+        }
+      }));
+    }
   }
+
+  if (step === "connect") {
+    card.append(el("h3", { text: "Connect Instagram" }));
+    card.append(el("p", { text: "Use TailorTalk with an API key and agent id, or the Roleflow Meta app when that app is available. Setting agents follow whichever provider you save." }));
+    host.append(card);
+    paintTailorTalk(host, ctx);
+    const meta = el("article", { class: "agent" });
+    meta.append(el("h3", { text: "Roleflow Meta engine" }));
+    meta.append(el("p", { text: "Connect the professional Instagram account when the Meta app is available. The token stays on the server." }));
+    if (state.canEdit && state.supabase) {
+      meta.append(button("Connect Instagram", () => startOauth(ctx, "meta_start")));
+      meta.append(button("Continue to the worker", () => advanceWizard(ctx, "worker")));
+    }
+    host.append(meta);
+    return;
+  }
+
+  if (step === "worker") {
+    card.append(el("h3", { text: "Browser worker" }));
+    card.append(el("p", { text: "Generate the rfw_ worker key in this panel. It is shown once. The assistant on its own computer uses it to fetch today's queue and post discovered profiles. Instagram passwords are not stored." }));
+    const workers = state.workers || [];
+    if (!workers.length) card.append(el("p", { text: "No worker key yet." }));
+    workers.forEach((row) => card.append(el("p", { text: (row.label || "Worker") + " · " + row.key_prefix + "…" })));
+    if (state.issuedKey) card.append(el("p", { class: "key-once", text: "Copy this key now. It is not shown again: " + state.issuedKey }));
+    if (state.canEdit && state.supabase) {
+      card.append(button("Generate worker key", async () => {
+        const issued = await state.supabase.rpc("acq_worker_issue", { p_business: state.businessId });
+        if (issued.error) toast(issued.error.message, "bad");
+        else {
+          state.issuedKey = issued.data && issued.data.api_key;
+          toast("Worker key generated. Copy it now. It is shown once.");
+          await bootBusiness(state.businessId);
+          ctx.go("onboarding");
+        }
+      }));
+      card.append(button("Continue to voice notes", () => advanceWizard(ctx, "voice")));
+    }
+  }
+
   if (step === "voice") {
-    card.append(el("h3", { text: "Record the voice notes" }), el("p", { text: "Upload a recording for the opener, the gap, recovery, and the booking confirmation. The assistant sends those files. It does not clone a voice." }));
-    card.append(el("a", { class: "btn sm", href: "#voice" }, ["Open voice notes"]));
+    card.append(el("h3", { text: "Voice notes" }));
+    card.append(el("p", { text: "Upload your own recordings. The opener is the one Personalised Outreach sends. A cloned voice is not used." }));
+    const slot = el("select", { "aria-label": "Voice note slot" });
+    [["outreach_opener", "Outreach opener"], ["gap_building", "Gap building"], ["booking_confirmation", "Booking confirmation"], ["reminder", "Reminder"]].forEach(([value, label]) => {
+      slot.append(el("option", { value, text: label }));
+    });
+    const title = field("Title", "Opener");
+    const file = el("input", { type: "file", accept: "audio/*", "aria-label": "Voice recording" });
+    card.append(slot, title.label, file);
+    if (state.canEdit && state.supabase && ctx.uploadVoice) {
+      card.append(button("Upload recording", async () => {
+        const chosen = file.files && file.files[0];
+        if (!chosen) {
+          toast("Choose a recording.", "bad");
+          return;
+        }
+        await ctx.uploadVoice(chosen, { slot: slot.value, title: title.input.value, niche: settings.niche || "", variant: "", hint: "" });
+      }));
+    }
+    card.append(el("a", { class: "btn sm", href: "#voice" }, ["Open all voice-note slots"]));
+    if (state.canEdit && state.supabase) card.append(button("Continue to go live", () => advanceWizard(ctx, "live")));
   }
-  if (step === "knowledge") {
-    card.append(el("h3", { text: "Offer, audience, and facts" }), el("p", { text: "Save these on Integrations. The assistant may use only what you write there." }));
-    card.append(el("a", { class: "btn sm", href: "#integrations" }, ["Edit knowledge"]));
-  }
-  if (step === "caps") {
-    card.append(el("h3", { text: "Daily cap" }), el("p", { text: "New targets stay between 20 and 30 a day. The default is 30. Quiet hours hold automated sends." }));
-    card.append(el("a", { class: "btn sm", href: "#controls" }, ["Open settings"]));
-  }
+
   if (step === "live") {
-    card.append(el("h3", { text: "Go live" }), el("p", { text: "Turns the system on and loads the seeded prompts. Each agent still has its own on/off switch on Workforce." }));
+    card.append(el("h3", { text: "Go live" }));
+    card.append(el("p", { text: "Turns the system on and turns each of the eight agents on. You can switch any agent off on Workforce. Chief of Staff writes a daily summary and fills the worker queue under the daily cap." }));
     if (state.canEdit && state.supabase) {
       card.append(button("Go live", async () => {
         try {
@@ -513,27 +634,28 @@ function paintOnboarding(host, ctx) {
           onboarding_step: "live",
           live_at: new Date().toISOString()
         }).eq("agent_id", state.businessId);
-        if (saved.error) toast(saved.error.message, "bad");
-        else {
-          toast("This business is live. Agents stay paused until you turn each one on.");
-          await bootBusiness(state.businessId);
-          ctx.go("overview");
+        if (saved.error) {
+          toast(saved.error.message, "bad");
+          return;
         }
+        const roles = ["chief_of_staff", "icp_acquisition", "engagement_warmup", "personalised_outreach", "comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
+        await Promise.all(roles.map((role) => state.supabase.from("business_workforce").update({ status: "active" }).eq("agent_id", state.businessId).eq("role", role)));
+        toast("This business is live.");
+        await bootBusiness(state.businessId);
+        ctx.go("overview");
       }));
     }
   }
+
   host.append(card);
-  if (state.canEdit && state.supabase && step !== "live") {
-    const index = STEPS.indexOf(step);
-    host.append(button(step === "caps" ? "Continue to go live" : "Mark this step done", async () => {
-      const next = STEPS[Math.min(index + 1, STEPS.length - 1)];
-      const saved = await state.supabase.from("acq_settings").update({ onboarding_step: next }).eq("agent_id", state.businessId);
-      if (saved.error) toast(saved.error.message, "bad");
-      else {
-        await bootBusiness(state.businessId);
-        ctx.go("onboarding");
-      }
-    }));
+}
+
+async function advanceWizard(ctx, next) {
+  const saved = await ctx.state.supabase.from("acq_settings").update({ onboarding_step: next }).eq("agent_id", ctx.state.businessId);
+  if (saved.error) ctx.toast(saved.error.message, "bad");
+  else {
+    await ctx.bootBusiness(ctx.state.businessId);
+    ctx.go("onboarding");
   }
 }
 

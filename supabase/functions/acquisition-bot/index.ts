@@ -21,6 +21,8 @@ const cors = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SIGNED_SECONDS = 60 * 60;
+const XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions";
+const XAI_MODEL = "grok-4.3";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -48,13 +50,23 @@ Deno.serve(async (req) => {
 
   let scopedBusiness = "";
   let workerId = "";
+  let editorUser = "";
+  const actionEarly = String(body.action || "");
   if (bearer.startsWith("rfw_")) {
     const auth = await service.rpc("acq_worker_auth", { p_key: bearer });
     const payload = auth.data || {};
     if (auth.error || payload.ok !== true) return json(401, { error: "Unauthorized." });
     scopedBusiness = String(payload.business_id || "");
     workerId = String(payload.worker_id || "");
-  } else if (!(serviceKey && timingSafeEqual(bearer, serviceKey))) {
+  } else if (serviceKey && timingSafeEqual(bearer, serviceKey)) {
+    scopedBusiness = "";
+  } else if (actionEarly === "chief_daily" && await cronAuthorized(service, bearer)) {
+    scopedBusiness = "";
+  } else if (actionEarly === "chief") {
+    const user = await service.auth.getUser(bearer);
+    editorUser = user.data.user?.id || "";
+    if (!editorUser) return json(401, { error: "Unauthorized." });
+  } else {
     return json(401, { error: "Unauthorized." });
   }
 
@@ -63,13 +75,27 @@ Deno.serve(async (req) => {
     return json(403, { error: "That worker key is for a different business." });
   }
   const agentId = scopedBusiness || requested;
+  const action = actionEarly;
+
+  if (action === "chief_daily") {
+    if (editorUser || workerId) return json(403, { error: "Unauthorized." });
+    return json(200, await runChiefDaily(service));
+  }
+  if (action === "chief") {
+    if (!UUID.test(agentId)) return json(400, { error: "agent_id must be a business UUID." });
+    if (editorUser) {
+      const allowed = await service.rpc("acq_user_can_edit", { p_business: agentId, p_user: editorUser });
+      if (allowed.error || allowed.data !== true) return json(403, { error: "You cannot edit this business." });
+    }
+    const result = await runChiefFor(service, agentId);
+    return json(result.ok === false ? 400 : 200, result);
+  }
   if (!UUID.test(agentId)) return json(400, { error: "agent_id must be a business UUID." });
-  const action = String(body.action || "");
 
   if (action === "ingest") {
     const targets = Array.isArray(body.targets) ? body.targets : null;
     if (!targets) return json(400, { error: "targets must be an array." });
-    return call(service, "acq_bot_ingest", { p_agent: agentId, p_targets: targets });
+    return ingestScored(service, agentId, targets);
   }
   if (action === "queue") {
     const limit = body.limit == null ? 30 : Number(body.limit);
@@ -146,11 +172,17 @@ async function addFindTargets(service: ReturnType<typeof createClient>, agentId:
   if (!Number.isFinite(remaining) || remaining <= 0) return;
   const role = await service.from("business_workforce").select("status").eq("agent_id", agentId).eq("role", "icp_acquisition").maybeSingle();
   if (role.error || !role.data || role.data.status !== "active") return;
+  const settings = await service.from("acq_settings").select("niche, follower_min, follower_max, cta_keywords, offer_summary").eq("agent_id", agentId).maybeSingle();
+  const icp = (settings.data || {}) as Icp;
   const queue = Array.isArray(payload.queue) ? payload.queue : [];
   queue.unshift({
     kind: "find_targets",
     count: remaining,
-    rules: "CTA in bio, 5,000–200,000 followers"
+    follower_min: Number(icp.follower_min) || 5000,
+    follower_max: Number(icp.follower_max) || 200000,
+    niche: icp.niche || "",
+    cta_keywords: icp.cta_keywords || "",
+    rules: "CTA in the bio, 5,000–200,000 followers, inside this business range"
   });
   payload.queue = queue;
 }
@@ -179,4 +211,197 @@ async function signNote(service: ReturnType<typeof createClient>, note: unknown)
   row.signed_url = signed.data.signedUrl;
   row.expires_in = SIGNED_SECONDS;
   return row;
+}
+
+type Service = ReturnType<typeof createClient>;
+
+async function cronAuthorized(service: Service, bearer: string) {
+  if (!bearer) return false;
+  const secret = await service.rpc("acq_read_cron_secret");
+  const stored = typeof secret.data === "string" ? secret.data : "";
+  return Boolean(stored) && timingSafeEqual(bearer, stored);
+}
+
+async function ingestScored(service: Service, agentId: string, targets: unknown[]) {
+  const settings = await service.from("acq_settings").select("niche, follower_min, follower_max, cta_keywords, offer_summary").eq("agent_id", agentId).maybeSingle();
+  if (settings.error) return json(400, { error: settings.error.message });
+  const icp = (settings.data || {}) as Icp;
+  const key = Deno.env.get("XAI_API_KEY") || "";
+  if (!key) return json(503, { error: "XAI_API_KEY is not set. Profiles were not stored." });
+  const scored = await mapPool(targets.slice(0, 50), 4, (item) => scoreTarget(key, icp, item));
+  const result = await service.rpc("acq_bot_ingest", { p_agent: agentId, p_targets: scored.map((entry) => entry.row) });
+  if (result.error) return json(400, { error: result.error.message });
+  const payload = (result.data || {}) as Record<string, unknown>;
+  if (payload.ok === false) return json(Number(payload.status) || 400, { error: String(payload.error || "Request failed.") });
+  const accepted = Array.isArray(payload.accepted) ? payload.accepted : [];
+  for (const item of accepted) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (row.qualified !== true || !row.id) continue;
+    const source = scored.find((entry) => entry.row.handle === row.handle);
+    if (!source) continue;
+    try {
+      const opener = await writeOpener(key, icp, source.row);
+      const stored = await service.rpc("acq_store_opener", { p_target: row.id, p_opener: opener });
+      const storedPayload = (stored.data || {}) as { stored?: boolean };
+      row.opener = opener;
+      row.opener_stored = storedPayload.stored === true;
+    } catch (error) {
+      row.opener_error = error instanceof Error ? error.message : "Opener was not written.";
+    }
+  }
+  return json(200, payload);
+}
+
+async function runChiefDaily(service: Service) {
+  const listed = await service.from("acq_workspaces").select("id").limit(200);
+  if (listed.error) return { ok: false, error: listed.error.message };
+  const results = [];
+  for (const row of listed.data || []) {
+    results.push({ business_id: row.id, ...(await runChiefFor(service, row.id)) });
+  }
+  return { ok: true, businesses: results.length, results };
+}
+
+async function runChiefFor(service: Service, agentId: string) {
+  const key = Deno.env.get("XAI_API_KEY") || "";
+  const settings = await service.from("acq_settings").select("niche, follower_min, follower_max, cta_keywords, offer_summary").eq("agent_id", agentId).maybeSingle();
+  const icp = (settings.data || {}) as Icp;
+  const needed = await service.rpc("acq_openers_needed", { p_agent: agentId });
+  const drafted = [];
+  if (key) {
+    for (const row of asArray(needed.data)) {
+      try {
+        const opener = await writeOpener(key, icp, row);
+        const stored = await service.rpc("acq_store_opener", { p_target: row.id, p_opener: opener });
+        const storedPayload = (stored.data || {}) as { stored?: boolean };
+        drafted.push({ id: row.id, stored: storedPayload.stored === true });
+      } catch (error) {
+        drafted.push({ id: row.id, error: error instanceof Error ? error.message : "Opener failed." });
+      }
+    }
+  }
+  const report = await service.rpc("acq_run_chief", { p_agent: agentId, p_force_weekly: false });
+  if (report.error) return { ok: false, error: report.error.message, openers: drafted };
+  return { ...(report.data || { ok: true }), openers: drafted };
+}
+
+type Icp = {
+  niche?: string;
+  follower_min?: number;
+  follower_max?: number;
+  cta_keywords?: string;
+  offer_summary?: string;
+};
+
+async function scoreTarget(key: string, icp: Icp, item: unknown) {
+  const row = item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : { handle: "" };
+  const followers = Number(row.followers);
+  const min = Number(icp.follower_min) || 5000;
+  const max = Number(icp.follower_max) || 200000;
+  const keywords = String(icp.cta_keywords || "").split(/[,|\n]/).map((part) => part.trim().toLowerCase()).filter(Boolean);
+  const hay = `${row.bio || ""}\n${row.recent_posts || ""}`.toLowerCase();
+  const keywordHit = !keywords.length || keywords.some((word) => hay.includes(word));
+  const inRange = Number.isFinite(followers) && followers >= min && followers <= max;
+  if (!inRange || !keywordHit) {
+    row.qualified = false;
+    row.icp_score = 0;
+    row.score_summary = !inRange
+      ? "Followers are outside this business's range."
+      : "The bio does not include one of this business's CTA keywords.";
+    row.score_model = XAI_MODEL;
+    return { row };
+  }
+  const content = await grok(key, `You qualify an Instagram account for this business. Reply with JSON only: {"score": number, "qualified": boolean, "summary": string}.
+Score 0-100. Set qualified true only when the account fits the niche and the bio asks the reader to take a next step.
+Niche: ${icp.niche || "not set"}
+Offer: ${icp.offer_summary || "not set"}
+CTA keywords: ${keywords.join(", ") || "a clear call to action"}
+The follower count is already inside the range. Do not invent facts.`, JSON.stringify({
+    handle: row.handle,
+    followers,
+    bio: row.bio || "",
+    recent_posts: row.recent_posts || ""
+  }));
+  const parsed = parseJson(content);
+  const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+  row.qualified = parsed.qualified === true && score >= 70;
+  row.icp_score = score;
+  row.score_summary = String(parsed.summary || "").slice(0, 500);
+  row.score_model = XAI_MODEL;
+  return { row };
+}
+
+async function writeOpener(key: string, icp: Icp, row: Record<string, unknown>) {
+  const content = await grok(key, `Write one Instagram opener DM. Reply with JSON only: {"opener": string}.
+Maximum 40 words. No emoji. No exclamation marks. Use one specific detail from the bio or recent posts. Do not invent metrics, mutual friends, or posts that are not in the profile. Sound like a peer. End with one question.
+Niche: ${icp.niche || ""}
+Offer: ${icp.offer_summary || ""}`, JSON.stringify({
+    handle: row.handle,
+    bio: row.bio || "",
+    recent_posts: row.recent_posts || ""
+  }));
+  const opener = String(parseJson(content).opener || "").replace(/\s+/g, " ").trim();
+  if (!opener) throw new Error("The model returned an empty opener.");
+  return opener.slice(0, 1000);
+}
+
+async function grok(key: string, system: string, user: string) {
+  const response = await fetch(XAI_CHAT_URL, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + key,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: XAI_MODEL,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user }
+      ]
+    })
+  });
+  const payload = await response.json().catch(() => ({})) as { error?: { message?: string }; choices?: { message?: { content?: string } }[] };
+  if (!response.ok) {
+    throw new Error(payload.error?.message || "xAI request failed.");
+  }
+  return payload.choices?.[0]?.message?.content || "";
+}
+
+function parseJson(text: string) {
+  const raw = String(text || "").trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end < start) throw new Error("The model did not return JSON.");
+  return JSON.parse(raw.slice(start, end + 1));
+}
+
+function asArray(value: unknown) {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>) {
+  const out = new Array<R>(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      out[index] = await fn(items[index]);
+    }
+  }
+  const width = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: width }, () => worker()));
+  return out;
 }

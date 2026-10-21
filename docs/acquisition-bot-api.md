@@ -20,7 +20,9 @@ The panel issues a key with `acq_worker_issue`. Rotating disables the previous k
 { "action": "ingest", "targets": [{ "handle": "northstar", "source": "competitor_followers", "followers": 12000, "bio": "DM me to apply", "cta_detected": true }] }
 ```
 
-At most 50 targets. Scoring is server-side. A pass needs a CTA and 5,000–200,000 followers. Extra targets over the daily cap are held with reason `daily_cap` and are not stored. The same handle in a workspace is unique. Re-ingest does not reset a target that is already moving.
+At most 50 targets. The server scores each profile with xAI `grok-4.3` against the business ICP (niche, follower range, CTA keywords, offer) and writes a pending opener for qualified profiles. A pass needs followers inside that range and a matching CTA. Qualified profiles are inserted at stage `target`. Extra targets over the daily cap are held with reason `daily_cap` and are not stored. The same handle in a workspace is unique. Re-ingest does not move a target backward.
+
+`recent_posts` is optional text. The opener uses the bio and those posts. Do not send an Instagram password.
 
 ```bash
 curl -sS -X POST "https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/acquisition-bot" \

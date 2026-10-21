@@ -173,7 +173,8 @@ const migrationNames = [
   "20261021120000_acquisition_pipeline.sql",
   "20261021140000_conversation_engine.sql",
   "20261021160000_pgcrypto_schema.sql",
-  "20261021180000_tailortalk_provider.sql"
+  "20261021180000_tailortalk_provider.sql",
+  "20261021200000_live_acquisition.sql"
 ];
 assert.deepEqual(
   migrationNames,

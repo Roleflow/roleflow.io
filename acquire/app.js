@@ -59,6 +59,8 @@ const state = {
   issuedKey: "",
   setterLink: null,
   contacts: [],
+  conversations: [],
+  ttMessages: [],
   ttMessageCount: 0,
   ttWebhook: "",
   ttWebhookBusiness: "",
@@ -186,9 +188,7 @@ async function bootBusiness(id) {
 
 async function loadAll(id) {
   const q = state.supabase;
-  const workspace = state.businesses.find((row) => row.id === id);
-  const legacyId = workspace && workspace.tailortalk_agent_id;
-  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, stats, leads, threads, ig, google, workers, dnc, setterLink, contacts, messages] = await Promise.all([
+  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, threadMessages] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
     q.from("acq_targets").select("*").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
@@ -201,16 +201,16 @@ async function loadAll(id) {
     q.from("acq_activity").select("*").eq("agent_id", id).order("created_at", { ascending: false }).limit(80),
     q.from("acq_voice_library").select("*").eq("agent_id", id).order("updated_at", { ascending: false }),
     q.from("acq_voice_performance").select("*").eq("agent_id", id),
-    legacyId ? q.from("client_ai_setter_stats").select("total_leads, by_status, by_source, converted_count, conversion_rate").eq("agent_id", legacyId).maybeSingle() : Promise.resolve({ data: null }),
-    legacyId ? q.from("client_ai_setter_leads").select("lead_name, username, stage, last_message_time, is_converted, category").eq("agent_id", legacyId).order("last_message_time", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
     q.from("ig_threads").select("id, igsid, username, state, lead_status, score, last_user_message_at, human_locked, followup_count, meet_link, updated_at").eq("business_id", id).order("updated_at", { ascending: false }).limit(100),
     q.from("ig_connections").select("business_id, username, expires_at, status, last_error, connected_at").eq("business_id", id).maybeSingle(),
     q.from("google_connections").select("business_id, email, calendar_id, expires_at, status, last_error, connected_at").eq("business_id", id).maybeSingle(),
     q.from("acq_workers").select("id, label, key_prefix, enabled, status, last_heartbeat_at, pause_reason").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_setter_links").select("business_id, provider, agent_hint, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_hint").eq("business_id", id).maybeSingle(),
-    q.from("acq_contacts").select("id, lead_status, last_message_at").eq("business_id", id).limit(1000),
-    q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id)
+    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at").eq("business_id", id).limit(1000),
+    q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
+    q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
+    q.from("acq_messages").select("conversation_id, role, body, sent_at, created_at").eq("business_id", id).order("created_at", { ascending: true }).limit(400)
   ]);
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
   if (firstError) {
@@ -229,8 +229,8 @@ async function loadAll(id) {
   state.activity = activity.error ? [] : activity.data || [];
   state.voices = voices.data || [];
   state.performance = performance.error ? [] : performance.data || [];
-  state.stats = stats.error ? null : stats.data;
-  state.leads = leads.error ? [] : leads.data || [];
+  state.stats = null;
+  state.leads = [];
   state.threads = threads.error ? [] : threads.data || [];
   state.ig = ig.error ? null : ig.data;
   state.google = google.error ? null : google.data;
@@ -239,6 +239,8 @@ async function loadAll(id) {
   state.setterLink = setterLink.error ? null : setterLink.data;
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.ttMessageCount = messages.error ? 0 : messages.count || 0;
+  state.conversations = conversations.error ? [] : conversations.data || [];
+  state.ttMessages = threadMessages.error ? [] : threadMessages.data || [];
   if (state.ttWebhookBusiness !== id) {
     state.ttWebhook = "";
     state.ttWebhookBusiness = "";
@@ -280,7 +282,8 @@ function engineCtx() {
     go,
     when,
     money,
-    shareCents
+    shareCents,
+    uploadVoice: storeVoice
   };
 }
 
@@ -302,6 +305,20 @@ function overview() {
     kpis.append(card);
   });
   wrap.append(kpis);
+  if (state.settings && state.settings.onboarding_step !== "live") {
+    const setup = el("section", { class: "agent" });
+    setup.append(el("h3", { text: "Finish setup" }));
+    setup.append(el("p", { text: "Add the ICP, offer, Instagram connection, worker key, and voice notes. The CRM stays empty until a worker posts a profile or a setter syncs a lead." }));
+    setup.append(el("a", { class: "btn sm", href: "#onboarding" }, ["Open setup"]));
+    wrap.append(setup);
+  }
+  if (!state.targets.length) {
+    const empty = el("section", { class: "agent" });
+    empty.append(el("h3", { text: "No contacts in the CRM yet" }));
+    empty.append(el("p", { text: "Qualified profiles land here at stage Target after Grok scores them. Replies from TailorTalk show on the same contact." }));
+    empty.append(el("a", { class: "btn sm", href: "#onboarding" }, ["Set up this business"]));
+    wrap.append(empty);
+  }
 
   const agents = el("div", { class: "agents" });
   ROLES.forEach((role) => {
@@ -333,8 +350,15 @@ function overview() {
     } else if (role.id === "appointment_booking") {
       card.append(el("p", { text: state.threads.filter((item) => item.state === "booking" || item.state === "booked").length + " booking threads" }));
     }
-    if (state.stats && role.id === "chief_of_staff") {
-      card.append(el("p", { text: "Legacy TailorTalk cache: " + (state.stats.total_leads || 0) + " leads. " + sourceLine(state.stats.by_source) }));
+    if (role.id === "chief_of_staff") {
+      const latest = state.reports.find((item) => item.kind === "daily");
+      card.append(el("p", { text: latest ? latest.summary : "No daily summary yet. Chief of Staff writes one each morning." }));
+    }
+    if (role.id === "icp_acquisition") {
+      card.append(el("p", { text: state.targets.filter((item) => item.stage === "target").length + " contacts at Target" }));
+    }
+    if (role.id === "personalised_outreach") {
+      card.append(el("p", { text: state.outreach.filter((item) => item.decision === "pending" && item.opener).length + " pending openers" }));
     }
     agents.append(card);
   });
@@ -398,7 +422,12 @@ function pipeline() {
   ["Handle", "Stage", "Status", "ICP", "Source", "Updated"].forEach((label) => head.append(el("th", { text: label })));
   table.append(el("thead", {}, [head]));
   const body = el("tbody");
-  if (!rows.length) body.append(el("tr", {}, [el("td", { colspan: "6", text: "No leads in this stage yet." })]));
+  if (!rows.length) {
+    const empty = el("td", { colspan: "6" });
+    empty.append(document.createTextNode("No contacts in this stage yet. "));
+    empty.append(el("a", { href: "#onboarding" }, ["Finish setup"]));
+    body.append(el("tr", {}, [empty]));
+  }
   rows.forEach((row) => {
     const tr = el("tr");
     tr.append(
@@ -441,7 +470,23 @@ function leadDetail(target) {
   if (steps.length) {
     box.append(el("p", { text: "Warm-up: " + steps.map((step) => "D" + step.day_number + " " + step.action + " " + step.status).join(" · ") }));
   }
+  if (target.score_summary) box.append(el("p", { text: "ICP: " + target.score_summary + (target.score_model ? " · " + target.score_model : "") }));
   if (outreach) box.append(el("p", { text: "Outreach " + outreach.decision + (outreach.sent_result ? " · " + outreach.sent_result : "") + (outreach.opener ? " — " + outreach.opener : "") }));
+  if (outreach && outreach.handed_off_at) box.append(el("p", { text: "Replies continue with the setter provider." }));
+  const contact = (state.contacts || []).find((row) => row.target_id === target.id || (row.ig_handle && String(row.ig_handle).toLowerCase().replace(/^@/, "") === target.handle));
+  const conversationIds = (state.conversations || []).filter((row) => contact && row.contact_id === contact.id).map((row) => row.id);
+  const thread = (state.ttMessages || []).filter((row) => conversationIds.includes(row.conversation_id));
+  if (thread.length) {
+    const talk = el("div", { class: "audit" });
+    talk.append(el("h3", { text: "Conversation" }));
+    thread.forEach((message) => {
+      const item = el("article");
+      item.append(el("strong", { text: message.role === "assistant" ? "Setter" : "Lead" }), el("span", { class: "mute", text: " · " + when(message.sent_at || message.created_at) }));
+      item.append(el("p", { text: message.body }));
+      talk.append(item);
+    });
+    box.append(talk);
+  }
 
   const form = el("form", { class: "grid-2" });
   const budget = field("Budget", target.budget || "");
@@ -475,7 +520,23 @@ function leadDetail(target) {
   dealForm.append(amount.label, note.label);
   if (state.canEdit) dealForm.append(button("Record attributed revenue", (event) => saveDeal(event, target.id, amount, note)));
   box.append(dealForm);
-  if (deals.length) box.append(el("p", { text: "Recorded: " + deals.map((deal) => money(deal.amount_cents, deal.currency)).join(", ") }));
+  if (deals.length) {
+    const recorded = deals.reduce((sum, deal) => sum + (Number(deal.amount_cents) || 0), 0);
+    box.append(el("p", { text: "Recorded: " + deals.map((deal) => money(deal.amount_cents, deal.currency)).join(", ") + ". Roleflow share " + money(shareCents(recorded, state.settings && state.settings.share_bps)) + "." }));
+  }
+  const notes = field("Notes", target.owner_notes || "");
+  if (state.canEdit) {
+    box.append(notes.label, button("Save note", async () => {
+      const saved = await state.supabase.from("acq_targets").update({ owner_notes: notes.input.value.trim() }).eq("id", target.id);
+      if (saved.error) toast(saved.error.message, "bad");
+      else {
+        toast("Note saved.");
+        await bootBusiness(state.businessId);
+      }
+    }));
+  } else if (target.owner_notes) {
+    box.append(el("p", { text: target.owner_notes }));
+  }
 
   const sends = state.activity.filter((row) => row.target_id === target.id);
   if (sends.length) box.append(activityList(sends, "Audit trail"));
@@ -572,7 +633,13 @@ function voiceForm() {
 
 function reports() {
   const wrap = el("div", { class: "acq" });
-  if (!state.reports.length) wrap.append(el("p", { class: "mute", text: "No daily summary yet. Run it from Overview." }));
+  if (!state.reports.length) {
+    const empty = el("section", { class: "agent" });
+    empty.append(el("h3", { text: "No report yet" }));
+    empty.append(el("p", { text: "Chief of Staff writes a daily summary each morning: the cap, new targets, warm-up queued, pending openers, and the 10% share." }));
+    if (state.canEdit) empty.append(button("Run daily summary", runChief));
+    wrap.append(empty);
+  }
   state.reports.forEach((report) => {
     const card = el("article", { class: "report" });
     card.append(el("h3", { text: (report.kind === "weekly" ? "Weekly" : "Daily") + " · " + report.period_start }));
@@ -855,13 +922,29 @@ async function resolveException(id) {
 }
 
 async function runChief() {
-  const saved = await state.supabase.rpc("acq_run_chief", { p_agent: state.businessId, p_force_weekly: false });
-  if (saved.error) toast(saved.error.message, "bad");
-  else {
-    toast(saved.data && saved.data.summary ? saved.data.summary : "Summary stored.");
-    await bootBusiness(state.businessId);
-    go("reports");
+  const session = await state.supabase.auth.getSession();
+  const token = session.data.session && session.data.session.access_token;
+  const root = globalThis.ROLEFLOW_SUPABASE || {};
+  let payload = {};
+  try {
+    const response = await fetch(String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/acquisition-bot", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + (token || ""),
+        apikey: root.SUPABASE_ANON_KEY || "",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ action: "chief", business_id: state.businessId })
+    });
+    payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "The daily summary did not run.");
+  } catch (error) {
+    toast(error.message, "bad");
+    return;
   }
+  if (payload.summary) toast(payload.summary);
+  else toast("Daily summary saved.");
+  await bootBusiness(state.businessId);
 }
 
 function fillPicker() {
