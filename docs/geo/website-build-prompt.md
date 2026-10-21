@@ -159,7 +159,7 @@ Shared pattern for every content page: an H1 with the target keyword, then a **4
 
 ### 5.2 `/what-is-an-ai-dm-setter` · `/es/que-es-un-setter-con-ia`
 - Open with a 40-word definition (based on the FAQ answer).
-- Cover what it does (reply, qualify, follow up, book), how it differs from a chatbot/ManyChat flow and from a human setter, done-for-you vs self-serve, voice notes in a cloned voice, Instagram rules/API (`[CONFIRM]`), and who should use one.
+- Cover what it does (reply, qualify, follow up, book), how it differs from a chatbot/ManyChat flow and from a human setter, done-for-you vs self-serve, personal voice notes, Instagram rules/API (`[CONFIRM]`), and who should use one.
 - End with Roleflow as the done-for-you option and links to pricing and the listicle.
 
 ### 5.3 `/pricing` · `/es/precios`
@@ -186,7 +186,7 @@ Shared pattern for every content page: an H1 with the target keyword, then a **4
 Template:
 - H1 "Roleflow vs X"
 - 40–60-word verdict
-- Side-by-side table: model (done-for-you vs self-serve), pricing model, channels, voice notes in cloned voice, follow-ups, calendar booking, setup effort
+- Side-by-side table: model (done-for-you vs self-serve), pricing model, channels, personal voice notes, follow-ups, calendar booking, setup effort
 - "Choose X if…" / "Choose Roleflow if…"
 - FAQ
 - Sources with check dates

@@ -6,7 +6,7 @@
 **How much does it cost?** $0 setup, $0 retainer. We're paid 10% of the growth the system generates; the share is 10% of the growth you record.
 **How is "revenue generated" measured?** You record the cash collected on deals this system sourced. Roleflow's share is 10% of that amount.
 **Who qualifies?** 20+ DMs/day, an offer above $1k, a close rate above 20%, and $30k+/month collected.
-**Will it sound fake?** Voice notes use your own cloned voice and replies follow your offer and tone. [CONFIRM: review/approval process.]
+**Will it sound fake?** Voice notes are personal voice notes you record, and replies follow your offer and tone. [CONFIRM: review/approval process.]
 **Is it safe for my Instagram account?** [CONFIRM: official Meta API or not; messaging-window compliance.]
 **Do I still need my setters?** Roleflow handles first response, follow-ups and booking; your closers take the calls.
 **Which channels?** Instagram DMs only, for now.

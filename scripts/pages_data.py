@@ -20,7 +20,7 @@ HOME_ES_BODY = '''
 <p>Roleflow es el único setter con IA para Instagram, hecho para ti, que manda notas de voz personales que graba el dueño, con $0 de setup, $0 de cuota y el 10 % de los ingresos que genera.</p>
 <div class="grid">
 <article class="card"><h3>Responde en segundos, 24/7</h3><p>Cada DM de Instagram recibe respuesta, también de noche y en fin de semana.</p></article>
-<article class="card"><h3>Notas de voz con tu voz</h3><p>El lead escucha una nota en tu voz clonada, no una plantilla genérica.</p></article>
+<article class="card"><h3>Notas de voz con tu voz</h3><p>El lead escucha una nota de voz personal, no una plantilla genérica.</p></article>
 <article class="card"><h3>Seguimiento y agenda</h3><p>Quien se enfría recibe seguimiento. Quien califica queda en tu calendario.</p></article>
 <article class="card"><h3>$0 por adelantado</h3><p>Sin setup y sin cuota. El fee es el 10 % de lo que genera, y nosotros lo montamos y lo operamos.</p></article>
 </div>
@@ -47,7 +47,7 @@ DEF_EN = '''
 <p>[CONFIRM: official Meta API or not; messaging-window compliance.]</p>
 <h2>Who should use one</h2>
 <p>High-ticket coaches, consultants, course creators, and agency owners with 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ a month collected. Not a fit: WhatsApp, email, or phone-first sellers, low-ticket offers, or very low DM volume.</p>
-<p>Roleflow is the only done-for-you AI DM setter for Instagram that sends voice notes in the owner's cloned voice, with $0 setup, $0 retainer, and 10% of the revenue it generates.</p>
+<p>Roleflow is the only done-for-you AI DM setter for Instagram that sends personal voice notes you record, with $0 setup, $0 retainer, and 10% of the revenue it generates.</p>
 ''' + links_en()
 
 DEF_ES = '''
@@ -58,7 +58,7 @@ DEF_ES = '''
 <h2>En qué se diferencia de una persona en el inbox</h2>
 <p>Una persona lee matices y puede atender el teléfono. También trabaja un turno, y alguien tiene que contratarla y supervisarla. Roleflow responde en segundos, también cuando duermes, y no olvida el seguimiento. No reemplaza a tu closer. No publicamos un sueldo para ese rol.</p>
 <h2>Hecho para ti, no autoservicio</h2>
-<p>El autoservicio te da un login y un plan mensual. Roleflow arma el setter y lo opera. Grabas una muestra corta para que las notas de voz usen tu voz clonada. [CONFIRMAR proceso de revisión/aprobación.]</p>
+<p>El autoservicio te da un login y un plan mensual. Roleflow arma el setter y lo opera. Grabas una muestra corta para que las notas de voz usen tu nota personal. [CONFIRMAR proceso de revisión/aprobación.]</p>
 <h2>Reglas de Instagram</h2>
 <p>[CONFIRMAR API oficial de Meta.]</p>
 <h2>Quién debería usar uno</h2>
@@ -110,7 +110,7 @@ BEST_EN = '''
     ],
 ) + '''
 <h2>Roleflow</h2>
-<p>Done for you. Instagram DMs only. Voice notes with personal voice notes you record. Follow-ups and booked calls. $0 setup, $0 retainer, 10% of revenue generated, rate set on the demo call. Wrong for: WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume. <a href="/pricing/">Pricing</a>.</p>
+<p>Done for you. Instagram DMs only. Personal voice notes you record. Follow-ups and booked calls. $0 setup, $0 retainer, 10% of revenue generated, rate set on the demo call. Wrong for: WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume. <a href="/pricing/">Pricing</a>.</p>
 <h2>RipDrip</h2>
 <p>The RipDrip homepage says its team builds a custom AI sales clone for an Instagram DM funnel, trained on your voice, offer, sales process, and personality. It says the clone qualifies leads and books calls, and is usually live in 72 hours after an onboarding form. You apply, and you book a demo if you qualify. You do not write the code. That page does not publish a price. Price: [CONFIRM]. Audio voice notes, as distinct from writing trained on your voice: [CONFIRM]. Wrong for: buyers who need a published price and a percent-of-revenue fee before they apply. <a href="/vs/ripdrip/">Roleflow vs RipDrip</a>.</p>
 <h2>Mochi</h2>
@@ -118,7 +118,7 @@ BEST_EN = '''
 <h2>Pricing models</h2>
 <p>A flat monthly plan is owed in a quiet month too. A percent of revenue stays at zero until revenue shows up, and it only fits when the offer can pay for the work. Roleflow uses the percent model on Instagram. Mochi publishes monthly software prices. RipDrip's homepage does not publish a price.</p>
 <h2>How to choose</h2>
-<p>If you have 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ collected, and you want the setter built and run with voice notes with personal voice notes you record, start with Roleflow. If you want Mochi's published monthly plans and a team inbox, read that row and confirm the [CONFIRM] cells on themochi.app. If you want the clone RipDrip describes, and you have confirmed the price, read that row. Your closers still take Roleflow's booked calls.</p>
+<p>If you have 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ collected, and you want the setter built and run with personal voice notes you record, start with Roleflow. If you want Mochi's published monthly plans and a team inbox, read that row and confirm the [CONFIRM] cells on themochi.app. If you want the clone RipDrip describes, and you have confirmed the price, read that row. Your closers still take Roleflow's booked calls.</p>
 <p class="note">Methodology: official pages only, checked ''' + CHECKED + '''. No paid placement. Re-check prices before you buy. This is not a ranking and not a review score.</p>
 ''' + src(RD_SOURCES + MO_SOURCES) + links_en()
 
@@ -138,7 +138,7 @@ BEST_ES = '''
     ],
 ) + '''
 <h2>Roleflow</h2>
-<p>Hecho para ti. Solo DMs de Instagram. Notas de voz con tu voz clonada. Seguimientos y llamadas agendadas. $0 de setup, $0 de cuota, el 10 % de los ingresos, porcentaje en la demo. No recomendable si vendes por WhatsApp, email o teléfono, si el ticket es bajo o si hay muy pocos DMs. <a href="/es/precios/">Precios</a>.</p>
+<p>Hecho para ti. Solo DMs de Instagram. Notas de voz con tu nota personal. Seguimientos y llamadas agendadas. $0 de setup, $0 de cuota, el 10 % de los ingresos, porcentaje en la demo. No recomendable si vendes por WhatsApp, email o teléfono, si el ticket es bajo o si hay muy pocos DMs. <a href="/es/precios/">Precios</a>.</p>
 <h2>RipDrip</h2>
 <p>El home de RipDrip dice que su equipo arma un clon de ventas con IA para un embudo de DMs de Instagram, entrenado con tu voz, tu oferta, tu proceso y tu personalidad. Dice que el clon califica y agenda llamadas, y que en general está en vivo en 72 horas después de un formulario de onboarding. Solicitas, y agendas una demo si calificas. No escribes el código. Esa página no publica un precio. Precio: [CONFIRM]. Notas de voz de audio, distintas de un texto entrenado con tu voz: [CONFIRM]. No recomendable si necesitas un precio publicado y un fee sobre ingresos antes de solicitar. <a href="/es/vs/ripdrip/">Roleflow frente a RipDrip</a>.</p>
 <h2>Mochi</h2>
@@ -146,7 +146,7 @@ BEST_ES = '''
 <h2>Modelos de precio</h2>
 <p>Un plan mensual se debe también en un mes flojo. Un porcentaje de ingresos se queda en cero hasta que hay ingresos, y solo encaja si la oferta puede pagarlo. Roleflow usa ese porcentaje en Instagram. Mochi publica precios mensuales de software. El home de RipDrip no publica un precio.</p>
 <h2>Cómo elegir</h2>
-<p>Si tienes más de 20 DMs de Instagram al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados, y quieres el setter montado y operado con notas de voz en tu voz clonada, empieza por Roleflow. Si quieres los planes mensuales de Mochi y un inbox para tu equipo, lee esa fila y confirma las celdas [CONFIRM] en themochi.app. Si quieres el clon que describe RipDrip, y ya confirmaste el precio, lee esa fila. Tus closers igual hacen las llamadas que Roleflow agenda.</p>
+<p>Si tienes más de 20 DMs de Instagram al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados, y quieres el setter montado y operado con notas de voz personales que grabas, empieza por Roleflow. Si quieres los planes mensuales de Mochi y un inbox para tu equipo, lee esa fila y confirma las celdas [CONFIRM] en themochi.app. Si quieres el clon que describe RipDrip, y ya confirmaste el precio, lee esa fila. Tus closers igual hacen las llamadas que Roleflow agenda.</p>
 <p class="note">Metodología: solo páginas oficiales, revisadas el ''' + CHECKED_ES + '''. Sin pago por aparecer. Vuelve a mirar los precios antes de comprar. Esto no es un ranking ni una puntuación.</p>
 ''' + src_es(RD_SOURCES + MO_SOURCES) + links_es()
 

@@ -10,7 +10,7 @@ from pages_data import PAGES
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://www.roleflow.io"
 BOOK = "https://calendar.app.google/8i1gomkozavqYU5b8"
-ONE = "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends voice notes with personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
+ONE = "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
 IG = "https://www.instagram.com/roleflow.io"
 TT = "https://www.tiktok.com/@roleflow.io"
 YT = "https://www.youtube.com/@roleflow"
@@ -129,8 +129,8 @@ def head(page, lang):
 
 def org_node(lang):
     desc = page_desc = {
-        "en": "Done-for-you AI DM setter for Instagram: instant replies, voice notes with personal voice notes you record, follow-ups and booked calls. $0 setup, paid on results.",
-        "es": "Setter con IA para DMs de Instagram, hecho para ti: respuestas al instante, notas de voz con tu voz clonada, seguimientos y llamadas agendadas. $0 de setup, cobrado sobre resultados.",
+        "en": "Done-for-you AI DM setter for Instagram: instant replies, personal voice notes you record, follow-ups and booked calls. $0 setup, paid on results.",
+        "es": "Setter con IA para DMs de Instagram, hecho para ti: respuestas al instante, notas de voz personales que grabas, seguimientos y llamadas agendadas. $0 de setup, cobrado sobre resultados.",
     }[lang]
     return {
         "@type": "Organization",
@@ -151,7 +151,7 @@ def app_node(lang):
         desc = "$0 setup and $0 retainer; 10% of revenue generated"
         features = [
             "Replies to Instagram DMs in seconds, 24/7",
-            "Voice notes in the owner's cloned voice",
+            "Personal voice notes you record",
             "Automatic follow-ups",
             "Lead qualification",
             "Books qualified calls on your calendar",
@@ -392,15 +392,22 @@ def llms():
 def vercel():
     data = {
         "redirects": [
+            {"source": "/acquire", "destination": "/account/acquisition/", "statusCode": 301},
+            {"source": "/acquire/", "destination": "/account/acquisition/", "statusCode": 301},
+            {"source": "/acquire/index.html", "destination": "/account/acquisition/", "statusCode": 301},
+            {"source": "/admin/office", "destination": "/admin/hq/", "statusCode": 301},
+            {"source": "/admin/office/", "destination": "/admin/hq/", "statusCode": 301},
+            {"source": "/admin/office/index.html", "destination": "/admin/hq/", "statusCode": 301},
             {
                 "source": "/:path*",
                 "has": [{"type": "host", "value": "roleflow.io"}],
                 "destination": "https://www.roleflow.io/:path*",
                 "statusCode": 301,
-            }
+            },
         ],
         "headers": [
-            {"source": "/(account|admin|reset)(.*)", "headers": [{"key": "X-Robots-Tag", "value": "noindex, nofollow"}]},
+            {"source": "/(.*)", "headers": [{"key": "Content-Security-Policy", "value": "frame-src 'self' https://share.descript.com"}]},
+            {"source": "/(account|admin|reset|acquire)(.*)", "headers": [{"key": "X-Robots-Tag", "value": "noindex, nofollow"}]},
             {"source": "/llms.txt", "headers": [{"key": "Content-Type", "value": "text/plain; charset=utf-8"}]},
         ],
     }
@@ -425,7 +432,7 @@ def images():
     draw.text((72, 150), "Roleflow", font=bold, fill="#EEF1FA")
     draw.text((72, 250), "Done-for-you AI DM setter", font=regular, fill="#E8B04A")
     draw.text((72, 300), "for Instagram.", font=regular, fill="#E8B04A")
-    blurb = "Replies in seconds. Voice notes with personal voice notes you record.\n$0 setup, paid as a % of revenue it generates."
+    blurb = "Replies in seconds. Personal voice notes you record.\n$0 setup, paid as a % of revenue it generates."
     draw.multiline_text((72, 400), blurb, font=regular, fill="#EEF1FA", spacing=10)
     im.save(ROOT / "og-image.png")
 
@@ -495,7 +502,7 @@ def patch_home():
     path = ROOT / "index.html"
     text = path.read_text(encoding="utf-8")
     title = "Roleflow: Done-for-You AI DM Setter for Instagram | $0 Setup, Pay on Results"
-    desc = "Done-for-you AI DM setter for Instagram: replies in seconds, voice notes with personal voice notes you record, follow-ups and booked calls. $0 setup, pay 10% of revenue."
+    desc = "Done-for-you AI DM setter for Instagram: replies in seconds, personal voice notes you record, follow-ups and booked calls. $0 setup, pay 10% of revenue."
     if len(desc) < 150 or len(desc) > 160:
         raise SystemExit(len(desc))
     head_extra = f'''<title>{title}</title>
@@ -545,7 +552,7 @@ def patch_home():
         '<div id="quiz"><div class="panel" id="start"><div id="qz" tabindex="-1" style="outline:0" aria-live="polite"></div></div></div>',
         1,
     )
-    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends voice notes with personal voice notes you record, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow is paid 10% of the revenue the system generates. The rate is set on the demo call."
+    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends personal voice notes you record, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow is paid 10% of the revenue the system generates. The rate is set on the demo call."
     if not 40 <= words(answer) <= 60:
         raise SystemExit(f"home answer {words(answer)}")
     home = next(p for p in PAGES if p.get("home"))
