@@ -1,6 +1,8 @@
 supabase/migrations
 supabase/functions
 supabase/.temp
+supabase/config.toml
+supabase/*.sql
 test
 admin/**/*.test.mjs
 docs/*

@@ -35,6 +35,8 @@ Pausing all four setter agents makes the sync record `paused` and skip writes. P
 
 An optional cron bearer can stand in for the scheduled deal-retry job. The scheduled job sends the existing acquisition cron secret from `private.acquisition_settings`. Do not print that secret.
 
+Signing up creates an acquisition workspace that account owns, including when the account is an admin who can already open other businesses. `diego@roleflow.io` gets a workspace named Roleflow, setter provider `engine`, Instagram `@roleflow.io`, and engine agent `eujfwcrm` with status pending. The website chat agent is not linked. The eight setter roles stay paused until the panel is approved. Store that agent's access token with `select public.acq_store_diego_engine_token('<api key>');` in the Supabase SQL editor. The function does not return the key. It leaves the link pending.
+
 New accounts do not use the old “Build your DM setter” form. Account navigation sends them to `/account/acquisition/`. That form stays only for a setter submission that already has answers, or one that was submitted. If `XAI_API_KEY` is missing, `generate-setter-prompt` keeps the saved answers and returns that the prompt was not written. It does not answer with HTTP 500, and the form does not call that a failed save.
 
 ## What the account panel includes

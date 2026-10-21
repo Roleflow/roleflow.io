@@ -139,7 +139,9 @@ async function boot() {
     showMessage("Could not load businesses", listed.error.message);
     return;
   }
-  if (!(listed.data || []).length) {
+  const visible = listed.data || [];
+  const owns = visible.some((row) => row.owner_id === state.user.id);
+  if (!owns) {
     const opened = await state.supabase.rpc("acq_open_workspace", { p_name: "Acquisition" });
     if (opened.error) {
       showMessage("Could not open a workspace", opened.error.message);
@@ -154,7 +156,8 @@ async function boot() {
   }
   fillPicker();
   const requested = new URLSearchParams(location.search).get("business");
-  const initial = state.businesses.find((row) => row.id === requested) || state.businesses[0];
+  const owned = state.businesses.find((row) => row.owner_id === state.user.id);
+  const initial = state.businesses.find((row) => row.id === requested) || owned || state.businesses[0];
   await bootBusiness(initial.id);
 }
 

@@ -45,12 +45,22 @@ select public.tailortalk_upsert_agent(
   '["web"]'::jsonb, '2026-03-27T13:47:04+00:00', null, false
 );
 
--- Agents that were not in this get_agents result.
+select public.tailortalk_upsert_agent(
+  'eujfwcrm', 'Roleflow Acquisition', null, null, null,
+  '["instagram"]'::jsonb, null, null, false
+);
+
+-- VAM is the website chat bot. Do not archive it, and do not use it for acquisition.
+update public.tailortalk_agents
+set acquisition_blocked = true, updated_at = now()
+where tailortalk_agent_id = 'udnnperp';
+
+-- Agents that were not in this registry.
 update public.tailortalk_agents
 set archived = true, updated_at = now()
 where tailortalk_agent_id is not null
   and tailortalk_agent_id not in (
-    'afwbuhnx', 'bsojvzgf', 'rojkojbk', 'taongeti', 'udnnperp'
+    'afwbuhnx', 'bsojvzgf', 'rojkojbk', 'taongeti', 'udnnperp', 'eujfwcrm'
   );
 
 -- Full call the scheduler should generate per agent. The section text below

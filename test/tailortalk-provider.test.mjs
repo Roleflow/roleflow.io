@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import {
   advanceStage,
   ATTRIBUTE_KEYS,
@@ -169,6 +170,7 @@ assert.doesNotMatch(model, /tailortalk/i);
 assert.match(panel, /is_converted === true/);
 assert.match(panel, /Syncing…/);
 assert.match(panel, /acq_engine_enqueue/);
+assert.match(panel, /row.owner_id === state.user.id/);
 assert.doesNotMatch(panel, /tailortalk/i);
 assert.match(engine, /Roleflow Setter Engine/);
 assert.match(engine, /Pending activation/);
@@ -189,5 +191,48 @@ assert.doesNotMatch(fs.readFileSync(new URL("../docs/acquisition.md", import.met
 const toml = fs.readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8");
 assert.match(toml, /\[functions\.acq-tailortalk\]\nverify_jwt = false/);
 assert.match(toml, /\[functions\.setter-engine\]\nverify_jwt = false/);
+
+const diego = fs.readFileSync(new URL("../supabase/migrations/20261021240000_diego_setter.sql", import.meta.url), "utf8");
+assert.match(diego, /eujfwcrm/);
+assert.match(diego, /Roleflow Acquisition/);
+assert.match(diego, /acquisition_blocked/);
+assert.match(diego, /udnnperp/);
+assert.match(diego, /acq_store_diego_engine_token/);
+assert.match(diego, /acq_ensure_owned_workspace/);
+assert.doesNotMatch(diego, /[0-9a-f]{40,}/i);
+assert.match(fs.readFileSync(new URL("../supabase/functions/acq-tailortalk/index.ts", import.meta.url), "utf8"), /This engine agent is not used for acquisition/);
+
+const root = path.resolve(new URL("..", import.meta.url).pathname);
+const ignore = fs.readFileSync(path.join(root, ".vercelignore"), "utf8").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+function served(rel) {
+  const norm = rel.split(path.sep).join("/");
+  let skip = false;
+  for (const rule of ignore) {
+    const neg = rule.startsWith("!");
+    const body = neg ? rule.slice(1) : rule;
+    const pattern = body.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*");
+    const re = new RegExp("^" + pattern + (body.endsWith("/") ? "" : "($|/)") );
+    const dir = new RegExp("^" + pattern + "(/|$)");
+    const hit = body.includes("*") ? re.test(norm) || dir.test(norm) : norm === body || norm.startsWith(body.endsWith("/") ? body : body + "/");
+    if (hit) skip = !neg;
+  }
+  return !skip;
+}
+const leaked = [];
+function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    const full = path.join(dir, entry.name);
+    const rel = path.relative(root, full);
+    if (!served(rel)) continue;
+    if (entry.isDirectory()) walk(full);
+    else if (/\.(html|js|css|mjs|json|md|txt|toml|sql)$/i.test(entry.name)) {
+      const text = fs.readFileSync(full, "utf8");
+      if (/tailortalk/i.test(text)) leaked.push(rel);
+    }
+  }
+}
+walk(root);
+assert.deepEqual(leaked, []);
 
 console.log("tailortalk provider tests passed");

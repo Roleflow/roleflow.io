@@ -212,7 +212,8 @@ const migrationNames = [
   "20261021180000_tailortalk_provider.sql",
   "20261021200000_live_acquisition.sql",
   "20261021220000_tailortalk_facts.sql",
-  "20261021230000_engine_outbox.sql"
+  "20261021230000_engine_outbox.sql",
+  "20261021240000_diego_setter.sql"
 ];
 assert.deepEqual(
   migrationNames,

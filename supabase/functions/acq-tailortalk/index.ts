@@ -159,6 +159,7 @@ async function connect(service: ReturnType<typeof createClient>, supabaseUrl: st
   const agentId = String(body.agent_id || "").trim();
   if (apiKey.length < 8) throw new Error("Enter the engine access token.");
   if (!agentId) throw new Error("Enter the engine agent id.");
+  if (agentId === "udnnperp") throw new Error("This engine agent is not used for acquisition.");
   const probe = await ttPost(LEADS_URL, apiKey, { limit: 1 });
   const sample = leadsFrom(probe)[0] as Record<string, unknown> | undefined;
   const returned = sample && (sample.agent_id || sample.agentId);
