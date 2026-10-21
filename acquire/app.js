@@ -576,8 +576,8 @@ function controls() {
   enabled.prepend(enabledInput);
   const cap = field("Daily cap (20–30)", settings.daily_cap || 30, "number");
   const tz = field("Timezone", settings.timezone || "Europe/Madrid");
-  const quietStart = field("Quiet hours start", shortTime(settings.quiet_start), "time");
-  const quietEnd = field("Quiet hours end", shortTime(settings.quiet_end), "time");
+  const quietStart = field("Quiet hours start", shortTime(settings.quiet_start, "22:00"), "time");
+  const quietEnd = field("Quiet hours end", shortTime(settings.quiet_end, "08:00"), "time");
   const likes = field("Warm-up likes per post step (1–2)", settings.warmup_like_count || 2, "number");
   const spacing = field("Days between warm-up steps", settings.warmup_spacing_days || 1, "number");
   const delay = field("Reply delay seconds (0–300)", settings.reply_delay_seconds == null ? 60 : settings.reply_delay_seconds, "number");
@@ -881,8 +881,8 @@ function when(value) {
   return date.toLocaleString();
 }
 
-function shortTime(value) {
-  return String(value || "22:00").slice(0, 5);
+function shortTime(value, fallback) {
+  return String(value || fallback || "22:00").slice(0, 5);
 }
 
 function mimeOf(file) {

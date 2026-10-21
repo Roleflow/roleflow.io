@@ -14,7 +14,7 @@ create unique index if not exists acq_workspaces_join_code_idx
   where join_code is not null;
 
 update public.acq_workspaces
-  set join_code = lower(substr(encode(gen_random_bytes(6), 'hex'), 1, 8))
+  set join_code = lower(substr(encode(extensions.gen_random_bytes(6), 'hex'), 1, 8))
   where join_code is null;
 
 create table if not exists public.acq_members (
@@ -118,7 +118,7 @@ begin
   order by created_at
   limit 1;
   if v_id is null then
-    v_code := lower(substr(encode(gen_random_bytes(6), 'hex'), 1, 8));
+    v_code := lower(substr(encode(extensions.gen_random_bytes(6), 'hex'), 1, 8));
     insert into public.acq_workspaces (owner_id, name, join_code)
     values (auth.uid(), v_name, v_code)
     returning id into v_id;
@@ -221,7 +221,7 @@ revoke all on private.google_token_secrets from public, anon, authenticated;
 revoke all on private.acquisition_settings from public, anon, authenticated;
 
 insert into private.acquisition_settings (key, value)
-values ('cron_secret', encode(gen_random_bytes(32), 'hex'))
+values ('cron_secret', encode(extensions.gen_random_bytes(32), 'hex'))
 on conflict (key) do nothing;
 
 create or replace function public.acq_put_ig_token(p_business uuid, p_token text)
@@ -698,12 +698,12 @@ begin
   if not public.acq_can_edit(p_business) and coalesce(auth.role(), '') <> 'service_role' then
     raise exception 'not allowed';
   end if;
-  v_raw := 'rfw_' || encode(gen_random_bytes(32), 'hex');
+  v_raw := 'rfw_' || encode(extensions.gen_random_bytes(32), 'hex');
   update public.acq_workers
     set enabled = false, status = 'offline', rotated_at = now()
     where business_id = p_business and enabled;
   insert into public.acq_workers (business_id, key_prefix, key_hash, enabled, status)
-  values (p_business, left(v_raw, 12), encode(digest(v_raw, 'sha256'), 'hex'), true, 'offline')
+  values (p_business, left(v_raw, 12), encode(extensions.digest(v_raw, 'sha256'), 'hex'), true, 'offline')
   returning id into v_id;
   return jsonb_build_object('ok', true, 'worker_id', v_id, 'api_key', v_raw, 'prefix', left(v_raw, 12));
 end;
@@ -748,7 +748,7 @@ begin
   end if;
   select * into v_row
   from public.acq_workers
-  where key_hash = encode(digest(p_key, 'sha256'), 'hex');
+  where key_hash = encode(extensions.digest(p_key, 'sha256'), 'hex');
   if v_row.id is null or not v_row.enabled then
     return jsonb_build_object('ok', false, 'status', 401, 'error', 'Unauthorized.');
   end if;

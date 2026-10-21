@@ -84,9 +84,16 @@ assert.doesNotMatch(bot, /elevenlabs/i);
 
 const panel = await import("node:fs").then((fs) => fs.readFileSync(new URL("../acquire/app.js", import.meta.url), "utf8"));
 const account = await import("node:fs").then((fs) => fs.readFileSync(new URL("../account/acquisition/index.html", import.meta.url), "utf8"));
+assert.match(panel, /shortTime\(settings\.quiet_end, "08:00"\)/);
 assert.match(panel, /acq_open_workspace/);
 assert.match(panel, /acq_workspaces/);
 assert.doesNotMatch(panel, /from\("client_ai_setters"\)/);
 assert.match(account, /data-tab="inbox"/);
 assert.match(account, /data-tab="integrations"/);
 assert.match(account, /data-tab="billing"/);
+
+const engineSql = await import("node:fs").then((fs) => fs.readFileSync(new URL("../supabase/migrations/20261021140000_conversation_engine.sql", import.meta.url), "utf8"));
+assert.match(engineSql, /extensions\.gen_random_bytes/);
+assert.match(engineSql, /extensions\.digest/);
+assert.doesNotMatch(engineSql, /(?<![.\w])gen_random_bytes/);
+assert.doesNotMatch(engineSql, /(?<![.\w])digest\(/);
