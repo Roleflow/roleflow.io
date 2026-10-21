@@ -71,7 +71,7 @@ if (arriving.type === "recovery") {
         profile = profileRes.data;
         const adminPeek = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
         if (adminPeek.data && !window.location.hash) {
-          window.location.replace("/businesses/");
+          window.location.replace("/admin/");
         } else {
         if (!profile) {
           const created = await supabase.from("profiles").insert({

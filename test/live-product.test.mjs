@@ -31,6 +31,11 @@ assert.match(panel, /Finish setup/);
 assert.match(panel, /owner_notes/);
 assert.match(panel, /Roleflow share/);
 assert.match(panel, /action: "chief"/);
+assert.match(panel, /ICP Target Acquisition/);
+assert.match(panel, /Warm-up and outreach/);
+assert.match(panel, /Roleflow Setter Engine/);
+assert.match(panel, /setSetterBundle/);
+assert.doesNotMatch(panel, /ROLES\.forEach/);
 assert.doesNotMatch(panel, /Legacy TailorTalk cache/);
 
 assert.match(wizard, /Business and ICP/);

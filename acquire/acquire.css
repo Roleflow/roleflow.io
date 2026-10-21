@@ -43,8 +43,15 @@ table.leads tr:hover{background:rgba(192,64,154,.12)}
 .filters button[aria-pressed=true]{border-color:var(--m);background:rgba(192,64,154,.2)}
 .audit{display:grid;gap:8px;max-height:320px;overflow:auto}
 .audit article{border-top:1px solid var(--line);padding-top:8px}
-.placeholder-ai{opacity:.72}
-.placeholder-ai input{accent-color:var(--mute)}
+.roster{display:grid;gap:18px}
+.roster-biz{background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:18px;display:grid;gap:8px;text-align:left}
+.roster-biz h2{font-size:1.45rem}
+.roster-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center}
+.roster-meta,.roster-note{color:var(--mute);font-size:.92rem}
+.status-pill{display:inline-flex;align-items:center;border-radius:99px;padding:3px 10px;border:1px solid var(--line);font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.status-pill.on{border-color:var(--gold);color:var(--gold)}
+.status-pill.wait{border-color:var(--o);color:var(--o)}
+.status-pill.off{color:var(--mute)}
 .inbox{display:grid;grid-template-columns:minmax(200px,280px) 1fr;gap:14px;align-items:start}
 .thread-list{display:grid;gap:8px}
 .thread-list button{text-align:left;background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:12px;cursor:pointer;font:600 .9rem var(--b)}

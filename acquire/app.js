@@ -296,7 +296,7 @@ function overview() {
   const steps = dropOffs(funnel(state.targets));
   const kpis = el("div", { class: "kpis" });
   [
-    ["System", state.settings && state.settings.system_enabled ? "On" : "Off", "Daily cap " + ((state.settings && state.settings.daily_cap) || 30)],
+    ["System", state.settings && state.settings.system_enabled ? "On" : "Off", state.settings && state.settings.daily_cap ? "Daily cap " + state.settings.daily_cap : "Daily cap not set"],
     ["Targets", String(state.targets.length), state.targets.filter((row) => row.stage === "warmup").length + " in warm-up"],
     ["Booked calls", String(state.bookings.length), show.rate == null ? "No show-up data yet" : "Show-up " + percent(show.rate)],
     ["Attributed growth", money(revenue), "Roleflow share " + money(share)]
@@ -321,66 +321,35 @@ function overview() {
     wrap.append(empty);
   }
 
-  const agents = el("div", { class: "agents" });
-  ROLES.forEach((role) => {
-    const row = state.workforce.find((item) => item.role === role.id) || { status: "paused", daily_count: 0 };
-    const card = el("article", { class: "agent" });
-    const head = el("header");
-    head.append(el("h3", { text: role.name }));
-    const toggle = el("label", { class: "switch" });
-    const input = el("input", { type: "checkbox", "aria-label": "Turn " + role.name + " on" });
-    input.checked = row.status === "active";
-    input.disabled = !state.canEdit || !state.supabase;
-    input.addEventListener("change", () => setRole(role.id, input.checked));
-    toggle.append(input, document.createTextNode(input.checked ? "On" : "Off"));
-    head.append(toggle);
-    card.append(head, el("p", { text: role.detail }));
-    card.append(el("p", { text: "Today " + (row.daily_count || 0) + " · last run " + when(row.last_run_at) }));
-    const setterRole = role.id === "comment_to_dm" || role.id === "qualification" || role.id === "conversation_recovery" || role.id === "appointment_booking";
-    if (setterRole && usesEngine()) {
-      card.append(el("p", { text: "Instagram DM engine" }));
-      card.append(el("p", { text: setterStats(role.id) }));
-      if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));
-      card.append(el("p", { class: "mute", text: "Pausing sends the pause to the Instagram DM engine. Roleflow stops applying updates for this agent while it is off." }));
-    } else if (role.id === "comment_to_dm") {
-      card.append(el("p", { text: state.threads.filter((item) => item.state === "comment_to_dm").length + " comment threads in the inbox" }));
-    } else if (role.id === "qualification") {
-      card.append(el("p", { text: state.threads.filter((item) => item.state === "qualification").length + " threads in qualification" }));
-    } else if (role.id === "conversation_recovery") {
-      card.append(el("p", { text: state.threads.filter((item) => item.state === "recovery").length + " threads in recovery" }));
-    } else if (role.id === "appointment_booking") {
-      card.append(el("p", { text: state.threads.filter((item) => item.state === "booking" || item.state === "booked").length + " booking threads" }));
-    }
-    if (role.id === "chief_of_staff") {
-      const latest = state.reports.find((item) => item.kind === "daily");
-      card.append(el("p", { text: latest ? latest.summary : "No daily summary yet. Chief of Staff writes one each morning." }));
-    }
-    if (role.id === "icp_acquisition") {
-      card.append(el("p", { text: state.targets.filter((item) => item.stage === "target").length + " contacts at Target" }));
-    }
-    if (role.id === "personalised_outreach") {
-      card.append(el("p", { text: state.outreach.filter((item) => item.decision === "pending" && item.opener).length + " pending openers" }));
-    }
-    agents.append(card);
-  });
-  wrap.append(agents);
+  wrap.append(implementedAgents());
 
-  const funnelBlock = el("section", { class: "agent" });
-  funnelBlock.append(el("h3", { text: "Funnel" }));
-  const chart = el("div", { class: "funnel" });
-  const max = Math.max(1, ...steps.map((step) => step.count));
-  steps.forEach((step) => {
-    const line = el("div", { class: "funnel-row" });
-    line.append(el("span", { text: STAGE_LABELS[step.stage] }));
-    const bar = el("div", { class: "bar" });
-    const fill = el("i");
-    fill.style.width = Math.round((step.count / max) * 100) + "%";
-    bar.append(fill);
-    line.append(bar, el("span", { text: step.count + (step.dropped ? " · −" + step.dropped : "") }));
-    chart.append(line);
-  });
-  funnelBlock.append(chart);
-  wrap.append(funnelBlock);
+  if (steps.some((step) => step.count > 0)) {
+    const funnelBlock = el("section", { class: "agent" });
+    funnelBlock.append(el("h3", { text: "Funnel" }));
+    const chart = el("div", { class: "funnel" });
+    const max = Math.max(1, ...steps.map((step) => step.count));
+    steps.forEach((step) => {
+      const line = el("div", { class: "funnel-row" });
+      line.append(el("span", { text: STAGE_LABELS[step.stage] }));
+      const bar = el("div", { class: "bar" });
+      const fill = el("i");
+      fill.style.width = Math.round((step.count / max) * 100) + "%";
+      bar.append(fill);
+      line.append(bar, el("span", { text: step.count + (step.dropped ? " · −" + step.dropped : "") }));
+      chart.append(line);
+    });
+    funnelBlock.append(chart);
+    wrap.append(funnelBlock);
+  }
+
+  const latestSummary = state.reports.find((item) => item.kind === "daily" && item.summary);
+  if (latestSummary) {
+    const summary = el("section", { class: "agent" });
+    summary.append(el("h3", { text: "Daily summary" }));
+    summary.append(el("p", { text: latestSummary.summary }));
+    summary.append(el("a", { class: "btn sm", href: "#reports" }, ["Open reports"]));
+    wrap.append(summary);
+  }
 
   if (state.exceptions.length) {
     const flags = el("section", { class: "agent" });
@@ -397,9 +366,6 @@ function overview() {
     wrap.append(flags);
   }
 
-  const actions = el("div", { class: "filters" });
-  if (state.canEdit) actions.append(button("Run daily summary", runChief));
-  wrap.append(actions);
   if (state.activity.length) wrap.append(activityList(state.activity.slice(0, 8), "Latest activity"));
   return wrap;
 }
@@ -701,11 +667,15 @@ function voiceForm() {
 
 function reports() {
   const wrap = el("div", { class: "acq" });
+  if (state.canEdit) {
+    const actions = el("div", { class: "filters" });
+    actions.append(button("Run daily summary", runChief));
+    wrap.append(actions);
+  }
   if (!state.reports.length) {
     const empty = el("section", { class: "agent" });
     empty.append(el("h3", { text: "No report yet" }));
-    empty.append(el("p", { text: "Chief of Staff writes a daily summary each morning: the cap, new targets, warm-up queued, pending openers, and the 10% share." }));
-    if (state.canEdit) empty.append(button("Run daily summary", runChief));
+    empty.append(el("p", { text: "A daily summary runs each morning: the cap, new targets, warm-up queued, pending openers, and the 10% share." }));
     wrap.append(empty);
   }
   state.reports.forEach((report) => {
@@ -718,15 +688,174 @@ function reports() {
   return wrap;
 }
 
-function setterStats(roleId) {
+function setterSummary() {
   const contacts = state.contacts || [];
+  if (!contacts.length && !(state.messageCount > 0) && !state.bookings.some((row) => row.source === "engine")) return "";
   const count = (status) => contacts.filter((row) => row.lead_status === status).length;
-  if (roleId === "comment_to_dm") return count("cold") + " cold contacts · " + (state.messageCount || 0) + " messages synced";
-  if (roleId === "qualification") return count("warm") + " warm · " + count("hot") + " hot";
-  if (roleId === "conversation_recovery") return contacts.filter((row) => row.lead_status === "cold" && row.last_message_at).length + " cold contacts with a message";
   const bookings = state.bookings.filter((row) => row.source === "engine").length;
   const converted = contacts.filter((row) => row.is_converted === true || row.lead_status === "converted").length;
-  return bookings + " engine bookings · " + converted + " converted";
+  return count("cold") + " cold · " + count("warm") + " warm · " + count("hot") + " hot · " + (state.messageCount || 0) + " messages · " + bookings + " bookings · " + converted + " converted";
+}
+
+function implementedAgents() {
+  const agents = el("div", { class: "agents" });
+  agents.append(icpAgentCard(), warmupAgentCard(), setterAgentCard());
+  return agents;
+}
+
+function icpAgentCard() {
+  const row = roleRow("icp_acquisition");
+  const provisioned = state.workforce.some((item) => item.role === "icp_acquisition");
+  const card = el("article", { class: "agent" });
+  const head = el("header");
+  head.append(el("h3", { text: "ICP Target Acquisition" }));
+  if (provisioned) head.append(roleSwitch("icp_acquisition", "ICP Target Acquisition"));
+  card.append(head);
+  card.append(el("p", { text: "The browser worker finds profiles. Grok scores them into the CRM." }));
+  card.append(el("p", { text: capLine(row) }));
+  card.append(el("p", { text: activityLine([row.last_run_at].concat((state.workers || []).map((item) => item.last_heartbeat_at))) }));
+  card.append(el("p", { text: instagramLine() }));
+  card.append(el("p", { text: workerLine() }));
+  if (provisioned) card.append(el("p", { text: state.targets.filter((item) => item.stage === "target").length + " contacts at Target" }));
+  else card.append(el("p", { text: "Not provisioned" }));
+  return card;
+}
+
+function warmupAgentCard() {
+  const warmup = roleRow("engagement_warmup");
+  const outreach = roleRow("personalised_outreach");
+  const card = el("article", { class: "agent" });
+  card.append(el("h3", { text: "Warm-up and outreach" }));
+  card.append(el("p", { text: "The same browser worker warms the profile, then sends or skips a personal opener." }));
+  card.append(roleSwitchRow("engagement_warmup", "Engagement warm-up"));
+  card.append(el("p", { text: "Warm-up today " + countToday(warmup) + " · " + activityLine([warmup.last_run_at]) }));
+  card.append(roleSwitchRow("personalised_outreach", "Personalised outreach"));
+  const pending = state.outreach.filter((item) => item.decision === "pending" && item.opener).length;
+  card.append(el("p", { text: "Outreach today " + countToday(outreach) + " · " + activityLine([outreach.last_run_at]) }));
+  if (pending) card.append(el("p", { text: pending + " pending openers" }));
+  if (!state.workforce.some((item) => item.role === "engagement_warmup" || item.role === "personalised_outreach")) {
+    card.append(el("p", { text: "Not provisioned" }));
+  }
+  return card;
+}
+
+function setterAgentCard() {
+  const rows = SETTER_ROLES.map((role) => roleRow(role));
+  const provisioned = SETTER_ROLES.filter((role) => state.workforce.some((item) => item.role === role));
+  const card = el("article", { class: "agent" });
+  const head = el("header");
+  head.append(el("h3", { text: "Roleflow Setter Engine" }));
+  head.append(setterSwitch(provisioned));
+  card.append(head);
+  card.append(el("p", { text: "Instagram DM engine. Qualification, comment and story DMs, follow-ups, and booking through the calendar link." }));
+  const pendingEngine = usesEngine() && (!(state.setterLink) || state.setterLink.status !== "connected");
+  card.append(el("p", { text: pendingEngine ? "Pending activation" : setterBundleLabel(provisioned) }));
+  card.append(el("p", { text: setterLinkText() }));
+  card.append(el("p", { text: activityLine(rows.map((row) => row.last_run_at).concat([
+    state.setterLink && state.setterLink.last_synced_at,
+    state.setterLink && state.setterLink.webhook_seen_at
+  ])) }));
+  const summary = setterSummary();
+  if (summary) card.append(el("p", { text: summary }));
+  if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));
+  if (usesEngine()) card.append(el("p", { class: "mute", text: "Pausing sends the pause to the Instagram DM engine. Roleflow stops applying updates while the setter is off." }));
+  return card;
+}
+
+function roleSwitchRow(roleId, label) {
+  const row = el("div", { class: "roster-head" });
+  row.append(el("span", { text: label }), roleSwitch(roleId, label));
+  return row;
+}
+
+function roleSwitch(roleId, label) {
+  const row = roleRow(roleId);
+  const provisioned = state.workforce.some((item) => item.role === roleId);
+  const toggle = el("label", { class: "switch" });
+  const input = el("input", { type: "checkbox", "aria-label": "Turn " + label + " on" });
+  input.checked = provisioned && row.status === "active";
+  input.disabled = !state.canEdit || !state.supabase || !provisioned;
+  input.addEventListener("change", () => setRole(roleId, input.checked));
+  toggle.append(input, document.createTextNode(!provisioned ? "Not provisioned" : input.checked ? "On" : "Off"));
+  return toggle;
+}
+
+function setterSwitch(provisioned) {
+  const activeCount = provisioned.filter((role) => roleRow(role).status === "active").length;
+  const allOn = provisioned.length > 0 && activeCount === provisioned.length;
+  const mixed = activeCount > 0 && activeCount < provisioned.length;
+  const toggle = el("label", { class: "switch" });
+  const input = el("input", { type: "checkbox", "aria-label": "Turn the Roleflow Setter Engine on" });
+  input.checked = allOn;
+  input.indeterminate = mixed;
+  input.disabled = !state.canEdit || !state.supabase || !provisioned.length;
+  input.addEventListener("change", () => setSetterBundle(input.checked));
+  toggle.append(input, document.createTextNode(!provisioned.length ? "Not provisioned" : mixed ? "Mixed" : allOn ? "On" : "Off"));
+  return toggle;
+}
+
+function setterBundleLabel(provisioned) {
+  if (!provisioned.length) return "Not provisioned";
+  const activeCount = provisioned.filter((role) => roleRow(role).status === "active").length;
+  if (activeCount === provisioned.length) return "Active";
+  if (activeCount === 0) return "Paused";
+  return "Mixed";
+}
+
+function roleRow(roleId) {
+  return state.workforce.find((item) => item.role === roleId) || { status: "paused", daily_count: 0, daily_count_on: null, last_run_at: null };
+}
+
+function countToday(row) {
+  if (!row || row.daily_count_on == null) return 0;
+  return String(row.daily_count_on).slice(0, 10) === localToday(state.settings && state.settings.timezone) ? Number(row.daily_count) || 0 : 0;
+}
+
+function capLine(row) {
+  const cap = state.settings && state.settings.daily_cap;
+  if (!cap) return "Daily cap not set";
+  return "Today " + countToday(row) + " / " + cap;
+}
+
+function activityLine(values) {
+  const times = (values || []).filter(Boolean).map((value) => new Date(value).getTime()).filter((time) => !Number.isNaN(time));
+  if (!times.length) return "No activity yet";
+  return "Last activity " + when(new Date(Math.max(...times)).toISOString());
+}
+
+function instagramLine() {
+  const ig = state.ig;
+  if (ig && ig.username && ig.status === "connected") return "Instagram @" + String(ig.username).replace(/^@/, "");
+  if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram @" + String(ig.username).replace(/^@/, "") + " · " + ig.status;
+  const handle = state.setterLink && state.setterLink.requested_handle;
+  if (handle) return "Instagram not connected · requested @" + String(handle).replace(/^@/, "");
+  return "Instagram not connected";
+}
+
+function workerLine() {
+  const workers = state.workers || [];
+  if (!workers.length) return "No worker key yet";
+  const live = workers.find((row) => row.enabled) || workers[0];
+  const beat = live.last_heartbeat_at ? "Last heartbeat " + when(live.last_heartbeat_at) : "No heartbeat yet";
+  if (!live.enabled || live.status === "paused") return "Worker paused · " + beat;
+  return "Worker " + (live.status || "offline") + " · " + beat;
+}
+
+function setterLinkText() {
+  const link = state.setterLink;
+  if (!link) return "Setter link: Not linked";
+  if (link.status === "pending") return "Setter link: Pending activation";
+  if (link.status === "connected") return "Setter link: Connected";
+  if (link.status === "error") return "Setter link: Needs attention";
+  return "Setter link: Not linked";
+}
+
+function localToday(timeZone) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timeZone || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  }
 }
 
 function usesEngine() {
@@ -748,7 +877,7 @@ function controls() {
   const settings = state.settings || {};
   const form = el("form", { class: "agent" });
   form.append(el("h3", { text: "System" }));
-  const providerWrap = el("label", { text: "Setter for comment-to-DM, qualification, recovery, and booking" });
+  const providerWrap = el("label", { text: "Setter" });
   const provider = el("select", { "aria-label": "Setter provider" });
   [["roleflow_meta", "Roleflow Meta engine"], ["engine", "Roleflow Setter Engine"]].forEach(([value, label]) => {
     const option = el("option", { value, text: label });
@@ -757,7 +886,7 @@ function controls() {
   });
   provider.disabled = !state.canEdit;
   providerWrap.append(provider);
-  form.append(providerWrap, el("p", { class: "mute", text: "The Roleflow Setter Engine runs those four agents until a Meta app is connected. Connect Instagram on Integrations or Setup. Switching back to the Meta engine keeps the engine link until an admin disconnects it. Pausing an agent sends that pause to the engine." }));
+  form.append(providerWrap, el("p", { class: "mute", text: "The Roleflow Setter Engine handles qualification, comment and story DMs, follow-ups, and booking from the calendar link. Connect Instagram on Integrations or Setup. Switching back to the Meta engine keeps the engine link until an admin disconnects it. Pausing the setter sends that pause to the engine." }));
   const enabled = el("label", { class: "switch", text: " System on" });
   const enabledInput = el("input", { type: "checkbox" });
   enabledInput.checked = settings.system_enabled === true;
@@ -789,10 +918,6 @@ function controls() {
   const statuses = field("Lead statuses", qual.lead_statuses || LEAD_STATUSES.join(", "));
   form.append(enabled, cap.label, tz.label, quietStart.label, quietEnd.label, likes.label, spacing.label, delay.label, followHours.label, followCount.label, fallback.label, publicReplies, keywords.label, triggerMessage.label, budgetRule.label, timelineRule.label, makerRule.label, fitRule.label, statuses.label);
   form.append(el("p", { class: "mute", text: "Voice-note slots are the recordings on the Voice tab: " + SLOTS.map((slot) => slot.label).join(", ") + "." }));
-  const future = el("label", { class: "switch placeholder-ai", text: " AI voice (future)" });
-  const futureInput = el("input", { type: "checkbox", disabled: true, "aria-disabled": "true" });
-  future.prepend(futureInput);
-  form.append(future, el("p", { class: "mute", text: "Off, and it stays off. Personal voice notes are the recordings above. Nothing here calls a voice provider." }));
   if (state.canEdit) form.append(button("Save controls", (event) => saveControls(event, { enabledInput, cap, tz, quietStart, quietEnd, likes, spacing, delay, followHours, followCount, fallback, publicInput, provider, keywords, triggerMessage, budgetRule, timelineRule, makerRule, fitRule, statuses })));
   const chief = state.workforce.find((row) => row.role === "chief_of_staff");
   const stuck = field("Days before a stage is stuck", (chief && chief.parameters && chief.parameters.stuck_days) || 3, "number");
@@ -822,6 +947,29 @@ function activityList(rows, title) {
 function roleParams(role) {
   const row = state.workforce.find((item) => item.role === role);
   return (row && row.parameters) || {};
+}
+
+async function setSetterBundle(on) {
+  const saved = await state.supabase.from("business_workforce").update({
+    status: on ? "active" : "paused",
+    updated_at: new Date().toISOString()
+  }).eq("agent_id", state.businessId).in("role", SETTER_ROLES);
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    await bootBusiness(state.businessId);
+    return;
+  }
+  if (usesEngine()) {
+    try {
+      for (const role of SETTER_ROLES) {
+        await enqueueEngine("pause_agent", { role, status: on ? "active" : "paused" });
+      }
+      toast("Syncing…");
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  } else toast(on ? "Setter on." : "Setter off.");
+  await bootBusiness(state.businessId);
 }
 
 async function setRole(role, on) {

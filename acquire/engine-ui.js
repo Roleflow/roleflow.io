@@ -221,7 +221,7 @@ function paintSetterEngine(host, ctx) {
   const handle = link.requested_handle ? " · @" + link.requested_handle : "";
   const tested = link.last_test_error ? " · " + link.last_test_error : "";
   card.append(el("p", { text: activationLabel(link.status) + handle + tested }));
-  card.append(el("p", { class: "mute", text: "Comment-to-DM, qualification, recovery, and booking run here until a Meta app is connected. Enter the Instagram handle. An admin links the engine agent on the server. The access token is not shown again." }));
+  card.append(el("p", { class: "mute", text: "The setter handles comment and story DMs, qualification, follow-ups, and booking. Enter the Instagram handle. An admin links the engine agent on the server. The access token is not shown again." }));
   card.append(el("p", { class: "mute", text: ENGINE_HINT }));
   if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));
   const failed = (state.outbox || []).find((row) => row.status === "failed" && row.error);
@@ -231,7 +231,7 @@ function paintSetterEngine(host, ctx) {
   }
   if (link.last_synced_at) {
     const counts = link.last_sync_counts || {};
-    const note = counts.reason === "paused" ? "Last sync skipped because those four agents are off." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + link.last_sync_error : "");
+    const note = counts.reason === "paused" ? "Last sync skipped because the setter is paused." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + link.last_sync_error : "");
     card.append(el("p", { text: note }));
   }
   if (state.canEdit && state.supabase) {
@@ -657,7 +657,7 @@ function paintOnboarding(host, ctx) {
 
   if (step === "live") {
     card.append(el("h3", { text: "Go live" }));
-    card.append(el("p", { text: "Turns the system on and turns each of the eight agents on. You can switch any agent off on Workforce. Chief of Staff writes a daily summary and fills the worker queue under the daily cap." }));
+    card.append(el("p", { text: "Turns the system on, and turns on target acquisition, warm-up, outreach, and the setter. You can switch them off on Agents. A daily summary runs each morning, and the worker queue stays under the daily cap." }));
     if (state.canEdit && state.supabase) {
       card.append(button("Go live", async () => {
         try {

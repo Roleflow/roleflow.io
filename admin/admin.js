@@ -2,6 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
+import { renderAcquisitionRoster } from "./acquisition-admin.js";
 
 bindShell();
 
@@ -51,7 +52,7 @@ if (arriving.type === "recovery") {
     const notice = resolved.errorMessage;
     window.location.replace(notice
       ? "/signup/?mode=login&notice=" + encodeURIComponent(notice)
-      : "/login/?next=/businesses/");
+      : "/login/?next=/admin/");
   } else {
     clearAuthParams();
     clearCallbackMemory();
@@ -79,7 +80,14 @@ if (arriving.type === "recovery") {
         markNav();
         await renderApplications(supabase, user, { app, hello });
       } else {
-        window.location.replace("/businesses/");
+        hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+        hideBoot();
+        const headerApplications = document.getElementById("nav-applications");
+        if (headerApplications) headerApplications.hidden = false;
+        const title = document.getElementById("admin-title");
+        if (title) title.textContent = "Businesses";
+        markNav();
+        await renderAcquisitionRoster(supabase, app);
       }
     }
   }
