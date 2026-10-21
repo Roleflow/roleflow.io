@@ -37,7 +37,7 @@ If a lead asks whether they are talking to a bot or an AI, the answer is: Diegoâ
 
 The site is static on Vercel. Privileged work runs as Supabase edge functions, same as the existing sync and HQ functions. A one-minute `pg_cron` job calls `roleflow-acquisition/tick`. The cron secret is generated in `private.acquisition_settings` and is not an environment variable.
 
-`acquisition-bot` is deployed with its source in the function. `roleflow-acquisition` is deployed with `verify_jwt` off. Its entrypoint imports the engine from commit `f4fec2630c086aaa738e6e8803011d5d6ef11adb` on jsDelivr, so a cold start loads that commit, including the prompt seed. Re-deploy the one-line import when this code changes. After that deploy: a webhook handshake without the verify token returns 403, a wrong cron bearer returns 401, and an unknown deletion code returns `{ok:false}`.
+`acquisition-bot` is deployed with its source in the function. `roleflow-acquisition` is deployed with `verify_jwt` off. Its entrypoint imports commit `c8e84c91f400dfd0a5f23bb3b0ee8a41d3e033a6` from jsDelivr. That pin is a full commit, not a branch, and it is the commit that defaults the conversation model to `grok-4.3` at `https://api.x.ai/v1`. A cold start still fetches that commit, including the prompt seed. Re-deploy the one-line import when this code changes. After that deploy: a webhook handshake without the verify token returns 403, a wrong cron bearer returns 401, and an unknown deletion code returns `{ok:false}`.
 
 ## Meta app
 
