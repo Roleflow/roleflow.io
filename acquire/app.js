@@ -17,7 +17,8 @@ import {
   renderTeam
 } from "./home.js";
 import { renderBusiness, renderCrm, renderSalesLinks, renderValueContent } from "./studio.js";
-import { MAX_CHARS, charCount } from "./studio-model.js";
+import { MAX_CHARS, charCount, collectLeads } from "./studio-model.js";
+import { renderChats, renderCtas, renderFollowups, renderReminders } from "./studio-flow.js";
 import {
   ENGINE_HINT,
   JOURNEY,
@@ -43,7 +44,7 @@ const logoutBtn = document.getElementById("nav-logout");
 const panelLogout = document.getElementById("panel-logout");
 const AUDIO_TYPES = new Set(["audio/webm", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/wav", "audio/ogg", "audio/x-m4a", "audio/m4a", "audio/aac", "audio/wave"]);
 const MAX_BYTES = 20 * 1024 * 1024;
-const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings", "links", "content", "outbound", "inbound", "stats", "performance", "configuration", "team", "brief"];
+const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings", "links", "content", "outbound", "inbound", "stats", "performance", "configuration", "team", "brief", "followups", "reminders", "ctas"];
 const ENGINE_TABS = new Set(["inbox", "prompts", "integrations", "billing", "onboarding"]);
 
 const state = {
@@ -100,6 +101,14 @@ const state = {
   offerLinks: [],
   scheduleEndpoints: [],
   valueAssets: [],
+  followupSteps: [],
+  welcomeSteps: [],
+  manualFollowups: [],
+  reminders: [],
+  commentCtas: [],
+  storyCtas: [],
+  flow: null,
+  chatDraft: "",
   studio: null,
   studioScore: null,
   refreshTimer: 0
@@ -201,6 +210,8 @@ async function bootBusiness(id, options) {
   if (state.businessId && state.businessId !== id) {
     state.studio = null;
     state.studioScore = null;
+    state.flow = null;
+    state.chatDraft = "";
   }
   state.businessId = id;
   pick.value = id;
@@ -315,6 +326,20 @@ async function loadAll(id) {
   state.offerLinks = links.error ? [] : links.data || [];
   state.scheduleEndpoints = schedules.error ? [] : schedules.data || [];
   state.valueAssets = assets.error ? [] : assets.data || [];
+  const [followups, welcomes, manuals, reminders, commentCtas, storyCtas] = await Promise.all([
+    q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id").eq("business_id", id).order("hours", { ascending: true }),
+    q.from("acq_welcome_steps").select("id, position, delay_hours, mode, body").eq("business_id", id).order("position", { ascending: true }),
+    q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(100),
+    q.from("acq_reminders").select("id, contact_id, target_id, kind, source, title, due_at, status, created_at").eq("business_id", id).order("due_at", { ascending: true }).limit(200),
+    q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
+  ]);
+  state.followupSteps = followups.error ? [] : followups.data || [];
+  state.welcomeSteps = welcomes.error ? [] : welcomes.data || [];
+  state.manualFollowups = manuals.error ? [] : manuals.data || [];
+  state.reminders = reminders.error ? [] : reminders.data || [];
+  state.commentCtas = commentCtas.error ? [] : commentCtas.data || [];
+  state.storyCtas = storyCtas.error ? [] : storyCtas.data || [];
   return true;
 }
 
@@ -337,12 +362,16 @@ function paint() {
   if (state.tab === "pipeline") root.append(renderCrm(pageUi()));
   if (state.tab === "voice" || state.tab === "content") root.append(renderValueContent(pageUi()));
   if (state.tab === "links") root.append(renderSalesLinks(pageUi()));
+  if (state.tab === "followups") root.append(renderFollowups(pageUi()));
+  if (state.tab === "reminders") root.append(renderReminders(pageUi()));
+  if (state.tab === "ctas") root.append(renderCtas(pageUi()));
+  if (state.tab === "inbox") root.append(renderChats(pageUi()));
   if (state.tab === "reports" || state.tab === "stats") root.append(renderStats(pageUi()));
   if (state.tab === "performance") root.append(renderPerformance(pageUi()));
   if (state.tab === "team") root.append(renderTeam(pageUi()));
   if (state.tab === "controls") root.append(controls());
   if (state.tab === "settings" || state.tab === "configuration") root.append(renderConfiguration(pageUi()));
-  if (ENGINE_TABS.has(state.tab)) {
+  if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox") {
     const host = el("div");
     root.append(host);
     renderEngine(state.tab, host, engineCtx());
@@ -423,7 +452,21 @@ function pageUi() {
     saveOfferLink,
     saveSchedule,
     saveAsset,
-    deleteRow
+    deleteRow,
+    collectLeads,
+    mountEngineInbox: (host) => renderEngine("inbox", host, engineCtx()),
+    saveFollowupOptions,
+    saveFollowupStep,
+    saveWelcomeStep,
+    saveManualFollowup,
+    markFollowupSent,
+    draftManualFollowup,
+    saveReminder,
+    finishReminder,
+    saveCommentCta,
+    saveStoryCta,
+    deleteFlowRow,
+    draftReply
   };
 }
 
@@ -613,7 +656,7 @@ async function addLeadNote(lead, body) {
   }
 }
 
-async function queueMessage(lead, body) {
+async function queueMessage(lead, body, sendAt) {
   if (!readyToSave()) return toast("This preview does not save.", "bad");
   const text = String(body || "").trim();
   if (!text) return toast("Write the message first.", "bad");
@@ -622,7 +665,8 @@ async function queueMessage(lead, body) {
     contact_id: lead.kind === "contact" ? lead.id : null,
     target_id: lead.kind === "target" ? lead.id : null,
     body: text,
-    status: "pending"
+    status: "pending",
+    send_at: sendAt || null
   });
   if (saved.error) toast(saved.error.message, "bad");
   else {
@@ -694,6 +738,119 @@ async function saveAsset(row) {
   }
   toast("Content saved.");
   await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveFollowupOptions(patch) {
+  await patchSettings(patch);
+}
+
+async function saveFollowupStep(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_followup_steps").insert({ ...row, business_id: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Step saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function saveWelcomeStep(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_welcome_steps").insert({ ...row, business_id: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Welcome message saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function saveManualFollowup(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_manual_followups").insert({
+    business_id: state.businessId,
+    body: row.body,
+    status: "pending"
+  });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Draft saved. Nothing is sent.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function markFollowupSent(id) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_manual_followups").update({ status: "sent_by_human" }).eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Marked sent by you. The lead was not messaged from here.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function draftManualFollowup() {
+  const data = await callStudio("draft", {
+    fields: (state.brief && state.brief.fields) || {},
+    lines: [{ role: "user", text: "Draft a short follow-up a person will send within 7 days." }]
+  });
+  if (data && data.reply) await saveManualFollowup({ body: String(data.reply) });
+}
+
+async function saveReminder(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_reminders").insert({ ...row, business_id: state.businessId, status: "open" });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Reminder saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function finishReminder(id) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_reminders").update({ status: "done" }).eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveCommentCta(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_comment_ctas").insert({ ...row, business_id: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Keyword saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function saveStoryCta(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_story_ctas").insert({ ...row, business_id: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Story keyword saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function deleteFlowRow(table, id) {
+  const allowed = new Set(["acq_followup_steps", "acq_welcome_steps", "acq_comment_ctas", "acq_story_ctas"]);
+  if (!allowed.has(table) || !readyToSave()) return;
+  const saved = await state.supabase.from(table).delete().eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function draftReply(lead, messages) {
+  const data = await callStudio("draft", {
+    fields: (state.brief && state.brief.fields) || {},
+    lines: messages || [],
+    lead_state: lead && lead.state
+  });
+  if (data && data.reply) {
+    state.chatDraft = String(data.reply);
+    paint();
+  }
 }
 
 async function deleteRow(table, id) {
@@ -1801,7 +1958,11 @@ function markTab() {
     prompts: "Setter prompt",
     onboarding: "Onboarding",
     team: "Team",
-    brief: "Business"
+    brief: "Business",
+    followups: "Follow-ups",
+    reminders: "Reminders",
+    ctas: "Calls to action",
+    inbox: "Chats"
   };
   if (title) title.textContent = names[state.tab] || "Dashboard";
   const business = state.businesses.find((row) => row.id === state.businessId);
@@ -1814,7 +1975,7 @@ function markTab() {
 
 function tabGroup(tab) {
   if (tab === "overview" || tab === "agents" || tab === "outbound") return "outbound";
-  if (tab === "inbox") return "pipeline";
+  if (tab === "inbox" || tab === "followups" || tab === "reminders" || tab === "ctas") return "inbound";
   if (tab === "reports" || tab === "stats") return "stats";
   if (tab === "voice" || tab === "content") return "content";
   if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "settings" || tab === "configuration") return "configuration";
