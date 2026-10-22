@@ -11,7 +11,10 @@ export function bindAssistant(getContext) {
     panel.hidden = !open;
     openBtn.setAttribute("aria-expanded", open ? "true" : "false");
     if (open && !log.childElementCount) {
-      push("ask", "Ask how a page works, what a number means, or where to change a setting. Answers use this business only.");
+      const ctx = getContext();
+      push("ask", ctx && ctx.businessId
+        ? "Ask how a page works, what a number means, or where to change a setting. Answers use this business only."
+        : "Open a business to ask about its numbers and settings.");
     }
     if (open) input.focus();
   }

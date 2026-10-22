@@ -13,9 +13,7 @@
 <body class="app admin-panel">
 <a class="skip" href="#admin-app">Skip to admin</a>
 <div class="app-shell">
-  <aside class="app-side" id="app-side">
-    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
-    <p class="side-kicker">Platform</p>
+  <aside class="app-side" id="app-side" hidden>
     <nav class="app-nav" aria-label="Admin">
       <a href="/admin/">Businesses</a>
       <a id="nav-applications" href="/admin/#applications" hidden>Applications Tracker</a>
@@ -26,16 +24,15 @@
       <a href="/businesses/">Businesses</a>
       <a href="/account/#profile">Your account</a>
     </nav>
-    <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
   </aside>
   <div class="nav-backdrop" id="nav-backdrop" hidden></div>
   <div class="app-main">
-    <header class="app-top">
-      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
-      <div>
-        <p class="eyebrow">Roleflow</p>
-        <h1 id="admin-title">Businesses</h1>
+    <header class="app-top admin-bar">
+      <a class="brand" href="/admin/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+      <div class="admin-account">
         <p class="hello" id="admin-hello">Loading…</p>
+        <a href="/account/#profile">Your account</a>
+        <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
       </div>
     </header>
     <main class="wrap wide" id="main">
@@ -47,11 +44,27 @@
         <span class="skel short"></span>
         <p>Opening businesses…</p>
       </div>
+      <h1 id="admin-title" class="admin-page-title">Businesses</h1>
       <div id="admin-app"></div>
     </main>
     <footer>&copy; Roleflow. Instagram DM sales systems, paid on commission.</footer>
   </div>
 </div>
+<button type="button" class="assistant-fab" id="assistant-open" aria-expanded="false" aria-controls="assistant-panel" aria-label="Ask Roleflow">
+  <img src="/assets/logo.jpg" alt="" width="34" height="34">
+</button>
+<section class="assistant-panel" id="assistant-panel" hidden aria-label="Roleflow Assistant">
+  <header>
+    <span class="assistant-brand"><img src="/assets/logo.jpg" alt="" width="22" height="22"><strong>Roleflow Assistant</strong></span>
+    <button type="button" class="btn ghost sm" id="assistant-close">Close</button>
+  </header>
+  <div class="assistant-log" id="assistant-log"></div>
+  <form id="assistant-form">
+    <label class="sr" for="assistant-input">Ask how something works</label>
+    <input id="assistant-input" name="message" type="text" maxlength="800" placeholder="How do I open a business?" autocomplete="off">
+    <button class="btn sm" type="submit">Send</button>
+  </form>
+</section>
 <div id="toasts" class="toast-stack" aria-live="polite"></div>
 <script src="/supabase/config.js" defer></script>
 <script src="/onboarding/config.js" defer></script>

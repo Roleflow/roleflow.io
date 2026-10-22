@@ -259,10 +259,21 @@ body.platform .assistant-log .me{background:#243155;border:0}
 body.platform .assistant-panel input{background:#0A1226;border:0;border-radius:12px;color:var(--ink);padding:10px 12px}
 .ai-dot.on{background:#8fbfa8;box-shadow:0 0 0 4px rgba(143,191,168,.16)}
 body.admin-panel{background:radial-gradient(880px 380px at 50% -12%,rgba(123,77,255,.16),transparent 62%),#0A1226}
-body.admin-panel .app-side,body.admin-panel .app-top{background:#101A33;border-color:transparent}
+body.admin-panel .app-shell{display:block;min-height:100vh}
+body.admin-panel .app-side,body.admin-panel .nav-toggle,body.admin-panel .nav-backdrop{display:none !important}
+body.admin-panel .app-main{width:100%;margin:0}
+body.admin-panel .app-top{background:transparent;border:0;align-items:center}
+body.admin-panel .admin-bar{display:flex;justify-content:space-between;gap:16px;min-height:72px;padding:16px 28px}
+body.admin-panel .admin-account{display:flex;align-items:center;justify-content:flex-end;gap:16px;min-width:0}
+body.admin-panel .admin-account .hello{margin:0;max-width:36vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9AA6C6}
+body.admin-panel .admin-account a{color:var(--ink);text-decoration:none;font-weight:600}
+body.admin-panel .admin-page-title{margin:8px 0 24px;text-align:center;font-size:1.7rem}
 body.admin-panel .app-nav a{border:0}
 body.admin-panel .app-nav a[aria-current=page]{background:#1D2848;border:0;box-shadow:inset 3px 0 0 #7B4DFF}
-body.admin-panel main.wrap{width:min(1040px,calc(100% - 64px));max-width:1040px}
+body.admin-panel main.wrap{width:min(1080px,calc(100% - 48px));max-width:1080px;margin:0 auto}
+body.admin-panel .assistant-fab{width:56px;height:56px;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--grad);border:0;box-shadow:var(--shadow);color:#fff}
+body.admin-panel .assistant-fab img{width:34px;height:34px;border-radius:50%;object-fit:cover}
+body.admin-panel .assistant-panel{background:#101A33;border:0;border-radius:16px;box-shadow:var(--shadow)}
 body.admin-panel .biz-tile.add{background:transparent;border:1px dashed #243155;box-shadow:none}
 body.admin-panel .biz-grid{gap:24px}
 .office{min-width:0}
@@ -326,4 +337,14 @@ body.reduce-motion .station-g:hover,body.reduce-motion .station-g:focus-visible{
 @media(prefers-reduced-motion:reduce){
   .dock-scale,.slide-panel,.icon-rail,.app-shell,.station-g,.avatar.working .arm,.avatar.idle,.work-glow,.desk-bubble.live,.status-dot.working,.assistant-fab,.btn{animation:none !important;transition:none !important}
   .station-g:hover,.station-g:focus-visible{transform:none}
+}
+@media(max-width:860px){
+  body.admin-panel .app-shell{display:block !important;width:100%}
+  body.admin-panel .app-side{display:none !important;position:static !important;width:0 !important;min-width:0 !important;padding:0 !important;margin:0 !important;border:0 !important;transform:none !important}
+  body.admin-panel .nav-toggle,body.admin-panel .nav-backdrop{display:none !important}
+  body.admin-panel .app-main{width:100%;margin:0;padding:0}
+  body.admin-panel .admin-bar{padding:14px 16px;gap:12px}
+  body.admin-panel .admin-account{gap:10px}
+  body.admin-panel .admin-account .hello{display:none}
+  body.admin-panel main.wrap{width:min(1080px,calc(100% - 32px))}
 }

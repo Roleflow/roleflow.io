@@ -3,8 +3,11 @@ import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession 
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
 import { renderAcquisitionRoster } from "./acquisition-admin.js";
+import { bindAssistant } from "../acquire/assistant.js";
 
 bindShell();
+let assistantClient = null;
+bindAssistant(() => ({ supabase: assistantClient, businessId: "" }));
 
 const hello = document.getElementById("admin-hello");
 const app = document.getElementById("admin-app");
@@ -46,7 +49,8 @@ if (arriving.type === "recovery") {
   hello.textContent = "Add the Supabase keys in supabase/config.js.";
   showMessage("Paste SUPABASE_URL and SUPABASE_ANON_KEY into supabase/config.js, then refresh.");
 } else {
-  const supabase = getSupabase();
+    const supabase = getSupabase();
+    assistantClient = supabase;
   const resolved = await resolveSession(supabase, window.location.href);
   if (!resolved.session) {
     const notice = resolved.errorMessage;
