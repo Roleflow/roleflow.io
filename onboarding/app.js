@@ -875,7 +875,9 @@
       }, function (error) {
         state.generating = false;
         state.accountStatus = "submitted";
-        state.remoteState = "error";
+        var answersSaved = Boolean(error && error.saved);
+        state.remoteState = answersSaved ? "saved" : "error";
+        state.storageError = answersSaved ? "" : "Couldn't save to your account. A copy is still on this device.";
         state.generationError = (error && error.message) || "The prompt could not be written. Your answers are saved.";
         state.stepIndex = reviewIndex;
         notify(state.generationError, "bad");

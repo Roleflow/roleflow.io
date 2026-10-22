@@ -235,13 +235,13 @@ if (!isConfigured()) {
     async function landFromInvite() {
       const accepted = await supabase.rpc("accept_invite", { p_token: inviteToken });
       if (accepted.data) {
-        window.location.replace("/businesses/#" + accepted.data + "/leads");
+        window.location.replace("/account/acquisition/#dashboard");
         return true;
       }
       const { data } = await supabase.auth.getUser();
       const sessionEmail = String(data.user && data.user.email || "").toLowerCase();
       if (inviteEmail() && inviteEmail().toLowerCase() === sessionEmail) {
-        window.location.replace("/businesses/");
+        window.location.replace("/account/acquisition/#dashboard");
         return true;
       }
       return false;
@@ -318,7 +318,7 @@ if (!isConfigured()) {
         if (error) return showError(friendlyAuthError(error));
         if (created.session) {
           if (inviteOk && await landFromInvite()) return;
-          window.location.replace(inviteOk ? "/businesses/" : "/account/");
+          window.location.replace(inviteOk ? "/account/acquisition/#dashboard" : "/account/acquisition/?onboarding=1");
           return;
         }
         okEl.textContent = inviteOk

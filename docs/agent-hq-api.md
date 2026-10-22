@@ -6,7 +6,7 @@ Nothing in this API sends email, DMs, or social posts. Task results are drafts f
 
 ## Tables
 
-The `hq_` prefix keeps these tables away from TailorTalk setters (`tailortalk_agents`) and client setters.
+The `hq_` prefix keeps these tables away from the setter registry (`engine_registry`) and client setters.
 
 | UI name | Table |
 | --- | --- |
@@ -82,7 +82,7 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
 
 ### create
 
-Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (`tailortalk_agents.id`, the same id the Workforce office uses). `station` is optional. When it is omitted, the task uses the agent's home station. Allowed values are `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, `chief_of_staff`, `mail_room`, `sales_desk`, `back_office`, `leads_in`, `qualify`, `book_call`, `follow_up`, `report`, and `overseer`. Each key can create 50 tasks in a rolling 24 hours.
+Create a queued task for this key's own agent. The task is always assigned to the agent that owns the key. `title` is required (1 to 240 characters). `description` is optional (up to 8000 characters). `priority` is optional: `low`, `normal`, or `high` (default `normal`). `estimate_minutes` is optional, from 1 to 480. `business_id` is optional and must be a business id (the same id the Workforce office uses). `station` is optional. When it is omitted, the task uses the agent's home station. Allowed values are `research`, `writers_room`, `film_studio`, `edit_bay`, `shipping_dock`, `client_floor`, `chief_of_staff`, `mail_room`, `sales_desk`, `back_office`, `leads_in`, `qualify`, `book_call`, `follow_up`, `report`, and `overseer`. Each key can create 50 tasks in a rolling 24 hours.
 
 ```bash
 curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \

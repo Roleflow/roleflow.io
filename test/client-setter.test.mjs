@@ -11,7 +11,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const sandbox = { console, URL };
 vm.createContext(sandbox);
 vm.runInContext(read("onboarding/config.js"), sandbox, { filename: "onboarding/config.js" });
-const titles = Array.from(sandbox.ROLEFLOW_ONBOARDING_CONFIG.TAILORTALK_SECTIONS, (section) => section.title);
+const titles = Array.from(sandbox.ROLEFLOW_ONBOARDING_CONFIG.SETTER_SECTIONS, (section) => section.title);
 assert.equal(titles.join("\n"), SETTER_SECTIONS.map((section) => section.title).join("\n"));
 assert.equal(SETTER_SECTIONS.length, 9);
 

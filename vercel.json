@@ -1,6 +1,21 @@
 {
   "redirects": [
     {
+      "source": "/acquire",
+      "destination": "/account/acquisition/",
+      "statusCode": 301
+    },
+    {
+      "source": "/acquire/",
+      "destination": "/account/acquisition/",
+      "statusCode": 301
+    },
+    {
+      "source": "/acquire/index.html",
+      "destination": "/account/acquisition/",
+      "statusCode": 301
+    },
+    {
       "source": "/admin/office",
       "destination": "/admin/hq/",
       "statusCode": 301
@@ -38,7 +53,7 @@
       ]
     },
     {
-      "source": "/(account|admin|reset)(.*)",
+      "source": "/(account|admin|reset|acquire)(.*)",
       "headers": [
         {
           "key": "X-Robots-Tag",

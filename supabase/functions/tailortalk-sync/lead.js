@@ -1,11 +1,12 @@
-// Username is not a TailorTalk lead field. On Instagram, lead_contact is the handle.
+// username is its own Get Leads field. On Instagram, lead_contact is often null.
+// A numeric lead_contact is an Instagram user id, not a handle.
 
 export function usernameOf(lead) {
   const explicit = textOrNull(lead?.username || lead?.instagram_username || lead?.ig_username || lead?.instagram_handle || lead?.handle);
-  if (explicit) return explicit.replace(/^@+/, "");
+  if (explicit && !/^\d+$/.test(explicit)) return explicit.replace(/^@+/, "");
   if (!isInstagram(lead)) return null;
   const contact = textOrNull(lead?.lead_contact);
-  if (!contact || contact.includes("*")) return null;
+  if (!contact || contact.includes("*") || /^\d+$/.test(contact)) return null;
   return contact.replace(/^@+/, "");
 }
 

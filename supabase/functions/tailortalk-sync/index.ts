@@ -1,11 +1,14 @@
 // TailorTalk CRM sync. Redeploy after applying
 // supabase/migrations/20261014200000_client_setter.sql.
-// The hourly job already caches every lead it pages through, newest messages
-// included, so the client setter can read the recent rows. This revision also
-// stores a username when the lead payload has one, and counts leads by category.
+// The registry job caches every lead it pages through. Get Leads is summary
+// fields only (no chat history, no extracted attributes). After the cache
+// write, the same rows are projected into each connected acquisition business
+// as detail "summary". Chat history arrives only from the acq-tailortalk webhook.
+// This revision also stores a username when the lead payload has one, and counts
+// leads by category. Customers are counted only when is_converted is true.
 //
 // Secrets (set in the Supabase function secrets UI; do not commit them):
-//   TAILORTALK_CRON_SECRET required for the hourly job. Same value as
+//   TAILORTALK_CRON_SECRET required for the registry job. Same value as
 //                          private.tailortalk_settings key cron_secret.
 //   TAILORTALK_TOKEN_KEY   optional. Only used to read a token saved by the
 //                          earlier AES-GCM path. New tokens are plaintext in
@@ -31,8 +34,16 @@
 // Error text returned to the browser has the provider name removed.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { summaryRow } from "./crm.js";
 import { usernameOf } from "./lead.js";
 import { computeStats } from "./stats.js";
+
+const SETTER_ROLES = [
+  "comment_to_dm",
+  "qualification",
+  "conversation_recovery",
+  "appointment_booking"
+];
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
 const CONTACTS_URL = "https://api.tailortalk.ai/api/v1/get_contacts";
@@ -74,7 +85,8 @@ Deno.serve(async (req) => {
     const secret = Deno.env.get("TAILORTALK_CRON_SECRET") || "";
     if (!secret || !timingSafeEqual(bearer, secret)) return json(401, { error: "Unauthorized." });
     if (body.action && body.action !== "sync") return json(403, { error: "The cron job can only sync." });
-    const results = await syncAgents(service, null);
+    const onlyTt = body.tailortalk_agent_id ? String(body.tailortalk_agent_id) : null;
+    const results = await syncAgents(service, null, onlyTt);
     return json(200, { ok: results.every((item) => !item.error), results });
   }
 
@@ -208,20 +220,21 @@ async function deleteAgent(service: ReturnType<typeof createClient>, body: Recor
   return json(200, { ok: true, id });
 }
 
-async function syncAgents(service: ReturnType<typeof createClient>, onlyId: string | null) {
-  let query = service.from("tailortalk_agents").select("id, label, agent_name, archived").order("agent_name");
+async function syncAgents(service: ReturnType<typeof createClient>, onlyId: string | null, onlyTailortalkId: string | null = null) {
+  let query = service.from("tailortalk_agents").select("id, label, agent_name, archived, tailortalk_agent_id").order("agent_name");
   if (onlyId) query = query.eq("id", onlyId);
+  else if (onlyTailortalkId) query = query.eq("tailortalk_agent_id", onlyTailortalkId);
   else query = query.eq("archived", false);
   const { data, error } = await query;
-  if (error) return [{ id: onlyId, error: error.message }];
+  if (error) return [{ id: onlyId || onlyTailortalkId, error: error.message }];
   const agents = data || [];
-  if (onlyId && !agents.length) return [{ id: onlyId, error: "Agent not found." }];
+  if ((onlyId || onlyTailortalkId) && !agents.length) return [{ id: onlyId || onlyTailortalkId, error: "Agent not found." }];
   const results = [];
   for (const agent of agents) results.push(await syncOne(service, agent));
   return results;
 }
 
-async function syncOne(service: ReturnType<typeof createClient>, agent: { id: string; label?: string; agent_name?: string }) {
+async function syncOne(service: ReturnType<typeof createClient>, agent: { id: string; label?: string; agent_name?: string; tailortalk_agent_id?: string }) {
   const secretRes = await service.rpc("tailortalk_read_secret", { p_agent_id: agent.id });
   if (secretRes.error) return fail(service, agent, secretRes.error.message);
   if (!secretRes.data) return fail(service, agent, "No token stored.");
@@ -266,11 +279,13 @@ async function syncOne(service: ReturnType<typeof createClient>, agent: { id: st
     }).eq("id", agent.id);
     if (marked.error) throw new Error(marked.error.message);
     if (loadedContacts.ok) await saveContacts(service, agent.id, loadedContacts.rows, syncedAt);
+    const crm = await projectCrm(service, agent, leads, syncedAt);
     return {
       id: agent.id,
       label: agent.agent_name || agent.label,
       total_leads: stats.total_leads,
-      contacts: loadedContacts.ok ? "saved" : "skipped"
+      contacts: loadedContacts.ok ? "saved" : "skipped",
+      crm
     };
   } catch (error) {
     return fail(service, agent, error instanceof Error ? error.message : "Sync failed.");
@@ -295,8 +310,82 @@ async function fail(service: ReturnType<typeof createClient>, agent: { id: strin
   return { id: agent.id, label: agent.agent_name || agent.label, error: text };
 }
 
+// Get Leads pages backwards. limit 200 is the API maximum.
+// start_after is the previous page's last last_message_time.
+// Empty lead_status and lead_source filters are not sent.
 async function fetchLeads(token: string) {
   return paginate(token, LEADS_URL, 200, leadsFrom, (item) => item?.id ? String(item.id) : "", (item) => item?.last_message_time || "");
+}
+
+async function setterRoles(service: ReturnType<typeof createClient>, businessId: string) {
+  const result = await service.from("business_workforce").select("role, status").eq("agent_id", businessId).in("role", SETTER_ROLES);
+  if (result.error) throw new Error(result.error.message);
+  return (result.data || []).filter((row) => row.status === "active").map((row) => row.role);
+}
+
+async function projectCrm(
+  service: ReturnType<typeof createClient>,
+  agent: { tailortalk_agent_id?: string },
+  leads: Array<Record<string, unknown>>,
+  syncedAt: string
+) {
+  const ttId = String(agent.tailortalk_agent_id || "").trim();
+  if (!ttId) return { businesses: 0 };
+  const found = await service.rpc("acq_tt_businesses_for_tt_agent", { p_agent: ttId });
+  if (found.error) return { businesses: 0, error: scrub(found.error.message).slice(0, 300) };
+  const ids = (found.data || []).map((row: { business_id?: string }) => row.business_id).filter(Boolean);
+  let businesses = 0;
+  let error = "";
+  for (const businessId of ids) {
+    try {
+      await projectOne(service, businessId, leads, syncedAt);
+      businesses += 1;
+    } catch (caught) {
+      error = scrub(caught instanceof Error ? caught.message : "CRM projection failed.").slice(0, 300);
+      await service.from("acq_setter_links").update({
+        last_synced_at: syncedAt,
+        last_sync_error: error
+      }).eq("business_id", businessId);
+    }
+  }
+  return error ? { businesses, error } : { businesses };
+}
+
+async function projectOne(
+  service: ReturnType<typeof createClient>,
+  businessId: string,
+  leads: Array<Record<string, unknown>>,
+  syncedAt: string
+) {
+  const roles = await setterRoles(service, businessId);
+  if (!roles.length) {
+    await service.from("acq_setter_links").update({
+      last_synced_at: syncedAt,
+      last_sync_error: null,
+      last_sync_counts: { skipped: true, reason: "paused", detail: "summary" }
+    }).eq("business_id", businessId);
+    return;
+  }
+  const rows = leads.map((lead) => summaryRow(lead)).filter((row) => row.external_id && row.handle);
+  const counts: Record<string, unknown> = { leads: rows.length, detail: "summary", contacts: 0, logged: 0 };
+  for (let i = 0; i < rows.length; i += 50) {
+    const applied = await service.rpc("acq_tt_apply_batch", {
+      p_business: businessId,
+      p_rows: rows.slice(i, i + 50),
+      p_active_roles: roles
+    });
+    if (applied.error) throw new Error(applied.error.message);
+    const data = applied.data || {};
+    counts.contacts = Number(counts.contacts) + (Number(data.contacts) || 0);
+    counts.logged = Number(counts.logged) + (Number(data.logged) || 0);
+  }
+  const saved = await service.from("acq_setter_links").update({
+    status: "connected",
+    last_synced_at: syncedAt,
+    last_sync_error: null,
+    last_sync_counts: counts
+  }).eq("business_id", businessId);
+  if (saved.error) throw new Error(saved.error.message);
 }
 
 function leadsFrom(payload) {

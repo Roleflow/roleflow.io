@@ -42,8 +42,10 @@ assert.equal(fields.length, 10);
 assert.equal(fields.filter((field) => field.required).length, 9);
 assert.equal(Form.isRequired(Form.getField(config, "sourceMaterial"), {}), false);
 assert.equal(Form.getField(config, "sourceMaterial").file, true);
-assert.equal(config.TAILORTALK_SECTIONS.length, 9);
-assert.deepEqual(Array.from(config.TAILORTALK_SECTIONS, (item) => item.title), [
+assert.doesNotMatch(fs.readFileSync(path.join(root, "onboarding/config.js"), "utf8"), /tailortalk/i);
+assert.doesNotMatch(fs.readFileSync(path.join(root, "onboarding/prompt.js"), "utf8"), /tailortalk/i);
+assert.equal(config.SETTER_SECTIONS.length, 9);
+assert.deepEqual(Array.from(config.SETTER_SECTIONS, (item) => item.title), [
   "HIGH PRIORITY RULE",
   "IDENTITY & MISSION",
   "NON-NEGOTIABLES",
@@ -235,7 +237,8 @@ assert.doesNotMatch(appJs, /ensurePrompt/);
 const adminJs = fs.readFileSync(path.join(root, "admin/publish.js"), "utf8");
 assert.match(adminJs, /Regenerate/);
 assert.match(adminJs, /Copy section/);
-assert.match(adminJs, /TAILORTALK_SECTIONS/);
+assert.match(adminJs, /SETTER_SECTIONS/);
+assert.doesNotMatch(adminJs, /tailortalk/i);
 assert.match(adminJs, /user_id: profile\.id/);
 const promptMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261014120000_prompt_generation.sql"), "utf8");
 assert.match(promptMigration, /generation_status/);
@@ -247,6 +250,12 @@ assert.match(sectionsMigration, /new\.prompt_sections = old\.prompt_sections/);
 assert.match(sectionsMigration, /revoke execute on function public\.guard_onboarding_update\(\) from public, anon, authenticated/);
 const fn = fs.readFileSync(path.join(root, "supabase/functions/generate-setter-prompt/index.ts"), "utf8");
 assert.match(fn, /XAI_API_KEY/);
+assert.match(fn, /ok: false,\s*\n\s*saved: true/);
+assert.doesNotMatch(fn, /json\(500, \{ error: "XAI_API_KEY is not set/);
+assert.match(accountJs, /usesLegacySetter/);
+assert.match(accountJs, /\/account\/acquisition\//);
+assert.match(accountJs, /skipped\.saved = true/);
+assert.match(appJs, /error && error\.saved/);
 assert.match(fn, /https:\/\/api\.x\.ai\/v1\/chat\/completions/);
 assert.match(fn, /grok-4\.7/);
 assert.match(fn, /json_schema/);
@@ -259,7 +268,7 @@ assert.match(fn, /prompt_sections/);
 assert.doesNotMatch(fn, /OPENAI_API_KEY/);
 assert.doesNotMatch(fn, /api\.openai\.com/);
 assert.doesNotMatch(fn, /ANTHROPIC_API_KEY/);
-config.TAILORTALK_SECTIONS.forEach((section) => {
+config.SETTER_SECTIONS.forEach((section) => {
   assert.ok(fn.includes(section.id), "function is missing section " + section.id);
   assert.ok(fn.includes(section.title), "function is missing heading " + section.title);
 });

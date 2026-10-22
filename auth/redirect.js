@@ -5,4 +5,4 @@ if (isConfigured()) {
   const { data } = await getSupabase().auth.getSession();
   session = data.session;
 }
-window.location.replace(session ? "/account/" : "/login/?next=/account/");
+window.location.replace(session ? "/account/acquisition/" : "/login/?next=/account/");

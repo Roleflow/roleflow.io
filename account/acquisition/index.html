@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard · Roleflow</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/auth/site.css">
+<link rel="stylesheet" href="/acquire/acquire.css">
+</head>
+<body class="app platform">
+<a class="skip" href="#app">Skip to the dashboard</a>
+<div class="app-shell">
+  <div class="side-slot" id="side-slot">
+  <aside class="icon-rail" id="icon-rail" aria-label="Sections">
+    <button type="button" class="rail-pin" id="rail-toggle" aria-pressed="false" aria-expanded="false" aria-controls="slide-panel" title="Pin menu" data-tip="Pin menu" aria-label="Pin menu">
+      <span class="dock-scale"><span class="nav-ico t2" id="pin-ico"></span></span>
+    </button>
+    <nav class="rail-nav" id="rail-nav"></nav>
+    <button type="button" class="rail-logout" id="nav-logout" hidden title="Log out" data-tip="Log out" aria-label="Log out">
+      <span class="dock-scale"><span class="nav-ico t5" id="logout-ico"></span></span>
+    </button>
+  </aside>
+  <aside class="slide-panel" id="slide-panel" aria-label="Panel">
+    <div class="slide-top">
+      <button type="button" class="btn ghost sm" id="panel-close">Close</button>
+      <a class="brand" href="/account/acquisition/"><img alt="" src="/assets/logo.jpg" width="28" height="28">Roleflow</a>
+      <button type="button" class="menu-pin" id="menu-pin" aria-pressed="false" aria-expanded="false" aria-label="Pin menu" title="Pin menu">
+        <span class="nav-ico" id="menu-pin-ico"></span>
+      </button>
+    </div>
+    <div class="pinned-biz" id="panel-business">
+      <p class="side-kicker">This business</p>
+      <strong id="panel-biz-name">Loading…</strong>
+      <label class="biz-pick">Switch business
+        <select id="biz-pick" hidden aria-label="Switch business"></select>
+      </label>
+      <a class="side-link" id="nav-admin-home" href="/admin/" hidden>All businesses</a>
+    </div>
+    <nav class="slide-nav" id="slide-nav"></nav>
+    <button type="button" class="panel-logout" id="panel-logout" hidden>
+      <span class="nav-ico" id="panel-logout-ico"></span>
+      Log out
+    </button>
+  </aside>
+  </div>
+  <div class="app-main">
+    <header class="app-top">
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="slide-panel">Menu</button>
+      <div class="biz-center">
+        <span class="biz-avatar" id="biz-avatar" aria-hidden="true">R</span>
+        <p class="biz-name" id="page-sub">Loading…</p>
+      </div>
+      <h1 id="page-title" class="sr">Dashboard</h1>
+    </header>
+    <main class="wrap wide" id="app">
+      <div class="state" id="boot-state" role="status" aria-busy="true">
+        <span class="skel"></span>
+        <span class="skel short"></span>
+        <p>Loading the platform…</p>
+      </div>
+    </main>
+    <footer>&copy; Roleflow. 10% of growth generated. No setup fee. No retainer.</footer>
+  </div>
+</div>
+<nav class="app-nav" id="acq-nav" hidden aria-hidden="true" style="display:none !important">
+  <a href="#dashboard" data-tab="dashboard">Dashboard</a>
+  <a href="#agents" data-tab="agents">Agents</a>
+  <a href="#pipeline" data-tab="pipeline">CRM</a>
+  <a href="#reports" data-tab="reports">Reports</a>
+  <a href="#settings" data-tab="settings">Settings</a>
+  <a href="#inbox" data-tab="inbox" hidden>Inbox</a>
+  <a href="#voice" data-tab="voice" hidden>Voice notes</a>
+  <a href="#integrations" data-tab="integrations" hidden>Integrations</a>
+  <a href="#billing" data-tab="billing" hidden>Billing</a>
+  <a href="#prompts" data-tab="prompts" hidden>Prompts</a>
+  <a href="#controls" data-tab="controls" hidden>Rules</a>
+  <a href="#onboarding" data-tab="onboarding" hidden>Setup</a>
+  <a href="#overview" data-tab="overview" hidden>Agents</a>
+</nav>
+<div class="nav-backdrop" id="nav-backdrop" hidden></div>
+<div id="how-modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="how-title">
+    <h2 id="how-title">How it works</h2>
+    <p id="how-body"></p>
+    <button type="button" class="btn sm" id="how-close">Close</button>
+  </div>
+</div>
+<div id="accounts-modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
+    <h2 id="accounts-title">Manage accounts</h2>
+    <div id="accounts-body"></div>
+    <button type="button" class="btn ghost sm" id="accounts-close">Close</button>
+  </div>
+</div>
+<button type="button" class="assistant-fab" id="assistant-open" aria-expanded="false" aria-controls="assistant-panel" aria-label="Ask Roleflow">
+  <img src="/assets/logo.jpg" alt="" width="34" height="34">
+</button>
+<section class="assistant-panel" id="assistant-panel" hidden aria-label="Roleflow Assistant">
+  <header>
+    <span class="assistant-brand"><img src="/assets/logo.jpg" alt="" width="22" height="22"><strong>Roleflow Assistant</strong></span>
+    <button type="button" class="btn ghost sm" id="assistant-close">Close</button>
+  </header>
+  <div class="assistant-log" id="assistant-log"></div>
+  <form id="assistant-form">
+    <label class="sr" for="assistant-input">Ask how something works</label>
+    <input id="assistant-input" name="message" type="text" maxlength="800" placeholder="How do I connect Instagram?" autocomplete="off">
+    <button class="btn sm" type="submit">Send</button>
+  </form>
+</section>
+<aside id="agent-drawer" class="agent-drawer" hidden aria-label="Agent details">
+  <div id="agent-drawer-body"></div>
+</aside>
+<div id="toasts" class="toast-stack" aria-live="polite"></div>
+<script src="/supabase/config.js"></script>
+<script type="module" src="/acquire/app.js"></script>
+</body>
+</html>

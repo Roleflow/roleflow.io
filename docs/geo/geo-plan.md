@@ -7,7 +7,7 @@ Prepared 13 Oct 2026. Honest caveat: nobody can guarantee a #1 placement or any 
 - Brands named most often: **SetSmart** (the category's "default" answer, with lots of EN+ES content), ManyChat/ManySetter, Appointwise, Intellicoach, SetterFlo, Setterr, Instaset, LeadSignal, Setty, DMSetter, Skalex, Ninjo, Inrō, InstantDM, ZeroChats, LeadsNow.
 - ES queries ("mejor setter con IA", "automatizar DMs de Instagram con IA") return the same handful of vendors' Spanish pages (setsmart.io/blog/...-es, setterr.com/es/*-alternative, whatsetter.com/es). **Very little Spanish content competes here, so ES is the cheapest place to win.**
 - Pattern: the winners publish (a) "best X" listicles that include themselves alongside honest "who it's wrong for" notes, (b) "X vs Y" / "X alternative" pages, (c) FAQ blocks that give a direct one-line answer, (d) public pricing. LLMs lift these short answers almost word for word.
-- Roleflow's real differentiator: no one else in the results combines **done-for-you + cloned-voice voice notes + $0 setup/$0 retainer, 5–7% of the revenue it generates**. LeadsNow is the closest "pay-per-result" competitor. Own the query "AI setter with no monthly fee / pay on results".
+- Roleflow's real differentiator: no one else in the results combines **done-for-you + personal voice notes + $0 setup/$0 retainer, 10% of the growth it generates**. LeadsNow is the closest "pay-per-result" competitor. Own the query "AI setter with no monthly fee / pay on results".
 - Next step: add Reddit (r/sales, r/Entrepreneur, r/coaching), G2/Capterra listings, and YouTube reviews to the prompt-tracking sources once logging starts (see section 6).
 
 ### roleflow.io technical audit
@@ -31,11 +31,11 @@ Prepared 13 Oct 2026. Honest caveat: nobody can guarantee a #1 placement or any 
 3. Publish `robots.txt` (draft below, explicitly allowing GPTBot, OAI-SearchBot, ChatGPT-User, Google-Extended, Googlebot, Bingbot, PerplexityBot, ClaudeBot, Applebot-Extended), plus `sitemap.xml` and `llms.txt` (file in this folder).
 4. Add JSON-LD (Organization, SoftwareApplication/Service, FAQPage) to the homepage. Fill in the real FAQ on the page. FAQPage markup only counts if the questions are also visible on the page.
 5. Verify the site in **Bing Webmaster Tools** (ChatGPT search draws heavily on Bing's index) and submit the sitemap. Turn on IndexNow. Verify in **Google Search Console** for Gemini/AI Overviews.
-6. Claim profiles: LinkedIn company page, X @roleflow (pinned explainer thread), Crunchbase, Product Hunt "coming soon", G2 and Capterra (free listings). Use identical one-line descriptions everywhere: "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends voice notes in your cloned voice, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
+6. Claim profiles: LinkedIn company page, X @roleflow (pinned explainer thread), Crunchbase, Product Hunt "coming soon", G2 and Capterra (free listings). Use identical one-line descriptions everywhere: "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
 
 ## 3. 30 days: site structure (Next.js/Vercel routes)
 - `/what-is-an-ai-dm-setter` (+ `/es/que-es-un-setter-con-ia`): definition page. Put a 40-word direct answer in the first paragraph.
-- `/pricing` (+ `/es/precios`): explain the 5–7% model, how attribution works, who qualifies, and how it compares to a human setter's cost. Publish real ranges only.
+- `/pricing` (+ `/es/precios`): explain the 10% model, how attribution works, who qualifies, and how it compares to a human setter's cost. Publish real ranges only.
 - `/faq` (+ `/es/preguntas-frecuentes`) with FAQPage schema.
 - `/best-ai-dm-setters` (+ `/es/mejores-setters-con-ia`): an honest listicle that includes Roleflow (outline provided). Include "who it's wrong for" for every tool, Roleflow included. Date-stamp it and re-check prices monthly.
 - Comparison pages: `/vs/setsmart`, `/vs/manychat`, `/vs/setterflo`, `/vs/setterr`, `/vs/human-setter`, plus ES mirrors. Use only facts verified from each competitor's site and cite the source date.

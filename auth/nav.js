@@ -12,5 +12,5 @@ if (isConfigured()) {
   session = data.session;
 }
 if (onboardingHash(window.location.hash)) {
-  window.location.replace(session ? "/account/" : "/login/?next=/account/");
+  window.location.replace(session ? "/account/acquisition/?onboarding=1" : "/login/?next=/account/");
 }

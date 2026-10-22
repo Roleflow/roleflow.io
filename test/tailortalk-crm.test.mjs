@@ -44,6 +44,9 @@ assert.equal(usernameOf({ integration: "instagram", lead_contact: "555****12" })
 assert.equal(usernameOf({ integration: "whatsapp", lead_contact: "+15551212" }), null);
 assert.equal(usernameOf({ integration: "instagram", username: "@kept", lead_contact: "other" }), "kept");
 assert.equal(usernameOf({ integration: "web", lead_contact: "visitor" }), null);
+assert.equal(usernameOf({ integration: "instagram", username: "ada.coach", lead_contact: null }), "ada.coach");
+assert.equal(usernameOf({ integration: "instagram", lead_contact: "178414058221234" }), null);
+assert.match(leadSource, /often null/);
 
 const empty = computeStats([], now);
 assert.equal(empty.conversion_rate, null);
@@ -91,6 +94,39 @@ assert.doesNotMatch(fn, /get_contacts response had no contacts array/);
 assert.doesNotMatch(fn, /username:\s*name/);
 assert.doesNotMatch(fn, /service\.tailortalk\.ai/);
 assert.doesNotMatch(fn, /message_count/);
+assert.match(fn, /acq_tt_apply_batch/);
+assert.match(fn, /acq_tt_businesses_for_tt_agent/);
+assert.match(fn, /tailortalk_agent_id/);
+assert.match(fn, /limit 200 is the API maximum/);
+assert.match(fn, /detail: "summary"/);
+
+const facts = read("supabase/migrations/20261021220000_tailortalk_facts.sql");
+assert.match(facts, /'\*\/5 \* \* \* \*'/);
+assert.match(facts, /tailortalk-sync-hourly/);
+
+const { summaryRow } = await import("../supabase/functions/tailortalk-sync/crm.js");
+const summary = summaryRow({
+  id: "lead-2",
+  lead_name: "Ada",
+  lead_contact: null,
+  username: "ada.coach",
+  integration: "instagram",
+  lead_status: "warm",
+  is_converted: false,
+  category: "sales",
+  last_message_time: "2026-10-21T12:00:00Z",
+  total_followups: 1,
+  chat_history: [{ role: "user", content: "hidden" }],
+  lead_attributes: { budget: "8k", voice_note_slot: "gap_building" }
+}, Date.parse("2026-10-21T12:00:00Z"));
+assert.equal(summary.detail, "summary");
+assert.equal(summary.handle, "ada.coach");
+assert.equal(summary.contact, "");
+assert.equal(summary.messages, null);
+assert.deepEqual(summary.attributes, {});
+assert.equal(summary.lead_status, "warm");
+assert.equal(summary.stage, "qualified");
+assert.equal(summaryRow({ id: "lead-3", is_converted: true, integration: "instagram" }).lead_status, "converted");
 
 const registry = read("supabase/migrations/20261014180000_tailortalk_registry.sql");
 assert.match(registry, /tailortalk_agent_id/);
@@ -119,7 +155,9 @@ assert.match(adminPage, /href="\/businesses\/">Businesses/);
 assert.match(adminPage, /href="\/account\/#profile">Your account/);
 assert.doesNotMatch(adminPage, /#clients|#publish|CRM\/Insights/);
 assert.match(read("auth/site.css"), /\.admin-tabs\[hidden\]\{display:none !important\}/);
-assert.match(read("admin/admin.js"), /location\.replace\("\/businesses\/"\)/);
+assert.match(read("admin/admin.js"), /renderAcquisitionRoster/);
+assert.match(read("admin/acquisition-admin.js"), /Roleflow Setter Engine/);
+assert.doesNotMatch(read("admin/acquisition-admin.js"), /tailortalk/i);
 assert.match(read("admin/crm.js"), /No source was returned for these leads/);
 assert.match(read("admin/crm.js"), /Copy section/);
 assert.match(read("admin/crm.js"), /Prompt version history/);
@@ -129,9 +167,9 @@ assert.match(read("admin/crm.js"), /id: "crm-confirm"/);
 assert.match(read("admin/crm.js"), /action: "mark_booked"/);
 assert.match(read("admin/crm.js"), /action: "send_template"/);
 assert.match(read("admin/crm.js"), /Message history is not included/);
-const crmLiterals = [...read("admin/crm.js").matchAll(/"([^"\\]|\\.)*"/g)].map((match) => match[0]);
-const branded = crmLiterals.filter((text) => /tailortalk/i.test(text) && !/tailortalk-sync|tailortalk_/.test(text));
-assert.deepEqual(branded, []);
+assert.doesNotMatch(read("admin/crm.js"), /tailortalk/i);
+assert.match(read("admin/crm.js"), /engine_registry/);
+assert.match(read("admin/crm.js"), /setter-engine/);
 assert.match(read("admin/crm.js"), /id: "crm-link-" \+ agent\.id/);
 assert.match(read("admin/crm.js"), /client_id: select\.value \|\| null/);
 assert.doesNotMatch(read("admin/crm.js"), /token_encrypted/);
@@ -169,7 +207,16 @@ const migrationNames = [
   "20261018133520_hq_station_revenue_back_office.sql",
   "20261018140000_workforce_stations.sql",
   "20261019103000_workforce_office_stations.sql",
-  "20261019140000_office_editor.sql"
+  "20261019140000_office_editor.sql",
+  "20261021120000_acquisition_pipeline.sql",
+  "20261021140000_conversation_engine.sql",
+  "20261021160000_pgcrypto_schema.sql",
+  "20261021180000_tailortalk_provider.sql",
+  "20261021200000_live_acquisition.sql",
+  "20261021220000_tailortalk_facts.sql",
+  "20261021230000_engine_outbox.sql",
+  "20261021240000_diego_setter.sql",
+  "20261022060000_assistant_turns.sql"
 ];
 assert.deepEqual(
   migrationNames,

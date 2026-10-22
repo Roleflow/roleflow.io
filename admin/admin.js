@@ -2,8 +2,12 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
+import { renderAcquisitionRoster } from "./acquisition-admin.js";
+import { bindAssistant } from "../acquire/assistant.js";
 
 bindShell();
+let assistantClient = null;
+bindAssistant(() => ({ supabase: assistantClient, businessId: "" }));
 
 const hello = document.getElementById("admin-hello");
 const app = document.getElementById("admin-app");
@@ -45,13 +49,14 @@ if (arriving.type === "recovery") {
   hello.textContent = "Add the Supabase keys in supabase/config.js.";
   showMessage("Paste SUPABASE_URL and SUPABASE_ANON_KEY into supabase/config.js, then refresh.");
 } else {
-  const supabase = getSupabase();
+    const supabase = getSupabase();
+    assistantClient = supabase;
   const resolved = await resolveSession(supabase, window.location.href);
   if (!resolved.session) {
     const notice = resolved.errorMessage;
     window.location.replace(notice
       ? "/signup/?mode=login&notice=" + encodeURIComponent(notice)
-      : "/login/?next=/businesses/");
+      : "/login/?next=/admin/");
   } else {
     clearAuthParams();
     clearCallbackMemory();
@@ -79,7 +84,12 @@ if (arriving.type === "recovery") {
         markNav();
         await renderApplications(supabase, user, { app, hello });
       } else {
-        window.location.replace("/businesses/");
+        hello.textContent = "Signed in as " + (user.email || "admin") + ".";
+        hideBoot();
+        const title = document.getElementById("admin-title");
+        if (title) title.textContent = "Your businesses";
+        markNav();
+        await renderAcquisitionRoster(supabase, app);
       }
     }
   }

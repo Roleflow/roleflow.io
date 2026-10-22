@@ -333,8 +333,9 @@ deno_version = 2
 [functions.generate-setter-prompt]
 verify_jwt = true
 
-# tailortalk-sync checks the caller itself. verify_jwt is off so the hourly
+# tailortalk-sync checks the caller itself. verify_jwt is off so the
 # pg_cron job can send TAILORTALK_CRON_SECRET instead of a user JWT.
+# The job name is still tailortalk-sync-hourly. It runs every 5 minutes.
 [functions.tailortalk-sync]
 verify_jwt = false
 
@@ -346,6 +347,34 @@ verify_jwt = true
 # The gateway still requires the project publishable key in the apikey header.
 [functions.agent-hq]
 verify_jwt = false
+
+# acquisition-bot checks a per-business worker key or the service role.
+[functions.acquisition-bot]
+verify_jwt = false
+
+# acq-tailortalk checks the acquisition cron secret, a user JWT, or the
+# per-business webhook secret itself. The setter engine cannot send a user JWT.
+# An optional cron bearer is an alternate for action "sync".
+[functions.acq-tailortalk]
+verify_jwt = false
+
+# setter-engine is what the browser and the outbox assistant call.
+# It checks a user JWT, an admin JWT, or ENGINE_OUTBOX_SECRET itself.
+[functions.setter-engine]
+verify_jwt = false
+
+# roleflow-acquisition checks webhook signatures, OAuth state, user JWTs,
+# and the cron secret itself. Instagram and Google cannot send a user JWT.
+# Conversation replies: LLM_PROVIDER=xai (default), XAI_API_KEY, optional
+# XAI_MODEL (default grok-4.3) against https://api.x.ai/v1.
+# Alternatives: OPENAI_API_KEY / OPENAI_MODEL, or GEMINI_API_KEY / GEMINI_MODEL.
+[functions.roleflow-acquisition]
+verify_jwt = false
+
+# roleflow-assistant answers with the caller's JWT and XAI_API_KEY.
+# The key stays in the function environment. verify_jwt stays on.
+[functions.roleflow-assistant]
+verify_jwt = true
 
 [analytics]
 enabled = false

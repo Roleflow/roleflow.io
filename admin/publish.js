@@ -15,7 +15,7 @@ function el(tag, attrs, children) {
 }
 
 function quiet(message) {
-  return String(message || "").replace(/tailortalk|zerochats/ig, "the setter service");
+  return String(message || "").replace(/zerochats/ig, "the setter service");
 }
 
 function when(value) {
@@ -138,7 +138,7 @@ export async function mountPublish(supabase, agent, host) {
   panel.append(regenMsg);
 
   const sections = sectionMap(row);
-  const sectionList = globalThis.ROLEFLOW_ONBOARDING_CONFIG?.TAILORTALK_SECTIONS || [];
+  const sectionList = globalThis.ROLEFLOW_ONBOARDING_CONFIG?.SETTER_SECTIONS || [];
   if (sectionList.length && Object.keys(sections).length) {
     panel.append(el("p", { class: "step-desc" }, ["Copy one section at a time, then publish it from the connector."]));
     sectionList.forEach((section) => {

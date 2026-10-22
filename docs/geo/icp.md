@@ -2,7 +2,7 @@
 Source: roleflow.io homepage (single-page site; no separate pricing/about/customers/use-case pages found). [I] = inference.
 
 ## Product
-Done-for-you Instagram DM system: answers every lead in seconds, sends AI voice notes in the owner's cloned voice, auto follow-ups, books qualified leads on calendar. Roleflow builds and runs it. Pricing: $0 setup, $0 retainer, 5–7% of revenue it generates (rate set on demo call). Instagram DMs only.
+Done-for-you Instagram DM system: answers every lead in seconds, sends AI personal voice notes the owner records, auto follow-ups, books qualified leads on calendar. Roleflow builds and runs it. Pricing: $0 setup, $0 retainer, 10% of growth it generates (rate set on demo call). Instagram DMs only.
 
 ## Qualification (stated on site)
 - >20 DMs/day
@@ -31,7 +31,7 @@ Titles/self-labels: Founder, CEO, Coach, Business Coach, Online Coach, Mentor, C
 - Replies in seconds, 24/7
 - Personal voice notes in your own voice
 - Auto follow-ups + booked calls
-- $0 upfront, pay only on results (5–7%)
+- $0 upfront, pay only on results (10%)
 - Fully built and run for you
 
 ## Likely objections [I unless noted]
