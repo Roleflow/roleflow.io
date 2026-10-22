@@ -1,19 +1,22 @@
 const NS = "http://www.w3.org/2000/svg";
 const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
 
+const SCENE_W = 1080;
+const SCENE_H = 560;
+
 const OUTBOUND = [
-  { key: "engagement_warmup", name: "Engagement Warm-Up", kind: "role", x: 540, y: 128, scale: 1.24 },
-  { key: "icp_acquisition", name: "ICP Target Acquisition", kind: "role", x: 188, y: 176, scale: 1.34 },
-  { key: "personalised_outreach", name: "Personalised Outreach", kind: "role", x: 892, y: 176, scale: 1.34 },
-  { key: "manager", name: "Outbound Manager", kind: "manager", x: 540, y: 336, scale: 1.3 }
+  { key: "engagement_warmup", name: "Engagement Warm-Up", kind: "role", x: 540, y: 150, scale: 1.14 },
+  { key: "icp_acquisition", name: "ICP Target Acquisition", kind: "role", x: 196, y: 178, scale: 1.16 },
+  { key: "personalised_outreach", name: "Personalised Outreach", kind: "role", x: 884, y: 178, scale: 1.16 },
+  { key: "manager", name: "Outbound Manager", kind: "manager", x: 540, y: 412, scale: 1.16 }
 ];
 
 const INBOUND = [
-  { key: "qualification", name: "Qualification", kind: "role", x: 360, y: 124, scale: 1.08 },
-  { key: "conversation_recovery", name: "Follow-up / Recovery", kind: "role", x: 720, y: 124, scale: 1.08 },
-  { key: "comment_to_dm", name: "Comment-to-DM", kind: "role", x: 132, y: 186, scale: 1.08 },
-  { key: "appointment_booking", name: "Booking & Show-up", kind: "role", x: 948, y: 186, scale: 1.08 },
-  { key: "manager", name: "Inbound Manager", kind: "manager", x: 540, y: 340, scale: 1.16 }
+  { key: "qualification", name: "Qualification", kind: "role", x: 360, y: 148, scale: 1.02 },
+  { key: "conversation_recovery", name: "Follow-up / Recovery", kind: "role", x: 720, y: 148, scale: 1.02 },
+  { key: "comment_to_dm", name: "Comment-to-DM", kind: "role", x: 140, y: 182, scale: 1.02 },
+  { key: "appointment_booking", name: "Booking & Show-up", kind: "role", x: 940, y: 182, scale: 1.02 },
+  { key: "manager", name: "Inbound Manager", kind: "manager", x: 540, y: 416, scale: 1.1 }
 ];
 
 const LOOK = {
@@ -190,7 +193,7 @@ function officeCard(ui, spec, kind) {
 }
 
 function sceneSvg(ui, specs, kind) {
-  const svg = node("svg", { class: "office-svg", viewBox: "0 0 1080 460", role: "img", "aria-label": kind === "inbound" ? "Inbound office" : "Outbound office" });
+  const svg = node("svg", { class: "office-svg", viewBox: "0 0 " + SCENE_W + " " + SCENE_H, role: "img", "aria-label": kind === "inbound" ? "Inbound office" : "Outbound office" });
   const defs = node("defs");
   const grad = node("linearGradient", { id: "office-grad", x1: "0", y1: "0", x2: "1", y2: "1" });
   grad.append(node("stop", { offset: "0", "stop-color": "#7B4DFF" }));
@@ -199,16 +202,9 @@ function sceneSvg(ui, specs, kind) {
   defs.append(grad);
   svg.append(defs);
   svg.append(floorArt());
-  svg.append(wallArt());
-  if (kind === "inbound") {
-    svg.append(plant(46, 400));
-    svg.append(plant(1034, 400));
-    svg.append(lamp(1010, 78));
-  } else {
-    svg.append(plant(46, 400));
-    svg.append(plant(1034, 400));
-    svg.append(lamp(1008, 78));
-  }
+  svg.append(plant(64, 500));
+  svg.append(plant(1016, 500));
+  svg.append(lamp(1036, 468));
   specs.forEach((spec) => svg.append(stationArt(ui, spec, kind)));
   return svg;
 }
@@ -236,17 +232,10 @@ function stationArt(ui, spec, kind) {
   return slot;
 }
 
-function wallArt() {
-  const g = node("g", { "aria-hidden": "true" });
-  g.append(node("rect", { x: "0", y: "0", width: "1080", height: "78", fill: "#0A1226" }));
-  g.append(node("rect", { x: "0", y: "76", width: "1080", height: "2", fill: "#243155" }));
-  return g;
-}
-
 function floorArt() {
   const g = node("g", { "aria-hidden": "true" });
-  g.append(node("rect", { x: "0", y: "0", width: "1080", height: "460", fill: "#101A33" }));
-  for (let row = 0; row < 8; row++) {
+  g.append(node("rect", { x: "0", y: "0", width: String(SCENE_W), height: String(SCENE_H), fill: "#101A33" }));
+  for (let row = 0; row < 10; row++) {
     for (let col = 0; col < 14; col++) {
       const x = 16 + col * 76;
       const y = 18 + row * 54;
@@ -317,16 +306,21 @@ function personArt(look, mode) {
 
 function bubbleArt(spec) {
   const text = spec.mode === "empty" ? "Needs setup" : (spec.action || "No activity yet");
-  const label = clip(text, 28);
-  const width = Math.max(96, label.length * 6.3 + 22);
+  const lines = bubbleLines(text);
+  const longest = lines.reduce((max, line) => Math.max(max, line.length), 0);
+  const width = Math.max(108, longest * 6.6 + 28);
+  const height = lines.length > 1 ? 40 : 24;
+  const top = -72 - height;
   const live = spec.mode !== "empty" && spec.action ? " live" : " quiet";
+  const fill = spec.action && spec.mode !== "empty" ? "#EEF1FA" : "#9AA6C6";
   const g = node("g", { class: "desk-bubble" + live });
-  g.append(node("rect", { x: String(-width / 2), y: "-84", width: String(width), height: "22", rx: "11", fill: "#0A1226" }));
-  g.append(node("text", {
-    x: "0", y: "-69", "text-anchor": "middle",
-    fill: spec.action && spec.mode !== "empty" ? "#EEF1FA" : "#9AA6C6",
-    "font-size": "11", "font-family": "Instrument Sans, sans-serif", "font-weight": "500"
-  }, label));
+  g.append(node("rect", { x: String(-width / 2), y: String(top), width: String(width), height: String(height), rx: "12", fill: "#0A1226" }));
+  lines.forEach((line, index) => {
+    g.append(node("text", {
+      x: "0", y: String(top + 16 + index * 15), "text-anchor": "middle",
+      fill: fill, "font-size": "11", "font-family": "Instrument Sans, sans-serif", "font-weight": "500"
+    }, line));
+  });
   return g;
 }
 
@@ -395,9 +389,26 @@ function nameLines(name) {
   return rest ? [line, rest] : [name];
 }
 
-function clip(text, max) {
-  const value = String(text || "");
-  return value.length > max ? value.slice(0, max - 1) + "…" : value;
+function bubbleLines(text) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (value.length <= 24) return [value];
+  const words = value.split(" ");
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const next = line ? line + " " + word : word;
+    if (line && next.length > 24) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  });
+  if (line) lines.push(line);
+  if (lines.length <= 2) return lines;
+  const mid = Math.ceil(value.length / 2);
+  let split = value.lastIndexOf(" ", mid);
+  if (split < 8) split = value.indexOf(" ", mid);
+  if (split < 0) return [value];
+  return [value.slice(0, split), value.slice(split + 1)];
 }
 
 function node(tag, attrs, text) {
