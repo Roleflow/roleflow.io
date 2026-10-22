@@ -182,7 +182,7 @@ function icpCard(row, data) {
     cap ? "Today " + countToday(row, data.settings) + " / " + cap : "Daily cap not set",
     activityLine([row.last_run_at, newestHeartbeat(data.workers)])
   ];
-  if (data.targetCount != null) lines.push(data.targetCount + " contacts at Target");
+  if (data.targetCount != null) lines.push("Profiles found today: " + countToday(row, data.settings));
   return agentCard("ICP Target Acquisition", status, lines);
 }
 
@@ -197,7 +197,7 @@ function warmupCard(warmup, outreach, data) {
     outreach && outreach.last_run_at,
     newestHeartbeat(data.workers)
   ]));
-  if (!data.ig || data.ig.status !== "connected") lines.push("Instagram not connected");
+  if (!data.ig || data.ig.status !== "connected") lines.push("Instagram: not connected");
   return agentCard("Warm-up and outreach", status, lines);
 }
 
@@ -254,11 +254,10 @@ function ownerLine(profile) {
   return email || name || "Owner not on file";
 }
 
-function instagramLine(ig, link) {
-  if (ig && ig.username && ig.status === "connected") return "Instagram @" + cleanHandle(ig.username);
-  if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram @" + cleanHandle(ig.username) + " · " + ig.status;
-  if (link && link.requested_handle) return "Instagram not connected · requested @" + cleanHandle(link.requested_handle);
-  return "Instagram not connected";
+function instagramLine(ig) {
+  if (ig && ig.username && ig.status === "connected") return "Instagram: @" + cleanHandle(ig.username);
+  if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram: @" + cleanHandle(ig.username);
+  return "Instagram: not connected";
 }
 
 function setterLinkLine(link, settings) {
@@ -321,8 +320,17 @@ function cleanHandle(value) {
 
 function when(value) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "never";
-  return date.toLocaleString();
+  const time = date.getTime();
+  if (Number.isNaN(time)) return "never";
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return minutes + " min ago";
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours + " h ago";
+  const days = Math.round(hours / 24);
+  if (days < 14) return days + " d ago";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function pill(label, kind) {

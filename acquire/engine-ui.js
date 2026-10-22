@@ -218,9 +218,8 @@ function paintSetterEngine(host, ctx) {
   const card = el("article", { class: "agent" });
   card.append(el("h3", { text: "Roleflow Setter Engine" }));
   card.append(el("p", { class: "mute", text: "Instagram DM engine" }));
-  const handle = link.requested_handle ? " · @" + link.requested_handle : "";
   const tested = link.last_test_error ? " · " + link.last_test_error : "";
-  card.append(el("p", { text: activationLabel(link.status) + handle + tested }));
+  card.append(el("p", { text: activationLabel(link.status) + tested }));
   card.append(el("p", { class: "mute", text: "The setter handles comment and story DMs, qualification, follow-ups, and booking. Enter the Instagram handle. An admin links the engine agent on the server. The access token is not shown again." }));
   card.append(el("p", { class: "mute", text: ENGINE_HINT }));
   if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));

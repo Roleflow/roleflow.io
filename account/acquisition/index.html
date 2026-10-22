@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 <link rel="stylesheet" href="/acquire/acquire.css">
 </head>
@@ -15,11 +15,13 @@
 <a class="skip" href="#app">Skip to the dashboard</a>
 <div class="app-shell">
   <aside class="icon-rail" id="icon-rail" aria-label="Sections">
-    <button type="button" class="rail-toggle" id="rail-toggle" aria-expanded="false" aria-controls="slide-panel" title="Open menu">
-      <span class="rail-glyph" aria-hidden="true"></span>
+    <button type="button" class="rail-pin" id="rail-toggle" aria-pressed="false" aria-expanded="false" aria-controls="slide-panel" title="Pin menu" data-tip="Pin menu" aria-label="Pin menu">
+      <span class="dock-scale"><span class="nav-ico t2" id="pin-ico"></span></span>
     </button>
     <nav class="rail-nav" id="rail-nav"></nav>
-    <button type="button" class="rail-logout" id="nav-logout" hidden title="Log out">Log out</button>
+    <button type="button" class="rail-logout" id="nav-logout" hidden title="Log out" data-tip="Log out" aria-label="Log out">
+      <span class="dock-scale"><span class="nav-ico t5" id="logout-ico"></span></span>
+    </button>
   </aside>
   <aside class="slide-panel" id="slide-panel" aria-label="Panel">
     <div class="slide-top">
@@ -39,11 +41,11 @@
   <div class="app-main">
     <header class="app-top">
       <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="slide-panel">Menu</button>
-      <div>
-        <p class="eyebrow">Roleflow</p>
-        <h1 id="page-title">Dashboard</h1>
-        <p class="hello" id="page-sub">Loading this business…</p>
+      <div class="biz-center">
+        <span class="biz-avatar" id="biz-avatar" aria-hidden="true">R</span>
+        <p class="biz-name" id="page-sub">Loading…</p>
       </div>
+      <h1 id="page-title" class="sr">Dashboard</h1>
     </header>
     <main class="wrap wide" id="app">
       <div class="state" id="boot-state" role="status" aria-busy="true">
@@ -55,7 +57,7 @@
     <footer>&copy; Roleflow. 10% of growth generated. No setup fee. No retainer.</footer>
   </div>
 </div>
-<nav class="app-nav" id="acq-nav" hidden aria-hidden="true">
+<nav class="app-nav" id="acq-nav" hidden aria-hidden="true" style="display:none !important">
   <a href="#dashboard" data-tab="dashboard">Dashboard</a>
   <a href="#agents" data-tab="agents">Agents</a>
   <a href="#pipeline" data-tab="pipeline">CRM</a>
@@ -85,10 +87,12 @@
     <button type="button" class="btn ghost sm" id="accounts-close">Close</button>
   </div>
 </div>
-<button type="button" class="assistant-fab" id="assistant-open" aria-expanded="false" aria-controls="assistant-panel">Ask Roleflow</button>
+<button type="button" class="assistant-fab" id="assistant-open" aria-expanded="false" aria-controls="assistant-panel" aria-label="Ask Roleflow">
+  <img src="/assets/logo.jpg" alt="" width="34" height="34">
+</button>
 <section class="assistant-panel" id="assistant-panel" hidden aria-label="Roleflow Assistant">
   <header>
-    <strong>Roleflow Assistant</strong>
+    <span class="assistant-brand"><img src="/assets/logo.jpg" alt="" width="22" height="22"><strong>Roleflow Assistant</strong></span>
     <button type="button" class="btn ghost sm" id="assistant-close">Close</button>
   </header>
   <div class="assistant-log" id="assistant-log"></div>
@@ -98,6 +102,9 @@
     <button class="btn sm" type="submit">Send</button>
   </form>
 </section>
+<aside id="agent-drawer" class="agent-drawer" hidden aria-label="Agent details">
+  <div id="agent-drawer-body"></div>
+</aside>
 <div id="toasts" class="toast-stack" aria-live="polite"></div>
 <script src="/supabase/config.js"></script>
 <script type="module" src="/acquire/app.js"></script>

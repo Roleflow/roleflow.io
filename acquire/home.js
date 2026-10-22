@@ -1,34 +1,52 @@
+import { renderOffice } from "./office.js";
+
 const GROUPS = [
-  { label: "Onboarding", items: [{ tab: "onboarding", label: "Setter questions", color: "#FF8A3D", mark: "On" }] },
+  { label: "Onboarding", items: [{ tab: "onboarding", label: "Setter questions", icon: "clipboard", tone: "t1" }] },
   { label: "Strategy", items: [
-    { tab: "links", label: "Sales links", color: "#C0409A", mark: "Lk" },
-    { tab: "content", label: "Value content", color: "#E8B04A", mark: "Vc" }
+    { tab: "links", label: "Sales links", icon: "link", tone: "t2" },
+    { tab: "content", label: "Value content", icon: "folder", tone: "t3" }
   ] },
   { label: "AI Workforce", items: [
-    { tab: "outbound", label: "Outbound Manager", color: "#FF8A3D", mark: "Out" },
-    { tab: "inbound", label: "Inbound Manager", color: "#C0409A", mark: "In" },
-    { tab: "pipeline", label: "CRM", color: "#E8B04A", mark: "CRM" }
+    { tab: "outbound", label: "Outbound Manager", icon: "send", tone: "t4" },
+    { tab: "inbound", label: "Inbound Manager", icon: "inbox", tone: "t5" },
+    { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" }
   ] },
   { label: "Analysis", items: [
-    { tab: "stats", label: "Stats", color: "#FF8A3D", mark: "St" },
-    { tab: "performance", label: "Performance", color: "#C0409A", mark: "Pf" }
+    { tab: "stats", label: "Stats", icon: "chart", tone: "t2" },
+    { tab: "performance", label: "Performance", icon: "trend", tone: "t3" }
   ] },
   { label: "Settings", items: [
-    { tab: "configuration", label: "Configuration", color: "#9AA6C6", mark: "Cf" },
-    { tab: "team", label: "Team", color: "#E8B04A", mark: "Tm" }
+    { tab: "configuration", label: "Configuration", icon: "settings", tone: "t4" },
+    { tab: "team", label: "Team", icon: "userplus", tone: "t5" }
   ] }
 ];
 
 const RAIL = [
-  { tab: "dashboard", label: "Dashboard", color: "#E8B04A", mark: "D" },
-  { tab: "onboarding", label: "Onboarding", color: "#FF8A3D", mark: "O" },
-  { tab: "links", label: "Strategy", color: "#C0409A", mark: "S" },
-  { tab: "outbound", label: "Outbound", color: "#FF8A3D", mark: "W" },
-  { tab: "inbound", label: "Inbound", color: "#C0409A", mark: "I" },
-  { tab: "pipeline", label: "CRM", color: "#E8B04A", mark: "C" },
-  { tab: "stats", label: "Stats", color: "#FF8A3D", mark: "A" },
-  { tab: "configuration", label: "Settings", color: "#9AA6C6", mark: "G" }
+  { tab: "dashboard", label: "Dashboard", icon: "grid", tone: "t1" },
+  { tab: "onboarding", label: "Onboarding", icon: "clipboard", tone: "t2" },
+  { tab: "links", label: "Strategy", icon: "link", tone: "t3" },
+  { tab: "outbound", label: "Outbound", icon: "send", tone: "t4" },
+  { tab: "inbound", label: "Inbound", icon: "inbox", tone: "t5" },
+  { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" },
+  { tab: "stats", label: "Stats", icon: "chart", tone: "t2" },
+  { tab: "configuration", label: "Settings", icon: "settings", tone: "t3" }
 ];
+
+const ICONS = {
+  grid: ["M3 3h7v7H3z", "M14 3h7v7h-7z", "M14 14h7v7h-7z", "M3 14h7v7H3z"],
+  clipboard: ["M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2", "M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z", "M9 12h6", "M9 16h6"],
+  link: ["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"],
+  folder: ["M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"],
+  send: ["M14.5 21.5a.5.5 0 0 0 .94 0l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0 0 .94l7.9 3.16a2 2 0 0 1 1.12 1.11z", "M21.9 2.1 11 13"],
+  inbox: ["M22 12h-6l-2 3H10l-2-3H2", "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"],
+  users: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
+  chart: ["M3 3v18h18", "M18 17V9", "M13 17V5", "M8 17v-3"],
+  trend: ["M22 7 13.5 15.5l-5-5L2 17", "M16 7h6v6"],
+  settings: ["M12.2 2h-.4a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+  userplus: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M19 8v6", "M22 11h-6"],
+  pin: ["M12 17v5", "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"],
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"]
+};
 
 const HOW = {
   dashboard: "This is the home for one business. Accounts shows whether Instagram is connected. Alerts lists pauses, pending sync, and exceptions. Nothing here is a sample number.",
@@ -62,10 +80,12 @@ export function mountNav(ui) {
   if (!rail || !slide) return;
   const business = ui.state.businesses.find((row) => row.id === ui.state.businessId);
   if (name) name.textContent = business && business.agent_name ? business.agent_name : "This business";
+  paintGlyph("pin-ico", "pin");
+  paintGlyph("logout-ico", "logout");
   rail.replaceChildren();
   RAIL.forEach((item) => rail.append(navLink(ui, item, true)));
   slide.replaceChildren();
-  const home = ui.el("a", { href: "#dashboard", "data-tab": "dashboard" }, [mark("#E8B04A", "D"), "Dashboard"]);
+  const home = ui.el("a", { href: "#dashboard", "data-tab": "dashboard" }, [iconTile("grid", "t1"), "Dashboard"]);
   home.addEventListener("click", (event) => {
     event.preventDefault();
     ui.go("dashboard");
@@ -86,18 +106,18 @@ export function mountNav(ui) {
 
 export function renderIntro(ui, tab) {
   const copy = {
-    onboarding: ["Onboarding", "These questions build the setter. Saving them updates this business. The prompt preview is under the setter prompt page.", "onboarding"],
-    pipeline: ["CRM", "Cold, warm, hot, converted, and dead for this business.", "pipeline"],
-    prompts: ["Setter prompt", "Read the prompt the setter uses. Saving sends the change to the engine.", "onboarding"]
+    onboarding: ["Onboarding", "These questions build the setter. Saving them updates this business. The prompt preview is under the setter prompt page.", "onboarding", "clipboard"],
+    pipeline: ["CRM", "Cold, warm, hot, converted, and dead for this business.", "pipeline", "users"],
+    prompts: ["Setter prompt", "Read the prompt the setter uses. Saving sends the change to the engine.", "onboarding", "clipboard"]
   }[tab];
   if (!copy) return null;
-  return pageHeader(ui, copy[0], copy[1], copy[2]);
+  return pageHeader(ui, copy[0], copy[1], copy[2], copy[3]);
 }
 
 export function renderDashboard(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
   const step = ui.state.settings && ui.state.settings.onboarding_step;
-  wrap.append(pageHeader(ui, "Dashboard", "Accounts, alerts, and whether this business is running.", "dashboard"));
+  wrap.append(pageHeader(ui, "Dashboard", "Accounts, alerts, and whether this business is running.", "dashboard", "grid"));
   if (step && step !== "live") {
     const setup = ui.el("section", { class: "agent setup-call" });
     setup.append(ui.el("h3", { text: "Finish setup" }));
@@ -106,18 +126,18 @@ export function renderDashboard(ui) {
     wrap.append(setup);
   }
   const grid = ui.el("div", { class: "home-grid" });
-  const accounts = ui.el("section", { class: "home-card" });
+  const accounts = ui.el("section", { class: "home-card tone-accounts" });
   accounts.append(ui.el("h3", { text: "Accounts" }));
-  accounts.append(ui.el("p", { text: ui.instagramLine() }));
-  accounts.append(ui.el("p", { text: "WhatsApp is not connected." }));
+  accounts.append(ui.el("p", { class: "metric-value", text: ui.instagramLine() }));
+  accounts.append(ui.el("p", { class: "metric-note", text: "WhatsApp is not connected." }));
   const manage = ui.button("Manage accounts", () => openAccounts(ui));
   accounts.append(manage);
-  const alerts = ui.el("section", { class: "home-card" });
+  const alerts = ui.el("section", { class: "home-card tone-alerts" });
   alerts.append(ui.el("h3", { text: "Alerts" }));
   const pending = (ui.state.outbox || []).filter((row) => row.status === "pending").length;
   const exceptions = ui.state.exceptions.length;
-  alerts.append(ui.el("p", { text: exceptions ? exceptions + " open exceptions" : "No open exceptions" }));
-  alerts.append(ui.el("p", { text: pending === 1 ? "1 change syncing" : pending ? pending + " changes syncing" : "No changes waiting to sync" }));
+  alerts.append(ui.el("p", { class: "metric-value sm", text: exceptions ? exceptions + " open exceptions" : "No open exceptions" }));
+  alerts.append(ui.el("p", { class: "metric-note", text: pending === 1 ? "1 change syncing" : pending ? pending + " changes syncing" : "No changes waiting to sync" }));
   if (ui.setterPending()) alerts.append(ui.el("p", { text: "Setter link: Pending activation" }));
   const counts = ui.leadSnapshot();
   alerts.append(ui.el("p", { text: "Pipeline · Cold " + counts.cold + " · Warm " + counts.warm + " · Hot " + counts.hot + " · Converted " + counts.converted }));
@@ -137,10 +157,8 @@ export function renderDashboard(ui) {
 
 export function renderOutbound(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Outbound Manager", "ICP Target Acquisition, warm-up, and personalised outreach for this business.", "outbound"));
-  const agents = ui.el("div", { class: "agents" });
-  agents.append(ui.icpAgentCard(), ui.warmupAgentCard());
-  wrap.append(agents);
+  wrap.append(pageHeader(ui, "Outbound Manager", "ICP Target Acquisition, warm-up, and personalised outreach for this business.", "outbound", "send"));
+  wrap.append(renderOffice(ui, "outbound"));
   const queue = ui.el("section", { class: "agent" });
   queue.append(ui.el("h3", { text: "Drafted openers" }));
   const pending = (ui.state.outreach || []).filter((row) => row.decision === "pending" && row.opener);
@@ -155,12 +173,12 @@ export function renderOutbound(ui) {
 
 export function renderInbound(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Inbound Manager", "The Roleflow Setter Engine replies in Instagram DMs.", "inbound"));
-  wrap.append(ui.setterAgentCard());
+  wrap.append(pageHeader(ui, "Inbound Manager", "The Roleflow Setter Engine replies in Instagram DMs.", "inbound", "inbox"));
+  wrap.append(renderOffice(ui, "inbound"));
   const caps = ui.el("section", { class: "agent" });
-  caps.append(ui.el("h3", { text: "What this agent does" }));
-  ["Comment-to-DM", "Story DMs", "Qualification of budget, timeline, decision-maker, and fit", "Follow-ups and recovery", "Booking and show-up"].forEach((line) => caps.append(ui.el("p", { text: line })));
-  caps.append(ui.el("p", { text: ui.setterLinkText() }));
+  caps.append(ui.el("h3", { text: "Setter status" }));
+  caps.append(ui.el("p", { class: "metric-value sm", text: ui.setterLinkText() }));
+  caps.append(ui.el("p", { class: "metric-note", text: ui.instagramLine() }));
   if ((ui.state.outbox || []).some((row) => row.status === "pending")) caps.append(ui.el("p", { text: "Syncing…" }));
   wrap.append(caps);
   return wrap;
@@ -168,7 +186,7 @@ export function renderInbound(ui) {
 
 export function renderStats(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Stats", "Counts for the range you pick. Empty means that event has not happened.", "stats"));
+  wrap.append(pageHeader(ui, "Stats", "Counts for the range you pick. Empty means that event has not happened.", "stats", "chart"));
   const filters = ui.el("div", { class: "filters", role: "toolbar", "aria-label": "Date range" });
   [7, 30, 90].forEach((days) => {
     const chip = ui.el("button", { type: "button", "aria-pressed": ui.state.rangeDays === days ? "true" : "false" }, ["Last " + days + " days"]);
@@ -217,7 +235,7 @@ export function renderStats(ui) {
 
 export function renderPerformance(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Performance", "Where leads came from in the selected range.", "performance"));
+  wrap.append(pageHeader(ui, "Performance", "Where leads came from in the selected range.", "performance", "trend"));
   const rows = inRange(ui.state.targets, ui.state.rangeDays);
   const outboundSources = new Set(["competitor_followers", "keyword", "hashtag", "manual"]);
   const inboundSources = new Set(["instagram", "comment"]);
@@ -249,7 +267,7 @@ export function renderPerformance(ui) {
 
 export function renderLinks(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Sales links", "Links the setter can send in a conversation.", "links"));
+  wrap.append(pageHeader(ui, "Sales links", "Links the setter can send in a conversation.", "links", "link"));
   const settings = ui.state.settings || {};
   const form = ui.el("form", { class: "agent" });
   const booking = ui.field("Booking link", settings.booking_fallback_url || "https://calendar.app.google/8i1gomkozavqYU5b8");
@@ -275,7 +293,7 @@ export function renderLinks(ui) {
 
 export function renderContent(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Value content", "Recordings and files the setter can send.", "content"));
+  wrap.append(pageHeader(ui, "Value content", "Recordings and files the setter can send.", "content", "folder"));
   const files = ui.el("section", { class: "agent" });
   files.append(ui.el("h3", { text: "Files and video" }));
   files.append(ui.el("p", { text: "No video or file library is stored for this business yet. Voice notes below are the recordings the setter can send." }));
@@ -286,7 +304,7 @@ export function renderContent(ui) {
 
 export function renderTeam(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Team", "Who can open this business, and the link that adds an editor.", "team"));
+  wrap.append(pageHeader(ui, "Team", "Who can open this business, and the link that adds an editor.", "team", "userplus"));
   const business = ui.state.businesses.find((row) => row.id === ui.state.businessId);
   const code = business && business.join_code;
   const card = ui.el("section", { class: "agent" });
@@ -317,7 +335,7 @@ export function renderTeam(ui) {
 
 export function renderConfiguration(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, "Configuration", "The questions that control this setter.", "configuration"));
+  wrap.append(pageHeader(ui, "Configuration", "The questions that control this setter.", "configuration", "settings"));
   const layout = ui.el("div", { class: "config-layout" });
   const list = ui.el("div", { class: "config-list" });
   const search = ui.el("input", { type: "search", placeholder: "Search settings", "aria-label": "Search settings" });
@@ -520,13 +538,13 @@ function configBody(ui, key) {
   return card;
 }
 
-function pageHeader(ui, title, text, how) {
+function pageHeader(ui, title, text, how, iconName) {
   const card = ui.el("section", { class: "page-card" });
-  const copy = ui.el("div");
-  copy.append(ui.el("h2", { text: title }), ui.el("p", { text }));
+  const copy = ui.el("div", { class: "page-copy" });
+  copy.append(iconTile(iconName || "grid", "t1"), ui.el("div", {}, [ui.el("h2", { text: title }), ui.el("p", { text })]));
   const button = ui.button("How it works", () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
-  card.append(copy, button);
+  card.append(copy, button, ui.el("span", { class: "page-rule" }));
   return card;
 }
 
@@ -554,12 +572,16 @@ function openAccounts(ui) {
 
 function navLink(ui, item, rail) {
   const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab });
+  const tile = iconTile(item.icon, item.tone);
   if (rail) {
     link.dataset.tip = item.label;
     link.title = item.label;
-    link.append(mark(item.color, item.mark));
+    const scale = document.createElement("span");
+    scale.className = "dock-scale";
+    scale.append(tile);
+    link.append(scale);
   } else {
-    link.append(mark(item.color, item.mark), document.createTextNode(item.label));
+    link.append(tile, document.createTextNode(item.label));
   }
   link.addEventListener("click", (event) => {
     event.preventDefault();
@@ -568,12 +590,34 @@ function navLink(ui, item, rail) {
   return link;
 }
 
-function mark(color, text) {
+function iconTile(name, tone) {
   const node = document.createElement("span");
-  node.className = "nav-ico";
-  node.style.background = color;
-  node.textContent = text;
+  node.className = "nav-ico " + (tone || "t1");
+  node.append(glyph(name));
   return node;
+}
+
+function paintGlyph(id, name) {
+  const node = document.getElementById(id);
+  if (!node || node.childElementCount) return;
+  node.append(glyph(name));
+}
+
+function glyph(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.75");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  (ICONS[name] || ICONS.grid).forEach((d) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  });
+  return svg;
 }
 
 function inRange(rows, days, field) {

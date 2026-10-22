@@ -131,7 +131,7 @@ assert.match(read("admin/index.html"), /href="\/account\/#profile">Your account/
 assert.doesNotMatch(read("admin/index.html"), /#clients|#publish|CRM\/Insights/);
 assert.match(read("admin/admin.js"), /renderAcquisitionRoster/);
 assert.match(read("admin/admin.js"), /Go to your businesses/);
-assert.match(read("admin/acquisition-admin.js"), /Instagram not connected/);
+assert.match(read("admin/acquisition-admin.js"), /Instagram: not connected/);
 assert.match(read("admin/acquisition-admin.js"), /#dashboard/);
 assert.match(read("admin/acquisition-admin.js"), /\["Open"\]/);
 assert.match(read("admin/acquisition-admin.js"), /Pending activation/);

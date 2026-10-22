@@ -1,6 +1,8 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { bindAssistant } from "./assistant.js";
+import { bindDock } from "./dock.js";
+import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
 import {
   mountNav,
@@ -92,9 +94,10 @@ const state = {
 
 logoutBtn.addEventListener("click", () => logout());
 document.getElementById("nav-toggle").addEventListener("click", () => setPanel(!document.body.classList.contains("panel-open")));
-document.getElementById("rail-toggle").addEventListener("click", () => setPanel(!document.body.classList.contains("panel-open")));
-document.getElementById("panel-close").addEventListener("click", () => setPanel(false));
-document.getElementById("nav-backdrop").addEventListener("click", () => setPanel(false));
+bindDock({
+  setOpen: setPanel,
+  isMobile: () => window.matchMedia("(max-width: 860px)").matches
+});
 document.getElementById("how-close").addEventListener("click", () => { document.getElementById("how-modal").hidden = true; });
 document.getElementById("accounts-close").addEventListener("click", () => { document.getElementById("accounts-modal").hidden = true; });
 document.getElementById("acq-nav").addEventListener("click", (event) => {
@@ -341,6 +344,11 @@ function pageUi() {
     leadSnapshot,
     instagramLine,
     setterLinkText,
+    countToday,
+    roleRow,
+    roleSwitch,
+    setterSwitch,
+    when,
     setterPending: () => usesEngine() && (!(state.setterLink) || state.setterLink.status !== "connected"),
     icpAgentCard,
     warmupAgentCard,
@@ -851,7 +859,7 @@ function icpAgentCard() {
   card.append(el("p", { text: activityLine([row.last_run_at].concat((state.workers || []).map((item) => item.last_heartbeat_at))) }));
   card.append(el("p", { text: instagramLine() }));
   card.append(el("p", { text: workerLine() }));
-  if (provisioned) card.append(el("p", { text: state.targets.filter((item) => item.stage === "target").length + " contacts at Target" }));
+  if (provisioned) card.append(el("p", { text: "Profiles found today: " + countToday(row) }));
   else card.append(el("p", { text: "Not provisioned" }));
   return card;
 }
@@ -960,11 +968,9 @@ function activityLine(values) {
 
 function instagramLine() {
   const ig = state.ig;
-  if (ig && ig.username && ig.status === "connected") return "Instagram @" + String(ig.username).replace(/^@/, "");
-  if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram @" + String(ig.username).replace(/^@/, "") + " · " + ig.status;
-  const handle = state.setterLink && state.setterLink.requested_handle;
-  if (handle) return "Instagram not connected · requested @" + String(handle).replace(/^@/, "");
-  return "Instagram not connected";
+  if (ig && ig.username && ig.status === "connected") return "Instagram: @" + String(ig.username).replace(/^@/, "");
+  if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram: @" + String(ig.username).replace(/^@/, "");
+  return "Instagram: not connected";
 }
 
 function workerLine() {
@@ -1414,6 +1420,7 @@ function setPanel(open) {
 }
 
 function go(tab) {
+  closeOffice();
   if (tab === "settings") tab = "configuration";
   if (tab === "agents" || tab === "overview") tab = "outbound";
   if (tab === "reports") tab = "stats";
@@ -1454,10 +1461,10 @@ function markTab() {
   };
   if (title) title.textContent = names[state.tab] || "Dashboard";
   const business = state.businesses.find((row) => row.id === state.businessId);
-  if (sub) {
-    const name = business && business.agent_name ? business.agent_name : "This business";
-    sub.textContent = name + " · " + instagramLine();
-  }
+  const name = business && business.agent_name ? business.agent_name : "This business";
+  if (sub) sub.textContent = name;
+  const avatar = document.getElementById("biz-avatar");
+  if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "R";
   document.title = (names[state.tab] || "Dashboard") + " · Roleflow";
 }
 
@@ -1514,8 +1521,17 @@ function el(tag, attrs, children) {
 function when(value) {
   if (!value) return "never";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "never";
-  return date.toLocaleString();
+  const time = date.getTime();
+  if (Number.isNaN(time)) return "never";
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return minutes + " min ago";
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours + " h ago";
+  const days = Math.round(hours / 24);
+  if (days < 14) return days + " d ago";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function shortTime(value, fallback) {
