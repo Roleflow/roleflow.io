@@ -376,6 +376,10 @@ verify_jwt = false
 [functions.roleflow-assistant]
 verify_jwt = true
 
+# roleflow-studio scores and edits the business brief. verify_jwt stays on.
+[functions.roleflow-studio]
+verify_jwt = true
+
 [analytics]
 enabled = false
 port = 54327
