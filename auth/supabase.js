@@ -46,7 +46,9 @@ export async function destinationAfterLogin(supabase, next) {
   }
   if (admin.data && (target === "/admin/hq" || target.startsWith("/admin/hq/") || target.startsWith("/admin/hq?"))) return target;
   if (admin.data && (target === "/admin" || target === "/admin/" || target.startsWith("/admin/") || target.startsWith("/admin#") || target.startsWith("/admin?"))) return target;
-  return admin.data ? "/admin/" : target;
+  if (admin.data) return "/admin/";
+  if (target === "/account/" || target === "/account") return "/account/acquisition/";
+  return target;
 }
 
 export function originPath(path) {

@@ -67,10 +67,16 @@ function businessCard(business, data) {
   const section = el("section", { class: "roster-biz" });
   const head = el("div", { class: "roster-head" });
   head.append(el("h2", { text: business.name || "Untitled business" }));
-  head.append(el("a", {
+  const actions = el("div", { class: "filters" });
+  actions.append(el("a", {
     class: "btn sm",
+    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#dashboard"
+  }, ["Open"]));
+  actions.append(el("a", {
+    class: "btn sm ghost",
     href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#pipeline"
-  }, ["Open CRM"]));
+  }, ["CRM"]));
+  head.append(actions);
   section.append(head);
   section.append(el("p", { class: "roster-meta", text: ownerLine(data.profile) }));
   section.append(el("p", { text: instagramLine(data.ig, data.link) }));

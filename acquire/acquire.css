@@ -43,7 +43,18 @@ table.leads tr:hover{background:rgba(192,64,154,.12)}
 .filters button[aria-pressed=true]{border-color:var(--m);background:rgba(192,64,154,.2)}
 .audit{display:grid;gap:8px;max-height:320px;overflow:auto}
 .audit article{border-top:1px solid var(--line);padding-top:8px}
-.roster{display:grid;gap:18px}
+body.platform{background:var(--bg)}
+body.platform .app-main{background:linear-gradient(180deg,rgba(232,176,74,.05),transparent 220px)}
+.eyebrow{margin:0;color:var(--gold);font-size:.75rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+.section-title{margin:8px 0 0;font-size:1.35rem}
+.platform-home{display:grid;gap:16px}
+.setup-call{border-color:var(--gold)}
+.snap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.snap article{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:16px}
+.snap span{display:block;color:var(--mute);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.snap strong{display:block;margin-top:6px;font:800 1.8rem/1 var(--h)}
+.agent-link{text-decoration:none;color:inherit}
+.filters a.btn{text-decoration:none}
 .roster-biz{background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:18px;display:grid;gap:8px;text-align:left}
 .roster-biz h2{font-size:1.45rem}
 .roster-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center}
@@ -68,4 +79,5 @@ table.leads tr:hover{background:rgba(192,64,154,.12)}
   .funnel-row{grid-template-columns:1fr}
   .biz-pick{min-width:0}
   .inbox{grid-template-columns:1fr}
+  .snap{grid-template-columns:repeat(2,minmax(0,1fr))}
 }

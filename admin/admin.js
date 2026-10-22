@@ -82,8 +82,6 @@ if (arriving.type === "recovery") {
       } else {
         hello.textContent = "Signed in as " + (user.email || "admin") + ".";
         hideBoot();
-        const headerApplications = document.getElementById("nav-applications");
-        if (headerApplications) headerApplications.hidden = false;
         const title = document.getElementById("admin-title");
         if (title) title.textContent = "Businesses";
         markNav();

@@ -15,12 +15,15 @@
 <div class="app-shell">
   <aside class="app-side" id="app-side">
     <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
-    <p class="side-kicker">Admin</p>
+    <p class="side-kicker">Platform</p>
     <nav class="app-nav" aria-label="Admin">
+      <a href="/admin/">Businesses</a>
+      <a id="nav-applications" href="/admin/#applications" hidden>Applications Tracker</a>
+    </nav>
+    <nav hidden aria-hidden="true">
       <a href="/admin/hq/">Agentic HQ</a>
       <a href="/account/acquisition/">Acquisition</a>
       <a href="/businesses/">Businesses</a>
-      <a id="nav-applications" href="/admin/#applications" hidden>Applications Tracker</a>
       <a href="/account/#profile">Your account</a>
     </nav>
     <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
@@ -30,6 +33,7 @@
     <header class="app-top">
       <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
       <div>
+        <p class="eyebrow">Roleflow</p>
         <h1 id="admin-title">Businesses</h1>
         <p class="hello" id="admin-hello">Loading…</p>
       </div>

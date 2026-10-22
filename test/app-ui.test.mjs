@@ -132,7 +132,8 @@ assert.doesNotMatch(read("admin/index.html"), /#clients|#publish|CRM\/Insights/)
 assert.match(read("admin/admin.js"), /renderAcquisitionRoster/);
 assert.match(read("admin/admin.js"), /Go to your businesses/);
 assert.match(read("admin/acquisition-admin.js"), /Instagram not connected/);
-assert.match(read("admin/acquisition-admin.js"), /Open CRM/);
+assert.match(read("admin/acquisition-admin.js"), /#dashboard/);
+assert.match(read("admin/acquisition-admin.js"), /\["Open"\]/);
 assert.match(read("admin/acquisition-admin.js"), /Pending activation/);
 assert.doesNotMatch(read("admin/acquisition-admin.js"), /tailortalk/i);
 assert.match(read("admin/crm.js"), /id: "crm-action-agent"|id="crm-action-agent"/);

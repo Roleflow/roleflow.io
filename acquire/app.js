@@ -25,7 +25,7 @@ const pick = document.getElementById("biz-pick");
 const logoutBtn = document.getElementById("nav-logout");
 const AUDIO_TYPES = new Set(["audio/webm", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/wav", "audio/ogg", "audio/x-m4a", "audio/m4a", "audio/aac", "audio/wave"]);
 const MAX_BYTES = 20 * 1024 * 1024;
-const TABS = ["overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding"];
+const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings"];
 const ENGINE_TABS = new Set(["inbox", "prompts", "integrations", "billing", "onboarding"]);
 
 const state = {
@@ -183,8 +183,13 @@ async function bootBusiness(id) {
     state.messages = messages.error ? [] : messages.data || [];
   }
   if (loaded) {
+    const step = state.settings && state.settings.onboarding_step;
+    if (step && step !== "live" && !location.hash) {
+      history.replaceState(null, "", location.pathname + location.search + "#onboarding");
+    }
     state.tab = tabFromHash();
-    sub.textContent = (business && business.agent_name ? business.agent_name + " · " : "") + "Personal voice notes. 10% of attributed growth.";
+    const adminHome = document.getElementById("nav-admin-home");
+    if (adminHome) adminHome.hidden = !state.isAdmin;
     paint();
   }
 }
@@ -259,11 +264,13 @@ function paint() {
     if (state.canEdit) banner.append(button("Resume", resumeInstagram));
     root.append(banner);
   }
-  if (state.tab === "overview") root.append(overview());
+  if (state.tab === "dashboard") root.append(dashboard());
+  if (state.tab === "agents" || state.tab === "overview") root.append(agentsHome());
   if (state.tab === "pipeline") root.append(pipeline());
   if (state.tab === "voice") root.append(voiceLibrary());
   if (state.tab === "reports") root.append(reports());
   if (state.tab === "controls") root.append(controls());
+  if (state.tab === "settings") root.append(settingsHome());
   if (ENGINE_TABS.has(state.tab)) {
     const host = el("div");
     root.append(host);
@@ -286,6 +293,86 @@ function engineCtx() {
     shareCents,
     uploadVoice: storeVoice
   };
+}
+
+function dashboard() {
+  const wrap = el("div", { class: "platform-home" });
+  const revenue = attributedCents(state.deals);
+  const share = shareCents(revenue, state.settings && state.settings.share_bps);
+  const show = showUpRate(state.bookings);
+  const cap = state.settings && state.settings.daily_cap;
+  const today = countToday(roleRow("icp_acquisition"));
+  const step = state.settings && state.settings.onboarding_step;
+  if (step && step !== "live") {
+    const setup = el("section", { class: "agent setup-call" });
+    setup.append(el("h3", { text: "Finish setup" }));
+    setup.append(el("p", { text: "Add the ICP, offer, Instagram connection, worker key, and voice notes. The CRM stays empty until a worker posts a profile or a setter syncs a lead." }));
+    setup.append(el("a", { class: "btn", href: "#onboarding" }, ["Continue setup"]));
+    wrap.append(setup);
+  }
+  const kpis = el("div", { class: "kpis" });
+  [
+    ["Today", cap ? today + " / " + cap : "Cap not set", "New targets against the daily cap"],
+    ["Booked calls", String(state.bookings.length), state.bookings.length ? (show.rate == null ? "No show-up data yet" : "Show-up " + percent(show.rate)) : "No calls booked yet"],
+    ["Attributed growth", money(revenue), revenue ? "Roleflow share " + money(share) : "No attributed revenue yet"],
+    ["Roleflow share", money(share), "10% of attributed growth"]
+  ].forEach(([label, value, note]) => {
+    const card = el("article", { class: "kpi" });
+    card.append(el("span", { text: label }), el("strong", { text: value }), el("em", { text: note }));
+    kpis.append(card);
+  });
+  wrap.append(kpis);
+  wrap.append(el("h2", { class: "section-title", text: "Pipeline" }));
+  const counts = leadSnapshot();
+  const snap = el("div", { class: "snap" });
+  [["Cold", counts.cold], ["Warm", counts.warm], ["Hot", counts.hot], ["Converted", counts.converted]].forEach(([label, value]) => {
+    const card = el("article", {});
+    card.append(el("span", { text: label }), el("strong", { text: String(value) }));
+    snap.append(card);
+  });
+  wrap.append(snap);
+  if (!counts.cold && !counts.warm && !counts.hot && !counts.converted) {
+    wrap.append(el("p", { class: "roster-note", text: "No leads yet. Scored profiles and setter conversations show up here as cold, warm, hot, or converted." }));
+  }
+  wrap.append(el("p", {}, [el("a", { class: "btn sm", href: "#pipeline" }, ["Open CRM"])]));
+  wrap.append(el("h2", { class: "section-title", text: "Agents" }));
+  wrap.append(implementedAgents());
+  if (state.activity.length) wrap.append(activityList(state.activity.slice(0, 5), "Latest activity"));
+  return wrap;
+}
+
+function agentsHome() {
+  const wrap = el("div", { class: "acq" });
+  wrap.append(el("p", { class: "roster-note", text: "These are the agents this business is running. Status, today's count, and the last activity come from this workspace." }));
+  wrap.append(implementedAgents());
+  return wrap;
+}
+
+function settingsHome() {
+  const wrap = el("div", { class: "acq" });
+  wrap.append(el("p", { class: "roster-note", text: "Instagram, the setter link, the worker key, and billing for this business." }));
+  const integrations = el("div");
+  const billing = el("div");
+  wrap.append(integrations, billing);
+  renderEngine("integrations", integrations, engineCtx());
+  renderEngine("billing", billing, engineCtx());
+  const more = el("div", { class: "filters" });
+  more.append(el("a", { class: "btn sm", href: "#controls" }, ["Daily cap and rules"]));
+  more.append(el("a", { class: "btn sm ghost", href: "#voice" }, ["Voice notes"]));
+  more.append(el("a", { class: "btn sm ghost", href: "#prompts" }, ["Setter prompts"]));
+  wrap.append(more);
+  return wrap;
+}
+
+function leadSnapshot() {
+  const counts = { cold: 0, warm: 0, hot: 0, converted: 0 };
+  const contacts = state.contacts || [];
+  const rows = contacts.length ? contacts : state.targets;
+  rows.forEach((row) => {
+    if (row.is_converted === true || row.lead_status === "converted") counts.converted += 1;
+    else if (counts[row.lead_status] != null) counts[row.lead_status] += 1;
+  });
+  return counts;
 }
 
 function overview() {
@@ -1280,15 +1367,47 @@ function go(tab) {
 }
 
 function markTab() {
+  const current = tabGroup(state.tab);
   document.querySelectorAll("#acq-nav a").forEach((link) => {
-    if (link.dataset.tab === state.tab) link.setAttribute("aria-current", "page");
+    if (link.dataset.tab === current) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  const title = document.getElementById("page-title");
+  const names = {
+    dashboard: "Dashboard",
+    agents: "Agents",
+    overview: "Agents",
+    pipeline: "CRM",
+    inbox: "CRM",
+    reports: "Reports",
+    settings: "Settings",
+    integrations: "Settings",
+    billing: "Settings",
+    controls: "Settings",
+    voice: "Settings",
+    prompts: "Settings",
+    onboarding: "Setup"
+  };
+  if (title) title.textContent = names[state.tab] || "Dashboard";
+  const business = state.businesses.find((row) => row.id === state.businessId);
+  if (sub) {
+    const name = business && business.agent_name ? business.agent_name : "This business";
+    sub.textContent = name + " · " + instagramLine();
+  }
+  document.title = (names[state.tab] || "Dashboard") + " · Roleflow";
+}
+
+function tabGroup(tab) {
+  if (tab === "overview" || tab === "agents") return "agents";
+  if (tab === "inbox") return "pipeline";
+  if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "voice" || tab === "prompts") return "settings";
+  return tab;
 }
 
 function tabFromHash() {
   const tab = location.hash.replace("#", "");
-  return TABS.includes(tab) ? tab : "overview";
+  if (tab === "overview") return "agents";
+  return TABS.includes(tab) ? tab : "dashboard";
 }
 
 function field(label, value, type) {

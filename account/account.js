@@ -70,7 +70,13 @@ if (arriving.type === "recovery") {
       } else {
         profile = profileRes.data;
         const adminPeek = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
-        if (adminPeek.data && !window.location.hash) {
+        const legacySetter = window.location.hash === "#legacy-setter";
+        if (!legacySetter && adminPeek.data) {
+          window.location.replace(window.location.hash === "#applications" ? "/admin/#applications" : "/admin/");
+        } else if (!legacySetter) {
+          const setup = window.location.hash.startsWith("#onboarding") ? "?onboarding=1#onboarding" : "";
+          window.location.replace("/account/acquisition/" + setup);
+        } else if (adminPeek.data && !window.location.hash) {
           window.location.replace("/admin/");
         } else {
         if (!profile) {

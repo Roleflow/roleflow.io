@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Acquisition · Roleflow</title>
+<title>Dashboard · Roleflow</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,27 +11,28 @@
 <link rel="stylesheet" href="/auth/site.css">
 <link rel="stylesheet" href="/acquire/acquire.css">
 </head>
-<body class="app">
-<a class="skip" href="#app">Skip to acquisition</a>
+<body class="app platform">
+<a class="skip" href="#app">Skip to the dashboard</a>
 <div class="app-shell">
   <aside class="app-side" id="app-side">
-    <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
-    <p class="side-kicker">Your account</p>
-    <nav class="app-nav" id="acq-nav" aria-label="Acquisition">
-      <a href="#overview" data-tab="overview">Agents</a>
-      <a href="#inbox" data-tab="inbox">Inbox</a>
-      <a href="#pipeline" data-tab="pipeline">Pipeline</a>
-      <a href="#voice" data-tab="voice">Voice notes</a>
+    <a class="brand" href="/account/acquisition/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
+    <p class="side-kicker">Platform</p>
+    <nav class="app-nav" id="acq-nav" aria-label="Platform">
+      <a href="#dashboard" data-tab="dashboard">Dashboard</a>
+      <a href="#agents" data-tab="agents">Agents</a>
+      <a href="#pipeline" data-tab="pipeline">CRM</a>
       <a href="#reports" data-tab="reports">Reports</a>
-      <a href="#integrations" data-tab="integrations">Integrations</a>
-      <a href="#billing" data-tab="billing">Billing</a>
-      <a href="#prompts" data-tab="prompts">Prompts</a>
-      <a href="#controls" data-tab="controls">Settings</a>
-      <a href="#onboarding" data-tab="onboarding">Setup</a>
+      <a href="#settings" data-tab="settings">Settings</a>
+      <a href="#inbox" data-tab="inbox" hidden>Inbox</a>
+      <a href="#voice" data-tab="voice" hidden>Voice notes</a>
+      <a href="#integrations" data-tab="integrations" hidden>Integrations</a>
+      <a href="#billing" data-tab="billing" hidden>Billing</a>
+      <a href="#prompts" data-tab="prompts" hidden>Prompts</a>
+      <a href="#controls" data-tab="controls" hidden>Rules</a>
+      <a href="#onboarding" data-tab="onboarding" hidden>Setup</a>
+      <a href="#overview" data-tab="overview" hidden>Agents</a>
     </nav>
-    <a class="side-link" href="/account/">Account</a>
-    <a class="side-link" href="/businesses/">Businesses</a>
-    <a class="side-link" href="/admin/hq/">Agentic HQ</a>
+    <a class="side-link" id="nav-admin-home" href="/admin/" hidden>All businesses</a>
     <button type="button" class="btn ghost sm" id="nav-logout" hidden>Log out</button>
   </aside>
   <div class="nav-backdrop" id="nav-backdrop" hidden></div>
@@ -39,18 +40,19 @@
     <header class="app-top">
       <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side">Sections</button>
       <div>
-        <h1>Client <span class="g">acquisition</span></h1>
-        <p class="hello" id="page-sub">Personal voice notes. 10% of the growth the system generates.</p>
+        <p class="eyebrow">Roleflow</p>
+        <h1 id="page-title">Dashboard</h1>
+        <p class="hello" id="page-sub">Loading this business…</p>
       </div>
-      <label class="biz-pick">Business
-        <select id="biz-pick" hidden aria-label="Choose a business"></select>
+      <label class="biz-pick">Switch business
+        <select id="biz-pick" hidden aria-label="Switch business"></select>
       </label>
     </header>
     <main class="wrap wide" id="app">
       <div class="state" id="boot-state" role="status" aria-busy="true">
         <span class="skel"></span>
         <span class="skel short"></span>
-        <p>Loading the pipeline…</p>
+        <p>Loading the platform…</p>
       </div>
     </main>
     <footer>&copy; Roleflow. 10% of growth generated. No setup fee. No retainer.</footer>

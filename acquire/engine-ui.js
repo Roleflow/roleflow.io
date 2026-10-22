@@ -349,7 +349,7 @@ function paintIntegrations(host, ctx) {
   const workers = state.workers || [];
   if (!workers.length) worker.append(el("p", { text: "No worker key yet." }));
   workers.forEach((row) => {
-    const line = el("p", { text: (row.label || "Worker") + " · " + row.status + " · " + (row.enabled ? "on" : "off") + " · " + row.key_prefix + "… · heartbeat " + ctx.when(row.last_heartbeat_at) });
+    const line = el("p", { text: (row.label || "Worker") + " · " + row.status + " · " + (row.enabled ? "on" : "off") + " · heartbeat " + ctx.when(row.last_heartbeat_at) });
     worker.append(line);
     if (state.canEdit && state.supabase) {
       worker.append(button(row.enabled ? "Turn worker off" : "Turn worker on", async () => {
@@ -678,7 +678,7 @@ function paintOnboarding(host, ctx) {
         await Promise.all(roles.map((role) => state.supabase.from("business_workforce").update({ status: "active" }).eq("agent_id", state.businessId).eq("role", role)));
         toast("This business is live.");
         await bootBusiness(state.businessId);
-        ctx.go("overview");
+        ctx.go("dashboard");
       }));
     }
   }

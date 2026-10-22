@@ -180,7 +180,7 @@ if (!drawer || !toggle) {
         return;
       }
       if (created.session) {
-        window.location.replace("/account/");
+        window.location.replace("/account/acquisition/");
         return;
       }
       signupOk.textContent = "Check your email to confirm the account, then log in.";
