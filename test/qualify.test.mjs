@@ -8,17 +8,22 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const ui = fs.readFileSync(path.join(root, "assets/qualify-ui.js"), "utf8");
 
-const ctas = [...homepage.matchAll(/<a\b[^>]*>Book your call<\/a>/g)].map((match) => match[0]);
-assert.equal(ctas.length, 2);
-for (const tag of ctas) {
+const qualifyCtas = [...homepage.matchAll(/<a\b[^>]*>See if you qualify<\/a>/g)].map((match) => match[0]);
+assert.equal(qualifyCtas.length, 2);
+for (const tag of qualifyCtas) {
   assert.match(tag, /href="#start"/);
   assert.doesNotMatch(tag, /calendar\.app\.google/);
   assert.doesNotMatch(tag, /target="_blank"/);
 }
+const ctaLabels = [...homepage.matchAll(/<(?:a|button)\b[^>]*>([^<]*)<\/(?:a|button)>/g)].map((match) => match[1]);
+for (const label of ctaLabels) assert.doesNotMatch(label, /\bBook\b/i, label);
+assert.doesNotMatch(homepage, /book your call|book a call/i);
+assert.doesNotMatch(homepage, /calendar\.app\.google/);
 assert.match(homepage, /id="start"/);
 assert.match(homepage, /id="qz"/);
 assert.match(homepage, /\/assets\/qualify-ui\.js/);
-assert.doesNotMatch(homepage, /calendar\.app\.google/);
+const qualifySource = fs.readFileSync(path.join(root, "assets/qualify.js"), "utf8");
+assert.equal((qualifySource.match(/calendar\.app\.google\/8i1gomkozavqYU5b8/g) || []).length, 1);
 assert.doesNotMatch(homepage, /Qualification bar/);
 assert.doesNotMatch(ui, /calendar\.app\.google/);
 assert.match(ui, /resultHtml/);
