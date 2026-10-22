@@ -1,9 +1,12 @@
+import { proposalOf } from "./studio-ops-model.js";
+
 export function bindAssistant(getContext) {
   const openBtn = document.getElementById("assistant-open");
   const panel = document.getElementById("assistant-panel");
   const closeBtn = document.getElementById("assistant-close");
   const form = document.getElementById("assistant-form");
   const input = document.getElementById("assistant-input");
+  const mode = document.getElementById("assistant-mode");
   const log = document.getElementById("assistant-log");
   if (!openBtn || !panel || !form || !log) return;
 
@@ -22,9 +25,18 @@ export function bindAssistant(getContext) {
   openBtn.addEventListener("click", () => setOpen(panel.hidden));
   closeBtn.addEventListener("click", () => setOpen(false));
 
-  form.addEventListener("submit", async (event) => {
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const message = input.value.trim();
+    ask(input.value.trim(), mode ? mode.value : "ask");
+  });
+  window.addEventListener("roleflow-ask", (event) => {
+    const detail = event.detail || {};
+    setOpen(true);
+    if (mode && detail.mode) mode.value = detail.mode;
+    ask(detail.message || "", detail.mode || "ask");
+  });
+
+  async function ask(message, selected) {
     if (!message) return;
     const ctx = getContext();
     if (!ctx.supabase || !ctx.businessId) {
@@ -34,22 +46,49 @@ export function bindAssistant(getContext) {
     input.value = "";
     push("me", message);
     const pending = push("ask", "Thinking…");
-    const button = form.querySelector("button");
+    const button = form.querySelector("button[type=submit]");
     button.disabled = true;
     try {
       const { data, error } = await ctx.supabase.functions.invoke("roleflow-assistant", {
-        body: { business_id: ctx.businessId, message }
+        body: { business_id: ctx.businessId, message, mode: selected || "ask" }
       });
       if (error) throw new Error(await readInvokeError(error));
       if (data && data.error) throw new Error(String(data.error));
       pending.textContent = "";
       pending.append(linkify(data && data.reply ? String(data.reply) : "No answer came back."));
+      const proposal = proposalOf(data && data.proposal);
+      if (proposal && (selected === "leads" || selected === "ai")) confirm(proposal, ctx);
     } catch (error) {
       pending.textContent = error.message || "The assistant could not answer.";
     } finally {
       button.disabled = false;
     }
-  });
+  }
+
+  function confirm(proposal, ctx) {
+    const row = document.createElement("div");
+    row.className = "ask";
+    const text = document.createElement("p");
+    text.textContent = proposal.type === "lead"
+      ? "Confirm moving @" + proposal.handle + " to " + proposal.crm_state + "?"
+      : "Confirm this settings change? Nothing is saved until you confirm.";
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "btn sm";
+    yes.textContent = "Confirm";
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "btn sm ghost";
+    no.textContent = "Discard";
+    yes.addEventListener("click", async () => {
+      yes.disabled = true;
+      if (ctx.applyProposal) await ctx.applyProposal(proposal);
+      text.textContent = "Confirmed.";
+    });
+    no.addEventListener("click", () => { text.textContent = "Discarded. Nothing changed."; });
+    row.append(text, yes, no);
+    log.append(row);
+  }
 
   function push(kind, text) {
     const node = document.createElement("p");

@@ -380,6 +380,11 @@ verify_jwt = true
 [functions.roleflow-studio]
 verify_jwt = true
 
+# roleflow-hooks sends a signed webhook test with the caller's JWT,
+# and records a conversion with a workspace API key. It checks both itself.
+[functions.roleflow-hooks]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

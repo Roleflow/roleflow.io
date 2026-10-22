@@ -1,6 +1,7 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { bindAssistant } from "./assistant.js";
+import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindDock } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
@@ -107,6 +108,16 @@ const state = {
   reminders: [],
   commentCtas: [],
   storyCtas: [],
+  stateRules: [],
+  tagRules: [],
+  webhooks: [],
+  apiKeys: [],
+  invites: [],
+  notifications: [],
+  origins: [],
+  revealedKey: "",
+  highlight: "",
+  funnelMode: "all",
   flow: null,
   chatDraft: "",
   studio: null,
@@ -129,7 +140,12 @@ document.getElementById("acq-nav").addEventListener("click", (event) => {
   event.preventDefault();
   go(link.dataset.tab);
 });
-bindAssistant(() => ({ supabase: state.supabase, businessId: state.businessId }));
+bindAssistant(() => ({
+  supabase: state.supabase,
+  businessId: state.businessId,
+  applyProposal
+}));
+bindOps({ state, paint });
 pick.addEventListener("change", () => {
   const url = new URL(location.href);
   url.searchParams.set("business", pick.value);
@@ -167,6 +183,17 @@ async function boot() {
   state.user = data.session.user;
   logoutBtn.hidden = false;
   if (panelLogout) panelLogout.hidden = false;
+  const inviteToken = new URLSearchParams(location.search).get("invite");
+  if (inviteToken) {
+    const accepted = await state.supabase.rpc("acq_accept_invite", { p_token: inviteToken });
+    if (accepted.error) toast(accepted.error.message, "bad");
+    else if (accepted.data && accepted.data.business_id) {
+      const url = new URL(location.href);
+      url.searchParams.delete("invite");
+      url.searchParams.set("business", accepted.data.business_id);
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }
   const notice = new URLSearchParams(location.search).get("notice");
   if (notice) toast(notice, "bad");
   if (new URLSearchParams(location.search).get("onboarding") === "1" && !location.hash) {
@@ -217,7 +244,7 @@ async function bootBusiness(id, options) {
   pick.value = id;
   const business = state.businesses.find((row) => row.id === id);
   const members = state.user
-    ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at").eq("business_id", id)
+    ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at, scopes").eq("business_id", id)
     : { data: [] };
   state.memberRows = members.error ? [] : members.data || [];
   state.members = state.memberRows.filter((row) => row.status === "active");
@@ -340,6 +367,22 @@ async function loadAll(id) {
   state.reminders = reminders.error ? [] : reminders.data || [];
   state.commentCtas = commentCtas.error ? [] : commentCtas.data || [];
   state.storyCtas = storyCtas.error ? [] : storyCtas.data || [];
+  const [stateRules, tagRules, webhooks, apiKeys, invites, notifications, origins] = await Promise.all([
+    q.from("acq_state_rules").select("crm_state, condition").eq("business_id", id),
+    q.from("acq_tag_rules").select("id, name, rule_kind, rule_text, notify_email").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_webhooks").select("id, url, events, paused, has_secret").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_api_keys").select("id, label, prefix, created_at, revoked_at").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_invites").select("id, email, scopes, token, accepted_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
+    q.from("acq_notifications").select("id, title, body, created_at, read_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
+    q.from("acq_origins").select("id, name, keyword").eq("business_id", id).order("created_at", { ascending: false })
+  ]);
+  state.stateRules = stateRules.error ? [] : stateRules.data || [];
+  state.tagRules = tagRules.error ? [] : tagRules.data || [];
+  state.webhooks = webhooks.error ? [] : webhooks.data || [];
+  state.apiKeys = apiKeys.error ? [] : apiKeys.data || [];
+  state.invites = invites.error ? [] : invites.data || [];
+  state.notifications = notifications.error ? [] : notifications.data || [];
+  state.origins = origins.error ? [] : origins.data || [];
   return true;
 }
 
@@ -377,6 +420,7 @@ function paint() {
     renderEngine(state.tab, host, engineCtx());
   }
   app.append(root);
+  paintChrome(pageUi());
   armRefresh();
 }
 
@@ -466,7 +510,19 @@ function pageUi() {
     saveCommentCta,
     saveStoryCta,
     deleteFlowRow,
-    draftReply
+    draftReply,
+    ignoreHandles,
+    saveStateRule,
+    saveTagRule,
+    saveWebhook,
+    testWebhook,
+    createApiKey,
+    revokeApiKey,
+    cloneBusiness,
+    createInvite,
+    regenerateJoin,
+    saveOrigin,
+    markNotification
   };
 }
 
@@ -883,6 +939,199 @@ async function patchSettings(patch, enginePayload) {
     }
   } else toast("Saved.");
   await bootBusiness(state.businessId);
+}
+
+async function ignoreHandles(handles) {
+  if (!readyToSave()) return;
+  const existing = new Set((state.dnc || []).map((row) => row.handle));
+  const rows = handles.filter((handle) => !existing.has(handle)).map((handle) => ({ business_id: state.businessId, handle, reason: "Ignored in configuration" }));
+  const saved = rows.length ? await state.supabase.from("acq_dnc").insert(rows) : { error: null };
+  if (saved.error) toast(saved.error.message, "bad");
+  else toast("Saved.");
+  await bootBusiness(state.businessId);
+}
+
+async function saveStateRule(row) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_state_rules").upsert({
+    business_id: state.businessId,
+    crm_state: row.crm_state,
+    condition: row.condition || ""
+  }, { onConflict: "business_id,crm_state" });
+  if (saved.error) toast(saved.error.message, "bad");
+  else toast("Saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveTagRule(row) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_tag_rules").insert({
+    business_id: state.businessId,
+    name: row.name.trim(),
+    rule_kind: row.rule_kind,
+    rule_text: String(row.rule_text || "").slice(0, 400),
+    notify_email: row.notify_email || ""
+  });
+  if (saved.error) toast(saved.error.message, "bad");
+  else toast("Tag saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveWebhook(row) {
+  if (!readyToSave()) return;
+  if (row.id) {
+    const saved = await state.supabase.from("acq_webhooks").update({ paused: row.paused }).eq("id", row.id).eq("business_id", state.businessId);
+    if (saved.error) toast(saved.error.message, "bad");
+    else toast(row.paused ? "Paused." : "Resumed.");
+    await bootBusiness(state.businessId, { quiet: true });
+    return;
+  }
+  const saved = await state.supabase.from("acq_webhooks").insert({
+    business_id: state.businessId,
+    url: row.url,
+    events: row.events
+  }).select("id").single();
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  if (row.secret) {
+    const secret = await state.supabase.rpc("acq_set_webhook_secret", { p_webhook: saved.data.id, p_secret: row.secret });
+    if (secret.error) toast(secret.error.message, "bad");
+  }
+  toast("Webhook saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function testWebhook(id) {
+  if (!readyToSave()) return;
+  const { data, error } = await state.supabase.functions.invoke("roleflow-hooks", { body: { action: "test", webhook_id: id } });
+  if (error) toast(error.message, "bad");
+  else if (data && data.error) toast(String(data.error), "bad");
+  else toast("Test sent" + (data && data.status ? " · " + data.status : "") + ".");
+}
+
+async function createApiKey(label) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.rpc("acq_create_api_key", { p_business: state.businessId, p_label: label });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  const token = saved.data && saved.data.token ? saved.data.token : "";
+  toast("Key created. Copy it now.");
+  await bootBusiness(state.businessId, { quiet: true });
+  state.revealedKey = token;
+  paint();
+}
+
+async function revokeApiKey(id) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_api_keys").update({ revoked_at: new Date().toISOString() }).eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else toast("Key revoked.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function cloneBusiness(name) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.rpc("acq_clone_business", { p_source: state.businessId, p_name: name });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  const id = saved.data && saved.data.business_id;
+  toast("Business cloned. The AI is off on the copy.");
+  if (id) {
+    const url = new URL(location.href);
+    url.searchParams.set("business", id);
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    await boot();
+  }
+}
+
+async function createInvite(row) {
+  if (!readyToSave()) return;
+  const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
+  const saved = await state.supabase.from("acq_invites").insert({
+    business_id: state.businessId,
+    email: row.email.toLowerCase(),
+    scopes: row.scopes,
+    token
+  });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  await state.supabase.from("acq_notifications").insert({
+    business_id: state.businessId,
+    title: "Invite created",
+    body: row.email + " can open " + row.scopes.join(", ") + "."
+  });
+  const mailed = await state.supabase.functions.invoke("roleflow-hooks", {
+    body: { action: "invite", email: row.email, token, business_id: state.businessId }
+  });
+  const mailedError = mailed.data && mailed.data.error;
+  toast(mailedError ? "Invite saved. " + mailedError : "Invite saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function regenerateJoin() {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.rpc("acq_regenerate_join_code", { p_business: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    const code = saved.data && saved.data.join_code;
+    const business = state.businesses.find((item) => item.id === state.businessId);
+    if (business && code) business.join_code = code;
+    toast("Invite link regenerated.");
+    paint();
+  }
+}
+
+async function saveOrigin(row) {
+  if (!readyToSave()) return;
+  const name = String(row.name || "").trim();
+  const keyword = String(row.keyword || "").trim();
+  if (!name || !keyword || name.length > 40 || keyword.length > 40) {
+    toast("Name and keyword stay within 40 characters.", "bad");
+    return;
+  }
+  const saved = await state.supabase.from("acq_origins").insert({ business_id: state.businessId, name, keyword });
+  if (saved.error) toast(saved.error.message, "bad");
+  else toast("Origin saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function markNotification(id) {
+  if (!state.supabase || !state.businessId) return;
+  await state.supabase.from("acq_notifications").update({ read_at: new Date().toISOString() }).eq("id", id).eq("business_id", state.businessId);
+  const row = (state.notifications || []).find((item) => item.id === id);
+  if (row) row.read_at = new Date().toISOString();
+  paintChrome(pageUi());
+}
+
+async function applyProposal(proposal) {
+  if (!proposal || !readyToSave()) return;
+  if (proposal.type === "setting") {
+    await patchSettings(proposal.patch);
+    return;
+  }
+  if (proposal.type === "lead") {
+    const contact = (state.contacts || []).find((row) => String(row.ig_handle || "").replace(/^@/, "").toLowerCase() === proposal.handle);
+    const target = (state.targets || []).find((row) => String(row.handle || "") === proposal.handle);
+    const table = contact ? "acq_contacts" : "acq_targets";
+    const id = contact ? contact.id : target && target.id;
+    if (!id) {
+      toast("No lead with that handle is stored here.", "bad");
+      return;
+    }
+    const column = "crm_state";
+    const saved = await state.supabase.from(table).update({ [column]: proposal.crm_state.toLowerCase() }).eq("id", id);
+    if (saved.error) toast(saved.error.message, "bad");
+    else toast("Lead updated.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
 }
 
 function agentsHome() {
