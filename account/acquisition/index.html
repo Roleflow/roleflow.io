@@ -7,13 +7,14 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/auth/site.css">
 <link rel="stylesheet" href="/acquire/acquire.css">
 </head>
 <body class="app platform">
 <a class="skip" href="#app">Skip to the dashboard</a>
 <div class="app-shell">
+  <div class="side-slot" id="side-slot">
   <aside class="icon-rail" id="icon-rail" aria-label="Sections">
     <button type="button" class="rail-pin" id="rail-toggle" aria-pressed="false" aria-expanded="false" aria-controls="slide-panel" title="Pin menu" data-tip="Pin menu" aria-label="Pin menu">
       <span class="dock-scale"><span class="nav-ico t2" id="pin-ico"></span></span>
@@ -25,8 +26,11 @@
   </aside>
   <aside class="slide-panel" id="slide-panel" aria-label="Panel">
     <div class="slide-top">
-      <button type="button" class="btn ghost sm" id="panel-close">Panel</button>
+      <button type="button" class="btn ghost sm" id="panel-close">Close</button>
       <a class="brand" href="/account/acquisition/"><img alt="" src="/assets/logo.jpg" width="28" height="28">Roleflow</a>
+      <button type="button" class="menu-pin" id="menu-pin" aria-pressed="false" aria-expanded="false" aria-label="Pin menu" title="Pin menu">
+        <span class="nav-ico" id="menu-pin-ico"></span>
+      </button>
     </div>
     <div class="pinned-biz" id="panel-business">
       <p class="side-kicker">This business</p>
@@ -37,7 +41,12 @@
       <a class="side-link" id="nav-admin-home" href="/admin/" hidden>All businesses</a>
     </div>
     <nav class="slide-nav" id="slide-nav"></nav>
+    <button type="button" class="panel-logout" id="panel-logout" hidden>
+      <span class="nav-ico" id="panel-logout-ico"></span>
+      Log out
+    </button>
   </aside>
+  </div>
   <div class="app-main">
     <header class="app-top">
       <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="slide-panel">Menu</button>

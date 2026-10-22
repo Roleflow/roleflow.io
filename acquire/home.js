@@ -81,7 +81,9 @@ export function mountNav(ui) {
   const business = ui.state.businesses.find((row) => row.id === ui.state.businessId);
   if (name) name.textContent = business && business.agent_name ? business.agent_name : "This business";
   paintGlyph("pin-ico", "pin");
+  paintGlyph("menu-pin-ico", "pin");
   paintGlyph("logout-ico", "logout");
+  paintGlyph("panel-logout-ico", "logout");
   rail.replaceChildren();
   RAIL.forEach((item) => rail.append(navLink(ui, item, true)));
   slide.replaceChildren();

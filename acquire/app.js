@@ -39,6 +39,7 @@ const app = document.getElementById("app");
 const sub = document.getElementById("page-sub");
 const pick = document.getElementById("biz-pick");
 const logoutBtn = document.getElementById("nav-logout");
+const panelLogout = document.getElementById("panel-logout");
 const AUDIO_TYPES = new Set(["audio/webm", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/wav", "audio/ogg", "audio/x-m4a", "audio/m4a", "audio/aac", "audio/wave"]);
 const MAX_BYTES = 20 * 1024 * 1024;
 const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings", "links", "content", "outbound", "inbound", "stats", "performance", "configuration", "team"];
@@ -93,6 +94,7 @@ const state = {
 };
 
 logoutBtn.addEventListener("click", () => logout());
+if (panelLogout) panelLogout.addEventListener("click", () => logout());
 document.getElementById("nav-toggle").addEventListener("click", () => setPanel(!document.body.classList.contains("panel-open")));
 bindDock({
   setOpen: setPanel,
@@ -143,6 +145,7 @@ async function boot() {
   }
   state.user = data.session.user;
   logoutBtn.hidden = false;
+  if (panelLogout) panelLogout.hidden = false;
   const notice = new URLSearchParams(location.search).get("notice");
   if (notice) toast(notice, "bad");
   if (new URLSearchParams(location.search).get("onboarding") === "1" && !location.hash) {
@@ -1416,6 +1419,8 @@ function setPanel(open) {
   document.getElementById("nav-toggle").setAttribute("aria-expanded", open ? "true" : "false");
   const rail = document.getElementById("rail-toggle");
   if (rail) rail.setAttribute("aria-expanded", open ? "true" : "false");
+  const menuPin = document.getElementById("menu-pin");
+  if (menuPin) menuPin.setAttribute("aria-expanded", open ? "true" : "false");
   document.getElementById("nav-backdrop").hidden = !(open && mobile);
 }
 

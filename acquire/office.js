@@ -2,19 +2,31 @@ const NS = "http://www.w3.org/2000/svg";
 const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
 
 const OUTBOUND = [
-  { key: "manager", name: "Outbound Manager", kind: "manager", left: "40%", top: "58%" },
-  { key: "icp_acquisition", name: "ICP Target Acquisition", kind: "role", left: "12%", top: "30%" },
-  { key: "engagement_warmup", name: "Engagement Warm-Up", kind: "role", left: "40%", top: "16%" },
-  { key: "personalised_outreach", name: "Personalised Outreach", kind: "role", left: "66%", top: "32%" }
+  { key: "engagement_warmup", name: "Engagement Warm-Up", kind: "role", x: 540, y: 128, scale: 1.24 },
+  { key: "icp_acquisition", name: "ICP Target Acquisition", kind: "role", x: 188, y: 176, scale: 1.34 },
+  { key: "personalised_outreach", name: "Personalised Outreach", kind: "role", x: 892, y: 176, scale: 1.34 },
+  { key: "manager", name: "Outbound Manager", kind: "manager", x: 540, y: 336, scale: 1.3 }
 ];
 
 const INBOUND = [
-  { key: "manager", name: "Inbound Manager", kind: "manager", left: "38%", top: "60%" },
-  { key: "comment_to_dm", name: "Comment-to-DM", kind: "role", left: "6%", top: "28%" },
-  { key: "qualification", name: "Qualification", kind: "role", left: "28%", top: "14%" },
-  { key: "conversation_recovery", name: "Follow-up / Recovery", kind: "role", left: "52%", top: "16%" },
-  { key: "appointment_booking", name: "Booking & Show-up", kind: "role", left: "72%", top: "32%" }
+  { key: "qualification", name: "Qualification", kind: "role", x: 360, y: 124, scale: 1.08 },
+  { key: "conversation_recovery", name: "Follow-up / Recovery", kind: "role", x: 720, y: 124, scale: 1.08 },
+  { key: "comment_to_dm", name: "Comment-to-DM", kind: "role", x: 132, y: 186, scale: 1.08 },
+  { key: "appointment_booking", name: "Booking & Show-up", kind: "role", x: 948, y: 186, scale: 1.08 },
+  { key: "manager", name: "Inbound Manager", kind: "manager", x: 540, y: 340, scale: 1.16 }
 ];
+
+const LOOK = {
+  "ICP Target Acquisition": { skin: "#E6C2A6", hair: "#2A2438", shirt: "#6A45E0" },
+  "Engagement Warm-Up": { skin: "#C98B6A", hair: "#1A1428", shirt: "#7B4DFF" },
+  "Personalised Outreach": { skin: "#F0D2B8", hair: "#3A2A22", shirt: "#7B2FB5" },
+  "Comment-to-DM": { skin: "#A56B4A", hair: "#241C18", shirt: "#6A45E0" },
+  "Qualification": { skin: "#E8C4A8", hair: "#4A3028", shirt: "#7B2FB5" },
+  "Follow-up / Recovery": { skin: "#8D5A42", hair: "#1C1824", shirt: "#7B4DFF" },
+  "Booking & Show-up": { skin: "#F3D5BE", hair: "#2C241C", shirt: "#C0409A" },
+  "Outbound Manager": { skin: "#D7B08A", hair: "#16141E", shirt: "#7B2FB5" },
+  "Inbound Manager": { skin: "#C9956E", hair: "#2A1E28", shirt: "#6A45E0" }
+};
 
 let openKey = "";
 let openKind = "";
@@ -31,10 +43,11 @@ export function renderOffice(ui, kind) {
   bindOnce(ui);
   const specs = (kind === "inbound" ? INBOUND : OUTBOUND).map((item) => describe(ui, item, kind));
   const section = ui.el("section", { class: "office", "aria-label": kind === "inbound" ? "Inbound office" : "Outbound office" });
-  const floor = ui.el("div", { class: "office-floor" });
-  floor.append(floorSvg());
-  specs.forEach((spec) => floor.append(station(ui, spec)));
-  section.append(floor);
+  const canvas = ui.el("div", { class: "office-canvas" });
+  canvas.append(sceneSvg(ui, specs, kind));
+  const cards = ui.el("div", { class: "office-cards" });
+  specs.forEach((spec) => cards.append(officeCard(ui, spec, kind)));
+  section.append(canvas, cards);
   if (openKey && openKind === kind) {
     const current = specs.find((item) => item.key === openKey);
     if (current) fillDrawer(ui, current, kind);
@@ -155,70 +168,243 @@ function clean(value) {
   return String(value || "").replace(/^@/, "");
 }
 
-function station(ui, spec) {
-  const button = ui.el("button", {
-    type: "button",
-    class: "station " + spec.mode,
-    "data-tip": spec.name + " · " + spec.status + " · " + spec.capText
-  });
-  button.style.left = spec.left;
-  button.style.top = spec.top;
+function openDesk(ui, spec, kind) {
+  openKey = spec.key;
+  openKind = kind;
+  const drawer = document.getElementById("agent-drawer");
+  if (drawer) drawer.hidden = false;
+  fillDrawer(ui, spec, kind);
+}
+
+function officeCard(ui, spec, kind) {
+  const button = ui.el("button", { type: "button", class: "office-card " + spec.mode });
   button.setAttribute("aria-label", spec.name + ", " + spec.status + ", " + spec.capText);
-  const bubble = spec.mode === "empty"
-    ? ui.el("span", { class: "desk-tag", text: "Needs setup" })
-    : spec.action
-      ? ui.el("span", { class: "desk-bubble", text: spec.action })
-      : ui.el("span", { class: "desk-bubble quiet", text: "No activity yet" });
-  button.append(bubble);
-  button.append(scene());
-  button.append(ui.el("span", { class: "desk-name", text: spec.name }));
-  button.addEventListener("click", () => {
-    openKey = spec.key;
-    openKind = spec.inbound ? "inbound" : "outbound";
-    const drawer = document.getElementById("agent-drawer");
-    if (drawer) drawer.hidden = false;
-    fillDrawer(ui, spec, openKind);
-  });
+  const copy = ui.el("span", { class: "office-card-copy" });
+  copy.append(ui.el("strong", { text: spec.name }));
+  copy.append(ui.el("span", { text: spec.status + " · " + spec.capText }));
+  const action = spec.mode === "empty" ? "Needs setup" : (spec.action || "No activity yet");
+  copy.append(ui.el("em", { text: action }));
+  button.append(ui.el("span", { class: "office-card-dot " + spec.mode }), copy);
+  button.addEventListener("click", () => openDesk(ui, spec, kind));
   return button;
 }
 
-function scene() {
-  const wrap = document.createElement("span");
-  wrap.className = "desk-scene";
-  wrap.innerHTML = '<span class="monitor"><i></i></span><span class="person"><span class="head"></span><span class="torso"></span><span class="arm"></span></span><span class="desk-top"></span>';
-  return wrap;
+function sceneSvg(ui, specs, kind) {
+  const svg = node("svg", { class: "office-svg", viewBox: "0 0 1080 460", role: "img", "aria-label": kind === "inbound" ? "Inbound office" : "Outbound office" });
+  const defs = node("defs");
+  const grad = node("linearGradient", { id: "office-grad", x1: "0", y1: "0", x2: "1", y2: "1" });
+  grad.append(node("stop", { offset: "0", "stop-color": "#7B4DFF" }));
+  grad.append(node("stop", { offset: "0.5", "stop-color": "#C0409A" }));
+  grad.append(node("stop", { offset: "1", "stop-color": "#FF8A3D" }));
+  defs.append(grad);
+  svg.append(defs);
+  svg.append(floorArt());
+  svg.append(wallArt());
+  if (kind === "inbound") {
+    svg.append(plant(46, 400));
+    svg.append(plant(1034, 400));
+    svg.append(lamp(1010, 78));
+  } else {
+    svg.append(plant(46, 400));
+    svg.append(plant(1034, 400));
+    svg.append(lamp(1008, 78));
+  }
+  specs.forEach((spec) => svg.append(stationArt(ui, spec, kind)));
+  return svg;
 }
 
-function floorSvg() {
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("class", "floor-svg");
-  svg.setAttribute("viewBox", "0 0 800 460");
-  svg.setAttribute("aria-hidden", "true");
-  const plate = document.createElementNS(NS, "polygon");
-  plate.setAttribute("points", "60,36 760,36 700,430 16,430");
-  plate.setAttribute("fill", "#0c0e14");
-  plate.setAttribute("stroke", "rgba(255,255,255,.08)");
-  svg.append(plate);
-  for (let row = 0; row < 9; row++) {
-    for (let col = 0; col < 13; col++) {
-      const x = 70 + col * 50 + (row % 2) * 25;
-      const y = 58 + row * 28;
-      const tile = document.createElementNS(NS, "polygon");
-      tile.setAttribute("points", (x + 25) + "," + y + " " + (x + 50) + "," + (y + 14) + " " + (x + 25) + "," + (y + 28) + " " + x + "," + (y + 14));
-      tile.setAttribute("fill", (row + col) % 2 ? "rgba(255,255,255,.012)" : "rgba(255,255,255,.028)");
-      tile.setAttribute("stroke", "rgba(255,255,255,.04)");
-      svg.append(tile);
+function stationArt(ui, spec, kind) {
+  const slot = node("g", { class: "slot", transform: "translate(" + spec.x + " " + spec.y + ") scale(" + spec.scale + ")" });
+  const group = node("g", { class: "station-g " + spec.mode, tabindex: "0", role: "button" });
+  group.setAttribute("aria-label", spec.name + ", " + spec.status + ", " + spec.capText);
+  group.append(node("rect", { x: "-96", y: "-108", width: "192", height: "230", fill: "transparent" }));
+  group.append(deskArt(spec.mode));
+  group.append(chairArt());
+  group.append(monitorArt(spec.mode));
+  if (spec.mode !== "empty") group.append(personArt(LOOK[spec.name] || LOOK["Outbound Manager"], spec.mode));
+  group.append(bubbleArt(spec));
+  group.append(nameArt(spec));
+  group.append(tipArt(spec));
+  const open = () => openDesk(ui, spec, kind);
+  group.addEventListener("click", open);
+  group.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    open();
+  });
+  slot.append(group);
+  return slot;
+}
+
+function wallArt() {
+  const g = node("g", { "aria-hidden": "true" });
+  g.append(node("rect", { x: "0", y: "0", width: "1080", height: "78", fill: "#0A1226" }));
+  g.append(node("rect", { x: "0", y: "76", width: "1080", height: "2", fill: "#243155" }));
+  return g;
+}
+
+function floorArt() {
+  const g = node("g", { "aria-hidden": "true" });
+  g.append(node("rect", { x: "0", y: "0", width: "1080", height: "460", fill: "#101A33" }));
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 14; col++) {
+      const x = 16 + col * 76;
+      const y = 18 + row * 54;
+      g.append(node("polygon", {
+        points: x + "," + (y + 20) + " " + (x + 38) + "," + y + " " + (x + 76) + "," + (y + 20) + " " + (x + 38) + "," + (y + 40),
+        fill: (row + col) % 2 ? "rgba(29,40,72,.55)" : "rgba(10,18,38,.35)",
+        stroke: "rgba(154,166,198,.08)",
+        "stroke-width": "1"
+      }));
     }
   }
-  const glow = document.createElementNS(NS, "ellipse");
-  glow.setAttribute("class", "floor-glow");
-  glow.setAttribute("cx", "400");
-  glow.setAttribute("cy", "240");
-  glow.setAttribute("rx", "200");
-  glow.setAttribute("ry", "46");
-  glow.setAttribute("fill", "rgba(212,161,90,.055)");
-  svg.append(glow);
-  return svg;
+  return g;
+}
+
+function deskArt(mode) {
+  const g = node("g", { class: "desk" });
+  g.append(node("ellipse", { cx: "0", cy: "50", rx: "78", ry: "16", fill: "rgba(4,8,20,.42)" }));
+  g.append(node("polygon", { points: "-76,-6 0,28 0,48 -76,14", fill: "#0A1226" }));
+  g.append(node("polygon", { points: "76,-6 0,28 0,48 76,14", fill: "#243155" }));
+  g.append(node("polygon", {
+    class: "desk-top",
+    points: "-76,-6 0,-42 76,-6 0,28",
+    fill: mode === "empty" ? "#101A33" : "#1D2848",
+    stroke: mode === "empty" ? "#7E8AAE" : "#243155",
+    "stroke-dasharray": mode === "empty" ? "5 4" : "0",
+    "stroke-width": "1.4"
+  }));
+  g.append(node("rect", { x: "-16", y: "-4", width: "32", height: "10", rx: "2", fill: "#0A1226" }));
+  return g;
+}
+
+function chairArt() {
+  const g = node("g", { class: "chair" });
+  g.append(node("rect", { x: "-18", y: "16", width: "36", height: "26", rx: "7", fill: "#243155" }));
+  g.append(node("rect", { x: "-20", y: "36", width: "40", height: "12", rx: "4", fill: "#1D2848" }));
+  return g;
+}
+
+function monitorArt(mode) {
+  const g = node("g", { class: "monitor" });
+  if (mode === "working") g.append(node("ellipse", { class: "work-glow", cx: "0", cy: "-46", rx: "34", ry: "18", fill: "url(#office-grad)", opacity: "0.55" }));
+  g.append(node("rect", {
+    x: "-24", y: "-64", width: "48", height: "34", rx: "4",
+    fill: "#0A1226",
+    stroke: mode === "empty" ? "#7E8AAE" : "#243155",
+    "stroke-dasharray": mode === "empty" ? "3 3" : "0",
+    "stroke-width": "1.5"
+  }));
+  g.append(node("rect", {
+    class: "screen " + mode,
+    x: "-20", y: "-60", width: "40", height: "24", rx: "2",
+    fill: mode === "working" ? "url(#office-grad)" : "#101A33"
+  }));
+  g.append(node("rect", { x: "-4", y: "-30", width: "8", height: "10", rx: "1", fill: "#243155" }));
+  return g;
+}
+
+function personArt(look, mode) {
+  const g = node("g", { class: "avatar " + mode });
+  g.append(node("rect", { class: "arm arm-l", x: "-40", y: "-2", width: "24", height: "7", rx: "3.5", fill: look.skin }));
+  g.append(node("rect", { class: "arm arm-r", x: "16", y: "-2", width: "24", height: "7", rx: "3.5", fill: look.skin }));
+  g.append(node("rect", { x: "-18", y: "2", width: "36", height: "32", rx: "10", fill: look.shirt }));
+  g.append(node("rect", { x: "-8", y: "-6", width: "16", height: "10", rx: "4", fill: look.skin }));
+  g.append(node("circle", { cx: "0", cy: "-18", r: "14", fill: look.skin }));
+  g.append(node("path", { d: "M-14 -18a14 12 0 0 1 28 0v3a16 11 0 0 0-28 0z", fill: look.hair }));
+  return g;
+}
+
+function bubbleArt(spec) {
+  const text = spec.mode === "empty" ? "Needs setup" : (spec.action || "No activity yet");
+  const label = clip(text, 28);
+  const width = Math.max(96, label.length * 6.3 + 22);
+  const live = spec.mode !== "empty" && spec.action ? " live" : " quiet";
+  const g = node("g", { class: "desk-bubble" + live });
+  g.append(node("rect", { x: String(-width / 2), y: "-84", width: String(width), height: "22", rx: "11", fill: "#0A1226" }));
+  g.append(node("text", {
+    x: "0", y: "-69", "text-anchor": "middle",
+    fill: spec.action && spec.mode !== "empty" ? "#EEF1FA" : "#9AA6C6",
+    "font-size": "11", "font-family": "Instrument Sans, sans-serif", "font-weight": "500"
+  }, label));
+  return g;
+}
+
+function nameArt(spec) {
+  const lines = nameLines(spec.name);
+  const g = node("g", { class: "nameplate" });
+  const dot = spec.mode === "working" ? "#7B4DFF" : spec.mode === "idle" ? "#9AA6C6" : "none";
+  g.append(node("circle", {
+    class: "status-dot " + spec.mode,
+    cx: "0", cy: "54", r: "4",
+    fill: dot,
+    stroke: spec.mode === "empty" ? "#7E8AAE" : "none",
+    "stroke-dasharray": spec.mode === "empty" ? "2 2" : "0",
+    "stroke-width": "1.5"
+  }));
+  lines.forEach((line, index) => {
+    g.append(node("text", {
+      x: "0", y: String(70 + index * 14), "text-anchor": "middle",
+      fill: "#EEF1FA", "font-size": "12", "font-family": "Bricolage Grotesque, sans-serif", "font-weight": "600"
+    }, line));
+  });
+  return g;
+}
+
+function tipArt(spec) {
+  const label = spec.status + " · " + spec.capText;
+  const width = Math.min(230, Math.max(120, label.length * 6.1 + 20));
+  const g = node("g", { class: "tip" });
+  g.append(node("rect", { x: String(-width / 2), y: "96", width: String(width), height: "22", rx: "8", fill: "#0A1226" }));
+  g.append(node("text", {
+    x: "0", y: "111", "text-anchor": "middle", fill: "#EEF1FA",
+    "font-size": "11", "font-family": "Instrument Sans, sans-serif"
+  }, label));
+  return g;
+}
+
+function plant(x, y) {
+  const g = node("g", { transform: "translate(" + x + " " + y + ")", "aria-hidden": "true" });
+  g.append(node("ellipse", { cx: "0", cy: "26", rx: "18", ry: "6", fill: "rgba(4,8,20,.35)" }));
+  g.append(node("path", { d: "M-11 22h22l-3 16h-16z", fill: "#1D2848" }));
+  g.append(node("ellipse", { cx: "-8", cy: "4", rx: "11", ry: "16", fill: "#6A45E0" }));
+  g.append(node("ellipse", { cx: "9", cy: "2", rx: "10", ry: "18", fill: "#7B2FB5" }));
+  g.append(node("ellipse", { cx: "0", cy: "-10", rx: "8", ry: "16", fill: "#7B4DFF" }));
+  return g;
+}
+
+function lamp(x, y) {
+  const g = node("g", { transform: "translate(" + x + " " + y + ")", "aria-hidden": "true" });
+  g.append(node("ellipse", { cx: "0", cy: "48", rx: "26", ry: "8", fill: "rgba(232,176,74,.2)" }));
+  g.append(node("rect", { x: "-3", y: "-6", width: "6", height: "48", rx: "2", fill: "#243155" }));
+  g.append(node("polygon", { points: "-22,-28 22,-28 14,-8 -14,-8", fill: "#E8B04A" }));
+  g.append(node("rect", { x: "-12", y: "40", width: "24", height: "6", rx: "2", fill: "#1D2848" }));
+  return g;
+}
+
+function nameLines(name) {
+  if (name.length <= 16) return [name];
+  const parts = name.split(" ");
+  let line = parts[0];
+  let index = 1;
+  while (index < parts.length - 1 && (line + " " + parts[index]).length <= 16) {
+    line += " " + parts[index];
+    index += 1;
+  }
+  const rest = parts.slice(index).join(" ");
+  return rest ? [line, rest] : [name];
+}
+
+function clip(text, max) {
+  const value = String(text || "");
+  return value.length > max ? value.slice(0, max - 1) + "…" : value;
+}
+
+function node(tag, attrs, text) {
+  const el = document.createElementNS(NS, tag);
+  Object.entries(attrs || {}).forEach(([key, value]) => el.setAttribute(key, value));
+  if (text != null) el.textContent = text;
+  return el;
 }
 
 function fillDrawer(ui, spec, kind) {
