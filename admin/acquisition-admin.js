@@ -31,7 +31,7 @@ export async function renderAcquisitionRoster(supabase, app) {
     supabase.from("acq_setter_links").select("business_id, status, requested_handle, provider, last_synced_at, webhook_seen_at, external_agent_id, last_sync_error").in("business_id", ids),
     supabase.from("ig_connections").select("business_id, username, status, connected_at").in("business_id", ids),
     supabase.from("acq_workers").select("business_id, status, enabled, last_heartbeat_at").in("business_id", ids),
-    supabase.from("acq_targets").select("agent_id").eq("stage", "target").limit(1000)
+    supabase.from("acq_targets").select("agent_id, created_at").gte("created_at", new Date(Date.now() - 6 * 86400000).toISOString()).limit(2000)
   ]);
   const failed = [profiles, settings, workforce, links, ig, workers].find((res) => res.error);
   if (failed) {
@@ -45,22 +45,97 @@ export async function renderAcquisitionRoster(supabase, app) {
   const igById = new Map((ig.data || []).map((row) => [row.business_id, row]));
   const workersById = group(workers.data || [], "business_id");
   const targetsById = group(targets.error ? [] : targets.data || [], "agent_id");
-  const root = el("div", { class: "roster", id: "admin-roster" });
+  const root = el("div", { class: "biz-grid", id: "admin-roster" });
   if (targets.error) {
-    root.append(el("p", { class: "roster-note", text: "Target counts could not be read. Status below does not include them." }));
+    root.append(el("p", { class: "roster-note", text: "Lead history could not be read." }));
   }
   businesses.forEach((business) => {
-    root.append(businessCard(business, {
+    root.append(gridCard(business, {
       profile: profileById.get(business.owner_id),
       settings: settingsById.get(business.id) || null,
       roles: workforceById.get(business.id) || [],
       link: linkById.get(business.id) || null,
       ig: igById.get(business.id) || null,
       workers: workersById.get(business.id) || [],
-      targetCount: targets.error ? null : (targetsById.get(business.id) || []).length
+      leads: targets.error ? null : (targetsById.get(business.id) || [])
     }));
   });
+  const add = el("section", { class: "biz-tile add" });
+  add.append(el("h2", { text: "Add business" }));
+  add.append(el("p", { text: "A business appears here when its owner signs up. Opening this page does not create one." }));
+  root.append(add);
   app.replaceChildren(root);
+}
+
+function gridCard(business, data) {
+  const tile = el("article", { class: "biz-tile" });
+  const on = Boolean(data.settings && data.settings.system_enabled);
+  const head = el("div", { class: "roster-head" });
+  head.append(el("span", { class: on ? "ai-dot on" : "ai-dot", title: on ? "AI active" : "AI off" }));
+  head.append(el("strong", { text: on ? "AI active" : "AI off" }));
+  tile.append(head);
+  tile.append(el("h2", { text: business.name || "Untitled business" }));
+  tile.append(el("p", { class: "roster-meta", text: "Created " + createdLabel(business.created_at) }));
+  tile.append(el("p", { class: "roster-meta", text: ownerLine(data.profile) }));
+  const days = sparkDays(data.leads);
+  const total = days.reduce((sum, day) => sum + day.count, 0);
+  tile.append(sparkSvg(days));
+  tile.append(el("p", { text: data.leads == null ? "Lead history could not be read." : total + " leads in the last 7 days" }));
+  tile.append(el("p", { text: instagramLine(data.ig, data.link) }));
+  tile.append(el("p", { text: setterLinkLine(data.link, data.settings) }));
+  const actions = el("div", { class: "filters" });
+  actions.append(el("a", {
+    class: "btn sm",
+    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#dashboard"
+  }, ["Open"]));
+  actions.append(el("a", {
+    class: "btn sm ghost",
+    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#pipeline"
+  }, ["CRM"]));
+  tile.append(actions);
+  return tile;
+}
+
+function sparkDays(rows) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 6);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    days.push({ key: day.toISOString().slice(0, 10), count: 0 });
+  }
+  (rows || []).forEach((row) => {
+    const key = String(row.created_at || "").slice(0, 10);
+    const bucket = days.find((item) => item.key === key);
+    if (bucket) bucket.count += 1;
+  });
+  return days;
+}
+
+function sparkSvg(days) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 46");
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("aria-hidden", "true");
+  const max = Math.max(1, ...days.map((day) => day.count));
+  const points = days.map((day, index) => {
+    const x = days.length === 1 ? 0 : (index / (days.length - 1)) * 100;
+    const y = 42 - (day.count / max) * 36;
+    return x.toFixed(1) + "," + y.toFixed(1);
+  }).join(" ");
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  line.setAttribute("points", points);
+  svg.append(line);
+  return svg;
+}
+
+function createdLabel(value) {
+  if (!value) return "date not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "date not recorded";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
 function businessCard(business, data) {

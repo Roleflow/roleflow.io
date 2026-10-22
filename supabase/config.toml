@@ -371,6 +371,11 @@ verify_jwt = false
 [functions.roleflow-acquisition]
 verify_jwt = false
 
+# roleflow-assistant answers with the caller's JWT and XAI_API_KEY.
+# The key stays in the function environment. verify_jwt stays on.
+[functions.roleflow-assistant]
+verify_jwt = true
+
 [analytics]
 enabled = false
 port = 54327

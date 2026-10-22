@@ -1,6 +1,20 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
+import { bindAssistant } from "./assistant.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
+import {
+  mountNav,
+  renderIntro,
+  renderConfiguration,
+  renderContent,
+  renderDashboard,
+  renderInbound,
+  renderLinks,
+  renderOutbound,
+  renderPerformance,
+  renderStats,
+  renderTeam
+} from "./home.js";
 import {
   ENGINE_HINT,
   JOURNEY,
@@ -25,7 +39,7 @@ const pick = document.getElementById("biz-pick");
 const logoutBtn = document.getElementById("nav-logout");
 const AUDIO_TYPES = new Set(["audio/webm", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/wav", "audio/ogg", "audio/x-m4a", "audio/m4a", "audio/aac", "audio/wave"]);
 const MAX_BYTES = 20 * 1024 * 1024;
-const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings"];
+const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings", "links", "content", "outbound", "inbound", "stats", "performance", "configuration", "team"];
 const ENGINE_TABS = new Set(["inbox", "prompts", "integrations", "billing", "onboarding"]);
 
 const state = {
@@ -66,27 +80,30 @@ const state = {
   outbox: [],
   openThread: "",
   promptRole: "qualification",
-  tab: "overview",
+  tab: "dashboard",
   stageFilter: "all",
-  openId: ""
+  openId: "",
+  leadFilter: "all",
+  configKey: "reply",
+  rangeDays: 7,
+  memberRows: [],
+  memberProfiles: []
 };
 
 logoutBtn.addEventListener("click", () => logout());
-document.getElementById("nav-toggle").addEventListener("click", () => {
-  const open = document.body.classList.toggle("nav-open");
-  document.getElementById("nav-toggle").setAttribute("aria-expanded", open ? "true" : "false");
-  document.getElementById("nav-backdrop").hidden = !open;
-});
-document.getElementById("nav-backdrop").addEventListener("click", () => {
-  document.body.classList.remove("nav-open");
-  document.getElementById("nav-backdrop").hidden = true;
-});
+document.getElementById("nav-toggle").addEventListener("click", () => setPanel(!document.body.classList.contains("panel-open")));
+document.getElementById("rail-toggle").addEventListener("click", () => setPanel(!document.body.classList.contains("panel-open")));
+document.getElementById("panel-close").addEventListener("click", () => setPanel(false));
+document.getElementById("nav-backdrop").addEventListener("click", () => setPanel(false));
+document.getElementById("how-close").addEventListener("click", () => { document.getElementById("how-modal").hidden = true; });
+document.getElementById("accounts-close").addEventListener("click", () => { document.getElementById("accounts-modal").hidden = true; });
 document.getElementById("acq-nav").addEventListener("click", (event) => {
   const link = event.target.closest("a[data-tab]");
   if (!link) return;
   event.preventDefault();
   go(link.dataset.tab);
 });
+bindAssistant(() => ({ supabase: state.supabase, businessId: state.businessId }));
 pick.addEventListener("change", () => {
   const url = new URL(location.href);
   url.searchParams.set("business", pick.value);
@@ -166,9 +183,15 @@ async function bootBusiness(id) {
   pick.value = id;
   const business = state.businesses.find((row) => row.id === id);
   const members = state.user
-    ? await state.supabase.from("acq_members").select("business_id, user_id, role, status").eq("business_id", id).eq("status", "active")
+    ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at").eq("business_id", id)
     : { data: [] };
-  state.members = members.error ? [] : members.data || [];
+  state.memberRows = members.error ? [] : members.data || [];
+  state.members = state.memberRows.filter((row) => row.status === "active");
+  const profileIds = state.memberRows.map((row) => row.user_id).filter(Boolean);
+  if (profileIds.length) {
+    const profiles = await state.supabase.from("profiles").select("id, email, full_name").in("id", profileIds);
+    state.memberProfiles = profiles.error ? [] : profiles.data || [];
+  } else state.memberProfiles = [];
   const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
   state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
   app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
@@ -199,7 +222,7 @@ async function loadAll(id) {
   const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, threadMessages, outbox] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
-    q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
+    q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, created_at, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
     q.from("acq_outreach").select("*").eq("agent_id", id).limit(500),
     q.from("acq_warmup_steps").select("id, target_id, day_number, action, status, scheduled_for, action_count").eq("agent_id", id).limit(1000),
     q.from("acq_bookings").select("*").eq("agent_id", id),
@@ -265,12 +288,18 @@ function paint() {
     root.append(banner);
   }
   if (state.tab === "dashboard") root.append(dashboard());
-  if (state.tab === "agents" || state.tab === "overview") root.append(agentsHome());
+  if (state.tab === "agents" || state.tab === "overview" || state.tab === "outbound") root.append(renderOutbound(pageUi()));
+  if (state.tab === "inbound") root.append(renderInbound(pageUi()));
+  const intro = renderIntro(pageUi(), state.tab);
+  if (intro) root.append(intro);
   if (state.tab === "pipeline") root.append(pipeline());
-  if (state.tab === "voice") root.append(voiceLibrary());
-  if (state.tab === "reports") root.append(reports());
+  if (state.tab === "voice" || state.tab === "content") root.append(renderContent(pageUi()));
+  if (state.tab === "links") root.append(renderLinks(pageUi()));
+  if (state.tab === "reports" || state.tab === "stats") root.append(renderStats(pageUi()));
+  if (state.tab === "performance") root.append(renderPerformance(pageUi()));
+  if (state.tab === "team") root.append(renderTeam(pageUi()));
   if (state.tab === "controls") root.append(controls());
-  if (state.tab === "settings") root.append(settingsHome());
+  if (state.tab === "settings" || state.tab === "configuration") root.append(renderConfiguration(pageUi()));
   if (ENGINE_TABS.has(state.tab)) {
     const host = el("div");
     root.append(host);
@@ -296,49 +325,58 @@ function engineCtx() {
 }
 
 function dashboard() {
-  const wrap = el("div", { class: "platform-home" });
-  const revenue = attributedCents(state.deals);
-  const share = shareCents(revenue, state.settings && state.settings.share_bps);
-  const show = showUpRate(state.bookings);
-  const cap = state.settings && state.settings.daily_cap;
-  const today = countToday(roleRow("icp_acquisition"));
-  const step = state.settings && state.settings.onboarding_step;
-  if (step && step !== "live") {
-    const setup = el("section", { class: "agent setup-call" });
-    setup.append(el("h3", { text: "Finish setup" }));
-    setup.append(el("p", { text: "Add the ICP, offer, Instagram connection, worker key, and voice notes. The CRM stays empty until a worker posts a profile or a setter syncs a lead." }));
-    setup.append(el("a", { class: "btn", href: "#onboarding" }, ["Continue setup"]));
-    wrap.append(setup);
+  return renderDashboard(pageUi());
+}
+
+function pageUi() {
+  return {
+    state,
+    el,
+    button,
+    field,
+    go,
+    paint,
+    toast,
+    bootBusiness,
+    leadSnapshot,
+    instagramLine,
+    setterLinkText,
+    setterPending: () => usesEngine() && (!(state.setterLink) || state.setterLink.status !== "connected"),
+    icpAgentCard,
+    warmupAgentCard,
+    setterAgentCard,
+    voiceLibrary,
+    renderEngine: (tab, host) => renderEngine(tab, host, engineCtx()),
+    roleParams,
+    mergeParams,
+    enqueueEngine,
+    usesEngine,
+    patchSettings,
+    shortTime,
+    runChief,
+    attributedCents,
+    shareCents,
+    money,
+    percent,
+    tabGroup
+  };
+}
+
+async function patchSettings(patch, enginePayload) {
+  const saved = await state.supabase.from("acq_settings").update(patch).eq("agent_id", state.businessId);
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
   }
-  const kpis = el("div", { class: "kpis" });
-  [
-    ["Today", cap ? today + " / " + cap : "Cap not set", "New targets against the daily cap"],
-    ["Booked calls", String(state.bookings.length), state.bookings.length ? (show.rate == null ? "No show-up data yet" : "Show-up " + percent(show.rate)) : "No calls booked yet"],
-    ["Attributed growth", money(revenue), revenue ? "Roleflow share " + money(share) : "No attributed revenue yet"],
-    ["Roleflow share", money(share), "10% of attributed growth"]
-  ].forEach(([label, value, note]) => {
-    const card = el("article", { class: "kpi" });
-    card.append(el("span", { text: label }), el("strong", { text: value }), el("em", { text: note }));
-    kpis.append(card);
-  });
-  wrap.append(kpis);
-  wrap.append(el("h2", { class: "section-title", text: "Pipeline" }));
-  const counts = leadSnapshot();
-  const snap = el("div", { class: "snap" });
-  [["Cold", counts.cold], ["Warm", counts.warm], ["Hot", counts.hot], ["Converted", counts.converted]].forEach(([label, value]) => {
-    const card = el("article", {});
-    card.append(el("span", { text: label }), el("strong", { text: String(value) }));
-    snap.append(card);
-  });
-  wrap.append(snap);
-  if (!counts.cold && !counts.warm && !counts.hot && !counts.converted) {
-    wrap.append(el("p", { class: "roster-note", text: "No leads yet. Scored profiles and setter conversations show up here as cold, warm, hot, or converted." }));
-  }
-  wrap.append(el("p", {}, [el("a", { class: "btn sm", href: "#pipeline" }, ["Open CRM"])]));
-  wrap.append(el("h2", { class: "section-title", text: "Agents" }));
-  wrap.append(implementedAgents());
-  if (state.activity.length) wrap.append(activityList(state.activity.slice(0, 5), "Latest activity"));
-  return wrap;
+  if (enginePayload && usesEngine()) {
+    try {
+      await enqueueEngine("update_settings", enginePayload);
+      toast("Syncing…");
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  } else toast("Saved.");
+  await bootBusiness(state.businessId);
 }
 
 function agentsHome() {
@@ -459,6 +497,16 @@ function overview() {
 
 function pipeline() {
   const wrap = el("div", { class: "acq" });
+  const leads = el("div", { class: "filters", role: "toolbar", "aria-label": "Lead status" });
+  ["all", "cold", "warm", "hot", "converted", "dead"].forEach((status) => {
+    const chip = el("button", { type: "button", "aria-pressed": state.leadFilter === status ? "true" : "false" }, [status === "all" ? "All" : status.toUpperCase()]);
+    chip.addEventListener("click", () => {
+      state.leadFilter = status;
+      paint();
+    });
+    leads.append(chip);
+  });
+  wrap.append(leads);
   const filters = el("div", { class: "filters", role: "toolbar", "aria-label": "Stage" });
   ["all", ...JOURNEY, "dead", "skipped"].forEach((stage) => {
     const chip = el("button", { type: "button", "aria-pressed": state.stageFilter === stage ? "true" : "false" }, [stage === "all" ? "All" : STAGE_LABELS[stage]]);
@@ -469,7 +517,7 @@ function pipeline() {
     filters.append(chip);
   });
   wrap.append(filters);
-  const rows = state.targets.filter((row) => state.stageFilter === "all" || row.stage === state.stageFilter);
+  const rows = state.targets.filter((row) => (state.stageFilter === "all" || row.stage === state.stageFilter) && (state.leadFilter === "all" || row.lead_status === state.leadFilter));
   const tableWrap = el("div", { class: "table-wrap" });
   const table = el("table", { class: "leads" });
   const head = el("tr");
@@ -1355,38 +1403,54 @@ function fillPicker() {
   state.businesses.forEach((row) => pick.append(el("option", { value: row.id, text: row.agent_name || "Business" })));
 }
 
+function setPanel(open) {
+  document.body.classList.toggle("panel-open", open);
+  document.body.classList.toggle("nav-open", open);
+  const mobile = window.matchMedia("(max-width: 860px)").matches;
+  document.getElementById("nav-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+  const rail = document.getElementById("rail-toggle");
+  if (rail) rail.setAttribute("aria-expanded", open ? "true" : "false");
+  document.getElementById("nav-backdrop").hidden = !(open && mobile);
+}
+
 function go(tab) {
+  if (tab === "settings") tab = "configuration";
+  if (tab === "agents" || tab === "overview") tab = "outbound";
+  if (tab === "reports") tab = "stats";
   const url = new URL(location.href);
   url.hash = tab;
   history.replaceState(null, "", url.pathname + url.search + url.hash);
-  state.tab = tab;
+  state.tab = tabFromHash();
   markTab();
   paint();
-  document.body.classList.remove("nav-open");
-  document.getElementById("nav-backdrop").hidden = true;
+  if (window.matchMedia("(max-width: 860px)").matches) setPanel(false);
 }
 
 function markTab() {
-  const current = tabGroup(state.tab);
-  document.querySelectorAll("#acq-nav a").forEach((link) => {
-    if (link.dataset.tab === current) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
-  });
+  mountNav(pageUi());
   const title = document.getElementById("page-title");
   const names = {
     dashboard: "Dashboard",
-    agents: "Agents",
-    overview: "Agents",
+    agents: "Outbound Manager",
+    overview: "Outbound Manager",
+    outbound: "Outbound Manager",
+    inbound: "Inbound Manager",
     pipeline: "CRM",
     inbox: "CRM",
-    reports: "Reports",
-    settings: "Settings",
-    integrations: "Settings",
-    billing: "Settings",
-    controls: "Settings",
-    voice: "Settings",
-    prompts: "Settings",
-    onboarding: "Setup"
+    reports: "Stats",
+    stats: "Stats",
+    performance: "Performance",
+    settings: "Configuration",
+    configuration: "Configuration",
+    integrations: "Configuration",
+    billing: "Configuration",
+    controls: "Configuration",
+    voice: "Value content",
+    content: "Value content",
+    links: "Sales links",
+    prompts: "Setter prompt",
+    onboarding: "Onboarding",
+    team: "Team"
   };
   if (title) title.textContent = names[state.tab] || "Dashboard";
   const business = state.businesses.find((row) => row.id === state.businessId);
@@ -1398,16 +1462,25 @@ function markTab() {
 }
 
 function tabGroup(tab) {
-  if (tab === "overview" || tab === "agents") return "agents";
+  if (tab === "overview" || tab === "agents" || tab === "outbound") return "outbound";
   if (tab === "inbox") return "pipeline";
-  if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "voice" || tab === "prompts") return "settings";
+  if (tab === "reports" || tab === "stats") return "stats";
+  if (tab === "voice" || tab === "content") return "content";
+  if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "settings" || tab === "configuration") return "configuration";
+  if (tab === "prompts") return "onboarding";
   return tab;
 }
 
 function tabFromHash() {
-  const tab = location.hash.replace("#", "");
-  if (tab === "overview") return "agents";
-  return TABS.includes(tab) ? tab : "dashboard";
+  const raw = location.hash.replace("#", "").split("/")[0];
+  if (raw === "overview" || raw === "agents") return "outbound";
+  if (raw === "reports") return "stats";
+  if (raw === "settings") return "configuration";
+  if (raw === "integrations" || raw === "billing") {
+    state.configKey = "connect";
+    return raw;
+  }
+  return TABS.includes(raw) ? raw : "dashboard";
 }
 
 function field(label, value, type) {

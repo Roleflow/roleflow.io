@@ -83,7 +83,7 @@ if (arriving.type === "recovery") {
         hello.textContent = "Signed in as " + (user.email || "admin") + ".";
         hideBoot();
         const title = document.getElementById("admin-title");
-        if (title) title.textContent = "Businesses";
+        if (title) title.textContent = "Your businesses";
         markNav();
         await renderAcquisitionRoster(supabase, app);
       }
