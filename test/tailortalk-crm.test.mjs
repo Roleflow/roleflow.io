@@ -224,6 +224,7 @@ const migrationNames = [
   "20261023040000_vam_chats_dnc.sql",
   "20261023050000_studio_phase5.sql",
   "20261023060000_channel_connect_requests.sql",
+  "20261023061000_acq_outbound_worker_pipeline.sql",
   "20261023070000_setter_studio.sql",
   "20261023080000_engine_sync_notice.sql"
 ];
