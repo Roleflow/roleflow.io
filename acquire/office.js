@@ -185,7 +185,7 @@ function openDesk(ui, spec, kind) {
   const drawer = document.getElementById("agent-drawer");
   if (drawer) {
     drawer.hidden = false;
-    drawer.classList.toggle("wide", spec.kind === "manager" && kind === "inbound");
+    drawer.classList.toggle("desk-wide", spec.kind === "manager" && kind === "inbound");
   }
   fillDrawer(ui, spec, kind);
 }

@@ -297,8 +297,8 @@ body.admin-panel .biz-grid{gap:24px}
 .desk-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:48px 24px}
 .desk-modal[hidden]{display:none !important}
 .desk-modal-backdrop{position:absolute;inset:0;border:0;padding:0;background:rgba(4,8,20,.55);cursor:pointer}
-.desk-modal-sheet{position:relative;z-index:1;width:min(720px,100%);max-height:min(780px,calc(100vh - 96px));overflow:auto;padding:24px;border-radius:20px;background:#101A33;box-shadow:var(--shadow)}
-.desk-modal.wide .desk-modal-sheet{width:min(1080px,100%)}
+.desk-modal-sheet{position:relative;z-index:1;justify-self:center;width:min(720px,calc(100vw - 96px));max-height:min(780px,calc(100vh - 96px));overflow:auto;padding:24px;border-radius:20px;background:#101A33;box-shadow:var(--shadow)}
+.desk-modal.desk-wide .desk-modal-sheet{width:min(960px,calc(100vw - 240px))}
 .integration-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .integration-head h3{margin:0}
 .integration-status{display:inline-flex;align-items:center;gap:8px;padding:4px 10px;border-radius:999px;background:#1D2848;color:var(--ink);font-size:.78rem;font-weight:600;letter-spacing:.02em}
