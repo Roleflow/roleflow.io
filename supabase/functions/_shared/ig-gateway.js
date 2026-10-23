@@ -3,7 +3,7 @@ import { planTurn } from "../roleflow-acquisition/ig/engine.js";
 
 export const CALLBACK_URL = "https://roleflow.io/app/instagram/callback";
 export const LOGO_URL = "https://roleflow.io/assets/logo.jpg";
-export const API_ORIGIN = "https://zernio.com/api";
+export const API_BASE = "https://zernio.com/api/v1";
 const STATE_MS = 20 * 60 * 1000;
 
 function authHeaders(apiKey) {
@@ -91,19 +91,30 @@ export async function startConnect(input) {
   let profileId = String(input.existingProfileId || "");
   const fetchImpl = input.fetchImpl;
   if (!profileId) {
-    const created = await fetchImpl(API_ORIGIN + "/v1/profiles", {
+    const listed = await fetchImpl(API_BASE + "/profiles?externalId=" + encodeURIComponent(input.business.id), {
+      headers: authHeaders(apiKey)
+    });
+    const list = await listed.json().catch(() => ({}));
+    const profiles = Array.isArray(list.profiles) ? list.profiles : [];
+    const found = profiles.find((profile) => String(profile.externalId || "") === String(input.business.id));
+    profileId = found ? profileIdFrom(found) : "";
+  }
+  if (!profileId) {
+    const created = await fetchImpl(API_BASE + "/profiles", {
       method: "POST",
       headers: authHeaders(apiKey),
       body: JSON.stringify(profileBody(input.business))
     });
     const payload = await created.json().catch(() => ({}));
-    if (!created.ok) return { configured: true, error: "Instagram connect could not start." };
-    profileId = profileIdFrom(payload);
+    const existing = String((payload.details && payload.details.existingProfileId) || "");
+    if (created.status === 409 && existing) profileId = existing;
+    else if (!created.ok) return { configured: true, error: "Instagram connect could not start." };
+    else profileId = profileIdFrom(payload);
     if (!profileId) return { configured: true, error: "Instagram connect could not start." };
   }
   const state = signState({ b: input.business.id, e: now + STATE_MS, n: nonce }, secret);
   const query = connectQuery({ profileId, state, logoUrl: input.logoUrl });
-  const response = await fetchImpl(API_ORIGIN + "/v1/connect/instagram?" + new URLSearchParams(query).toString(), {
+  const response = await fetchImpl(API_BASE + "/connect/instagram?" + new URLSearchParams(query).toString(), {
     headers: authHeaders(apiKey)
   });
   const payload = await response.json().catch(() => ({}));
@@ -137,6 +148,26 @@ export function normalizeEvent(payload, headerEventId) {
       kind: "message"
     };
   }
+  if (event === "message.sent") {
+    const message = body.message || {};
+    const recipient = String((message.recipient && message.recipient.id) || "");
+    if (!recipient || recipient === accountId) {
+      return { id, event, accountId, profileId, ignored: true, standby: false, kind: "" };
+    }
+    return {
+      id,
+      event,
+      accountId,
+      profileId,
+      conversationId: String(message.conversationId || (body.conversation && body.conversation.id) || ""),
+      text: String(message.text || "").slice(0, 4000),
+      senderId: recipient,
+      username: String((message.recipient && message.recipient.username) || ""),
+      externalId: "out:" + String(message.id || id),
+      standby: false,
+      kind: "sent"
+    };
+  }
   if (event === "comment.received") {
     const comment = body.comment || {};
     const author = comment.author || comment.from || {};
@@ -160,7 +191,7 @@ export function normalizeEvent(payload, headerEventId) {
 }
 
 export function shouldEnqueue(event, flags) {
-  if (!event || event.ignored || event.standby) return false;
+  if (!event || event.ignored || event.standby || event.kind === "sent") return false;
   if (!flags || flags.systemEnabled !== true) return false;
   if (event.event === "comment.received") return flags.commentToDm === true && Boolean(event.commentId && event.postId && event.senderId);
   if (event.event === "message.received") return Boolean(event.senderId && event.conversationId);
@@ -177,12 +208,12 @@ export function sendRequest(row) {
   const accountId = String(payload.accountId || "");
   if (row.kind === "comment_private") {
     return {
-      path: "/v1/inbox/comments/" + encodeURIComponent(payload.postId || "") + "/" + encodeURIComponent(payload.commentId || "") + "/private-reply",
+      path: "/inbox/comments/" + encodeURIComponent(payload.postId || "") + "/" + encodeURIComponent(payload.commentId || "") + "/private-reply",
       body: { accountId, message: text }
     };
   }
   return {
-    path: "/v1/inbox/conversations/" + encodeURIComponent(payload.conversationId || "") + "/messages",
+    path: "/inbox/conversations/" + encodeURIComponent(payload.conversationId || "") + "/messages",
     body: { accountId, message: text }
   };
 }

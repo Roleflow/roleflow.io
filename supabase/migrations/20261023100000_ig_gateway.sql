@@ -244,18 +244,35 @@ begin
       where id = v_conversation;
   end if;
   insert into public.acq_messages (business_id, conversation_id, external_id, role, body, sent_at)
-  values (p_business, v_conversation, left(p_external, 200), 'user', left(coalesce(p_body, ''), 4000), p_at)
+  values (
+    p_business,
+    v_conversation,
+    left(p_external, 200),
+    case when p_kind = 'sent' then 'assistant' else 'user' end,
+    left(coalesce(p_body, ''), 4000),
+    p_at
+  )
   on conflict (conversation_id, external_id) do nothing;
   insert into public.ig_threads (business_id, igsid, username, state, last_user_message_at)
   values (p_business, v_sender, v_handle, v_state, p_at)
   on conflict (business_id, igsid) do update
     set username = coalesce(excluded.username, public.ig_threads.username),
-        last_user_message_at = excluded.last_user_message_at,
-        followup_count = 0,
+        last_user_message_at = case
+          when p_kind = 'sent' then public.ig_threads.last_user_message_at
+          else excluded.last_user_message_at
+        end,
+        followup_count = case when p_kind = 'sent' then public.ig_threads.followup_count else 0 end,
         updated_at = now()
   returning id into v_thread;
   insert into public.ig_messages (business_id, thread_id, direction, body, meta_mid, kind)
-  values (p_business, v_thread, 'in', left(coalesce(p_body, ''), 4000), nullif(left(p_external, 200), ''), case when p_kind = 'comment' then 'comment' else 'text' end)
+  values (
+    p_business,
+    v_thread,
+    case when p_kind = 'sent' then 'out' else 'in' end,
+    left(coalesce(p_body, ''), 4000),
+    nullif(left(p_external, 200), ''),
+    case when p_kind = 'comment' then 'comment' else 'text' end
+  )
   on conflict (meta_mid) do nothing;
   return jsonb_build_object('ok', true, 'conversation_id', v_conversation, 'thread_id', v_thread);
 end;

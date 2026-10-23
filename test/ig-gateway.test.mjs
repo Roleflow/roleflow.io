@@ -24,6 +24,7 @@ import {
   startConnect,
   verifyState,
   verifyWebhook,
+  API_BASE,
   CALLBACK_URL,
   LOGO_URL
 } from "../supabase/functions/_shared/ig-gateway.js";
@@ -47,10 +48,15 @@ assert.deepEqual(gatewayConfigFrom({}, {}), { apiKey: "", webhookSecret: "" });
 const calls = [];
 const fetchImpl = async (url, init) => {
   calls.push({ url: String(url), init });
-  if (String(url).endsWith("/v1/profiles")) {
+  const href = String(url);
+  if (href.includes("conflict=1")) {
+    return { ok: false, status: 409, json: async () => ({ code: "profile_external_id_conflict", details: { existingProfileId: "profile-existing" } }) };
+  }
+  if (href.includes("/profiles?externalId=")) return { ok: true, status: 200, json: async () => ({ profiles: [] }) };
+  if (href.endsWith("/profiles")) {
     return { ok: true, status: 201, json: async () => ({ profile: { _id: "profile-1" } }) };
   }
-  if (String(url).includes("billing=1")) {
+  if (href.includes("billing=1")) {
     return { ok: false, status: 402, json: async () => ({ code: "PAYMENT_REQUIRED", dashboard_url: "https://billing.example/pay" }) };
   }
   return { ok: true, status: 200, json: async () => ({ authUrl: "https://instagram.example/allow?welcome=1" }) };
@@ -71,12 +77,12 @@ const started = await startConnect({
 assert.equal(started.configured, true);
 assert.equal(started.profileId, "profile-1");
 assert.equal(started.authUrl, "https://instagram.example/allow?welcome=1");
-assert.equal(calls.length, 2);
-assert.equal(calls[0].init.method, "POST");
-assert.equal(JSON.parse(calls[0].init.body).externalId, businessId);
-assert.equal(calls[0].init.headers.Authorization, "Bearer " + apiKey);
-const connectUrl = new URL(calls[1].url);
-assert.equal(connectUrl.origin + connectUrl.pathname, "https://zernio.com/api/v1/connect/instagram");
+assert.equal(calls.length, 3);
+assert.equal(calls[1].init.method, "POST");
+assert.equal(JSON.parse(calls[1].init.body).externalId, businessId);
+assert.equal(calls[1].init.headers.Authorization, "Bearer " + apiKey);
+const connectUrl = new URL(calls[2].url);
+assert.equal(connectUrl.origin + connectUrl.pathname, API_BASE + "/connect/instagram");
 assert.equal(connectUrl.searchParams.get("profileId"), "profile-1");
 assert.equal(connectUrl.searchParams.get("scopes"), "messaging,comments");
 assert.equal(connectUrl.searchParams.get("welcome"), "true");
@@ -120,6 +126,14 @@ const insecure = await startConnect({
 });
 assert.equal(insecure.error, "Instagram connect could not start.");
 
+const reused = await startConnect({
+  apiKey,
+  business: { id: businessId, name: "Roleflow" },
+  fetchImpl: async (url, init) => fetchImpl(String(url).includes("/profiles") && init && init.method === "POST" ? String(url) + "?conflict=1" : url, init),
+  nonce: "abc123"
+});
+assert.equal(reused.profileId, "profile-existing");
+
 const raw = JSON.stringify({
   id: "evt-1",
   event: "message.received",
@@ -145,6 +159,16 @@ assert.equal(standby.standby, true);
 assert.equal(shouldEnqueue(standby, { systemEnabled: true, commentToDm: true }), false);
 assert.equal(shouldEnqueue(message, { systemEnabled: false, commentToDm: true }), false);
 assert.equal(shouldEnqueue(message, { systemEnabled: true, commentToDm: false }), true);
+const sent = normalizeEvent({
+  id: "evt-sent",
+  event: "message.sent",
+  account: { accountId: "acct-1" },
+  message: { id: "mid-out", text: "Sent", conversationId: "conv-1", recipient: { id: "sender-1" } }
+});
+assert.equal(sent.kind, "sent");
+assert.equal(sent.senderId, "sender-1");
+assert.equal(shouldEnqueue(sent, { systemEnabled: true, commentToDm: true }), false);
+assert.equal(normalizeEvent({ id: "evt-echo", event: "message.sent", account: { accountId: "acct-1" }, message: { id: "mid-echo" } }).ignored, true);
 
 const comment = normalizeEvent({
   id: "evt-2",
@@ -158,10 +182,10 @@ assert.equal(comment.externalId, "comment:comment-9");
 assert.equal(shouldEnqueue(comment, { systemEnabled: true, commentToDm: false }), false);
 assert.equal(shouldEnqueue(comment, { systemEnabled: true, commentToDm: true }), true);
 const commentSend = sendRequest({ kind: "comment_private", payload: planPayload(comment, "row-1") });
-assert.equal(commentSend.path, "/v1/inbox/comments/post-3/comment-9/private-reply");
+assert.equal(commentSend.path, "/inbox/comments/post-3/comment-9/private-reply");
 assert.deepEqual(commentSend.body, { accountId: "acct-1", message: "" });
 const replySend = sendRequest({ kind: "reply", payload: enqueueBody(message, "Thanks", "row-1") });
-assert.equal(replySend.path, "/v1/inbox/conversations/conv-1/messages");
+assert.equal(replySend.path, "/inbox/conversations/conv-1/messages");
 assert.deepEqual(replySend.body, { accountId: "acct-1", message: "Thanks" });
 
 const owned = interpretSend(409, { code: "not_thread_owner", details: { ownerAppId: "other-app" } });

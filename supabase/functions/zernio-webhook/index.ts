@@ -4,7 +4,7 @@
 
 import { completeJson, resolveProvider, systemPrompt } from "../roleflow-acquisition/ig/llm.js";
 import {
-  API_ORIGIN,
+  API_BASE,
   enqueueBody,
   handleWebhook,
   idempotencyKey,
@@ -212,7 +212,7 @@ async function sendOne(admin, apiKey, row) {
   const request = sendRequest(row);
   let result;
   try {
-    const response = await fetch(API_ORIGIN + request.path, {
+    const response = await fetch(API_BASE + request.path, {
       method: "POST",
       headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify(request.body)
