@@ -394,6 +394,19 @@ verify_jwt = false
 [functions.roleflow-add-business]
 verify_jwt = false
 
+# ig-connect-start checks the caller JWT and workspace edit access.
+[functions.ig-connect-start]
+verify_jwt = true
+
+# ig-connect-finish trusts the signed state from ig-connect-start. The browser
+# returns from Instagram without a user JWT.
+[functions.ig-connect-finish]
+verify_jwt = false
+
+# zernio-webhook checks its own signature. Instagram's gateway cannot send a user JWT.
+[functions.zernio-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

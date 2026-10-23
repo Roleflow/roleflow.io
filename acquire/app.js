@@ -211,6 +211,7 @@ async function boot() {
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
     paint();
     announceWaiting(state.connectRequests);
+    consumeInstagramNotice();
     return;
   }
   if (!isConfigured()) {
@@ -240,6 +241,7 @@ async function boot() {
   }
   const notice = new URLSearchParams(location.search).get("notice");
   if (notice) toast(notice, "bad");
+  consumeInstagramNotice();
   if (new URLSearchParams(location.search).get("onboarding") === "1" && !location.hash) {
     history.replaceState(null, "", location.pathname + location.search + "#onboarding");
   }
@@ -2538,6 +2540,14 @@ function tabGroup(tab) {
   if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "settings" || tab === "configuration") return "configuration";
   if (tab === "prompts" || tab === "brief") return "onboarding";
   return tab;
+}
+
+function consumeInstagramNotice() {
+  const url = new URL(location.href);
+  if (url.searchParams.get("ig") !== "connected") return;
+  toast("Instagram connected.");
+  url.searchParams.delete("ig");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
 }
 
 function tabFromHash() {
