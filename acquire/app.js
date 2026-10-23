@@ -383,6 +383,8 @@ async function loadAll(id) {
   state.invites = invites.error ? [] : invites.data || [];
   state.notifications = notifications.error ? [] : notifications.data || [];
   state.origins = origins.error ? [] : origins.data || [];
+  const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
+  state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
   return true;
 }
 
@@ -522,7 +524,8 @@ function pageUi() {
     createInvite,
     regenerateJoin,
     saveOrigin,
-    markNotification
+    markNotification,
+    syncSetter
   };
 }
 
@@ -584,6 +587,7 @@ async function saveBrief(fields, cards, note) {
   state.studioScore = null;
   if (state.studio) state.studio.proposal = null;
   await bootBusiness(state.businessId, { quiet: true });
+  await requestSetterSync("push");
 }
 
 async function saveAgent(card) {
@@ -691,6 +695,7 @@ async function saveLead(lead, patch) {
   else {
     toast("Lead saved.");
     await bootBusiness(state.businessId, { quiet: true });
+    await requestSetterSync("push");
   }
 }
 
@@ -922,6 +927,28 @@ async function deleteRow(table, id) {
     toast("Removed.");
     await bootBusiness(state.businessId, { quiet: true });
   }
+}
+
+async function requestSetterSync(direction) {
+  if (!state.settings || state.settings.studio_setter_sync !== true || !readyToSave()) return;
+  const invoked = await state.supabase.functions.invoke("roleflow-setter-sync", {
+    body: { action: direction || "push", business_id: state.businessId }
+  });
+  if (invoked.error) toast("Sync did not finish.", "bad");
+}
+
+async function syncSetter() {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const pushed = await state.supabase.functions.invoke("roleflow-setter-sync", {
+    body: { action: "push", business_id: state.businessId }
+  });
+  const pulled = await state.supabase.functions.invoke("roleflow-setter-sync", {
+    body: { action: "pull", business_id: state.businessId }
+  });
+  if (pushed.error || pulled.error) toast("Sync did not finish.", "bad");
+  else if ((pushed.data && pushed.data.result) === "skipped") toast("Sync is off. Nothing was sent.");
+  else toast("Sync finished.");
+  await bootBusiness(state.businessId, { quiet: true });
 }
 
 async function patchSettings(patch, enginePayload) {

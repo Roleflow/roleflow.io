@@ -14,6 +14,60 @@ function box(ui) {
   return ui.state.studio;
 }
 
+const SYNC_ROUND = [
+  "Lead id",
+  "Lead status and converted flag",
+  "Chat history, when the payload includes it",
+  "Paid lead marked converted",
+  "Order amount on a paid lead"
+];
+
+const SYNC_ONLY = [
+  "Brief sections as the workflow",
+  "Personality",
+  "Lead status definitions",
+  "Manual tags",
+  "Attributes to extract",
+  "Follow-up on/off, period, and count",
+  "Trigger message",
+  "Autolock and its condition",
+  "Message delay",
+  "Quick responses",
+  "Comment and story keywords",
+  "Remarks and notes",
+  "Lead owner",
+  "Lead status other than paid"
+];
+
+function syncCard(ui) {
+  const card = ui.el("section", { class: "agent", "data-command": "setter-sync" });
+  const settings = ui.state.settings || {};
+  const on = settings.studio_setter_sync === true;
+  const logs = ui.state.syncLogs || [];
+  const latestOk = logs.find((row) => row.result === "ok");
+  const failed = logs.find((row) => row.result === "error");
+  const link = ui.state.setterLink || {};
+  let status = "Off";
+  if (on && latestOk && !failed) status = "Yes";
+  if (failed) status = "Needs attention";
+  card.append(ui.el("h3", { text: "Synced with setter" }));
+  card.append(ui.el("p", { text: status }));
+  const when = link.last_synced_at || (logs[0] && logs[0].created_at);
+  card.append(ui.el("p", { text: "Last sync: " + (when && ui.when ? ui.when(when) : "No sync yet") }));
+  card.append(ui.el("p", { text: failed && failed.detail ? failed.detail : "No errors" }));
+  card.append(ui.el("p", { text: link.external_agent_id ? "Setter agent id " + link.external_agent_id : "No setter agent id stored yet." }));
+  card.append(ui.el("h3", { text: "Round trip" }));
+  SYNC_ROUND.forEach((label) => card.append(ui.el("p", { text: label })));
+  card.append(ui.el("h3", { text: "Roleflow only" }));
+  SYNC_ONLY.forEach((label) => card.append(ui.el("p", { text: label })));
+  if (ui.state.canEdit && ui.syncSetter) {
+    const button = ui.button("Sync now", () => ui.syncSetter());
+    button.classList.add("ghost");
+    card.append(button);
+  }
+  return card;
+}
+
 function header(ui, title, text, how, icon) {
   if (ui.pageHeader) return ui.pageHeader(ui, title, text, how, icon);
   const block = ui.el("section", { class: "agent" });
@@ -41,6 +95,7 @@ export function renderBusiness(ui) {
   const counter = ui.el("p", { class: "char-count" + (count > MAX_CHARS ? " over" : ""), text: count.toLocaleString("en-US") + " / " + MAX_CHARS.toLocaleString("en-US") });
   wrap.append(counter);
   wrap.append(ui.el("p", { class: "mute", text: SETTER_SYNC ? "Live setter sync is on." : "Live setter sync is off. Saves stay in this panel." }));
+  wrap.append(syncCard(ui));
 
   const form = ui.el("form", { class: "brief-grid" });
   const inputs = {};
