@@ -102,6 +102,10 @@ Deno.serve(async (req) => {
 
 function promptFor(action: string, fields: Record<string, string>, body: Record<string, unknown>) {
   if (action === "score") {
+    const prompt = String(body.prompt || "").trim();
+    if (prompt) {
+      return "Score this agent prompt from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Prompt:\n" + prompt.slice(0, 8000);
+    }
     return "Score this business brief from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Brief JSON:\n" + JSON.stringify(fields);
   }
   if (action === "fix") {

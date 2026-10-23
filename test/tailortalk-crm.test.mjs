@@ -221,7 +221,8 @@ const migrationNames = [
   "20261022210000_studio_phase2.sql",
   "20261022230000_studio_phase3.sql",
   "20261022240000_studio_phase4.sql",
-  "20261023040000_vam_chats_dnc.sql"
+  "20261023040000_vam_chats_dnc.sql",
+  "20261023050000_studio_phase5.sql"
 ];
 assert.deepEqual(
   migrationNames,
