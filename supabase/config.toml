@@ -407,6 +407,10 @@ verify_jwt = false
 [functions.zernio-webhook]
 verify_jwt = false
 
+# ig-outbox-tick checks the acquisition cron secret. pg_cron cannot send a user JWT.
+[functions.ig-outbox-tick]
+verify_jwt = false
+
 [functions.inbox-reply]
 verify_jwt = true
 
