@@ -100,6 +100,9 @@ function fillThread(ctx, pane, thread) {
           p_payload: { thread_id: thread.id, text }
         });
         if (queued.error) throw new Error(queued.error.message);
+        state.supabase.functions.invoke("roleflow-hooks", {
+          body: { action: "notify_sync", business_id: state.businessId }
+        }).catch(() => {});
         toast("Syncing…");
       } else {
         await callEngine(ctx, "inbox_send", { thread_id: thread.id, text });
@@ -158,6 +161,15 @@ function paintPrompts(host, ctx) {
             p_payload: { role: role.value, sections, voice_note_slots: SLOTS.map((slot) => slot.id) }
           });
           if (queued.error) throw new Error(queued.error.message);
+          const deployed = await state.supabase.rpc("acq_engine_enqueue", {
+            p_business: state.businessId,
+            p_kind: "deploy",
+            p_payload: { role: role.value, workspace_id: state.businessId }
+          });
+          if (deployed.error) throw new Error(deployed.error.message);
+          state.supabase.functions.invoke("roleflow-hooks", {
+            body: { action: "notify_sync", business_id: state.businessId }
+          }).catch(() => {});
           toast("Syncing…");
         } else toast("Saved version " + (saved.version || "") + ".");
         state.prompts = (await callEngine(ctx, "prompts_get")).roles || [];

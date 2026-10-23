@@ -58,6 +58,9 @@ export async function submitInstagramConnect(ctx, username, notes) {
   ctx.state.supabase.functions.invoke("roleflow-hooks", {
     body: { action: "notify_connect", request_id: payload.id }
   }).catch(() => {});
+  ctx.state.supabase.functions.invoke("roleflow-hooks", {
+    body: { action: "notify_sync", business_id: ctx.state.businessId }
+  }).catch(() => {});
   announceConnection(handle, payload.id);
   return { ok: true, username: handle };
 }

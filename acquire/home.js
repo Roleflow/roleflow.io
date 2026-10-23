@@ -141,10 +141,10 @@ export function renderDashboard(ui) {
   accounts.append(manage);
   const alerts = ui.el("section", { class: "home-card tone-alerts" });
   alerts.append(ui.el("h3", { text: "Alerts" }));
-  const pending = (ui.state.outbox || []).filter((row) => row.status === "pending").length;
+  const sync = ui.businessSync ? ui.businessSync() : { label: "Setter ready" };
   const exceptions = ui.state.exceptions.length;
   alerts.append(ui.el("p", { class: "metric-value sm", text: exceptions ? exceptions + " open exceptions" : "No open exceptions" }));
-  alerts.append(ui.el("p", { class: "metric-note", text: pending === 1 ? "1 change syncing" : pending ? pending + " changes syncing" : "No changes waiting to sync" }));
+  alerts.append(ui.el("p", { class: "metric-note", id: "home-sync", text: sync.label }));
   if (ui.setterPending()) alerts.append(ui.el("p", { text: "Setter link: Pending activation" }));
   const counts = ui.leadSnapshot();
   alerts.append(ui.el("p", { text: "Pipeline · Cold " + counts.cold + " · Warm " + counts.warm + " · Hot " + counts.hot + " · Converted " + counts.converted }));
@@ -157,7 +157,7 @@ export function renderDashboard(ui) {
   const banner = ui.el("div", { class: "info-banner", role: "status" });
   const on = ui.state.settings && ui.state.settings.system_enabled;
   const cap = ui.state.settings && ui.state.settings.daily_cap;
-  banner.append(ui.el("p", { text: (on ? "The system is on." : "The system is off.") + (cap ? " Daily cap " + cap + "." : " Daily cap not set.") + (pending ? " Syncing…" : "") }));
+  banner.append(ui.el("p", { text: (on ? "The system is on." : "The system is off.") + (cap ? " Daily cap " + cap + "." : " Daily cap not set.") + " " + sync.label }));
   wrap.append(banner);
   return wrap;
 }
@@ -184,9 +184,9 @@ export function renderInbound(ui) {
   wrap.append(renderOffice(ui, "inbound"));
   const caps = ui.el("section", { class: "agent" });
   caps.append(ui.el("h3", { text: "Setter status" }));
-  caps.append(ui.el("p", { class: "metric-value sm", text: ui.setterLinkText() }));
+  const sync = ui.businessSync ? ui.businessSync() : { label: "Setter ready", tone: "wait" };
+  caps.append(ui.el("p", { class: "metric-value sm", text: sync.label }));
   caps.append(ui.el("p", { class: "metric-note", text: ui.instagramLine() }));
-  if ((ui.state.outbox || []).some((row) => row.status === "pending")) caps.append(ui.el("p", { text: "Syncing…" }));
   wrap.append(caps);
   return wrap;
 }
@@ -213,7 +213,13 @@ export function pageHeader(ui, title, text, how, iconName) {
   copy.append(iconTile(iconName || "grid", "t1"), ui.el("div", {}, [ui.el("h2", { text: title }), ui.el("p", { text })]));
   const button = ui.button("How it works", () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
-  card.append(copy, button, ui.el("span", { class: "page-rule" }));
+  const actions = ui.el("div", { class: "page-actions" });
+  if (ui.businessSync) {
+    const sync = ui.businessSync();
+    actions.append(ui.el("span", { id: "sync-state", class: "integration-status " + sync.tone, "data-sync": sync.key, text: sync.label }));
+  }
+  actions.append(button);
+  card.append(copy, actions, ui.el("span", { class: "page-rule" }));
   return card;
 }
 

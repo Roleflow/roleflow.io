@@ -43,6 +43,7 @@ const panelFiles = [
   "acquire/setter-workflow.js",
   "acquire/setter-sections.js",
   "acquire/add-business.js",
+  "acquire/sync-state.js",
   "admin/acquisition-admin.js",
   "admin/admin.js",
   "admin/index.html",

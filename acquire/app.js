@@ -6,6 +6,7 @@ import { bindDock } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
 import { announceWaiting, waitingRequest } from "./connect-instagram.js";
+import { businessSync, queueSyncNotice } from "./sync-state.js";
 import {
   mountNav,
   pageHeader,
@@ -183,6 +184,24 @@ async function boot() {
     const seed = await import("./setter-seed.js");
     state.setterPrompts = [{ id: "preview-v1", role: "inbound_manager", version: 1, sections: seed.sections, created_at: "2026-10-23T06:00:00Z" }];
     state.setterCurrentId = "preview-v1";
+    if (new URLSearchParams(location.search).get("headings") === "1") {
+      const titles = {
+        exclusion: "Highest Priority Rule (Exclusion)",
+        non_negotiables: "Non-Negotiables",
+        role: "The Role",
+        guardrails: "The Guardrails",
+        knowledge: "Context and Knowledge",
+        workflow: "Workflow Logic",
+        objections: "Objection Handling"
+      };
+      const headed = {};
+      Object.entries(seed.sections).forEach(([key, value]) => {
+        const head = titles[key] ? "# " + titles[key] : "";
+        const body = String(value || "").trim();
+        headed[key] = !head || body === head || body.startsWith(head + "\n") ? body : head + "\n\n" + body;
+      });
+      state.setterPrompts[0].sections = headed;
+    }
     state.agentTools = [
       { id: "tool-voice", agent_role: "inbound_manager", kind: "media", name: "Gap building", config: { media_type: "voice" } },
       { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "https://calendar.app.google/8i1gomkozavqYU5b8" } }
@@ -340,7 +359,7 @@ async function loadAll(id) {
     q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count, automated, sales_link_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
-    q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(20),
+    q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
     q.from("acq_channel_connect_requests").select("id, workspace_id, channel, username, status, notes, requested_by, created_at, updated_at").eq("workspace_id", id).order("created_at", { ascending: false }).limit(10)
   ]);
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
@@ -441,7 +460,7 @@ async function loadAll(id) {
     q.from("acq_prompt_versions").select("id, role, version, sections, created_at").eq("business_id", id).eq("role", "inbound_manager").order("version", { ascending: false }).limit(20),
     q.from("acq_prompt_current").select("version_id").eq("business_id", id).eq("role", "inbound_manager").maybeSingle(),
     q.from("acq_agent_tools").select("id, agent_role, kind, name, config, created_at").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("kind", ["update_workflow", "deploy", "create_tool"]).order("created_at", { ascending: false }).limit(12)
+    q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
   ]);
   state.setterPrompts = setterPrompts.error ? [] : setterPrompts.data || [];
   state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
@@ -576,6 +595,7 @@ function pageUi() {
     setterSwitch,
     when,
     setterPending: () => usesEngine() && (!(state.setterLink) || state.setterLink.status !== "connected"),
+    businessSync: currentSync,
     icpAgentCard,
     warmupAgentCard,
     setterAgentCard,
@@ -1181,14 +1201,20 @@ async function patchSettings(patch, enginePayload) {
     toast(saved.error.message, "bad");
     return;
   }
-  if (enginePayload && usesEngine()) {
-    try {
+  try {
+    if (usesEngine() && Object.prototype.hasOwnProperty.call(patch, "system_enabled")) {
+      await enqueueEngine(patch.system_enabled ? "resume_agent" : "pause_agent", {
+        scope: "setter",
+        system_enabled: patch.system_enabled === true
+      });
+      toast("Syncing");
+    } else if (enginePayload && usesEngine()) {
       await enqueueEngine("update_settings", enginePayload);
       toast("Syncing…");
-    } catch (error) {
-      toast(error.message, "bad");
-    }
-  } else toast("Saved.");
+    } else toast("Saved.");
+  } catch (error) {
+    toast(error.message, "bad");
+  }
   await bootBusiness(state.businessId);
 }
 
@@ -2013,6 +2039,17 @@ function usesEngine() {
   return Boolean(state.settings && state.settings.setter_provider === "engine");
 }
 
+function currentSync() {
+  return businessSync({
+    previewSync: state.previewSync || "",
+    previewError: state.previewError || "",
+    outbox: state.outbox || [],
+    igStatus: state.ig && state.ig.status,
+    systemEnabled: Boolean(state.settings && state.settings.system_enabled),
+    externalAgentId: state.setterLink && state.setterLink.external_agent_id
+  });
+}
+
 const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
 
 async function enqueueEngine(kind, payload) {
@@ -2022,6 +2059,7 @@ async function enqueueEngine(kind, payload) {
     p_payload: payload || {}
   });
   if (saved.error) throw new Error(saved.error.message);
+  queueSyncNotice(state.supabase, state.businessId);
 }
 
 function controls() {
@@ -2112,9 +2150,10 @@ async function setSetterBundle(on) {
   }
   if (usesEngine()) {
     try {
-      for (const role of SETTER_ROLES) {
-        await enqueueEngine("pause_agent", { role, status: on ? "active" : "paused" });
-      }
+      await enqueueEngine(on ? "resume_agent" : "pause_agent", {
+        roles: SETTER_ROLES,
+        status: on ? "active" : "paused"
+      });
       toast("Syncing…");
     } catch (error) {
       toast(error.message, "bad");
@@ -2132,7 +2171,7 @@ async function setRole(role, on) {
   }
   if (usesEngine() && SETTER_ROLES.includes(role)) {
     try {
-      await enqueueEngine("pause_agent", { role, status: on ? "active" : "paused" });
+      await enqueueEngine(on ? "resume_agent" : "pause_agent", { role, status: on ? "active" : "paused" });
       toast("Syncing…");
     } catch (error) {
       toast(error.message, "bad");
@@ -2168,6 +2207,11 @@ async function saveControls(event, fields) {
     toast("Controls saved.");
     if (fields.provider.value === "engine") {
       try {
+        const nextOn = fields.enabledInput.checked === true;
+        const prevOn = Boolean(state.settings && state.settings.system_enabled);
+        if (nextOn !== prevOn) {
+          await enqueueEngine(nextOn ? "resume_agent" : "pause_agent", { scope: "setter", system_enabled: nextOn });
+        }
         await mergeParams("comment_to_dm", {
           trigger_keywords: fields.keywords.input.value.trim(),
           trigger_message: fields.triggerMessage.input.value.trim()
@@ -2611,7 +2655,11 @@ function readPreview() {
     businessId: "preview",
     businesses: [{ id: "preview", agent_name: "Preview coaching" }],
     canEdit: params.get("edit") === "1",
-    settings: { system_enabled: true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false },
+    previewSync: params.get("sync") || "",
+    previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
+    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false },
+    setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : null,
+    outbox: [],
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
     targets: [
       { id: "t1", handle: "northstar", stage: "outreach", peak_stage: "outreach", lead_status: "warm", icp_score: 90, source: "competitor_followers", bio: "Coach. DM me to apply.", cta_detected: true, updated_at: "2026-10-21T09:00:00Z", budget: "", timeline: "", fit: "", qual_score: null, decision_maker: null },

@@ -27,6 +27,9 @@ const STEPS = [
       ["booking", "Booking link", "text"],
       ["tone", "Tone", "text"],
       ["languages", "Languages", "text"],
+      ["timezone", "Timezone", "text"],
+      ["followup_hours", "Follow-up hours", "text"],
+      ["followup_count", "Follow-up count", "text"],
       ["faqs", "FAQs", "textarea"]
     ]
   }
@@ -49,7 +52,7 @@ export function openAddBusiness({ supabase, preview }) {
   sheet.setAttribute("aria-labelledby", "add-business-title");
   modal.append(backdrop, sheet);
   document.body.append(modal);
-  const answers = {};
+  const answers = { timezone: "Europe/Madrid", followup_hours: "6", followup_count: "3" };
   let step = 0;
   const close = () => modal.remove();
   backdrop.addEventListener("click", close);

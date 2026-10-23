@@ -23,7 +23,9 @@ assert.match(sections.objections, /FAQ answers/);
 assert.match(sections.workflow, /Comment-to-DM Logic|Path A/);
 
 const workflow = read("acquire/setter-workflow.js");
-assert.match(workflow, /Saved, syncing/);
+assert.match(workflow, /Syncing/);
+assert.doesNotMatch(workflow, /Saved, syncing/);
+assert.doesNotMatch(workflow, /action: "deliver"/);
 assert.match(workflow, /Nothing is sent to a lead/);
 assert.match(workflow, /Add tool/);
 assert.match(workflow, /send voice note/);

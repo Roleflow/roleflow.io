@@ -305,6 +305,8 @@ body.admin-panel .biz-grid{gap:24px}
 .integration-status::before{content:"";width:8px;height:8px;border-radius:99px;background:#7E8AAE}
 .integration-status.on::before{background:#7B4DFF;box-shadow:0 0 0 4px rgba(123,77,255,.2)}
 .integration-status.wait::before{background:#E8B04A}
+.integration-status.bad::before{background:#E85D4C}
+.page-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .nav-chevron{width:40px;height:40px;border:0;border-radius:12px;background:#1D2848;color:#9AA6C6;display:grid;place-items:center;cursor:pointer;padding:0;flex:none}
 .nav-chevron .nav-ico{width:28px;height:28px;background:transparent}
 .setter-studio{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(240px,.8fr);gap:16px;margin-top:16px}
