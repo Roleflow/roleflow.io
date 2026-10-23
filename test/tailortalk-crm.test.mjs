@@ -229,7 +229,8 @@ const migrationNames = [
   "20261023080000_engine_sync_notice.sql",
   "20261023090000_resend_settings.sql",
   "20261023100000_ig_gateway.sql",
-  "20261023120000_inbox_live.sql"
+  "20261023120000_inbox_live.sql",
+  "20261023140000_setter_gate.sql"
 ];
 assert.deepEqual(
   migrationNames,

@@ -18,6 +18,7 @@ import {
 } from "../_shared/ig-gateway.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
+import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST." });
@@ -72,6 +73,13 @@ Deno.serve(async (req) => {
           p_kind: event.kind
         });
         if (stored.error || !stored.data || stored.data.ok !== true) throw new Error("store failed");
+        if (event.kind === "sent") {
+          const stop = await admin.from("acq_settings").select("stop_on_human").eq("agent_id", account.businessId).maybeSingle();
+          if (stop.error) throw new Error("settings lookup failed");
+          if (handoverOnSent(stop.data && stop.data.stop_on_human) && stored.data.thread_id) {
+            await admin.from("ig_threads").update({ human_locked: true, updated_at: new Date().toISOString() }).eq("id", stored.data.thread_id).eq("business_id", account.businessId);
+          }
+        }
         if (!queued) return;
         const lead = await admin.from("acq_contacts").select("ai_enabled").eq("business_id", account.businessId).eq("external_id", event.senderId).maybeSingle();
         if (lead.error) throw new Error("lead lookup failed");
@@ -146,6 +154,24 @@ async function planJob(admin, job) {
     GEMINI_MODEL: Deno.env.get("GEMINI_MODEL") || ""
   };
   const role = job.event.kind === "comment" ? "comment_to_dm" : "qualification";
+  const gate = await admin.from("acq_settings").select("office_mode, timezone, office_start, office_end, hours_by_day, reply_delay_seconds, reply_delay_max_seconds, setter_model").eq("agent_id", job.account.businessId).maybeSingle();
+  if (gate.error) {
+    await admin.from("ig_outbox").update({ status: "failed", last_error: "The reply was not prepared." }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
+  const prefs = gate.data || {};
+  if (!officeOpen({
+    now: Date.now(),
+    timeZone: prefs.timezone || "Europe/Madrid",
+    mode: prefs.office_mode || "always",
+    start: prefs.office_start,
+    end: prefs.office_end,
+    hoursByDay: prefs.hours_by_day || {}
+  })) {
+    await admin.from("ig_outbox").update({ status: "blocked", last_error: "Outside office hours." }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
+  env.XAI_MODEL = chooseModel({ preferred: prefs.setter_model, text: job.event.text, state: thread.state });
   if (!resolveProvider(env)) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "The setter is not configured." }).eq("id", job.id).eq("status", "pending");
     return;
@@ -154,9 +180,10 @@ async function planJob(admin, job) {
   try {
     const sections = await promptSections(admin, job.account.businessId, role);
     const settings = await admin.from("acq_settings").select("offer_summary, icp_notes, knowledge_base").eq("agent_id", job.account.businessId).maybeSingle();
-    const knowledge = settings.data
+    const brief = await admin.from("acq_business_briefs").select("fields").eq("business_id", job.account.businessId).maybeSingle();
+    const knowledge = (settings.data
       ? "\n\nBusiness knowledge\nOffer: " + (settings.data.offer_summary || "") + "\nICP: " + (settings.data.icp_notes || "") + "\nNotes: " + (settings.data.knowledge_base || "")
-      : "";
+      : "") + briefKnowledge(brief.data && brief.data.fields);
     plan = await planGatewayReply({
       thread,
       eventKind: job.event.kind,
@@ -183,14 +210,34 @@ async function planJob(admin, job) {
   };
   if (plan.score) patch.score = plan.score;
   await admin.from("ig_threads").update(patch).eq("id", job.threadId).eq("business_id", job.account.businessId);
+  if (job.event.senderId) {
+    const contact = await admin.from("acq_contacts").select("id, attributes, tags").eq("business_id", job.account.businessId).eq("external_id", job.event.senderId).maybeSingle();
+    const rules = await admin.from("acq_tag_rules").select("name, rule_text").eq("business_id", job.account.businessId);
+    if (contact.data) {
+      const next = leadPatch({
+        attributes: contact.data.attributes,
+        tags: contact.data.tags,
+        extracted: plan.attributes,
+        score: plan.score,
+        inbound: job.event.text,
+        rules: rules.data || []
+      });
+      await admin.from("acq_contacts").update({ attributes: next.attributes, tags: next.tags, updated_at: new Date().toISOString() }).eq("id", contact.data.id).eq("business_id", job.account.businessId);
+    }
+  }
   const text = replyText(plan);
   if (!text) {
     await admin.from("ig_outbox").update({ status: "done", last_error: null, payload: enqueueBody(job.event, "", current.data.payload.conversationRowId) }).eq("id", job.id).eq("status", "pending");
     return;
   }
-  await admin.from("ig_outbox").update({
-    payload: enqueueBody({ ...job.event, text }, text, current.data.payload.conversationRowId)
-  }).eq("id", job.id).eq("status", "pending");
+  const wait = delaySeconds(prefs.reply_delay_seconds, prefs.reply_delay_max_seconds, Math.random);
+  const payload = enqueueBody({ ...job.event, text }, text, current.data.payload.conversationRowId);
+  if (wait > 25) {
+    await admin.from("ig_outbox").update({ payload, run_at: new Date(Date.now() + wait * 1000).toISOString() }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+  await admin.from("ig_outbox").update({ payload }).eq("id", job.id).eq("status", "pending");
 }
 
 async function promptSections(admin, businessId, role) {
@@ -203,7 +250,7 @@ async function promptSections(admin, businessId, role) {
 
 async function sendPending(admin, apiKey, businessId) {
   if (!apiKey) return;
-  const pending = await admin.from("ig_outbox").select("id, business_id, thread_id, kind, payload, attempts, status").eq("business_id", businessId).eq("transport", "official").eq("status", "pending").order("run_at", { ascending: true }).limit(5);
+  const pending = await admin.from("ig_outbox").select("id, business_id, thread_id, kind, payload, attempts, status").eq("business_id", businessId).eq("transport", "official").eq("status", "pending").lte("run_at", new Date().toISOString()).order("run_at", { ascending: true }).limit(5);
   for (const row of pending.data || []) {
     if (!row.payload || !row.payload.text || row.payload.needsPlan) continue;
     await sendOne(admin, apiKey, row);

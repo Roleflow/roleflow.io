@@ -50,7 +50,7 @@ Client-facing copy stays Roleflow. This note names the reference product only so
 Each stage is a draft pull request. It has to change stored data and the live path, with `node --test` green. Screenshots show the panel before and after. Nothing is merged here.
 
 1. **Chats.** Unread counts, filters for state, tag, AI, and unread, a manual reply through the official inbox, per-chat AI pause that the inbound worker honours, and reminders created on the chat. This stage.
-2. **Setter settings.** Office hours, reply delay, and human handover actually gate `planTurn`. Tags and lead fields are extracted on each inbound turn. Business info is one tab. Default model `grok-4.3`, with `grok-4.7` only for objections and booking.
+2. **Setter settings.** Office hours, reply delay, and human handover gate the live setter. Tags and lead fields from the model are written onto the contact. Business information is included in the prompt. Default model `grok-4.3`, with `grok-4.7` for objections and booking, or for every reply when that model is selected.
 3. **Follow-ups.** A scheduled worker sends the 24-hour ladder and reminders, and refuses sends outside Instagram’s 24-hour window.
 4. **Calls to action.** Keyword private replies and story replies, using the keyword rows already saved.
 5. **Sales links and contents.** The setter can attach a saved link, file, or voice note, with click counts.
