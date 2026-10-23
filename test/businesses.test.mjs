@@ -192,6 +192,8 @@ assert.match(workforce, /DM setter/);
 assert.doesNotMatch(workforce, /Outreach Agent|Follow Up Agent|Setting Agent|three@|showModal/);
 assert.match(read("auth/site.css"), /\.state\[hidden\]\{display:none !important\}/);
 assert.match(read("businesses/app.js"), /boot\.remove\(\)/);
+assert.match(read("businesses/app.js"), /await boot\(supabase, resolved\.session\.user\)/);
+assert.doesNotMatch(read("businesses/app.js"), /adminRes\.data \? "\/admin\/" : "\/account\/acquisition\/#dashboard"/);
 assert.match(read("auth/site.css"), /wf-drawer/);
 assert.match(read("auth/site.css"), /wf-grid/);
 assert.match(read("auth/site.css"), /\.brain-simple\{display:block\}/);

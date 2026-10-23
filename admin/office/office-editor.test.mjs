@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   addStation,
+  nextArrow,
   changeRevision,
   configFromSnapshot,
   createOfficeConfig,
@@ -17,6 +18,8 @@ import {
   removeStation,
   restoreOfficeRevision,
   saveOfficeConfig,
+  legacyStationFor,
+  taskPlacement,
   taskWrite,
   plainSaveNotice,
   revisionAuthorOk,
@@ -272,6 +275,15 @@ assert.equal(added.stations.at(-1).id, "research_desk");
 assert.equal(taskWrite("outreach", "station-1").station, "outreach");
 assert.equal(taskWrite("research_desk", "station-2").station, null);
 assert.equal(taskWrite("research_desk", "station-2").station_id, "station-2");
+assert.equal(added.stations.at(-1).taskStations[0], "research_desk");
+assert.equal(legacyStationFor(doc.value, "dm_setter"), "leads_in");
+assert.deepEqual(taskPlacement(doc.value, "dm_setter", null), { station_id: null, station: "leads_in" });
+assert.equal(taskPlacement(doc.value, "research_desk", null).station, null);
+assert.equal(taskPlacement(added, "research_desk", "station-2").station_id, "station-2");
+assert.equal(plainSaveNotice("edges[8] duplicates outreach>dm_setter."), "Couldn't save: That arrow already exists.");
+assert.equal(nextArrow({ overseer: { id: "overseer" }, stations: [], edges: [] }), null);
+assert.deepEqual(nextArrow(added), { from: "overseer", to: "research_desk", kind: "assign", label: "Next step" });
+assert.deepEqual(nextArrow(doc.value), { from: "dm_setter", to: "outreach", kind: "handoff", label: "Next step" });
 
 const sql = read("supabase/migrations/20261019140000_office_editor.sql");
 assert.match(sql, /Not applied/);

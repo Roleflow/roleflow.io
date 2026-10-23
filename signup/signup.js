@@ -2,6 +2,7 @@ import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured } from 
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
 import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
+import { inviteDestination, joinDestination } from "./entry.js";
 
 bindShell();
 
@@ -98,6 +99,9 @@ const loginOkEl = document.getElementById("login-ok");
 const tabSignup = document.getElementById("tab-signup");
 const tabLogin = document.getElementById("tab-login");
 const params = new URLSearchParams(window.location.search);
+let invite = null;
+let inviteToken = params.get("invite") || "";
+let joinCode = params.get("join") || "";
 const tabs = [tabSignup, tabLogin];
 
 function wantsLogin() {
@@ -117,9 +121,17 @@ function showTab(mode) {
   document.getElementById("page-heading").innerHTML = login
     ? 'Log <span class="g">in</span>'
     : 'Create your <span class="g">account</span>';
-  document.getElementById("page-sub").textContent = login
-    ? "Open your account to continue onboarding, or email yourself a sign-in link."
-    : "This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
+  const invited = invite && invite.email;
+  const roleLabel = invited && invite.role === "editor" ? "Editor" : "Viewer";
+  document.getElementById("page-sub").textContent = invited
+    ? "You're invited to " + invite.business_name + " as " + roleLabel + ". No access code is needed. Log in if you already have an account. This invite only adds that business."
+    : inviteToken
+      ? "Use the invited email to log in or create an account. We'll add you to that business."
+      : joinCode
+        ? "This link joins a business. Log in or create an account and we'll add you."
+        : login
+          ? "Open your account to continue onboarding, or email yourself a sign-in link."
+          : "This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
   document.title = login ? "Log in · Roleflow" : "Create your account · Roleflow";
   document.getElementById("skip-link").setAttribute("href", login ? "#login-form" : "#signup-form");
   markNav();
@@ -229,21 +241,42 @@ if (!isConfigured()) {
         if (error) showLoginError(friendlyAuthError(error));
       });
     }
-    const inviteToken = params.get("invite") || "";
-    let invite = null;
     const inviteEmail = () => (invite && invite.email ? String(invite.email) : "");
+    function showEntryError(message) {
+      const text = message || "That link could not be used.";
+      showError(text);
+      showLoginError(text);
+      toast(text, "bad");
+    }
     async function landFromInvite() {
+      if (!inviteToken) return false;
       const accepted = await supabase.rpc("accept_invite", { p_token: inviteToken });
-      if (accepted.data) {
-        window.location.replace("/account/acquisition/#dashboard");
+      const acq = accepted.data ? { data: null, error: null } : await supabase.rpc("acq_accept_invite", { p_token: inviteToken });
+      const next = inviteDestination(
+        accepted.data,
+        acq && acq.data,
+        acq && acq.error ? acq.error.message : ""
+      );
+      if (next.ok) {
+        window.location.replace(next.href);
         return true;
       }
-      const { data } = await supabase.auth.getUser();
-      const sessionEmail = String(data.user && data.user.email || "").toLowerCase();
-      if (inviteEmail() && inviteEmail().toLowerCase() === sessionEmail) {
-        window.location.replace("/account/acquisition/#dashboard");
+      if (!accepted.data) {
+        showEntryError(invite && invite.email
+          ? "That invite could not be accepted. Log in with " + invite.email + "."
+          : next.message);
+      }
+      return false;
+    }
+    async function landFromJoin() {
+      if (!joinCode) return false;
+      const joined = await supabase.rpc("acq_join_workspace", { p_code: joinCode });
+      const next = joinDestination(joined.data, joined.error ? joined.error.message : "");
+      if (next.ok) {
+        window.location.replace(next.href);
         return true;
       }
+      showEntryError(next.message);
       return false;
     }
     if (inviteToken) {
@@ -257,18 +290,18 @@ if (!isConfigured()) {
         document.getElementById("email").value = invite.email;
         document.getElementById("email").readOnly = true;
         document.getElementById("login-email").value = invite.email;
-        const roleLabel = invite.role === "editor" ? "Editor" : "Viewer";
-        document.getElementById("page-sub").textContent = "You're invited to " + invite.business_name + " as " + roleLabel + ". No access code is needed. Log in if you already have an account. This invite only adds that business.";
-      } else if (!preview.error) {
-        document.getElementById("page-sub").textContent = "This invite link is not valid. You can still create an account with an access code.";
       }
+      showTab(wantsLogin() ? "login" : "signup");
+    } else if (joinCode) {
+      showTab(wantsLogin() ? "login" : "signup");
     }
     const resolved = await resolveSession(supabase, window.location.href);
     if (resolved.session) {
       clearAuthParams();
       clearCallbackMemory();
-      const landed = inviteToken ? await landFromInvite() : false;
-      if (!landed) window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
+      if (inviteToken) await landFromInvite();
+      else if (joinCode) await landFromJoin();
+      else window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
     } else {
       if (resolved.errorMessage) {
         showTab("login");
@@ -317,8 +350,15 @@ if (!isConfigured()) {
         setBusy(button, false);
         if (error) return showError(friendlyAuthError(error));
         if (created.session) {
-          if (inviteOk && await landFromInvite()) return;
-          window.location.replace(inviteOk ? "/account/acquisition/#dashboard" : "/account/acquisition/?onboarding=1");
+          if (inviteToken && await landFromInvite()) return;
+          if (joinCode && await landFromJoin()) return;
+          const sessionEmail = String(created.session.user && created.session.user.email || email).toLowerCase();
+          if (inviteOk && inviteEmail().toLowerCase() === sessionEmail) {
+            window.location.replace("/account/acquisition/#dashboard");
+            return;
+          }
+          if (inviteToken || joinCode) return;
+          window.location.replace("/account/acquisition/?onboarding=1");
           return;
         }
         okEl.textContent = inviteOk
@@ -340,7 +380,14 @@ if (!isConfigured()) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         setBusy(button, false);
         if (error) return showLoginError(friendlyAuthError(error));
-        if (inviteToken && await landFromInvite()) return;
+        if (inviteToken) {
+          await landFromInvite();
+          return;
+        }
+        if (joinCode) {
+          await landFromJoin();
+          return;
+        }
         window.location.replace(await destinationAfterLogin(supabase, params.get("next")));
       });
 

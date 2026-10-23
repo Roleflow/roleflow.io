@@ -309,6 +309,8 @@ export function renderCrm(ui) {
   const messageMin = ui.field("Minimum messages", query.messageMin || "", "number");
   const lastFrom = ui.field("Last message from", query.lastFromDate || "", "date");
   const lastTo = ui.field("Last message to", query.lastToDate || "", "date");
+  filters.addEventListener("input", () => { filters.dataset.dirty = "1"; });
+  filters.addEventListener("change", () => { filters.dataset.dirty = "1"; });
   filters.append(q.label, state, agent, tag.label, automated, verified, weFollow, theyFollow, minFollowers.label, messageMin.label, lastFrom.label, lastTo.label);
   filters.append(ui.button("Apply filters", (event) => {
     event.preventDefault();

@@ -281,6 +281,8 @@ async function bootBusiness(id, options) {
     state.studioScore = null;
     state.flow = null;
     state.chatDraft = "";
+    state.openThread = "";
+    state.messages = [];
   }
   state.businessId = id;
   pick.value = id;
@@ -702,6 +704,10 @@ function armRefresh() {
   if (state.tab !== "pipeline" || !state.supabase || !state.businessId || state.businessId === "preview") return;
   state.refreshTimer = setInterval(() => {
     if (document.hidden || state.tab !== "pipeline") return;
+    if (document.querySelector(".crm-filters[data-dirty='1']")) return;
+    if (state.studio && state.studio.open) return;
+    const active = document.activeElement;
+    if (active && active.closest && active.closest("#app input, #app textarea, #app select")) return;
     bootBusiness(state.businessId, { quiet: true });
   }, 45000);
 }
@@ -2626,7 +2632,6 @@ function markTab() {
     settings: "Configuration",
     configuration: "Configuration",
     integrations: "Integrations",
-    integrations: "Configuration",
     billing: "Configuration",
     controls: "Configuration",
     voice: "Value content",
@@ -2671,14 +2676,15 @@ function consumeInstagramNotice() {
 function tabFromHash() {
   const parts = location.hash.replace("#", "").split("/");
   const raw = parts[0];
-  if ((raw === "configuration" || raw === "settings") && parts[1] === "connect") state.configKey = "connect";
-  if (raw === "overview" || raw === "agents") return "outbound";
-  if (raw === "reports") return "stats";
-  if (raw === "settings") return "configuration";
   if (raw === "integrations" || raw === "billing") {
     state.configKey = "connect";
     return raw;
   }
+  if ((raw === "configuration" || raw === "settings") && parts[1] === "connect") state.configKey = "connect";
+  else if (raw === "configuration" || raw === "settings") state.configKey = "reply";
+  if (raw === "overview" || raw === "agents") return "outbound";
+  if (raw === "reports") return "stats";
+  if (raw === "settings") return "configuration";
   return TABS.includes(raw) ? raw : "dashboard";
 }
 

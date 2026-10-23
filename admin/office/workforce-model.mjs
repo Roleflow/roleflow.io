@@ -59,12 +59,24 @@ function workforceStatus(rows, role) {
   return NOT_SET_UP;
 }
 
-function stationFor(config, task) {
-  const key = String((task && task.station) || "");
+export function stationSpot(config, task, stationIndex) {
+  if (!config || !task) return "";
+  const uuid = task.station_id ? String(task.station_id) : "";
+  const indexed = uuid && stationIndex ? stationIndex[uuid] : "";
+  if (indexed && (indexed === config.overseer.id || (config.stations || []).some((station) => station.id === indexed))) {
+    return indexed;
+  }
+  const key = String(task.station || "");
   if (!key) return "";
+  if (key === config.overseer.id) return key;
+  if ((config.stations || []).some((station) => station.id === key)) return key;
   if ((config.overseer.taskStations || []).includes(key)) return config.overseer.id;
   const hit = (config.stations || []).find((station) => (station.taskStations || []).includes(key));
   return hit ? hit.id : "";
+}
+
+function stationFor(config, task, stationIndex) {
+  return stationSpot(config, task, stationIndex);
 }
 
 function openTasks(tasks, businessId) {
@@ -85,7 +97,7 @@ function inboundEdge(config, stationId) {
     || null;
 }
 
-export function motionFor(config, tasks, activity, businessId) {
+export function motionFor(config, tasks, activity, businessId, stationIndex) {
   const open = openTasks(tasks, businessId);
   const known = new Set(open.map((task) => task.id));
   const liveIds = new Set(open.map((task) => task.id));
@@ -97,7 +109,7 @@ export function motionFor(config, tasks, activity, businessId) {
   const seen = new Set();
   open.forEach((task) => {
     if (!liveIds.has(task.id)) return;
-    const stationId = stationFor(config, task);
+    const stationId = stationFor(config, task, stationIndex);
     const edge = stationId ? inboundEdge(config, stationId) : null;
     if (!edge) return;
     const key = edge.from + ">" + edge.to;
@@ -213,10 +225,10 @@ function metricBlock(station, input) {
   return desk([setup, IDLE]);
 }
 
-function withTasks(base, stationId, tasks, config) {
-  const mine = tasks.filter((task) => stationFor(config, task) === stationId);
+function withTasks(base, stationId, tasks, config, stationIndex) {
+  const mine = tasks.filter((task) => stationFor(config, task, stationIndex) === stationId);
   const unplaced = stationId === config.overseer.id
-    ? tasks.filter((task) => !stationFor(config, task))
+    ? tasks.filter((task) => !stationFor(config, task, stationIndex))
     : [];
   const shown = mine.concat(unplaced);
   if (!shown.length) return Object.assign({}, base, { tasks: [] });
@@ -230,7 +242,7 @@ function withTasks(base, stationId, tasks, config) {
   };
 }
 
-export function mapWorkforce({ business, leads, stats, workforce, tasks, activity, config, now, errors } = {}) {
+export function mapWorkforce({ business, leads, stats, workforce, tasks, activity, config, now, errors, stationIndex } = {}) {
   const clock = now instanceof Date ? now : new Date();
   const businessId = business && business.id;
   const problem = errors || {};
@@ -252,18 +264,18 @@ export function mapWorkforce({ business, leads, stats, workforce, tasks, activit
     ? ["Version " + version, brainSections ? brainSections + " prompt sections" : "", brainWhen]
     : ["No prompt version yet."]);
   const overseerBase = desk([IDLE]);
-  const overseer = withTasks(overseerBase, config.overseer.id, liveTasks, config);
+  const overseer = withTasks(overseerBase, config.overseer.id, liveTasks, config, stationIndex);
   const stations = (config.stations || []).map((station) => {
     const base = metricBlock(station, input);
-    const placed = withTasks(base, station.id, liveTasks, config);
+    const placed = withTasks(base, station.id, liveTasks, config, stationIndex);
     return Object.assign({}, station, placed, {
       idle: placed.tasks.length === 0
     });
   });
-  const motions = motionFor(config, tasks, activity, businessId);
+  const motions = motionFor(config, tasks, activity, businessId, stationIndex);
   const cards = [];
   liveTasks.forEach((task) => {
-    const spot = stationFor(config, task);
+    const spot = stationFor(config, task, stationIndex);
     if (!spot) return;
     cards.push({
       id: task.id,

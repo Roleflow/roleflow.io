@@ -69,6 +69,9 @@ if (arriving.type === "recovery") {
         showGate(profileRes.error.message);
       } else {
         profile = profileRes.data;
+        if (window.location.hash === "#profile") {
+          showProfile(user, profile);
+        } else {
         const adminPeek = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
         const legacySetter = window.location.hash === "#legacy-setter";
         if (!legacySetter && adminPeek.data) {
@@ -168,9 +171,40 @@ if (arriving.type === "recovery") {
           }
         }
         }
+        }
       }
     }
   }
+}
+
+function showProfile(user, profile) {
+  hideBoot();
+  section.hidden = true;
+  if (setter) setter.hidden = true;
+  gate.hidden = false;
+  gate.innerHTML = "";
+  const name = (profile && profile.full_name) || (user.user_metadata && user.user_metadata.full_name) || "Your account";
+  const email = (profile && profile.email) || user.email || "";
+  hello.textContent = email ? "Signed in as " + email + "." : "Signed in.";
+  const panel = document.createElement("div");
+  panel.className = "state";
+  panel.id = "profile";
+  const title = document.createElement("h2");
+  title.textContent = name;
+  const mail = document.createElement("p");
+  mail.textContent = email || "No email on this account.";
+  const links = document.createElement("p");
+  links.className = "links";
+  const dash = document.createElement("a");
+  dash.href = "/account/acquisition/#dashboard";
+  dash.textContent = "Open your dashboard";
+  const businesses = document.createElement("a");
+  businesses.href = "/businesses/";
+  businesses.textContent = "Your businesses";
+  links.append(dash, document.createTextNode(" · "), businesses);
+  panel.append(title, mail, links);
+  gate.append(panel);
+  markNav();
 }
 
 function usesLegacySetter(submission) {

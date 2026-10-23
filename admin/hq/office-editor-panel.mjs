@@ -1,4 +1,5 @@
 import { madridStamp } from "../office/office-editor.mjs";
+import { stationSpot } from "../office/workforce-model.mjs";
 
 const KINDS = [
   ["assign", "Sends"],
@@ -92,7 +93,7 @@ export function officeEditorPanel(el, edit, extras) {
         "data-action": "editor-move-task",
         "data-id": task.id,
         "aria-label": "Move " + task.title
-      }, [["", "Move to…"]].concat(points).map(([value, label]) => el("option", { value, text: label, selected: (task.station || "") === value })))
+      }, [["", "Move to…"]].concat(points).map(([value, label]) => el("option", { value, text: label, selected: stationSpot(draft, task, extras.stationIndex) === value })))
     ]))) : el("p", { class: "office-editor-note", text: "No open tasks in this office." }),
     el("div", { class: "office-editor-row" }, [
       field(el, "New task", el("input", { id: "editor-task-title", type: "text", maxlength: "240", placeholder: "Task title", "aria-label": "New task title" })),

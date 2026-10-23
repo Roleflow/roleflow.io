@@ -18,6 +18,7 @@ import {
 import {
   mapWorkforce,
   motionFor,
+  stationSpot,
   pickDefaultBusiness,
   VAM_BUSINESS_ID,
   workforcePreviewFixture
@@ -252,6 +253,34 @@ const moving = mapWorkforce({
 });
 assert.equal(moving.cards.length, 1);
 assert.equal(moving.cards[0].spot, "dm_setter");
+assert.equal(stationSpot(config, task), "dm_setter");
+const byId = mapWorkforce({
+  business: preview.businesses[0],
+  leads: [],
+  stats: null,
+  workforce: [],
+  tasks: [{ id: "task-2", business_id: VAM_BUSINESS_ID, title: "Voice note", status: "queued", station: null, station_id: "station-uuid" }],
+  activity: [],
+  config,
+  stationIndex: { "station-uuid": "dm_setter" },
+  now: NOW
+});
+assert.equal(byId.cards.length, 1);
+assert.equal(byId.cards[0].spot, "dm_setter");
+assert.equal(byId.stations.find((station) => station.id === "dm_setter").tasks.length, 1);
+const custom = mapWorkforce({
+  business: preview.businesses[0],
+  leads: [],
+  stats: null,
+  workforce: [],
+  tasks: [{ id: "task-3", business_id: VAM_BUSINESS_ID, title: "Research", status: "queued", station: null, station_id: "custom-uuid" }],
+  activity: [],
+  config,
+  stationIndex: { "custom-uuid": "missing_station" },
+  now: NOW
+});
+assert.equal(custom.cards.length, 0);
+assert.equal(custom.overseer.tasks.length, 1);
 assert.equal(moving.motions.length, 1);
 assert.equal(moving.motions[0].from, "outreach");
 assert.equal(moving.motions[0].to, "dm_setter");
