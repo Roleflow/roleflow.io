@@ -42,6 +42,12 @@
       "statusCode": 301
     }
   ],
+  "crons": [
+    {
+      "path": "/api/meta/ig/refresh",
+      "schedule": "0 12 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

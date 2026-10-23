@@ -19,7 +19,7 @@
   <p>Email <a href="mailto:diego@roleflow.io">diego@roleflow.io</a> from the address on the account. Say whether to delete one business workspace, disconnect Instagram, or delete the login. We delete the message threads we store, the encrypted Instagram or Google token for that workspace, and uploaded voice notes when the request covers them. Records a customer entered as closed revenue can be removed with the workspace.</p>
   <h2>Meta callback</h2>
   <p>Instagram’s data-deletion callback for the Roleflow Meta app is:</p>
-  <p><code>https://xrsipofgofvjiskmsgij.supabase.co/functions/v1/roleflow-acquisition/deletion</code></p>
+  <p><code>https://www.roleflow.io/api/meta/ig/deletion</code></p>
   <p>Meta sends a signed request. Roleflow checks the signature, deletes threads and messages for that Instagram user id, and disconnects the account when the id is the connected professional profile. The response includes a confirmation code and a link back to this page.</p>
   <h2>Status</h2>
   <p id="deletion-status" role="status">Add <code>?code=</code> to this URL to check a confirmation code.</p>
@@ -28,20 +28,26 @@
 <script src="/supabase/config.js"></script>
 <script type="module">
 import { getSupabase, isConfigured } from "/auth/supabase.js";
-const node = document.getElementById("deletion-status");
+  const node = document.getElementById("deletion-status");
 const code = new URLSearchParams(location.search).get("code");
 if (!code) {
   node.textContent = "No confirmation code in this link yet. Email diego@roleflow.io to ask for deletion, or open the link Meta returns after a callback.";
-} else if (!isConfigured()) {
-  node.textContent = "This build cannot check status. Email diego@roleflow.io with code " + code + ".";
 } else {
-  const supabase = getSupabase();
-  const result = await supabase.rpc("meta_deletion_status", { p_code: code });
-  if (result.error || !result.data || result.data.ok === false) {
-    node.textContent = "No deletion request matches that code.";
+  const remote = await fetch("/api/meta/ig/deletion?code=" + encodeURIComponent(code)).then((response) => response.json()).catch(() => null);
+  if (remote && remote.ok === true) {
+    const when = remote.received_at ? new Date(remote.received_at).toLocaleString() : "";
+    node.textContent = "Status: " + remote.status + (when ? " · received " + when : "") + ".";
+  } else if (!isConfigured()) {
+    node.textContent = remote && remote.ok === false ? "No deletion request matches that code." : "This build cannot check status. Email diego@roleflow.io with code " + code + ".";
   } else {
-    const when = result.data.received_at ? new Date(result.data.received_at).toLocaleString() : "";
-    node.textContent = "Status: " + result.data.status + (when ? " · received " + when : "") + ".";
+    const supabase = getSupabase();
+    const result = await supabase.rpc("meta_deletion_status", { p_code: code });
+    if (result.error || !result.data || result.data.ok === false) {
+      node.textContent = "No deletion request matches that code.";
+    } else {
+      const when = result.data.received_at ? new Date(result.data.received_at).toLocaleString() : "";
+      node.textContent = "Status: " + result.data.status + (when ? " · received " + when : "") + ".";
+    }
   }
 }
 </script>

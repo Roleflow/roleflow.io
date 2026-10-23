@@ -233,6 +233,18 @@ function notifyBody(ui) {
 function connectBody(ui) {
   const settings = ui.state.settings || {};
   const wrap = ui.el("div", { "data-command": "cfg-connect" });
+  const ig = ui.el("section", { class: "agent" });
+  const account = ui.state.ig || { status: "disconnected" };
+  ig.append(ui.el("h3", { text: "Instagram" }));
+  ig.append(ui.el("p", { text: "Status: " + account.status + (account.username ? " · @" + account.username : "") }));
+  ig.append(ui.el("p", { class: "mute", text: "Instagram's consent screen shows Roleflow. The token stays on the server. The connection stays off until the Meta app is turned on." }));
+  if (ui.connectInstagram && (ui.state.canEdit || ui.state.businessId === "preview")) {
+    ig.append(ui.button("Connect Instagram", () => ui.connectInstagram()));
+  }
+  if (ui.disconnectInstagram && ui.state.canEdit && ui.state.supabase) {
+    ig.append(ui.button("Disconnect", () => ui.disconnectInstagram()));
+  }
+  wrap.append(ig);
   const hook = ui.el("form", { class: "agent" });
   hook.append(ui.el("h3", { text: "Custom webhook" }));
   hook.append(ui.el("p", { text: "Events are signed with HMAC-SHA256. The secret is stored encrypted and is not shown again." }));

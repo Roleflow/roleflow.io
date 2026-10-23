@@ -4,7 +4,7 @@ import { bindAssistant } from "./assistant.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindDock } from "./dock.js";
 import { closeOffice } from "./office.js";
-import { callSetterEngine, renderEngine } from "./engine-ui.js";
+import { callSetterEngine, connectInstagram, disconnectInstagram, renderEngine } from "./engine-ui.js";
 import {
   mountNav,
   pageHeader,
@@ -535,6 +535,8 @@ function pageUi() {
     setterAgentCard,
     voiceLibrary,
     renderEngine: (tab, host) => renderEngine(tab, host, engineCtx()),
+    connectInstagram: () => connectInstagram(engineCtx()),
+    disconnectInstagram: () => disconnectInstagram(engineCtx()),
     roleParams,
     mergeParams,
     enqueueEngine,
@@ -2457,6 +2459,9 @@ function tabFromHash() {
     state.configKey = "connect";
     return raw;
   }
+  if ((raw === "configuration" || raw === "settings") && location.hash.split("/")[1] === "connect") {
+    state.configKey = "connect";
+  }
   return TABS.includes(raw) ? raw : "dashboard";
 }
 
@@ -2557,7 +2562,7 @@ function readPreview() {
   return {
     businessId: "preview",
     businesses: [{ id: "preview", agent_name: "Preview coaching" }],
-    settings: { system_enabled: true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false },
+    settings: { system_enabled: true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: "connect" },
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
     targets: [
       { id: "t1", handle: "northstar", stage: "outreach", peak_stage: "outreach", lead_status: "warm", icp_score: 90, source: "competitor_followers", bio: "Coach. DM me to apply.", cta_detected: true, updated_at: "2026-10-21T09:00:00Z", budget: "", timeline: "", fit: "", qual_score: null, decision_maker: null },

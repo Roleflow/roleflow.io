@@ -303,20 +303,13 @@ function paintIntegrations(host, ctx) {
   const igCard = el("article", { class: "agent" });
   igCard.append(el("h3", { text: "Instagram" }));
   igCard.append(el("p", { text: "Status: " + ig.status + (ig.username ? " · @" + ig.username : "") + (ig.last_error ? " · " + ig.last_error : "") }));
-  igCard.append(el("p", { class: "mute", text: "Official Instagram Login for this business. Passwords are never stored. Comment-to-DM, qualification, recovery, and booking use this connection." }));
-  if (state.canEdit && state.supabase) {
+  igCard.append(el("p", { class: "mute", text: "Instagram's consent screen shows Roleflow. The token stays on the server. Passwords are never stored. The connection stays off until the Meta app is turned on." }));
+  if (canConnect(state)) {
     const row = el("div", { class: "filters" });
-    row.append(button("Connect Instagram", () => startOauth(ctx, "meta_start")));
-    row.append(button("Disconnect", async () => {
-      try {
-        await callEngine(ctx, "disconnect_instagram", {});
-        toast("Instagram disconnected.");
-        await bootBusiness(state.businessId);
-        ctx.go("integrations");
-      } catch (error) {
-        toast(error.message, "bad");
-      }
-    }));
+    row.append(button("Connect Instagram", () => connectInstagram(ctx)));
+    if (state.canEdit && state.supabase) {
+      row.append(button("Disconnect", () => disconnectInstagram(ctx)));
+    }
     igCard.append(row);
   }
   host.append(igCard);
@@ -600,10 +593,9 @@ function paintOnboarding(host, ctx) {
     const meta = el("article", { class: "agent" });
     meta.append(el("h3", { text: "Roleflow Meta engine" }));
     meta.append(el("p", { text: "Connect the professional Instagram account when the Meta app is available. The token stays on the server." }));
-    if (state.canEdit && state.supabase) {
-      meta.append(button("Connect Instagram", () => startOauth(ctx, "meta_start")));
-      meta.append(button("Continue to the worker", () => advanceWizard(ctx, "worker")));
-    }
+    meta.append(el("p", { class: "mute", text: "Instagram's consent screen shows Roleflow. The token stays on the server." }));
+    if (canConnect(state)) meta.append(button("Connect Instagram", () => connectInstagram(ctx)));
+    if (state.canEdit && state.supabase) meta.append(button("Continue to the worker", () => advanceWizard(ctx, "worker")));
     host.append(meta);
     return;
   }
@@ -694,8 +686,56 @@ async function advanceWizard(ctx, next) {
   }
 }
 
+function canConnect(state) {
+  return Boolean(state.canEdit || state.businessId === "preview");
+}
+
+export function connectInstagram(ctx) {
+  return startOauth(ctx, "meta_start");
+}
+
+export async function disconnectInstagram(ctx) {
+  try {
+    if (!ctx.state.supabase) {
+      ctx.toast("Sign in to disconnect Instagram.", "bad");
+      return;
+    }
+    const session = await ctx.state.supabase.auth.getSession();
+    const token = session.data.session && session.data.session.access_token;
+    const response = await fetch("/api/meta/ig/disconnect", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + (token || ""), "Content-Type": "application/json" },
+      body: JSON.stringify({ business_id: ctx.state.businessId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Instagram did not disconnect.");
+    ctx.toast("Instagram disconnected.");
+    await ctx.bootBusiness(ctx.state.businessId);
+    ctx.go(ctx.state.tab || "integrations");
+  } catch (error) {
+    ctx.toast(error.message, "bad");
+  }
+}
+
 async function startOauth(ctx, action) {
   try {
+    if (action === "meta_start") {
+      if (!ctx.state.supabase) {
+        ctx.toast("Sign in to connect Instagram.", "bad");
+        return;
+      }
+      const session = await ctx.state.supabase.auth.getSession();
+      const token = session.data.session && session.data.session.access_token;
+      const response = await fetch("/api/meta/ig/start", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + (token || ""), "Content-Type": "application/json" },
+        body: JSON.stringify({ business_id: ctx.state.businessId })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.url) throw new Error(payload.error || "Instagram Login is off.");
+      location.href = payload.url;
+      return;
+    }
     const result = await callEngine(ctx, action, {});
     if (result.url) location.href = result.url;
   } catch (error) {
