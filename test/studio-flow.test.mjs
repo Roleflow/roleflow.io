@@ -3,8 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  chatIntro,
   exportThread,
   matchKeyword,
+  prependThread,
+  senderLabel,
   reminderBucket,
   reminderKpis,
   stepError,
@@ -42,10 +45,19 @@ assert.equal(matchKeyword("Send the GUIDE", "guide", "contains"), true);
 assert.equal(matchKeyword("guide please", "guide", "equals"), false);
 assert.equal(matchKeyword("Guide", "guide", "equals"), true);
 
-const thread = [{ role: "user", body: "Price?", at: "2026-10-22T12:00:00Z" }, { role: "assistant", body: "On the call.", at: "" }];
+const thread = [
+  { role: "user", body: "Price?", at: "2026-10-22T12:00:00Z" },
+  { role: "assistant", sender: "human", body: "On the call.", at: "" }
+];
 assert.match(exportThread(thread, "txt"), /Lead: Price\?/);
-assert.match(exportThread(thread, "csv"), /^role,body,at/);
+assert.match(exportThread(thread, "txt"), /Team: On the call\./);
+assert.match(exportThread(thread, "csv"), /^sender,body,at/);
 assert.equal(JSON.parse(exportThread(thread, "json"))[1].body, "On the call.");
+assert.equal(senderLabel({ role: "assistant", sender: "ai" }), "AI");
+assert.equal(senderLabel({ role: "user" }), "Lead");
+assert.equal(chatIntro(1694).includes("Full history appears"), false);
+assert.match(chatIntro(0), /Full history appears when the event stream is connected/);
+assert.deepEqual(prependThread([{ id: "new" }], [{ id: "mid" }, { id: "old" }]).map((row) => row.id), ["old", "mid", "new"]);
 
 ["acquire/studio-flow.js", "acquire/studio-flow-model.js"].forEach((file) => {
   const text = fs.readFileSync(path.join(root, file), "utf8");

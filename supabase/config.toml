@@ -385,6 +385,11 @@ verify_jwt = true
 [functions.roleflow-hooks]
 verify_jwt = false
 
+# roleflow-setter-sync checks the caller JWT or the cron secret itself.
+# The setter token stays in encrypted storage and is not returned.
+[functions.roleflow-setter-sync]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

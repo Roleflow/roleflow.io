@@ -74,15 +74,37 @@ export function matchKeyword(text, keyword, mode) {
   return hay.includes(needle);
 }
 
+export const THREAD_PAGE = 40;
+
+export function senderLabel(row) {
+  const sender = String((row && row.sender) || "").toLowerCase();
+  if (sender === "human" || sender === "team") return "Team";
+  if (sender === "ai") return "AI";
+  if (sender === "lead") return "Lead";
+  if (row && row.role === "assistant") return "AI";
+  if (row && row.role === "system") return "System";
+  return "Lead";
+}
+
+export function chatIntro(messageCount) {
+  if (Number(messageCount) > 0) return "The threads stored for this business.";
+  return "The threads stored for this business. Full history appears when the event stream is connected. Status and a summary are what sync today.";
+}
+
+export function prependThread(current, olderNewestFirst) {
+  const older = (olderNewestFirst || []).slice().reverse();
+  return older.concat(current || []);
+}
+
 export function exportThread(messages, format) {
   const rows = messages || [];
   if (format === "json") return JSON.stringify(rows, null, 2);
   if (format === "csv") {
-    const lines = ["role,body,at"];
-    rows.forEach((row) => lines.push([row.role, row.body, row.at || ""].map(csvCell).join(",")));
+    const lines = ["sender,body,at"];
+    rows.forEach((row) => lines.push([senderLabel(row), row.body, row.at || ""].map(csvCell).join(",")));
     return lines.join("\n");
   }
-  return rows.map((row) => (row.role === "assistant" ? "Agent" : "Lead") + ": " + row.body).join("\n");
+  return rows.map((row) => senderLabel(row) + ": " + row.body).join("\n");
 }
 
 function csvCell(value) {
