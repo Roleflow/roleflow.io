@@ -1,10 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/workforce/tick",
-      "schedule": "*/5 * * * *"
-    }
-  ],
   "redirects": [
     {
       "source": "/acquire",

@@ -186,8 +186,8 @@ test("the desk, cron, and secret stay empty of sample agents", () => {
     assert.match(desk, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
   assert.match(office, /deskStatus/);
-  assert.match(vercel, /"path": "\/api\/workforce\/tick"/);
-  assert.match(vercel, /"schedule": "\*\/5 \* \* \* \*"/);
+  assert.match(read("api/workforce/tick.mjs"), /TICK_SCHEDULE = "\*\/5 \* \* \* \*"/);
+  assert.doesNotMatch(vercel, /\*\/5 \* \* \* \*/);
   assert.match(sql, /workforce_runner_secret/);
   assert.match(sql, /acq_read_workforce_secret/);
   assert.match(sql, /auto_approve boolean not null default false/);
