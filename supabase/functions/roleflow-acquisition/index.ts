@@ -25,8 +25,6 @@ const cors = {
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GRAPH = () => Deno.env.get("GRAPH_API_VERSION") || "v21.0";
-const FALLBACK = "https://calendar.app.google/8i1gomkozavqYU5b8";
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
@@ -411,8 +409,8 @@ async function maybeBook(db, businessId, thread, settings, plan) {
       return bubbles.slice(-2);
     }
   }
-  const link = settings.booking_fallback_url || FALLBACK;
-  bubbles.push(`easiest is to grab a time here: ${link}. what day did you go for?`);
+  const link = String(settings.booking_fallback_url || "").trim();
+  if (link.startsWith("https://")) bubbles.push(link);
   return bubbles.slice(-2);
 }
 
