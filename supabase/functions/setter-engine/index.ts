@@ -201,7 +201,9 @@ async function listOutbox(service: ReturnType<typeof createClient>) {
     items: (rows.data || []).map((row) => ({
       id: row.id,
       business_id: row.business_id,
+      workspace_id: row.business_id,
       kind: row.kind,
+      op: row.kind,
       payload: cleanPayload(row.payload),
       created_at: row.created_at,
       external_agent_id: agents.get(row.business_id) || ""
@@ -213,14 +215,17 @@ async function markOutbox(service: ReturnType<typeof createClient>, body: Record
   const id = String(body.id || "");
   const status = String(body.status || "");
   if (!UUID.test(id)) return { ok: false, error: "id must be a UUID." };
-  if (status !== "applied" && status !== "failed") return { ok: false, error: "status must be applied or failed." };
-  const error = status === "failed" ? scrubText(String(body.error || "Could not apply.")).slice(0, 500) : null;
-  const saved = await service.from("engine_outbox").update({
-    status,
-    applied_at: new Date().toISOString(),
-    error
-  }).eq("id", id).eq("status", "pending").select("id");
+  if (status !== "done" && status !== "applied" && status !== "failed") {
+    return { ok: false, error: "status must be done or failed." };
+  }
+  const saved = await service.rpc("acq_engine_outbox_settle", {
+    p_id: id,
+    p_status: status === "applied" ? "done" : status,
+    p_agent_id: String(body.agent_id || body.result_agent_id || ""),
+    p_error: status === "failed" ? scrubText(String(body.error || "Could not apply.")).slice(0, 500) : null
+  });
   if (saved.error) return { ok: false, error: "Could not update that item." };
-  if (!(saved.data || []).length) return { ok: false, error: "That item is not pending." };
-  return { ok: true, id, status };
+  const payload = saved.data && typeof saved.data === "object" ? saved.data as Record<string, unknown> : {};
+  if (payload.ok !== true) return { ok: false, error: String(payload.error || "That item is not pending.") };
+  return { ok: true, id, status: payload.status || "done", result_agent_id: payload.result_agent_id || "" };
 }

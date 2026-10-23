@@ -2,6 +2,7 @@
 // Conversions use a workspace API key. The signing secret is never returned.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { flushSyncNotice } from "../_shared/sync-notice.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +19,7 @@ Deno.serve(async (req) => {
   if (body.action === "test") return testHook(req, body);
   if (body.action === "invite") return invite(req, body);
   if (body.action === "notify_connect") return notifyConnect(req, body);
+  if (body.action === "notify_sync") return notifySync(req, body);
   if (body.action === "prompt_test") return promptTest(req, body);
   return json(400, { error: "Unknown action." });
 });
@@ -110,6 +112,25 @@ async function notifyConnect(req: Request, body: { request_id?: string }) {
   });
   if (!response.ok) return json(200, { emailed: false, error: "The connection is saved. The email was not sent." });
   return json(200, { emailed: true });
+}
+
+async function notifySync(req: Request, body: { business_id?: string }) {
+  const userClient = userClientFrom(req);
+  const { data: userData, error: userError } = await userClient.auth.getUser();
+  if (userError || !userData.user) return json(401, { error: "Sign in required." });
+  const businessId = String(body.business_id || "");
+  if (!/^[0-9a-f-]{36}$/i.test(businessId)) return json(400, { error: "That business was not found." });
+  const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
+  if (allowed.error || allowed.data !== true) return json(403, { error: "You can't edit this business." });
+  const admin = adminClient();
+  const notice = flushSyncNotice(admin, businessId, {
+    apiKey: Deno.env.get("RESEND_API_KEY") || "",
+    from: Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>"
+  });
+  const edge = (globalThis as { EdgeRuntime?: { waitUntil?: (task: Promise<unknown>) => void } }).EdgeRuntime;
+  if (edge && edge.waitUntil) edge.waitUntil(notice);
+  else notice.catch(() => {});
+  return json(200, { ok: true, queued: true });
 }
 
 async function promptTest(req: Request, body: { business_id?: string; message?: string; sections?: Record<string, string> }) {

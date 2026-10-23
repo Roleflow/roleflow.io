@@ -2,6 +2,8 @@
 // The caller reviews that prompt in the editor. This function does not deploy it.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { headedSections, SECTION_HEADINGS } from "../_shared/prompt-headings.js";
+import { flushSyncNotice } from "../_shared/sync-notice.js";
 
 const KEYS = ["exclusion", "non_negotiables", "role", "guardrails", "knowledge", "workflow", "objections"];
 const TITLES = [
@@ -59,8 +61,39 @@ Deno.serve(async (req) => {
     version_id: version.data.id
   });
   if (current.error) return json(200, { ok: false, error: "The business exists, but the prompt was not saved.", business_id: businessId });
-  return json(200, { ok: true, business_id: businessId, version: 1 });
+  const hours = clamp(body.followup_hours, 1, 23, 6);
+  const count = clamp(body.followup_count, 1, 5, 3);
+  const queued = await userClient.rpc("acq_enqueue_create_agent", {
+    p_business: businessId,
+    p_version: version.data.id,
+    p_personality: String(body.tone || "").slice(0, 500),
+    p_languages: String(body.languages || "").slice(0, 120),
+    p_timezone: String(body.timezone || "Europe/Madrid").slice(0, 80),
+    p_followup_hours: hours,
+    p_followup_count: count,
+    p_booking: String(body.booking || "").slice(0, 500)
+  });
+  if (queued.error || !queued.data) {
+    return json(200, { ok: false, error: "The business exists, but the setter was not queued.", business_id: businessId });
+  }
+  const admin = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "", {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+  const notice = flushSyncNotice(admin, businessId, {
+    apiKey: Deno.env.get("RESEND_API_KEY") || "",
+    from: Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>"
+  });
+  const edge = (globalThis as { EdgeRuntime?: { waitUntil?: (task: Promise<unknown>) => void } }).EdgeRuntime;
+  if (edge && edge.waitUntil) edge.waitUntil(notice);
+  else notice.catch(() => {});
+  return json(200, { ok: true, business_id: businessId, version: 1, sync: "pending" });
 });
+
+function clamp(value: string, min: number, max: number, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
 
 async function draftSections(apiKey: string, answers: Record<string, string>) {
   const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -86,7 +119,7 @@ async function draftSections(apiKey: string, answers: Record<string, string>) {
       messages: [
         {
           role: "system",
-          content: "Write a setter prompt as JSON with these keys, in this spirit: " + KEYS.map((key, index) => key + " = " + TITLES[index]).join("; ") + ". Use only the facts in the brief. exclusion is the highest priority rule and lists who must never be contacted. non_negotiables are the rules that never bend. role is the job. guardrails are the limits. knowledge is offer, price, ideal client, FAQs and facts. workflow is the conversation, qualification, follow-ups and booking. objections answers the stated objections. Do not invent prices, links or results that the brief does not give. Do not mention any vendor name."
+          content: "Write a setter prompt as JSON with these keys, in this spirit: " + KEYS.map((key, index) => key + " = " + TITLES[index]).join("; ") + ". The first line of each value must be a markdown heading, exactly one of these and nothing else on that line: " + SECTION_HEADINGS.map((row) => row[1]).join("; ") + ". Use only the facts in the brief. exclusion is the highest priority rule and lists who must never be contacted. non_negotiables are the rules that never bend. role is the job. guardrails are the limits. knowledge is offer, price, ideal client, FAQs and facts. workflow is the conversation, qualification, follow-ups and booking. objections answers the stated objections. Do not invent prices, links or results that the brief does not give. Do not mention any vendor name."
         },
         { role: "user", content: briefOf(answers) }
       ]
@@ -102,7 +135,7 @@ async function draftSections(apiKey: string, answers: Record<string, string>) {
     const value = String(parsed[key] || "").trim();
     sections[key] = value || fallback(key, answers);
   });
-  return sections;
+  return headedSections(sections);
 }
 
 function briefOf(answers: Record<string, string>) {
@@ -117,6 +150,9 @@ function briefOf(answers: Record<string, string>) {
     ["Booking link", answers.booking],
     ["Tone", answers.tone],
     ["Languages", answers.languages],
+    ["Timezone", answers.timezone],
+    ["Follow-up hours", answers.followup_hours],
+    ["Follow-up count", answers.followup_count],
     ["FAQs", answers.faqs]
   ];
   return fields.map(([label, value]) => label + ": " + String(value || "").trim().slice(0, 2000)).join("\n");

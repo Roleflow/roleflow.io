@@ -471,7 +471,7 @@ function fillDrawer(ui, spec, kind) {
     const provisioned = SETTER_ROLES.filter((role) => ui.state.workforce.some((row) => row.role === role));
     body.append(ui.setterSwitch(provisioned));
     if (ui.setterPending()) body.append(ui.el("p", { text: "Instagram: not connected. The desk stays empty until the setter is activated." }));
-    if ((ui.state.outbox || []).some((row) => row.status === "pending")) body.append(ui.el("p", { text: "Syncing…" }));
+    if (ui.businessSync) body.append(ui.el("p", { id: "desk-sync", text: ui.businessSync().label }));
   } else {
     body.append(ui.roleSwitch(spec.key, spec.name));
     if (spec.key === "icp_acquisition") {

@@ -4,8 +4,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { assertReadOnly, dncHandles, dncSheetCount, sheetReadCall } from "./dnc.js";
-import { deliveryRequest, settleDelivery } from "./deliver.js";
 import { executePlan, logLine, pullRows, pushPlan, ROLEFLOW_ONLY } from "./plan.js";
+import { buildSyncNotice, postSyncNotice, shouldClaim } from "../_shared/sync-notice.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
 const MARK_CONVERTED_URL = "https://api.tailortalk.ai/api/v1/mark_converted";
@@ -63,59 +63,46 @@ Deno.serve(async (req) => {
 });
 
 async function deliverPending(service: ReturnType<typeof createClient>) {
-  const rows = await service.from("engine_outbox")
-    .select("id, business_id, kind, payload")
-    .eq("status", "pending")
-    .in("kind", ["update_workflow", "deploy", "create_tool"])
-    .order("created_at", { ascending: true })
-    .limit(20);
-  if (rows.error) return 0;
-  let applied = 0;
-  for (const row of rows.data || []) {
-    if (await deliverRow(service, row)) applied += 1;
-  }
-  return applied;
+  return sweepSyncNotices(service);
 }
 
 async function deliverBusiness(service: ReturnType<typeof createClient>, businessId: string) {
-  const rows = await service.from("engine_outbox")
-    .select("id, business_id, kind, payload")
-    .eq("business_id", businessId)
-    .eq("status", "pending")
-    .in("kind", ["update_workflow", "deploy", "create_tool"])
-    .order("created_at", { ascending: true })
-    .limit(20);
-  if (rows.error) return { ok: false, applied: 0, pending: 0 };
-  let applied = 0;
-  for (const row of rows.data || []) {
-    if (await deliverRow(service, row)) applied += 1;
-  }
-  const pending = (rows.data || []).length - applied;
-  return { ok: true, applied, pending, sync: pending ? "pending" : "applied" };
+  await sweepSyncNotices(service, businessId);
+  return { ok: true, applied: 0, pending: 0, sync: "pending" };
 }
 
-async function deliverRow(service: ReturnType<typeof createClient>, row: { id: string; business_id: string; kind: string; payload: Record<string, unknown> }) {
-  const link = await service.from("acq_setter_links").select("external_agent_id").eq("business_id", row.business_id).maybeSingle();
-  const request = deliveryRequest({
-    kind: row.kind,
-    payload: row.payload,
-    external_agent_id: link.data && link.data.external_agent_id || ""
-  });
-  if (!request || !request.body.agent_id) return false;
-  const token = await sheetToken(service, row.business_id);
-  if (!token) return false;
-  const response = await fetch(request.url, {
-    method: request.method,
-    headers: { Authorization: "Agent " + token, "Content-Type": "application/json" },
-    body: JSON.stringify(request.body)
-  }).catch(() => null);
-  if (!response || settleDelivery(response.status) !== "applied") return false;
-  const saved = await service.from("engine_outbox").update({
-    status: "applied",
-    applied_at: new Date().toISOString(),
-    error: null
-  }).eq("id", row.id).eq("status", "pending");
-  return !saved.error;
+async function sweepSyncNotices(service: ReturnType<typeof createClient>, onlyBusiness?: string) {
+  let query = service.from("engine_outbox")
+    .select("business_id, created_at")
+    .eq("status", "pending")
+    .is("notified_at", null);
+  if (onlyBusiness) query = query.eq("business_id", onlyBusiness);
+  const pending = await query.order("created_at", { ascending: true }).limit(200);
+  if (pending.error || !pending.data) return 0;
+  const groups = new Map<string, { created_at: string }[]>();
+  for (const row of pending.data) {
+    const list = groups.get(row.business_id) || [];
+    list.push(row);
+    groups.set(row.business_id, list);
+  }
+  let sent = 0;
+  for (const [businessId, rows] of groups) {
+    if (!shouldClaim(rows, Date.now())) continue;
+    const claimed = await service.rpc("acq_claim_sync_notice", { p_business: businessId });
+    const items = Array.isArray(claimed.data) ? claimed.data : [];
+    if (!items.length) continue;
+    const mail = buildSyncNotice(items);
+    const ok = await postSyncNotice(mail, {
+      apiKey: Deno.env.get("RESEND_API_KEY") || "",
+      from: Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>"
+    });
+    if (!ok) {
+      await service.rpc("acq_release_sync_notice", { p_ids: items.map((row: { id: string }) => row.id) });
+      continue;
+    }
+    sent += 1;
+  }
+  return sent;
 }
 
 async function pushBusiness(service: ReturnType<typeof createClient>, businessId: string) {

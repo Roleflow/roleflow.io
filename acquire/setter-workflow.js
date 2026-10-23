@@ -1,4 +1,5 @@
 import { SETTER_SECTION_DEFS } from "./setter-sections.js";
+import { businessSync, queueSyncNotice } from "./sync-state.js";
 
 const TOOL_KINDS = [
   ["media", "Media"],
@@ -14,6 +15,7 @@ let openSection = "exclusion";
 let versionId = "";
 let toolOpen = false;
 let toolKind = "media";
+let editingId = "";
 
 export function renderSetterStudio(ui) {
   const versions = (ui.state.setterPrompts || []).slice().sort((a, b) => b.version - a.version);
@@ -40,8 +42,8 @@ export function renderSetterStudio(ui) {
     ui.paint();
   });
   bar.append(select);
-  const status = syncLabel(ui.state.setterOutbox || []);
-  if (status) bar.append(ui.el("span", { class: "integration-status wait", text: status }));
+  const status = syncLabel(ui);
+  if (status) bar.append(ui.el("span", { class: "integration-status " + status.tone, id: "setter-sync", text: status.label }));
   if (ui.state.canEdit) {
     bar.append(ui.button("Save", () => savePrompt(ui)));
   }
@@ -91,11 +93,14 @@ function toolPhrase(tool) {
   return tool.name;
 }
 
-function syncLabel(rows) {
-  const relevant = (rows || []).filter((row) => row.kind === "update_workflow" || row.kind === "deploy" || row.kind === "create_tool");
-  if (relevant.some((row) => row.status === "pending")) return "Saved, syncing";
-  if (relevant.some((row) => row.status === "failed")) return "Saved, syncing";
-  return "";
+function syncLabel(ui) {
+  if (ui.businessSync) return ui.businessSync();
+  return businessSync({
+    outbox: (ui.state.setterOutbox || []).concat(ui.state.outbox || []),
+    igStatus: ui.state.ig && ui.state.ig.status,
+    systemEnabled: Boolean(ui.state.settings && ui.state.settings.system_enabled),
+    externalAgentId: ui.state.setterLink && ui.state.setterLink.external_agent_id
+  });
 }
 
 async function savePrompt(ui) {
@@ -106,7 +111,7 @@ async function savePrompt(ui) {
     return;
   }
   if (!ui.state.supabase) {
-    ui.toast("Saved, syncing");
+    ui.toast("Syncing");
     return;
   }
   const saved = await ui.state.supabase.rpc("acq_save_inbound_prompt", {
@@ -117,10 +122,8 @@ async function savePrompt(ui) {
     ui.toast(saved.error.message, "bad");
     return;
   }
-  ui.state.supabase.functions.invoke("roleflow-setter-sync", {
-    body: { action: "deliver", business_id: ui.state.businessId }
-  }).catch(() => {});
-  ui.toast("Saved, syncing");
+  queueSyncNotice(ui.state.supabase, ui.state.businessId);
+  ui.toast("Syncing");
   draft = null;
   versionId = "";
   await ui.bootBusiness(ui.state.businessId);
@@ -172,6 +175,7 @@ function renderTools(ui, tools) {
   head.append(ui.el("h3", { text: "Tools" }));
   if (ui.state.canEdit) {
     const add = ui.button("Add tool", () => {
+      editingId = "";
       toolOpen = !toolOpen;
       ui.paint();
     });
@@ -186,6 +190,16 @@ function renderTools(ui, tools) {
     const voice = tool.kind === "media" && tool.config && tool.config.media_type === "voice";
     item.append(ui.el("strong", { text: tool.name }));
     item.append(ui.el("span", { text: voice ? "Media · voice note" : (kind ? kind[1] : tool.kind) }));
+    if (ui.state.canEdit) {
+      const change = ui.el("button", { type: "button", class: "btn ghost sm", text: "Change" });
+      change.addEventListener("click", () => {
+        editingId = tool.id;
+        toolKind = tool.kind || "media";
+        toolOpen = true;
+        ui.paint();
+      });
+      item.append(change);
+    }
     list.append(item);
   });
   wrap.append(list);
@@ -294,26 +308,28 @@ async function saveTool(ui, name, config) {
       config
     }]);
     toolOpen = false;
-    ui.toast("Saved, syncing");
+    editingId = "";
+    ui.toast("Syncing");
     ui.paint();
     return;
   }
-  const saved = await ui.state.supabase.rpc("acq_save_agent_tool", {
+  const args = {
     p_business: ui.state.businessId,
     p_role: "inbound_manager",
     p_kind: toolKind,
     p_name: name,
     p_config: config
-  });
+  };
+  if (editingId) args.p_tool = editingId;
+  const saved = await ui.state.supabase.rpc("acq_save_agent_tool", args);
   if (saved.error) {
     ui.toast(saved.error.message, "bad");
     return;
   }
-  ui.state.supabase.functions.invoke("roleflow-setter-sync", {
-    body: { action: "deliver", business_id: ui.state.businessId }
-  }).catch(() => {});
+  queueSyncNotice(ui.state.supabase, ui.state.businessId);
   toolOpen = false;
-  ui.toast("Saved, syncing");
+  editingId = "";
+  ui.toast("Syncing");
   await ui.bootBusiness(ui.state.businessId);
   ui.state.openDeskRequest = { kind: "inbound", key: "manager" };
   ui.go("inbound");
