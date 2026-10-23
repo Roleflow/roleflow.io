@@ -6,6 +6,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { hubChallenge, verifySignature, extractEvents, eventId } from "./ig/webhook.js";
 import { planTurn } from "./ig/engine.js";
 import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/llm.js";
+import { loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { clipInstructions } from "../_shared/clip-plan.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
@@ -241,6 +243,9 @@ async function runOutbox(db, row) {
   if (row.kind === "human") return sendHuman(db, row, thread, settings);
   const prompts = await currentPrompt(db, businessId, role);
   const env = Deno.env.toObject();
+  const loaded = await loadBusinessRuntime(db, businessId, "setter", env);
+  const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
+  const clips = clipRows.error ? [] : (clipRows.data || []);
   let plan;
   try {
     plan = await planTurn({
@@ -251,7 +256,10 @@ async function runOutbox(db, row) {
       now: Date.now(),
       llm: (input) => completeJson({
         env,
-        system: systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }),
+        runtime: loaded.runtime,
+        fallback: loaded.fallback,
+        onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
+        system: systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }) + clipInstructions(clips),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -475,6 +483,8 @@ async function playground(db, businessId, body) {
   await ensurePrompts(db, businessId, null);
   const prompts = await currentPrompt(db, businessId, role);
   const settings = await loadSettings(db, businessId);
+  const env = Deno.env.toObject();
+  const loaded = await loadBusinessRuntime(db, businessId, "setter", env);
   try {
     const plan = await planTurn({
       thread: {
@@ -487,7 +497,10 @@ async function playground(db, businessId, body) {
       kind: "ai",
       now: Date.now(),
       llm: () => completeJson({
-        env: Deno.env.toObject(),
+        env,
+        runtime: loaded.runtime,
+        fallback: loaded.fallback,
+        onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
         system: systemPrompt({ ...prompts, notes: (prompts.notes || "") + knowledgeBlock(settings) }),
         messages: Array.isArray(body.messages) ? body.messages : [{ role: "user", content: String(body.text || "") }]
       })

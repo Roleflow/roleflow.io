@@ -23,10 +23,12 @@ export function parseEngineOutput(raw) {
     if (value != null && String(value).trim()) attributes[key] = String(value).trim().slice(0, 240);
   }
   const slot = SLOTS.has(data.voice_note_slot) ? data.voice_note_slot : null;
+  const clipId = typeof data.clip_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.clip_id) ? data.clip_id : null;
   const bubbles = Array.isArray(data.bubbles) ? data.bubbles : [data.reply, data.reply_text].filter(Boolean);
   return {
     bubbles,
     voiceNoteSlot: slot,
+    clipId,
     attributes,
     score: normalizeScore(data.score),
     nextState: String(data.next_state || "").trim(),

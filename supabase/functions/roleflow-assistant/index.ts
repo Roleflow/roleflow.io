@@ -3,6 +3,7 @@
 // XAI_API_KEY stays in the function environment and is never returned.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { completeChat, loadBusinessRuntime, logLlmError, platformDefault } from "../_shared/llm-provider.js";
 
 const HOUR_LIMIT = 20;
 const XAI_URL = "https://api.x.ai/v1/chat/completions";
@@ -48,9 +49,8 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  const xaiKey = Deno.env.get("XAI_API_KEY") || "";
-  if (!supabaseUrl || !anonKey) return json(500, { error: "Supabase URL or keys are missing in the function environment." });
-  if (!xaiKey) return json(503, { error: "The assistant is not available yet. The model key is not set." });
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !anonKey || !serviceKey) return json(500, { error: "Supabase URL or keys are missing in the function environment." });
 
   const authHeader = req.headers.get("Authorization") || "";
   const userClient = createClient(supabaseUrl, anonKey, {
@@ -100,30 +100,27 @@ Deno.serve(async (req) => {
     attributed_cents: deals.error ? null : (deals.data || []).reduce((sum, row) => row.attributed === false ? sum : sum + (Number(row.amount_cents) || 0), 0)
   };
 
-  const model = Deno.env.get("XAI_MODEL") || "grok-4.3";
-  const response = await fetch(XAI_URL, {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + xaiKey,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const env = Deno.env.toObject();
+  const loaded = await loadBusinessRuntime(admin, businessId, "prompt", env);
+  const runtime = loaded.runtime || platformDefault(env);
+  if (runtime && runtime.provider === "xai" && !runtime.endpoint) runtime.endpoint = XAI_URL;
+  if (!runtime) return json(503, { error: "The assistant is not available yet. The model key is not set." });
+  let reply = "";
+  try {
+    const result = await completeChat({
+      runtime,
+      fallback: loaded.fallback,
+      system: SYSTEM + modeNote(mode) + "\n\nWorkspace snapshot JSON:\n" + JSON.stringify(snapshot),
+      messages: [{ role: "user", content: message }],
       temperature: 0.2,
-      messages: [
-        { role: "system", content: SYSTEM + modeNote(mode) + "\n\nWorkspace snapshot JSON:\n" + JSON.stringify(snapshot) },
-        { role: "user", content: message }
-      ]
-    })
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = payload && payload.error ? String(payload.error.message || payload.error) : "The model did not answer.";
+      onError: (info) => logLlmError(admin, { businessId, purpose: "assistant", ...info })
+    });
+    reply = String(result.text || "").trim();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "The model did not answer.";
     return json(502, { error: detail.slice(0, 240) });
   }
-  const reply = payload && payload.choices && payload.choices[0] && payload.choices[0].message
-    ? String(payload.choices[0].message.content || "").trim()
-    : "";
   if (!reply) return json(502, { error: "The model returned an empty answer." });
   if (mode === "ask" || mode === "report") return json(200, { reply });
   const parsed = parseProposal(reply);

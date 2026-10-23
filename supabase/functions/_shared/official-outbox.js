@@ -1,4 +1,5 @@
 import { API_BASE, interpretSend, sendRequest } from "./ig-gateway.js";
+import { withAttachment } from "./clip-send.js";
 
 // The webhook waits at most this long inside the request. A longer configured
 // delay is stored on the outbox row and sent by the one-minute tick.
@@ -13,7 +14,10 @@ export function officialReady(row, now) {
   if (!row || row.transport !== "official" || row.status !== "pending") return false;
   const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
   if (payload.needsPlan === true) return false;
-  if (!String(payload.text || "").trim()) return false;
+  const hasText = Boolean(String(payload.text || "").trim());
+  const hasClip = Boolean(payload.clip && payload.clip.path);
+  const hasAttachment = String(payload.attachmentUrl || "").startsWith("https://");
+  if (!hasText && !hasClip && !hasAttachment) return false;
   const due = Date.parse(row.run_at || "");
   return Number.isFinite(due) && due <= now;
 }
@@ -34,11 +38,23 @@ export function claimOfficial(rows, now, limit) {
   return picked;
 }
 
-export async function postOfficial(row, apiKey, fetchImpl) {
-  if (!apiKey || !row || !row.payload || !String(row.payload.text || "").trim()) {
+export async function postOfficial(row, apiKey, fetchImpl, extras) {
+  const payload = row && row.payload ? row.payload : {};
+  const hasText = Boolean(String(payload.text || "").trim());
+  const hasClip = Boolean(payload.clip && payload.clip.path);
+  const hasAttachment = String(payload.attachmentUrl || "").startsWith("https://");
+  if (!apiKey || !row || !row.payload || (!hasText && !hasClip && !hasAttachment)) {
     return { ok: false, status: "failed", error: "The reply was not sent." };
   }
-  const request = sendRequest(row);
+  let prepared = row;
+  if (hasClip && !hasAttachment) {
+    try {
+      prepared = await withAttachment(row, apiKey, fetchImpl, extras && extras.download);
+    } catch (_error) {
+      return { ok: false, status: "failed", error: "The voice note was not sent." };
+    }
+  }
+  const request = sendRequest(prepared);
   const fetchFn = fetchImpl || fetch;
   try {
     const response = await fetchFn(API_BASE + request.path, {

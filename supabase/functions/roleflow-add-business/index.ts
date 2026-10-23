@@ -3,8 +3,10 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { headedSections, SECTION_HEADINGS } from "../_shared/prompt-headings.js";
+import { completeChat, logLlmError, platformDefault } from "../_shared/llm-provider.js";
 import { flushSyncNotice } from "../_shared/sync-notice.js";
 
+const XAI_URL = "https://api.x.ai/v1/chat/completions";
 const KEYS = ["exclusion", "non_negotiables", "role", "guardrails", "knowledge", "workflow", "objections"];
 const TITLES = [
   "Highest Priority Rule (Exclusion)",
@@ -35,11 +37,13 @@ Deno.serve(async (req) => {
   const name = String(body.name || "").trim().slice(0, 80);
   const handle = String(body.handle || "").trim().replace(/^@+/, "").toLowerCase().slice(0, 30);
   if (!name) return json(400, { ok: false, error: "Add the business name." });
-  const key = Deno.env.get("XAI_API_KEY") || "";
-  if (!key) return json(200, { ok: false, error: "The prompt could not be written yet. Nothing was created." });
+  const env = Deno.env.toObject();
+  const runtime = platformDefault(env);
+  if (runtime && runtime.provider === "xai") runtime.endpoint = XAI_URL;
+  if (!runtime) return json(200, { ok: false, error: "The prompt could not be written yet. Nothing was created." });
   let sections: Record<string, string>;
   try {
-    sections = await draftSections(key, body);
+    sections = await draftSections(runtime, body);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The prompt could not be written.";
     return json(200, { ok: false, error: message });
@@ -95,38 +99,30 @@ function clamp(value: string, min: number, max: number, fallback: number) {
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
-async function draftSections(apiKey: string, answers: Record<string, string>) {
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: Deno.env.get("XAI_MODEL") || "grok-4.7",
-      temperature: 0.3,
-      max_completion_tokens: 8000,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "setter_sections",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: KEYS,
-            properties: Object.fromEntries(KEYS.map((key) => [key, { type: "string" }]))
-          }
+async function draftSections(runtime: { provider: string; model: string; apiKey: string; baseUrl: string; source: string; endpoint?: string }, answers: Record<string, string>) {
+  const result = await completeChat({
+    runtime: { ...runtime, model: runtime.model || Deno.env.get("XAI_MODEL") || "grok-4.7" },
+    temperature: 0.3,
+    maxTokens: 8000,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "setter_sections",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: KEYS,
+          properties: Object.fromEntries(KEYS.map((key) => [key, { type: "string" }]))
         }
-      },
-      messages: [
-        {
-          role: "system",
-          content: "Write a setter prompt as JSON with these keys, in this spirit: " + KEYS.map((key, index) => key + " = " + TITLES[index]).join("; ") + ". The first line of each value must be a markdown heading, exactly one of these and nothing else on that line: " + SECTION_HEADINGS.map((row) => row[1]).join("; ") + ". Use only the facts in the brief. exclusion is the highest priority rule and lists who must never be contacted. non_negotiables are the rules that never bend. role is the job. guardrails are the limits. knowledge is offer, price, ideal client, FAQs and facts. workflow is the conversation, qualification, follow-ups and booking. objections answers the stated objections. Do not invent prices, links or results that the brief does not give. Do not mention any vendor name."
-        },
-        { role: "user", content: briefOf(answers) }
-      ]
-    })
+      }
+    },
+    system: "Write a setter prompt as JSON with these keys, in this spirit: " + KEYS.map((key, index) => key + " = " + TITLES[index]).join("; ") + ". The first line of each value must be a markdown heading, exactly one of these and nothing else on that line: " + SECTION_HEADINGS.map((row) => row[1]).join("; ") + ". Use only the facts in the brief. exclusion is the highest priority rule and lists who must never be contacted. non_negotiables are the rules that never bend. role is the job. guardrails are the limits. knowledge is offer, price, ideal client, FAQs and facts. workflow is the conversation, qualification, follow-ups and booking. objections answers the stated objections. Do not invent prices, links or results that the brief does not give. Do not mention any vendor name.",
+    messages: [{ role: "user", content: briefOf(answers) }],
+    onError: (info) => logLlmError(null, info)
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error("The prompt could not be written.");
+  const payload = { choices: [{ message: { content: result.text } }] };
+  if (!result.text) throw new Error("The prompt could not be written.");
   const text = payload?.choices?.[0]?.message?.content;
   if (typeof text !== "string") throw new Error("The prompt could not be written.");
   const parsed = JSON.parse(text);

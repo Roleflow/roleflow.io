@@ -234,9 +234,18 @@ export function sendRequest(row) {
       body: { accountId, message: text }
     };
   }
+  const body = { accountId };
+  if (text.trim()) body.message = text;
+  const attachmentUrl = String(payload.attachmentUrl || "");
+  if (attachmentUrl.startsWith("https://")) {
+    body.attachmentUrl = attachmentUrl;
+    const type = String(payload.attachmentType || "audio");
+    body.attachmentType = ["image", "video", "audio", "file"].includes(type) ? type : "audio";
+  }
+  if (!body.message && !body.attachmentUrl) body.message = text;
   return {
     path: "/inbox/conversations/" + encodeURIComponent(payload.conversationId || "") + "/messages",
-    body: { accountId, message: text }
+    body
   };
 }
 

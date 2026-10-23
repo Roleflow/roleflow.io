@@ -21,6 +21,7 @@ import {
 import { renderBusiness, renderCrm, renderSalesLinks, renderValueContent } from "./studio.js";
 import { MAX_CHARS, charCount, collectLeads } from "./studio-model.js";
 import { THREAD_PAGE, senderLabel } from "./studio-flow-model.js";
+import { prepareOwnerFile } from "./clip-file.js";
 import { scorePrompt } from "./workforce-model.js";
 import { renderChats, renderCtas, renderFollowups, renderReminders } from "./studio-flow.js";
 import {
@@ -374,6 +375,10 @@ async function loadAll(id) {
   state.exceptions = exceptions.error ? [] : exceptions.data || [];
   state.activity = activity.error ? [] : activity.data || [];
   state.voices = voices.data || [];
+  const clips = await q.from("acq_owner_clips").select("id, label, when_to_use, kind, mime_type, byte_size, active, storage_path, speech_provider, created_at").eq("business_id", id).order("created_at", { ascending: false });
+  state.ownerClips = clips.error ? [] : clips.data || [];
+  const hints = await q.rpc("acq_llm_key_hints", { p_business: id });
+  state.llmKeys = hints.error || !Array.isArray(hints.data) ? [] : hints.data;
   state.performance = performance.error ? [] : performance.data || [];
   state.stats = null;
   state.leads = [];
@@ -484,6 +489,13 @@ async function loadThread(conversationId, mode) {
     .range(offset, offset + THREAD_PAGE - 1);
   const page = result.error ? [] : result.data || [];
   const chronological = page.slice().reverse();
+  for (const row of chronological) {
+    const path = row.metadata && row.metadata.media_path;
+    if (!path) continue;
+    const signed = await state.supabase.storage.from("owner-clips").createSignedUrl(path, 3600);
+    row.playbackUrl = signed.data && signed.data.signedUrl ? signed.data.signedUrl : "";
+    row.mediaKind = row.metadata.media_kind || "audio";
+  }
   state.engineMessages = mode === "earlier" ? chronological.concat(state.engineMessages || []) : chronological;
   state.threadMore = page.length === THREAD_PAGE;
   state.threadConversationId = conversationId;
@@ -611,6 +623,11 @@ function pageUi() {
     enqueueEngine,
     usesEngine,
     patchSettings,
+    saveLlm,
+    testLlm,
+    saveOwnerClip,
+    deleteOwnerClip,
+    signClip,
     shortTime,
     runChief,
     attributedCents,
@@ -1219,6 +1236,93 @@ async function syncSetter() {
   else if ((pushed.data && pushed.data.result) === "skipped") toast("Sync is off. Nothing was sent.");
   else toast("Sync finished.");
   await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveLlm(patch, secrets) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_settings").update(patch).eq("agent_id", state.businessId);
+  if (saved.error) return toast(saved.error.message, "bad");
+  for (const secret of secrets || []) {
+    if (!secret) continue;
+    if (secret.clear) {
+      const cleared = await state.supabase.rpc("acq_llm_clear_key", { p_business: state.businessId, p_provider: secret.provider });
+      if (cleared.error) return toast("The key was not removed.", "bad");
+      continue;
+    }
+    if (!secret.apiKey) continue;
+    const stored = await state.supabase.rpc("acq_llm_save_key", {
+      p_business: state.businessId,
+      p_provider: secret.provider,
+      p_key: secret.apiKey,
+      p_base_url: secret.baseUrl || ""
+    });
+    if (stored.error || !stored.data || stored.data.ok !== true) return toast("The key was not saved.", "bad");
+  }
+  toast("Saved.");
+  await bootBusiness(state.businessId);
+}
+
+async function testLlm(body) {
+  if (!state.supabase) return toast("This preview does not call a model.", "bad");
+  const invoked = await state.supabase.functions.invoke("llm-check", {
+    body: { ...body, business_id: state.businessId }
+  });
+  const data = invoked.data || {};
+  if (invoked.error || data.ok === false) return toast(data.error || "The connection did not answer.", "bad");
+  toast("Connection works.");
+}
+
+async function saveOwnerClip(file, meta) {
+  if (!readyToSave()) return;
+  if (!file) return toast("Choose a file.", "bad");
+  let prepared;
+  try {
+    prepared = await prepareOwnerFile(file);
+  } catch (error) {
+    return toast(error.message || "This file could not be prepared.", "bad");
+  }
+  if (prepared.blob.size > 4500000) return toast("Keep the recording under 4.5 MB so it can be sent.", "bad");
+  const id = crypto.randomUUID();
+  const ext = prepared.mime.includes("wav") ? "wav" : prepared.mime.includes("png") ? "png" : prepared.mime.includes("jpeg") ? "jpg" : prepared.kind === "video" ? "mp4" : "m4a";
+  const path = state.businessId + "/" + id + "." + ext;
+  const uploaded = await state.supabase.storage.from("owner-clips").upload(path, prepared.blob, { contentType: prepared.mime, upsert: false });
+  if (uploaded.error) return toast(uploaded.error.message, "bad");
+  const saved = await state.supabase.from("acq_owner_clips").insert({
+    id,
+    business_id: state.businessId,
+    label: String(meta.label || "").trim().slice(0, 120),
+    when_to_use: String(meta.when || "").trim().slice(0, 500),
+    kind: prepared.kind,
+    storage_path: path,
+    mime_type: prepared.mime,
+    delivery_path: path,
+    delivery_mime: prepared.mime,
+    byte_size: prepared.blob.size,
+    active: true,
+    speech_provider: "recording",
+    created_by: state.user.id
+  });
+  if (saved.error) {
+    await state.supabase.storage.from("owner-clips").remove([path]);
+    return toast(saved.error.message, "bad");
+  }
+  toast(prepared.converted ? "Recording saved as a voice note Instagram can play." : "Recording saved.");
+  await bootBusiness(state.businessId);
+}
+
+async function deleteOwnerClip(clip) {
+  if (!clip) return;
+  await state.supabase.storage.from("owner-clips").remove([clip.storage_path]);
+  const saved = await state.supabase.from("acq_owner_clips").delete().eq("id", clip.id).eq("business_id", state.businessId);
+  if (saved.error) return toast(saved.error.message, "bad");
+  toast("Recording removed.");
+  await bootBusiness(state.businessId);
+}
+
+async function signClip(path) {
+  if (!state.supabase || !path) return "";
+  const signed = await state.supabase.storage.from("owner-clips").createSignedUrl(path, 3600);
+  return signed.data && signed.data.signedUrl ? signed.data.signedUrl : "";
 }
 
 async function patchSettings(patch, enginePayload) {

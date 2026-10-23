@@ -95,6 +95,7 @@ export async function planTurn(input) {
     window,
     bookingAction: parsed.bookingAction,
     slotStart: parsed.slotStart,
-    email: parsed.email
+    email: parsed.email,
+    clipId: parsed.clipId || null
   };
 }
