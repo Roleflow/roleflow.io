@@ -1,5 +1,4 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { planTurn } from "../roleflow-acquisition/ig/engine.js";
 
 export const CALLBACK_URL = "https://roleflow.io/app/instagram/callback";
 export const LOGO_URL = "https://roleflow.io/assets/logo.jpg";
@@ -289,6 +288,7 @@ export function outboxWriteStatus(result) {
 }
 
 export async function planGatewayReply({ thread, eventKind, text, llm, now }) {
+  const { planTurn } = await import("../roleflow-acquisition/ig/engine.js");
   const at = now || Date.now();
   const current = thread || {};
   return planTurn({
