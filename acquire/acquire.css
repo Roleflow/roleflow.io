@@ -308,7 +308,16 @@ body.admin-panel .biz-grid{gap:24px}
 .office-card-copy span,.office-card-copy em{color:var(--mute);font-style:normal;font-size:.9rem}
 .office-card-dot{width:10px;height:10px;margin-top:6px;border-radius:99px;background:#9AA6C6}
 .office-card-dot.working{background:#7B4DFF;box-shadow:0 0 0 4px rgba(123,77,255,.2)}
+.office-card-dot.waiting{background:#E8B04A}
+.office-card-dot.error{background:#FF5A7A}
+.office-card-dot.idle{background:#9AA6C6}
 .office-card-dot.empty{background:transparent;border:1.5px dashed #7E8AAE}
+.agent-drawer{width:min(480px,100%)}
+.desk-tools{display:grid;gap:16px;margin-top:20px}
+.desk-pane{display:grid;gap:10px}
+.desk-pane textarea,.desk-routine{width:100%}
+.desk-pane textarea{box-sizing:border-box;padding:12px;border:0;border-radius:12px;background:#0A1226;color:inherit;font:inherit}
+.desk-routine{display:grid;gap:6px;padding:12px;border-radius:12px;background:#0A1226}
 @keyframes bubbleFade{0%,100%{opacity:.2}35%,70%{opacity:1}}
 @keyframes workGlow{0%,100%{opacity:.35}50%{opacity:.9}}
 @keyframes typeL{50%{transform:translateY(3px) rotate(8deg)}}

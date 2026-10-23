@@ -1,3 +1,6 @@
+import { renderDesk } from "./workforce-desk.js";
+import { agentRole, deskStatus } from "./workforce-model.js";
+
 const NS = "http://www.w3.org/2000/svg";
 const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
 
@@ -74,7 +77,6 @@ function bindOnce(ui) {
 
 function describe(ui, item, kind) {
   const inbound = kind === "inbound";
-  const pending = inbound && item.kind === "role" && ui.setterPending();
   const provisioned = item.kind === "manager" || ui.state.workforce.some((row) => row.role === item.key);
   let mode = "working";
   let status = "Active";
@@ -86,7 +88,7 @@ function describe(ui, item, kind) {
       mode = "idle";
       status = "Pending activation";
     }
-  } else if (!provisioned || pending) {
+  } else if (!provisioned) {
     mode = "empty";
     status = "Needs setup";
   } else {
@@ -100,7 +102,13 @@ function describe(ui, item, kind) {
   const cap = ui.state.settings && ui.state.settings.daily_cap;
   const capText = cap ? "Today " + today + " / " + cap : "Today " + today;
   const action = mode === "empty" ? "" : latestAction(ui, item);
-  return { ...item, mode, status, capText, action, inbound };
+  const role = agentRole(item, kind);
+  if (mode !== "empty") {
+    const live = deskStatus(ui.state.agentRuns || [], ui.state.agentActions || [], role);
+    mode = live.mode;
+    status = live.status;
+  }
+  return { ...item, role, mode, status, capText, action, inbound };
 }
 
 function countOutbound(ui) {
@@ -327,7 +335,7 @@ function bubbleArt(spec) {
 function nameArt(spec) {
   const lines = nameLines(spec.name);
   const g = node("g", { class: "nameplate" });
-  const dot = spec.mode === "working" ? "#7B4DFF" : spec.mode === "idle" ? "#9AA6C6" : "none";
+  const dot = spec.mode === "working" ? "#7B4DFF" : spec.mode === "error" ? "#FF5A7A" : spec.mode === "waiting" ? "#E8B04A" : spec.mode === "idle" ? "#9AA6C6" : "none";
   g.append(node("circle", {
     class: "status-dot " + spec.mode,
     cx: "0", cy: "54", r: "4",
@@ -455,6 +463,7 @@ function fillDrawer(ui, spec, kind) {
     body.append(ui.el("p", { text: ui.instagramLine() }));
   }
   if (spec.action) body.append(ui.el("p", { class: "metric-value sm", text: spec.action }));
+  body.append(renderDesk(ui, spec, kind));
   const activity = recent(ui, spec);
   const list = ui.el("div", { class: "drawer-activity" });
   list.append(ui.el("h3", { text: "Recent activity" }));

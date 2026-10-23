@@ -20,6 +20,7 @@ import {
 import { renderBusiness, renderCrm, renderSalesLinks, renderValueContent } from "./studio.js";
 import { MAX_CHARS, charCount, collectLeads } from "./studio-model.js";
 import { THREAD_PAGE, senderLabel } from "./studio-flow-model.js";
+import { scorePrompt } from "./workforce-model.js";
 import { renderChats, renderCtas, renderFollowups, renderReminders } from "./studio-flow.js";
 import {
   ENGINE_HINT,
@@ -123,6 +124,12 @@ const state = {
   chatDraft: "",
   studio: null,
   studioScore: null,
+  agentPrompts: [],
+  agentRoutines: [],
+  agentRuns: [],
+  agentActions: [],
+  agentSettings: [],
+  agentPromptScore: null,
   refreshTimer: 0
 };
 
@@ -386,6 +393,18 @@ async function loadAll(id) {
   state.origins = origins.error ? [] : origins.data || [];
   const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
   state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
+  const [agentPrompts, agentRoutines, agentRuns, agentActions, agentSettings] = await Promise.all([
+    q.from("agent_prompts").select("id, agent_role, body, note, char_count, score, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(80),
+    q.from("agent_routines").select("id, agent_role, name, cron, timezone, enabled, instructions, last_run_at").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("agent_runs").select("id, agent_role, routine_id, started_at, ended_at, status, summary, error").eq("business_id", id).order("started_at", { ascending: false }).limit(40),
+    q.from("agent_actions").select("id, agent_role, run_id, type, target, status, approved_by, error, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
+    q.from("agent_settings").select("agent_role, auto_approve").eq("business_id", id)
+  ]);
+  state.agentPrompts = agentPrompts.error ? [] : agentPrompts.data || [];
+  state.agentRoutines = agentRoutines.error ? [] : agentRoutines.data || [];
+  state.agentRuns = agentRuns.error ? [] : agentRuns.data || [];
+  state.agentActions = agentActions.error ? [] : agentActions.data || [];
+  state.agentSettings = agentSettings.error ? [] : agentSettings.data || [];
   const selected = state.flow && state.flow.chat && state.flow.chat.startsWith("contact:") ? state.flow.chat.slice("contact:".length) : "";
   const openConversation = selected ? (state.conversations || []).find((row) => row.contact_id === selected) : null;
   if (openConversation) await loadThread(openConversation.id, "newest");
@@ -574,7 +593,15 @@ function pageUi() {
     regenerateJoin,
     saveOrigin,
     markNotification,
-    syncSetter
+    syncSetter,
+    saveAgentPrompt,
+    restoreAgentPrompt,
+    scoreAgentPrompt,
+    saveRoutine,
+    setRoutineEnabled,
+    setAutoApprove,
+    approveAction,
+    rejectAction
   };
 }
 
@@ -976,6 +1003,108 @@ async function deleteRow(table, id) {
     toast("Removed.");
     await bootBusiness(state.businessId, { quiet: true });
   }
+}
+
+async function saveAgentPrompt(role, body, note) {
+  if (!readyToSave()) {
+    toast("This preview does not save.", "bad");
+    return false;
+  }
+  const text = String(body || "");
+  if (!text.trim()) {
+    toast("Write a prompt before saving.", "bad");
+    return false;
+  }
+  if (text.length > MAX_CHARS) {
+    toast("Shorten the prompt before saving.", "bad");
+    return false;
+  }
+  const saved = await state.supabase.from("agent_prompts").insert({
+    business_id: state.businessId,
+    agent_role: role,
+    body: text,
+    note: note || "",
+    char_count: text.length,
+    score: scorePrompt(text).score
+  });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return false;
+  }
+  toast("Prompt saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+  return true;
+}
+
+async function restoreAgentPrompt(role, body) {
+  return saveAgentPrompt(role, body, "Restored");
+}
+
+async function scoreAgentPrompt(role, text) {
+  const data = await callStudio("score", { fields: {}, prompt: text });
+  if (!data) return;
+  state.agentPromptScore = Object.assign({}, state.agentPromptScore, {
+    [role]: { score: Number(data.score), items: Array.isArray(data.items) ? data.items : [] }
+  });
+  paint();
+}
+
+async function saveRoutine(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const payload = {
+    business_id: state.businessId,
+    agent_role: row.agent_role,
+    name: String(row.name || "").trim(),
+    cron: String(row.cron || "").trim(),
+    timezone: String(row.timezone || "").trim(),
+    enabled: row.enabled !== false,
+    instructions: String(row.instructions || ""),
+    updated_at: new Date().toISOString()
+  };
+  const saved = row.id
+    ? await state.supabase.from("agent_routines").update(payload).eq("id", row.id).eq("business_id", state.businessId)
+    : await state.supabase.from("agent_routines").insert(payload);
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return false;
+  }
+  toast("Routine saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+  return true;
+}
+
+async function setRoutineEnabled(row, enabled) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("agent_routines").update({ enabled: Boolean(enabled), updated_at: new Date().toISOString() }).eq("id", row.id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function setAutoApprove(role, enabled) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("agent_settings").upsert({
+    business_id: state.businessId,
+    agent_role: role,
+    auto_approve: Boolean(enabled),
+    updated_at: new Date().toISOString()
+  }, { onConflict: "business_id,agent_role" });
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function approveAction(row) {
+  return decideAction(row, "approved");
+}
+
+async function rejectAction(row) {
+  return decideAction(row, "rejected");
+}
+
+async function decideAction(row, status) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("agent_actions").update({ status }).eq("id", row.id).eq("business_id", state.businessId).eq("status", "proposed");
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
 }
 
 async function requestSetterSync(direction) {
