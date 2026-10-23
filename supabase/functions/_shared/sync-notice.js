@@ -36,23 +36,57 @@ export function buildSyncNotice(rows) {
   };
 }
 
-export async function postSyncNotice(mail, env) {
+const DEFAULT_FROM = "Roleflow <notifications@roleflow.io>";
+let storedResend = null;
+
+export function resolveResendConfig(env, stored) {
+  const apiKey = String((env && env.apiKey) || (stored && stored.api_key) || "").trim();
+  const from = String((env && env.from) || (stored && stored.from) || DEFAULT_FROM).trim() || DEFAULT_FROM;
+  return { apiKey, from };
+}
+
+export async function loadResendConfig(client, env) {
+  const given = {
+    apiKey: String((env && env.apiKey) || "").trim(),
+    from: String((env && env.from) || "").trim()
+  };
+  if (given.apiKey && given.from) return resolveResendConfig(given, {});
+  if (!storedResend && client) {
+    const row = await client.rpc("acq_read_resend_settings");
+    if (!row.error && row.data && typeof row.data === "object") {
+      storedResend = {
+        api_key: String(row.data.api_key || ""),
+        from: String(row.data.from || "")
+      };
+    }
+  }
+  return resolveResendConfig(given, storedResend || {});
+}
+
+export async function sendSyncNotice(mail, env) {
   const apiKey = env && env.apiKey || "";
-  if (!apiKey || !mail || !mail.to || !mail.subject || !mail.text) return false;
+  if (!apiKey || !mail || !mail.to || !mail.subject || !mail.text) return { ok: false, status: 0 };
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + apiKey, "content-type": "application/json" },
     body: JSON.stringify({
-      from: (env && env.from) || "Roleflow <notifications@roleflow.io>",
+      from: (env && env.from) || DEFAULT_FROM,
       to: [mail.to],
       subject: mail.subject,
       text: mail.text
     })
   });
-  return response.ok;
+  return { ok: response.ok, status: response.status };
+}
+
+export async function postSyncNotice(mail, env) {
+  const result = await sendSyncNotice(mail, env);
+  return result.ok;
 }
 
 export async function flushSyncNotice(client, businessId, env, sleep) {
+  const config = await loadResendConfig(client, env);
+  if (!config.apiKey) return false;
   const wait = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const pending = await client.from("engine_outbox")
@@ -72,7 +106,7 @@ export async function flushSyncNotice(client, businessId, env, sleep) {
     const items = Array.isArray(claimed.data) ? claimed.data : [];
     if (!items.length) continue;
     const mail = buildSyncNotice(items);
-    const sent = await postSyncNotice(mail, env);
+    const sent = await postSyncNotice(mail, config);
     if (!sent) {
       await client.rpc("acq_release_sync_notice", { p_ids: items.map((row) => row.id) });
       return false;

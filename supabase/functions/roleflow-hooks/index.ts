@@ -2,7 +2,7 @@
 // Conversions use a workspace API key. The signing secret is never returned.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
-import { flushSyncNotice } from "../_shared/sync-notice.js";
+import { flushSyncNotice, loadResendConfig, sendSyncNotice, SYNC_INBOX } from "../_shared/sync-notice.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +20,7 @@ Deno.serve(async (req) => {
   if (body.action === "invite") return invite(req, body);
   if (body.action === "notify_connect") return notifyConnect(req, body);
   if (body.action === "notify_sync") return notifySync(req, body);
+  if (body.action === "sync_test") return syncTest(req);
   if (body.action === "prompt_test") return promptTest(req, body);
   return json(400, { error: "Unknown action." });
 });
@@ -123,10 +124,7 @@ async function notifySync(req: Request, body: { business_id?: string }) {
   const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
   if (allowed.error || allowed.data !== true) return json(403, { error: "You can't edit this business." });
   const admin = adminClient();
-  const notice = flushSyncNotice(admin, businessId, {
-    apiKey: Deno.env.get("RESEND_API_KEY") || "",
-    from: Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>"
-  });
+  const notice = flushSyncNotice(admin, businessId, resendEnv());
   const edge = (globalThis as { EdgeRuntime?: { waitUntil?: (task: Promise<unknown>) => void } }).EdgeRuntime;
   if (edge && edge.waitUntil) edge.waitUntil(notice);
   else notice.catch(() => {});
@@ -169,6 +167,37 @@ async function promptTest(req: Request, body: { business_id?: string; message?: 
   } catch (_error) {
     return json(200, { ok: true, reply: fallback, sent: false });
   }
+}
+
+async function syncTest(req: Request) {
+  const admin = adminClient();
+  const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const stored = await admin.rpc("acq_read_cron_secret");
+  const secret = !stored.error && typeof stored.data === "string" ? stored.data : "";
+  if (!timingSafeEqual(bearer, secret)) return json(401, { error: "Unauthorized." });
+  const config = await loadResendConfig(admin, resendEnv());
+  const result = await sendSyncNotice({
+    to: SYNC_INBOX,
+    subject: "Roleflow sync: test",
+    text: "Configuration check. No outbox id."
+  }, config);
+  return json(200, { ok: true, sent: result.ok, status: result.status });
+}
+
+function resendEnv() {
+  return {
+    apiKey: Deno.env.get("RESEND_API_KEY") || "",
+    from: Deno.env.get("RESEND_FROM") || ""
+  };
+}
+
+function timingSafeEqual(a: string, b: string) {
+  const left = new TextEncoder().encode(a);
+  const right = new TextEncoder().encode(b);
+  if (!left.length || left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left[i] ^ right[i];
+  return diff === 0;
 }
 
 function userClientFrom(req: Request) {

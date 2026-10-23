@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { businessSync, SYNC_LIVE, SYNC_READY, SYNC_SETUP, SYNCING } from "../acquire/sync-state.js";
 import { SETTER_SECTION_DEFS } from "../acquire/setter-sections.js";
-import { buildSyncNotice, shouldClaim } from "../supabase/functions/_shared/sync-notice.js";
+import { buildSyncNotice, resolveResendConfig, shouldClaim } from "../supabase/functions/_shared/sync-notice.js";
 import { headedSections, SECTION_HEADINGS, withHeading } from "../supabase/functions/_shared/prompt-headings.js";
 
 const read = (file) => fs.readFileSync(new URL("../" + file, import.meta.url), "utf8");
@@ -46,6 +46,13 @@ assert.equal(
   "11111111-1111-4111-8111-111111111111 update_workflow 22222222-2222-4222-8222-222222222222\n33333333-3333-4333-8333-333333333333 deploy 22222222-2222-4222-8222-222222222222"
 );
 assert.doesNotMatch(mail.subject + "\n" + mail.text, /SECRET|sk-secret|workflow_text|api_key/i);
+assert.deepEqual(
+  resolveResendConfig({ apiKey: "env-key", from: "Env <a@roleflow.io>" }, { api_key: "db-key", from: "Db <a@roleflow.io>" }),
+  { apiKey: "env-key", from: "Env <a@roleflow.io>" }
+);
+assert.equal(resolveResendConfig({ apiKey: "", from: "" }, { api_key: "db-key", from: "Db <a@roleflow.io>" }).apiKey, "db-key");
+assert.equal(resolveResendConfig({ apiKey: "", from: "" }, { api_key: "db-key", from: "Db <a@roleflow.io>" }).from, "Db <a@roleflow.io>");
+assert.equal(resolveResendConfig({}, {}).from, "Roleflow <notifications@roleflow.io>");
 
 const pendingCreate = [{ kind: "create_agent", status: "pending", created_at: "2026-10-23T11:00:00Z" }];
 assert.equal(businessSync({ outbox: pendingCreate, igStatus: "connected", systemEnabled: true }).label, SYNC_SETUP);
@@ -105,9 +112,22 @@ assert.match(engine, /acq_engine_outbox_settle/);
 assert.match(engine, /status must be done or failed/);
 assert.match(engine, /outbox_list/);
 
+const resendSql = read("supabase/migrations/20261023090000_resend_settings.sql");
+assert.match(resendSql, /acq_read_resend_settings/);
+assert.match(resendSql, /resend_api_key/);
+assert.match(resendSql, /resend_from/);
+assert.match(resendSql, /service_role/);
+assert.doesNotMatch(resendSql, /re_[A-Za-z0-9]/);
+assert.match(read("supabase/functions/_shared/sync-notice.js"), /acq_read_resend_settings/);
+assert.match(worker, /loadResendConfig/);
+assert.match(creator, /RESEND_FROM/);
+
 const hooks = read("supabase/functions/roleflow-hooks/index.ts");
 assert.match(hooks, /notify_sync/);
+assert.match(hooks, /sync_test/);
+assert.match(hooks, /loadResendConfig/);
 assert.doesNotMatch(hooks, /mail\.grokbot\.com/);
+assert.doesNotMatch(hooks, /console\.(log|info|debug)/);
 
 ["acquire/app.js", "acquire/home.js", "acquire/setter-workflow.js", "acquire/add-business.js", "acquire/sync-state.js", "acquire/connect-instagram.js", "acquire/engine-ui.js"].forEach((file) => {
   const text = read(file);
