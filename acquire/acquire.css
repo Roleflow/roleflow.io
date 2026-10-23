@@ -348,3 +348,22 @@ body.reduce-motion .station-g:hover,body.reduce-motion .station-g:focus-visible{
   body.admin-panel .admin-account .hello{display:none}
   body.admin-panel main.wrap{width:min(1080px,calc(100% - 32px))}
 }
+.studio{display:grid;gap:16px}
+.brief-grid,.crm-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end}
+.brief-grid label,.crm-filters label,.edit-bar label{display:grid;gap:6px;font-weight:600;font-size:.85rem}
+.studio textarea,.studio input,.studio select,.agent-card{width:100%;font:400 .95rem var(--b);color:var(--ink);background:#101A33;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.studio textarea{min-height:96px;resize:vertical}
+.char-count{margin:0;font-variant-numeric:tabular-nums;font-weight:700}
+.char-count.over{color:#FF8A3D}
+.kanban{display:flex;gap:12px;overflow:auto;padding-bottom:8px}
+.kanban-col{min-width:200px;flex:1;background:#101A33;border-radius:16px;padding:12px;display:grid;gap:8px;align-content:start}
+.kanban-col h3{margin:0;font-size:.95rem}
+.kanban-card{text-align:left;background:#1D2848;color:var(--ink);border:0;border-radius:12px;padding:10px 12px;cursor:pointer;font:500 .92rem var(--b)}
+.kanban-card:focus-visible{outline:2px solid #FF8A3D;outline-offset:2px}
+.role-picker{border:1px solid var(--line);border-radius:16px;display:grid;gap:6px;padding:12px}
+.role-picker label{font-weight:500}
+.agent-card{display:grid;gap:4px}
+.studio .actions,.edit-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.edit-bar{display:grid}
+.studio details summary{cursor:pointer;font-weight:700}
+.studio table.leads tr{cursor:pointer}

@@ -1,7 +1,10 @@
 import { renderOffice } from "./office.js";
 
 const GROUPS = [
-  { label: "Onboarding", items: [{ tab: "onboarding", label: "Setter questions", icon: "clipboard", tone: "t1" }] },
+  { label: "Onboarding", items: [
+    { tab: "brief", label: "Business", icon: "clipboard", tone: "t1" },
+    { tab: "onboarding", label: "Setter questions", icon: "clipboard", tone: "t2" }
+  ] },
   { label: "Strategy", items: [
     { tab: "links", label: "Sales links", icon: "link", tone: "t2" },
     { tab: "content", label: "Value content", icon: "folder", tone: "t3" }
@@ -51,11 +54,12 @@ const ICONS = {
 const HOW = {
   dashboard: "This is the home for one business. Accounts shows whether Instagram is connected. Alerts lists pauses, pending sync, and exceptions. Nothing here is a sample number.",
   onboarding: "These questions describe the niche, offer, Instagram, worker, and voice notes. Saving them updates this business. Open the prompt preview when you want to read the setter prompt and send it to the engine.",
-  links: "Sales links are the URLs the setter is allowed to send. The booking link is used when Calendar is not connected.",
-  content: "Value content is what the setter can send mid-conversation. Voice notes are recordings you make. Each active recording fills one slot: opener, gap, follow-up, booking, or reminder.",
+  brief: "Business is the shared brief every agent reads: what you sell, who you help, the offer, and the rest of the template. Each save keeps a version you can restore. The quality score and the simulator stay in this panel. Live setter sync is off, so a save does not change the live inbound setter.",
+  links: "Sales links have a name, text, URL, coupon, average ticket, and sending instructions. A link can be sent as a button and limited to chosen agents. Scheduling endpoints for Calendly, GoHighLevel, or a custom URL are stored here. An optional key is saved privately and is not shown again.",
+  content: "Value content can be an image, audio, video, link, or button, with sending instructions and a placement: before the messages, after the messages, or left to the AI. Upload limits are 8 MB, 20 MB, and 50 MB. Voice notes stay in the library below.",
   outbound: "Outbound Manager runs ICP Target Acquisition, Engagement Warm-Up, and Personalised Outreach. The daily cap is 20 to 30 new targets. Pending openers are drafts waiting in the queue.",
   inbound: "Inbound Manager is the Roleflow Setter Engine: comment-to-DM, story DMs, qualification, follow-ups, and booking. Pending activation means the engine agent is not linked yet. Syncing means a change is waiting to be applied.",
-  pipeline: "CRM is the pipeline for this business. Cold, warm, hot, converted, and dead come from the lead status on each contact.",
+  pipeline: "CRM states are Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board show the leads stored for this business. Filters, notes, and the message queue stay here. Nothing in the queue is sent while live sync is off.",
   stats: "Stats counts only rows in the date range you pick. Conversion rate is converted divided by targets in that range. Attributed growth is the sum of attributed deals. Roleflow's share is 10%.",
   performance: "Performance groups the same targets by source. Outbound is discovery. Inbound is Instagram and comments. A source with no rows is omitted.",
   configuration: "Each question on the left is a real setting: hours, who gets a reply, when a human takes over, how the setter writes, how a lead is classified, and which accounts are connected.",
@@ -109,7 +113,6 @@ export function mountNav(ui) {
 export function renderIntro(ui, tab) {
   const copy = {
     onboarding: ["Onboarding", "These questions build the setter. Saving them updates this business. The prompt preview is under the setter prompt page.", "onboarding", "clipboard"],
-    pipeline: ["CRM", "Cold, warm, hot, converted, and dead for this business.", "pipeline", "users"],
     prompts: ["Setter prompt", "Read the prompt the setter uses. Saving sends the change to the engine.", "onboarding", "clipboard"]
   }[tab];
   if (!copy) return null;
@@ -540,7 +543,7 @@ function configBody(ui, key) {
   return card;
 }
 
-function pageHeader(ui, title, text, how, iconName) {
+export function pageHeader(ui, title, text, how, iconName) {
   const card = ui.el("section", { class: "page-card" });
   const copy = ui.el("div", { class: "page-copy" });
   copy.append(iconTile(iconName || "grid", "t1"), ui.el("div", {}, [ui.el("h2", { text: title }), ui.el("p", { text })]));

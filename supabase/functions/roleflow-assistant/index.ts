@@ -16,11 +16,12 @@ const cors = {
 const MAP = [
   "Dashboard (#dashboard): accounts, alerts, and whether the system is on.",
   "Onboarding (#onboarding): the questions that build the setter. Saving them updates the business. The prompt preview is #prompts.",
-  "Sales links (#links): the booking link the setter can send.",
-  "Value content (#content): Diego's voice-note recordings, and which slot each one fills.",
+  "Business (#brief): the shared brief, per-agent instructions, version history, a quality score, and a conversation simulator. Live setter sync is off, so a save stays in the panel.",
+  "Sales links (#links): named links with text, URL, coupon, average ticket, sending instructions, and an optional button. Scheduling endpoints are Calendly, GoHighLevel, or a custom URL.",
+  "Value content (#content): image, audio, video, link, or button, plus voice-note recordings.",
   "Outbound Manager (#outbound): ICP Target Acquisition, Engagement Warm-Up, and Personalised Outreach. Daily cap is 20–30.",
   "Inbound Manager (#inbound): the Roleflow Setter Engine. Comment-to-DM, story DMs, qualification, follow-ups, and booking.",
-  "CRM (#pipeline): Cold, Warm, Hot, Converted, and Dead, plus the lead detail.",
+  "CRM (#pipeline): Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board, filters, notes, and a message queue that does not send while live sync is off.",
   "Stats (#stats): targets, conversations, qualified, booked, converted, conversion rate, attributed growth, and the 10% share, with a date range.",
   "Performance (#performance): results by source, outbound versus inbound.",
   "Configuration (#configuration): when the AI replies, who it replies to, when it stops, how it writes, lead classification, notifications, and connections.",
@@ -74,11 +75,11 @@ Deno.serve(async (req) => {
   if (workspace.error || !workspace.data) return json(403, { error: "That business is not available on this account." });
 
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const recent = await userClient.from("acq_assistant_turns").select("id", { count: "exact", head: true }).eq("user_id", caller.id).gte("created_at", since);
+  const recent = await userClient.from("acq_assistant_turns").select("id", { count: "exact", head: true }).eq("user_id", caller.id).eq("kind", "ask").gte("created_at", since);
   if (recent.error) return json(500, { error: "The assistant could not check the rate limit." });
   if ((recent.count || 0) >= HOUR_LIMIT) return json(429, { error: "Too many questions this hour. Try again later." });
 
-  const marked = await userClient.from("acq_assistant_turns").insert({ user_id: caller.id, business_id: businessId });
+  const marked = await userClient.from("acq_assistant_turns").insert({ user_id: caller.id, business_id: businessId, kind: "ask" });
   if (marked.error) return json(500, { error: "The assistant could not record this question." });
 
   const [settings, targets, bookings, deals, contacts] = await Promise.all([

@@ -6,17 +6,18 @@ import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
 import {
   mountNav,
+  pageHeader,
   renderIntro,
   renderConfiguration,
-  renderContent,
   renderDashboard,
   renderInbound,
-  renderLinks,
   renderOutbound,
   renderPerformance,
   renderStats,
   renderTeam
 } from "./home.js";
+import { renderBusiness, renderCrm, renderSalesLinks, renderValueContent } from "./studio.js";
+import { MAX_CHARS, charCount } from "./studio-model.js";
 import {
   ENGINE_HINT,
   JOURNEY,
@@ -42,7 +43,7 @@ const logoutBtn = document.getElementById("nav-logout");
 const panelLogout = document.getElementById("panel-logout");
 const AUDIO_TYPES = new Set(["audio/webm", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/wav", "audio/ogg", "audio/x-m4a", "audio/m4a", "audio/aac", "audio/wave"]);
 const MAX_BYTES = 20 * 1024 * 1024;
-const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings", "links", "content", "outbound", "inbound", "stats", "performance", "configuration", "team"];
+const TABS = ["dashboard", "agents", "overview", "inbox", "pipeline", "voice", "reports", "integrations", "billing", "prompts", "controls", "onboarding", "settings", "links", "content", "outbound", "inbound", "stats", "performance", "configuration", "team", "brief"];
 const ENGINE_TABS = new Set(["inbox", "prompts", "integrations", "billing", "onboarding"]);
 
 const state = {
@@ -90,7 +91,18 @@ const state = {
   configKey: "reply",
   rangeDays: 7,
   memberRows: [],
-  memberProfiles: []
+  memberProfiles: [],
+  brief: null,
+  briefVersions: [],
+  agentCards: [],
+  leadNotes: [],
+  messageQueue: [],
+  offerLinks: [],
+  scheduleEndpoints: [],
+  valueAssets: [],
+  studio: null,
+  studioScore: null,
+  refreshTimer: 0
 };
 
 logoutBtn.addEventListener("click", () => logout());
@@ -184,7 +196,12 @@ async function boot() {
   await bootBusiness(initial.id);
 }
 
-async function bootBusiness(id) {
+async function bootBusiness(id, options) {
+  const quiet = Boolean(options && options.quiet);
+  if (state.businessId && state.businessId !== id) {
+    state.studio = null;
+    state.studioScore = null;
+  }
   state.businessId = id;
   pick.value = id;
   const business = state.businesses.find((row) => row.id === id);
@@ -200,7 +217,7 @@ async function bootBusiness(id) {
   } else state.memberProfiles = [];
   const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
   state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
-  app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
+  if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
   const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
   if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
     showMessage("Pipeline is not ready", missing(ensured.error) ? "Apply the acquisition migrations, then refresh." : ensured.error.message);
@@ -213,7 +230,7 @@ async function bootBusiness(id) {
   }
   if (loaded) {
     const step = state.settings && state.settings.onboarding_step;
-    if (step && step !== "live" && !location.hash) {
+    if (!quiet && step && step !== "live" && !location.hash) {
       history.replaceState(null, "", location.pathname + location.search + "#onboarding");
     }
     state.tab = tabFromHash();
@@ -228,7 +245,7 @@ async function loadAll(id) {
   const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, threadMessages, outbox] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
-    q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, created_at, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
+    q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, created_at, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
     q.from("acq_outreach").select("*").eq("agent_id", id).limit(500),
     q.from("acq_warmup_steps").select("id, target_id, day_number, action, status, scheduled_for, action_count").eq("agent_id", id).limit(1000),
     q.from("acq_bookings").select("*").eq("agent_id", id),
@@ -244,7 +261,7 @@ async function loadAll(id) {
     q.from("acq_workers").select("id, label, key_prefix, enabled, status, last_heartbeat_at, pause_reason").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_setter_links").select("business_id, provider, agent_hint, external_agent_id, requested_handle, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_seen_at").eq("business_id", id).maybeSingle(),
-    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category").eq("business_id", id).limit(1000),
+    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count, automated, sales_link_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("conversation_id, role, body, sent_at, created_at").eq("business_id", id).order("created_at", { ascending: true }).limit(400),
@@ -280,6 +297,24 @@ async function loadAll(id) {
   state.conversations = conversations.error ? [] : conversations.data || [];
   state.engineMessages = threadMessages.error ? [] : threadMessages.data || [];
   state.outbox = outbox.error ? [] : outbox.data || [];
+  const [brief, versions, cards, notes, queue, links, schedules, assets] = await Promise.all([
+    q.from("acq_business_briefs").select("business_id, fields, updated_at").eq("business_id", id).maybeSingle(),
+    q.from("acq_brief_versions").select("id, fields, cards, char_count, note, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
+    q.from("acq_agent_cards").select("id, role, name, instructions, delegations, updated_at").eq("business_id", id),
+    q.from("acq_lead_notes").select("id, contact_id, target_id, body, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(200),
+    q.from("acq_message_queue").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(200),
+    q.from("acq_offer_links").select("id, name, body, url, coupon, average_ticket_cents, send_instructions, send_as_button, button_label, agent_roles").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_schedule_endpoints").select("id, provider, name, availability_url, booking_url, condition, has_api_key").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_value_assets").select("id, kind, title, url, label, storage_path, send_instructions, placement, agent_roles").eq("business_id", id).order("created_at", { ascending: false })
+  ]);
+  state.brief = brief.error ? null : brief.data;
+  state.briefVersions = versions.error ? [] : versions.data || [];
+  state.agentCards = cards.error ? [] : cards.data || [];
+  state.leadNotes = notes.error ? [] : notes.data || [];
+  state.messageQueue = queue.error ? [] : queue.data || [];
+  state.offerLinks = links.error ? [] : links.data || [];
+  state.scheduleEndpoints = schedules.error ? [] : schedules.data || [];
+  state.valueAssets = assets.error ? [] : assets.data || [];
   return true;
 }
 
@@ -298,9 +333,10 @@ function paint() {
   if (state.tab === "inbound") root.append(renderInbound(pageUi()));
   const intro = renderIntro(pageUi(), state.tab);
   if (intro) root.append(intro);
-  if (state.tab === "pipeline") root.append(pipeline());
-  if (state.tab === "voice" || state.tab === "content") root.append(renderContent(pageUi()));
-  if (state.tab === "links") root.append(renderLinks(pageUi()));
+  if (state.tab === "brief") root.append(renderBusiness(pageUi()));
+  if (state.tab === "pipeline") root.append(renderCrm(pageUi()));
+  if (state.tab === "voice" || state.tab === "content") root.append(renderValueContent(pageUi()));
+  if (state.tab === "links") root.append(renderSalesLinks(pageUi()));
   if (state.tab === "reports" || state.tab === "stats") root.append(renderStats(pageUi()));
   if (state.tab === "performance") root.append(renderPerformance(pageUi()));
   if (state.tab === "team") root.append(renderTeam(pageUi()));
@@ -312,6 +348,7 @@ function paint() {
     renderEngine(state.tab, host, engineCtx());
   }
   app.append(root);
+  armRefresh();
 }
 
 function engineCtx() {
@@ -369,8 +406,309 @@ function pageUi() {
     shareCents,
     money,
     percent,
-    tabGroup
+    tabGroup,
+    pageHeader,
+    targetDetail: leadDetail,
+    saveBrief,
+    saveAgent,
+    restoreBrief,
+    studioScore: scoreWithModel,
+    studioFix: fixWithModel,
+    studioEdit: editWithModel,
+    studioSimulate: simulateThread,
+    saveLead,
+    addLeadNote,
+    queueMessage,
+    cancelQueued,
+    saveOfferLink,
+    saveSchedule,
+    saveAsset,
+    deleteRow
   };
+}
+
+function armRefresh() {
+  if (state.refreshTimer) {
+    clearInterval(state.refreshTimer);
+    state.refreshTimer = 0;
+  }
+  if (state.tab !== "pipeline" || !state.supabase || !state.businessId || state.businessId === "preview") return;
+  state.refreshTimer = setInterval(() => {
+    if (document.hidden || state.tab !== "pipeline") return;
+    bootBusiness(state.businessId, { quiet: true });
+  }, 45000);
+}
+
+function readyToSave() {
+  return Boolean(state.supabase && state.businessId && state.businessId !== "preview");
+}
+
+async function saveBrief(fields, cards, note) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const count = charCount(fields, cards);
+  if (count > MAX_CHARS) return toast("Shorten the text before saving.", "bad");
+  const brief = await state.supabase.from("acq_business_briefs").upsert({
+    business_id: state.businessId,
+    fields,
+    updated_at: new Date().toISOString(),
+    updated_by: state.user && state.user.id
+  });
+  if (brief.error) return toast(brief.error.message, "bad");
+  const keep = new Set((cards || []).map((card) => card.role));
+  for (const card of state.agentCards || []) {
+    if (!keep.has(card.role)) {
+      const removed = await state.supabase.from("acq_agent_cards").delete().eq("id", card.id).eq("business_id", state.businessId);
+      if (removed.error) return toast(removed.error.message, "bad");
+    }
+  }
+  if (cards && cards.length) {
+    const saved = await state.supabase.from("acq_agent_cards").upsert(cards.map((card) => ({
+      business_id: state.businessId,
+      role: card.role,
+      name: card.name || "",
+      instructions: card.instructions || "",
+      delegations: card.delegations || [],
+      updated_at: new Date().toISOString()
+    })), { onConflict: "business_id,role" });
+    if (saved.error) return toast(saved.error.message, "bad");
+  }
+  const version = await state.supabase.from("acq_brief_versions").insert({
+    business_id: state.businessId,
+    fields,
+    cards: cards || [],
+    char_count: count,
+    note: note || "Saved",
+    created_by: state.user && state.user.id
+  });
+  if (version.error) return toast(version.error.message, "bad");
+  toast("Business saved.");
+  state.studioScore = null;
+  if (state.studio) state.studio.proposal = null;
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveAgent(card) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_agent_cards").upsert({
+    business_id: state.businessId,
+    role: card.role,
+    name: card.name || "",
+    instructions: card.instructions || "",
+    delegations: card.delegations || [],
+    updated_at: new Date().toISOString()
+  }, { onConflict: "business_id,role" });
+  if (saved.error) return toast(saved.error.message, "bad");
+  const fields = (state.brief && state.brief.fields) || {};
+  const next = (state.agentCards || []).filter((item) => item.role !== card.role).concat([card]);
+  const version = await state.supabase.from("acq_brief_versions").insert({
+    business_id: state.businessId,
+    fields,
+    cards: next,
+    char_count: charCount(fields, next),
+    note: "Agent settings",
+    created_by: state.user && state.user.id
+  });
+  if (version.error) return toast(version.error.message, "bad");
+  toast("Agent saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function restoreBrief(id) {
+  const version = (state.briefVersions || []).find((row) => row.id === id);
+  if (!version) return toast("That version is not loaded.", "bad");
+  await saveBrief(version.fields || {}, Array.isArray(version.cards) ? version.cards : [], "Restored");
+}
+
+async function callStudio(action, extra) {
+  if (!readyToSave()) {
+    toast("Sign in to use the model.", "bad");
+    return null;
+  }
+  const invoked = await state.supabase.functions.invoke("roleflow-studio", {
+    body: { action, business_id: state.businessId, ...extra }
+  });
+  if (invoked.error) {
+    let message = invoked.error.message || "The model did not answer.";
+    if (invoked.error.context && typeof invoked.error.context.json === "function") {
+      const body = await invoked.error.context.json().catch(() => null);
+      if (body && body.error) message = String(body.error);
+    }
+    toast(message, "bad");
+    return null;
+  }
+  if (invoked.data && invoked.data.error) {
+    toast(String(invoked.data.error), "bad");
+    return null;
+  }
+  return invoked.data;
+}
+
+async function scoreWithModel(fields) {
+  const data = await callStudio("score", { fields });
+  if (!data) return;
+  state.studioScore = { score: Number(data.score), items: Array.isArray(data.items) ? data.items : [] };
+  paint();
+}
+
+async function fixWithModel(fields, items) {
+  const data = await callStudio("fix", { fields, items });
+  if (!data || !data.fields) return;
+  if (!state.studio) state.studio = {};
+  state.studio.proposal = { fields: data.fields };
+  paint();
+}
+
+async function editWithModel(fields, instruction) {
+  const data = await callStudio("edit", { fields, instruction });
+  if (!data || !data.fields) return;
+  if (!state.studio) state.studio = {};
+  state.studio.proposal = { fields: data.fields };
+  paint();
+}
+
+async function simulateThread(sim) {
+  const version = (state.briefVersions || []).find((row) => row.id === sim.version);
+  const fields = version && version.fields ? version.fields : ((state.brief && state.brief.fields) || {});
+  const data = await callStudio("simulate", {
+    fields,
+    as: sim.as,
+    lead_state: sim.state,
+    lines: (sim.lines || []).slice(-12)
+  });
+  if (data && data.reply) sim.lines.push({ role: "assistant", text: String(data.reply) });
+  paint();
+}
+
+async function saveLead(lead, patch) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const table = lead.kind === "contact" ? "acq_contacts" : "acq_targets";
+  const saved = await state.supabase.from(table).update({
+    crm_state: patch.crm_state,
+    assigned_agent: patch.assigned_agent || "",
+    ai_enabled: patch.ai_enabled !== false,
+    tags: patch.tags || []
+  }).eq("id", lead.id);
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Lead saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function addLeadNote(lead, body) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const text = String(body || "").trim();
+  if (!text) return toast("Write a note first.", "bad");
+  const saved = await state.supabase.from("acq_lead_notes").insert({
+    business_id: state.businessId,
+    contact_id: lead.kind === "contact" ? lead.id : null,
+    target_id: lead.kind === "target" ? lead.id : null,
+    body: text,
+    created_by: state.user && state.user.id
+  });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Note saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function queueMessage(lead, body) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const text = String(body || "").trim();
+  if (!text) return toast("Write the message first.", "bad");
+  const saved = await state.supabase.from("acq_message_queue").insert({
+    business_id: state.businessId,
+    contact_id: lead.kind === "contact" ? lead.id : null,
+    target_id: lead.kind === "target" ? lead.id : null,
+    body: text,
+    status: "pending"
+  });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Queued. Nothing is sent.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function cancelQueued(id) {
+  if (!readyToSave()) return;
+  const saved = await state.supabase.from("acq_message_queue").update({ status: "cancelled" }).eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveOfferLink(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_offer_links").insert({ ...row, business_id: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Link saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function saveSchedule(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const apiKey = String(row.apiKey || "");
+  const saved = await state.supabase.from("acq_schedule_endpoints").insert({
+    business_id: state.businessId,
+    provider: row.provider,
+    name: row.name || "",
+    availability_url: row.availability_url || "",
+    booking_url: row.booking_url || "",
+    condition: row.condition || ""
+  }).select("id").single();
+  if (saved.error) return toast(saved.error.message, "bad");
+  if (apiKey.trim()) {
+    const secret = await state.supabase.rpc("acq_set_schedule_secret", { p_endpoint: saved.data.id, p_key: apiKey.trim() });
+    if (secret.error) return toast(secret.error.message, "bad");
+  }
+  toast("Endpoint saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function saveAsset(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  let storagePath = "";
+  if (row.file) {
+    const safe = String(row.file.name || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+    storagePath = state.businessId + "/" + crypto.randomUUID() + "/" + safe;
+    const uploaded = await state.supabase.storage.from("acq-value").upload(storagePath, row.file, { upsert: false });
+    if (uploaded.error) return toast(uploaded.error.message, "bad");
+  }
+  const saved = await state.supabase.from("acq_value_assets").insert({
+    business_id: state.businessId,
+    kind: row.kind,
+    title: row.title || "",
+    url: row.url || "",
+    label: row.label || "",
+    storage_path: storagePath,
+    send_instructions: row.send_instructions || "",
+    placement: row.placement || "ai",
+    agent_roles: row.agent_roles || []
+  });
+  if (saved.error) {
+    if (storagePath) await state.supabase.storage.from("acq-value").remove([storagePath]);
+    return toast(saved.error.message, "bad");
+  }
+  toast("Content saved.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function deleteRow(table, id) {
+  if (!readyToSave()) return;
+  if (table !== "acq_offer_links" && table !== "acq_value_assets") return;
+  if (table === "acq_value_assets") {
+    const asset = (state.valueAssets || []).find((row) => row.id === id);
+    if (asset && asset.storage_path) await state.supabase.storage.from("acq-value").remove([asset.storage_path]);
+  }
+  const saved = await state.supabase.from(table).delete().eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Removed.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
 }
 
 async function patchSettings(patch, enginePayload) {
@@ -1462,7 +1800,8 @@ function markTab() {
     links: "Sales links",
     prompts: "Setter prompt",
     onboarding: "Onboarding",
-    team: "Team"
+    team: "Team",
+    brief: "Business"
   };
   if (title) title.textContent = names[state.tab] || "Dashboard";
   const business = state.businesses.find((row) => row.id === state.businessId);
@@ -1479,7 +1818,7 @@ function tabGroup(tab) {
   if (tab === "reports" || tab === "stats") return "stats";
   if (tab === "voice" || tab === "content") return "content";
   if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "settings" || tab === "configuration") return "configuration";
-  if (tab === "prompts") return "onboarding";
+  if (tab === "prompts" || tab === "brief") return "onboarding";
   return tab;
 }
 
