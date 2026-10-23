@@ -9,8 +9,9 @@ const dock = read("acquire/dock.js");
 const connect = read("acquire/connect-instagram.js");
 const office = read("acquire/office.js");
 
-assert.match(html, /id="panel-collapse"/);
+assert.match(html, /id="side-toggle"/);
 assert.match(html, /Collapse sidebar/);
+assert.match(html, /aria-expanded/);
 assert.match(html, /class="desk-modal"/);
 assert.match(html, /desk-modal-backdrop/);
 assert.match(html, /data-close-drawer/);
@@ -19,12 +20,11 @@ assert.doesNotMatch(html, /class="agent-drawer"/);
 assert.match(css, /\.desk-modal\{position:fixed;inset:0/);
 assert.match(css, /place-items:center/);
 assert.match(css, /\.integration-status\.on/);
-assert.match(css, /grid-template-columns:280px/);
+assert.match(css, /grid-template-columns:264px/);
 
-assert.match(dock, /rf-sidebar/);
-assert.match(dock, /function expandSidebar/);
-assert.match(dock, /function collapseSidebar/);
+assert.doesNotMatch(dock, /pointermove/);
 assert.match(dock, /localStorage/);
+assert.match(dock, /aria-expanded/);
 
 assert.match(connect, /Connected/);
 assert.match(connect, /connect-native/);

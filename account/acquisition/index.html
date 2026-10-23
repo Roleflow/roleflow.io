@@ -2,6 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>
+try {
+  var sidebarMode = localStorage.getItem("roleflow.sidebar");
+  if (sidebarMode !== "expanded" && sidebarMode !== "collapsed" && localStorage.getItem("rf-sidebar") === "closed") sidebarMode = "collapsed";
+  if (sidebarMode === "collapsed") document.documentElement.classList.add("side-collapsed");
+} catch (e) {}
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dashboard · Roleflow</title>
 <meta name="robots" content="noindex, nofollow">
@@ -14,25 +21,15 @@
 <body class="app platform">
 <a class="skip" href="#app">Skip to the dashboard</a>
 <div class="app-shell">
-  <div class="side-slot" id="side-slot">
-  <aside class="icon-rail" id="icon-rail" aria-label="Sections">
-    <button type="button" class="rail-pin" id="rail-toggle" aria-pressed="false" aria-expanded="false" aria-controls="slide-panel" title="Expand sidebar" data-tip="Expand sidebar" aria-label="Expand sidebar">
-      <span class="dock-scale"><span class="nav-ico t2" id="pin-ico"></span></span>
-    </button>
-    <nav class="rail-nav" id="rail-nav"></nav>
-    <button type="button" class="rail-logout" id="nav-logout" hidden title="Log out" data-tip="Log out" aria-label="Log out">
-      <span class="dock-scale"><span class="nav-ico t5" id="logout-ico"></span></span>
-    </button>
-  </aside>
-  <aside class="slide-panel" id="slide-panel" aria-label="Panel">
-    <div class="slide-top">
-      <button type="button" class="nav-chevron" id="panel-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">
-        <span class="nav-ico" id="collapse-ico"></span>
-      </button>
-      <button type="button" class="btn ghost sm" id="panel-close">Close</button>
-      <a class="brand" href="/account/acquisition/"><img alt="" src="/assets/logo.jpg" width="28" height="28">Roleflow</a>
-      <button type="button" class="menu-pin" id="menu-pin" aria-pressed="false" aria-expanded="false" aria-label="Pin menu" title="Pin menu">
-        <span class="nav-ico" id="menu-pin-ico"></span>
+  <aside class="platform-side" id="app-side" aria-label="Sidebar">
+    <div class="side-top">
+      <a class="side-brand" href="/account/acquisition/">
+        <img alt="" src="/assets/logo.jpg" width="28" height="28">
+        <span class="nav-label">Roleflow</span>
+      </a>
+      <button type="button" class="side-toggle" id="side-toggle" aria-expanded="true" aria-controls="app-side" aria-label="Collapse sidebar">
+        <svg class="ico-chevrons" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 17 6 12l5-5"/><path d="M18 17l-5-5 5-5"/></svg>
+        <svg class="ico-menu" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
     </div>
     <div class="pinned-biz" id="panel-business">
@@ -43,16 +40,22 @@
       </label>
       <a class="side-link" id="nav-admin-home" href="/admin/" hidden>All businesses</a>
     </div>
-    <nav class="slide-nav" id="slide-nav"></nav>
-    <button type="button" class="panel-logout" id="panel-logout" hidden>
-      <span class="nav-ico" id="panel-logout-ico"></span>
-      Log out
+    <nav class="side-nav" id="slide-nav" aria-label="Sections"></nav>
+    <button type="button" class="panel-logout" id="nav-logout" hidden data-tip="Log out" aria-label="Log out">
+      <span class="nav-ico" id="logout-ico"></span>
+      <span class="nav-label">Log out</span>
     </button>
   </aside>
-  </div>
+  <script>
+    if (document.documentElement.classList.contains("side-collapsed")) {
+      var sideToggle = document.getElementById("side-toggle");
+      sideToggle.setAttribute("aria-expanded", "false");
+      sideToggle.setAttribute("aria-label", "Expand sidebar");
+    }
+  </script>
   <div class="app-main">
     <header class="app-top">
-      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="slide-panel">Menu</button>
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="app-side" aria-label="Open menu">Menu</button>
       <div class="biz-center">
         <span class="biz-avatar" id="biz-avatar" aria-hidden="true">R</span>
         <p class="biz-name" id="page-sub">Loading…</p>
