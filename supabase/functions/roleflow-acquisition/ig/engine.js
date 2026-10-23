@@ -3,6 +3,7 @@ import { resolveNextState } from "./state.js";
 import { qualifiersPass } from "./qualify.js";
 import { parseEngineOutput } from "./output.js";
 import { clampBubbles } from "./send.js";
+import { bookingAllows } from "../../_shared/booking-plan.js";
 
 function mergeAttrs(current, next) {
   return { ...(current || {}), ...(next || {}) };
@@ -61,7 +62,7 @@ export async function planTurn(input) {
     };
   }
   const raw = await input.llm(input);
-  const parsed = parseEngineOutput(raw);
+  const parsed = parseEngineOutput(raw, input.booking ? { slots: input.booking.slots || [] } : undefined);
   const attributes = mergeAttrs(thread.attributes, parsed.attributes);
   if (parsed.noResponse) {
     return {
@@ -77,7 +78,8 @@ export async function planTurn(input) {
     };
   }
   let next = resolveNextState(state, parsed.nextState, eventKind);
-  if ((next.state === "booking" || next.state === "booked") && !qualifiersPass(attributes)) {
+  const allowed = input.booking ? bookingAllows(input.booking, attributes) : qualifiersPass(attributes);
+  if ((next.state === "booking" || next.state === "booked") && !allowed) {
     next = { state, rejected: true, reason: "qualification_incomplete" };
   }
   const escalate = parsed.escalate || next.state === "booked" || next.state === "human" || next.state === "dead";
@@ -95,6 +97,9 @@ export async function planTurn(input) {
     window,
     bookingAction: parsed.bookingAction,
     slotStart: parsed.slotStart,
-    email: parsed.email
+    email: parsed.email,
+    confirmation: input.booking ? String(input.booking.confirmation || "") : "",
+    reminder: input.booking ? String(input.booking.reminder || "") : "",
+    link: input.booking ? String(input.booking.link || "") : ""
   };
 }

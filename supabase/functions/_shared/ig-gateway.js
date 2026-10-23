@@ -310,10 +310,11 @@ export function outboxWriteStatus(result) {
   return { status: "failed", last_error: (result && result.error) || "The reply was not sent." };
 }
 
-export async function planGatewayReply({ thread, eventKind, text, llm, now }) {
+export async function planGatewayReply({ thread, eventKind, text, llm, now, booking }) {
   const { planTurn } = await import("../roleflow-acquisition/ig/engine.js");
   const at = now || Date.now();
   const current = thread || {};
+  const policy = booking || { qualifyBeforeBook: false, required: [], slots: [], confirmation: "", reminder: "", link: "" };
   return planTurn({
     thread: {
       ...current,
@@ -323,6 +324,7 @@ export async function planGatewayReply({ thread, eventKind, text, llm, now }) {
     kind: "ai",
     dnc: false,
     now: at,
+    booking: policy,
     llm: () => llm({ text, state: current.state || "" })
   });
 }
