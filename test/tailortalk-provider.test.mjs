@@ -228,7 +228,7 @@ function walk(dir) {
     if (entry.isDirectory()) walk(full);
     else if (/\.(html|js|css|mjs|json|md|txt|toml|sql)$/i.test(entry.name)) {
       const text = fs.readFileSync(full, "utf8");
-      if (/tailortalk/i.test(text)) leaked.push(rel);
+      if (/tailortalk|tailor\s*talk|tailor["'`]\s*\+\s*["'`]talk|\btailor\b/i.test(text)) leaked.push(rel);
     }
   }
 }

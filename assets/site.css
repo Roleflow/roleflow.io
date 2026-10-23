@@ -4,7 +4,7 @@
 --h:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;--b:'Instrument Sans','Segoe UI',system-ui,sans-serif}
 body.geo{box-sizing:border-box;margin:0;background:radial-gradient(900px 520px at 50% -8%,rgba(123,77,255,.28),transparent 62%),radial-gradient(700px 420px at 100% 40%,rgba(255,138,61,.09),transparent 60%),var(--bg);color:var(--ink);font:400 17px/1.6 var(--b);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body.geo *,body.geo *::before,body.geo *::after{box-sizing:border-box}
-body.geo :focus-visible{outline:2px solid var(--o);outline-offset:3px}
+body.geo :focus-visible{outline:2px solid rgba(123,77,255,.85);outline-offset:3px}
 body.geo a{color:var(--gold)}
 body.geo .skip{position:absolute;left:12px;top:-48px;background:var(--gold);color:#0A1226;padding:8px 14px;border-radius:999px;z-index:20;font-weight:600;text-decoration:none}
 body.geo .skip:focus{top:calc(12px + env(safe-area-inset-top,0px))}

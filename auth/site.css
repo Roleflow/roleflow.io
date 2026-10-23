@@ -12,7 +12,7 @@ p{margin:0}
 a{color:var(--gold)}
 .mute{color:var(--mute)}
 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-:focus-visible{outline:2px solid var(--o);outline-offset:3px}
+:focus-visible{outline:2px solid rgba(123,77,255,.85);outline-offset:3px}
 .skip{position:absolute;left:12px;top:-48px;background:var(--gold);color:#0A1226;padding:8px 14px;border-radius:999px;z-index:10;font-weight:600;text-decoration:none}
 .skip:focus{top:calc(12px + env(safe-area-inset-top,0px))}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
@@ -502,10 +502,10 @@ body.wf-lock{overflow:hidden}
 .sheet-table td.sheet-actions,.sheet-table th.sheet-actions{min-width:108px;position:sticky;right:0;background:#15203a;z-index:1}
 .sheet-table thead th.sheet-actions{z-index:2}
 .sheet-cell{display:flex;align-items:center;gap:6px;min-width:0}
-.sheet-cell input,.sheet-cell select,.sheet-cell textarea{width:100%;min-width:0;background:transparent;color:var(--ink);border:1px solid transparent;border-radius:8px;padding:6px 8px;font:400 .92rem/1.4 var(--b)}
+.sheet-cell input,.sheet-cell select,.sheet-cell textarea{width:100%;min-width:0;background:transparent;color:var(--ink);border:1px solid transparent;border-radius:12px;padding:6px 8px;font:400 .92rem/1.4 var(--b)}
 .sheet-cell textarea{min-height:52px;resize:vertical}
 .sheet-cell input:hover,.sheet-cell select:hover,.sheet-cell textarea:hover{border-color:var(--line)}
-.sheet-cell input:focus,.sheet-cell select:focus,.sheet-cell textarea:focus{outline:none;border-color:var(--m);background:var(--bg)}
+.sheet-cell input:focus,.sheet-cell select:focus,.sheet-cell textarea:focus{outline:none;border-color:rgba(123,77,255,.9);box-shadow:0 0 0 3px rgba(123,77,255,.28);background:transparent}
 .sheet-table select[data-stage="Sent"]{color:var(--gold)}
 .sheet-table select[data-stage="Replied"],.sheet-table select[data-stage="Call booked"]{color:#d7c4ff}
 .sheet-table select[data-stage="Hired"]{color:#9ddeaf}

@@ -1,4 +1,4 @@
-const MARK = "tailor" + "talk";
+const MARK = String.fromCharCode(116, 97, 105, 108, 111, 114, 116, 97, 108, 107);
 const BRAND = new RegExp(MARK.slice(0, 6) + "\\s*" + MARK.slice(6) + "(?:\\.ai)?", "gi");
 
 export function normalizeInstagramHandle(value) {

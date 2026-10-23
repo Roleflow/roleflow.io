@@ -21,7 +21,7 @@ p{margin:0}
 .kicker{margin:0 0 14px;color:#7E8AAE;font:600 .78rem/1 var(--b);letter-spacing:.14em;text-transform:uppercase}
 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 .lede{color:var(--mute);font-size:1.08rem;max-width:40rem}
-:focus-visible{outline:2px solid #FF8A3D;outline-offset:3px}
+:focus-visible{outline:2px solid rgba(123,77,255,.85);outline-offset:3px}
 
 .top{position:sticky;top:0;z-index:8;background:rgba(10,18,38,.78);backdrop-filter:blur(16px);padding-top:env(safe-area-inset-top,0px)}
 .top::after{content:"";display:block;height:2px;background:var(--grad);opacity:.85}

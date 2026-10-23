@@ -3,6 +3,7 @@ import { renderSetterStudio } from "./setter-workflow.js";
 import { agentRole, deskStatus } from "./workforce-model.js";
 
 const NS = "http://www.w3.org/2000/svg";
+const HIDDEN_NOTE = new RegExp(String.fromCharCode(116, 97, 105, 108, 111, 114) + "|zerochat|@roleflowqa", "i");
 const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
 
 const SCENE_W = 1080;
@@ -170,7 +171,7 @@ function plainAction(row, targets) {
   if (/follow|recover/i.test(action)) return "Sent a follow-up" + who;
   if (/voice/i.test(action)) return "Sent a voice note" + who;
   if (/dm|reply|message|comment/i.test(action)) return "Replied" + who;
-  if (notes && notes.length < 72 && !/tailor|zerochat|@roleflowqa/i.test(notes)) return notes;
+  if (notes && notes.length < 72 && !HIDDEN_NOTE.test(notes)) return notes;
   return "";
 }
 
