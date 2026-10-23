@@ -1,9 +1,9 @@
 import { ROLES } from "./model.js";
-import { CRM_STATES } from "./studio-model.js";
+import { CRM_STATES, filterLeads } from "./studio-model.js";
 import { chatIntro, exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
 
 function box(ui) {
-  if (!ui.state.flow) ui.state.flow = { chat: "", chatQuery: "", chatState: "all", reminderFilter: "open", ctaPreview: "" };
+  if (!ui.state.flow) ui.state.flow = { chat: "", chatQuery: "", chatState: "all", chatTag: "", chatAi: "all", chatUnread: "all", reminderFilter: "open", ctaPreview: "" };
   return ui.state.flow;
 }
 
@@ -323,31 +323,50 @@ export function renderChats(ui) {
   const wrap = ui.el("div", { class: "studio" });
   wrap.append(header(ui, "Chats", chatIntro(ui.state.messageCount), "inbox", "inbox"));
   const leads = ui.collectLeads ? ui.collectLeads(ui.state.contacts, ui.state.targets) : [];
+  const tags = [...new Set(leads.flatMap((lead) => lead.tags || []))].sort();
   const filters = ui.el("form", { class: "filters" });
   const query = ui.field("Search", flow.chatQuery || "");
   const state = ui.el("select", { "aria-label": "Chat state" });
   state.append(ui.el("option", { value: "all", text: "Any state" }));
   CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
   state.value = flow.chatState || "all";
-  filters.append(query.label, state);
+  const tag = ui.el("select", { "aria-label": "Chat tag" });
+  tag.append(ui.el("option", { value: "", text: "Any tag" }));
+  tags.forEach((name) => tag.append(ui.el("option", { value: name, text: name })));
+  tag.value = tags.includes(flow.chatTag) ? flow.chatTag : "";
+  const ai = ui.el("select", { "aria-label": "AI replies" });
+  [["all", "AI on or off"], ["on", "AI on"], ["off", "AI paused"]].forEach(([value, label]) => ai.append(ui.el("option", { value, text: label })));
+  ai.value = flow.chatAi || "all";
+  const unread = ui.el("select", { "aria-label": "Unread" });
+  [["all", "Read and unread"], ["yes", "Unread"], ["no", "Read"]].forEach(([value, label]) => unread.append(ui.el("option", { value, text: label })));
+  unread.value = flow.chatUnread || "all";
+  filters.append(query.label, state, tag, ai, unread);
   filters.append(ui.button("Search", (event) => {
     event.preventDefault();
     flow.chatQuery = query.input.value.trim().toLowerCase().replace(/^@/, "");
     flow.chatState = state.value;
+    flow.chatTag = tag.value;
+    flow.chatAi = ai.value;
+    flow.chatUnread = unread.value;
     ui.paint();
   }));
   filters.addEventListener("submit", (event) => event.preventDefault());
   wrap.append(filters);
-  const matched = leads.filter((lead) => {
-    if (flow.chatState && flow.chatState !== "all" && lead.state !== flow.chatState) return false;
-    if (!flow.chatQuery) return true;
-    return (lead.name || "").toLowerCase().includes(flow.chatQuery) || (lead.handle || "").toLowerCase().includes(flow.chatQuery);
+  const matched = filterLeads(leads, {
+    q: flow.chatQuery || "",
+    state: flow.chatState || "all",
+    tag: flow.chatTag || "",
+    ai: flow.chatAi || "all",
+    unread: flow.chatUnread || "all"
   });
   const layout = ui.el("div", { class: "chats" });
   const list = ui.el("div", { class: "chat-list" });
-  if (!matched.length) list.append(ui.el("p", { text: "No chats match. Nothing here is a sample." }));
+  if (!matched.length) list.append(ui.el("p", { text: "No chats match." }));
   matched.forEach((lead) => {
-    const button = ui.el("button", { type: "button", "aria-pressed": flow.chat === lead.kind + ":" + lead.id ? "true" : "false" }, [lead.name || (lead.handle ? "@" + lead.handle : "Unnamed")]);
+    const title = lead.name || (lead.handle ? "@" + lead.handle : "Unnamed");
+    const children = [title];
+    if (Number(lead.unread) > 0) children.push(ui.el("span", { class: "unread", text: String(lead.unread) }));
+    const button = ui.el("button", { type: "button", "aria-pressed": flow.chat === lead.kind + ":" + lead.id ? "true" : "false" }, children);
     button.addEventListener("click", () => {
       if (ui.openChat) ui.openChat(lead);
       else { flow.chat = lead.kind + ":" + lead.id; ui.paint(); }
@@ -357,14 +376,6 @@ export function renderChats(ui) {
   const open = matched.find((lead) => lead.kind + ":" + lead.id === flow.chat) || null;
   layout.append(list, threadPane(ui, open), leadPane(ui, open));
   wrap.append(layout);
-  if (ui.mountEngineInbox) {
-    const legacy = ui.el("details", { class: "agent" });
-    legacy.append(ui.el("summary", { text: "Reply on a connected Instagram thread" }));
-    const host = ui.el("div");
-    legacy.append(host);
-    wrap.append(legacy);
-    queueMicrotask(() => ui.mountEngineInbox(host));
-  }
   return wrap;
 }
 
@@ -384,8 +395,27 @@ function threadPane(ui, lead) {
   row.append(ui.button("Export JSON", () => download("chat.json", exportThread(messages, "json"), "application/json")));
   row.append(ui.button("Export TXT", () => download("chat.txt", exportThread(messages, "txt"), "text/plain")));
   pane.append(row);
-  if (ui.state.canEdit) pane.append(ui.button("Draft a reply", () => ui.draftReply(lead, messages)));
-  if (ui.state.chatDraft) pane.append(ui.el("p", { text: "Draft: " + ui.state.chatDraft }));
+  if (ui.state.canEdit && lead.kind === "contact") {
+    const composer = ui.el("form", { class: "chat-composer" });
+    const reply = ui.el("textarea", { rows: "3", "aria-label": "Reply" });
+    reply.value = ui.state.chatDraft || "";
+    composer.append(reply);
+    const actions = ui.el("div", { class: "filters" });
+    actions.append(ui.button("Send reply", (event) => {
+      event.preventDefault();
+      if (ui.sendInboxReply) ui.sendInboxReply(lead, reply.value);
+    }));
+    actions.append(ui.button("Draft a reply", (event) => {
+      event.preventDefault();
+      ui.draftReply(lead, messages);
+    }));
+    composer.append(actions);
+    composer.addEventListener("submit", (event) => event.preventDefault());
+    pane.append(composer);
+    if (!lead.ai) pane.append(ui.el("p", { class: "mute", text: "AI is paused on this chat. A reply you send still goes out." }));
+  } else if (ui.state.canEdit) {
+    pane.append(ui.button("Draft a reply", () => ui.draftReply(lead, messages)));
+  }
   return pane;
 }
 
@@ -398,27 +428,37 @@ function leadPane(ui, lead) {
   const state = ui.el("select", { "aria-label": "Chat lead state" });
   CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
   state.value = lead.state;
+  const tags = ui.field("Tags", (lead.tags || []).join(", "));
   const ai = check(ui, "AI replies", lead.ai);
-  pane.append(state, ai.label);
+  pane.append(state, tags.label, ai.label);
   if (ui.state.canEdit) {
     pane.append(ui.button("Save chat lead", () => ui.saveLead(lead, {
       crm_state: state.value,
       assigned_agent: lead.agent,
       ai_enabled: ai.input.checked,
-      tags: lead.tags || []
+      tags: tags.input.value.split(",").map((tag) => tag.trim()).filter(Boolean)
     })));
   }
   const reminders = (ui.state.reminders || []).filter((reminder) => reminder.status !== "done" && (lead.kind === "contact" ? reminder.contact_id === lead.id : reminder.target_id === lead.id));
   pane.append(ui.el("h3", { text: "Reminders" }));
   if (!reminders.length) pane.append(ui.el("p", { text: "No open reminders." }));
   reminders.forEach((reminder) => pane.append(ui.el("p", { text: reminder.title })));
-  const when = ui.field("Schedule a message", "", "datetime-local");
-  const body = ui.field("Message", "");
-  pane.append(when.label, body.label);
+  const title = ui.field("Reminder", "");
+  const due = ui.field("Due", "", "datetime-local");
+  pane.append(title.label, due.label);
   if (ui.state.canEdit) {
-    pane.append(ui.button("Queue for later", () => ui.queueMessage(lead, body.input.value.trim(), when.input.value ? new Date(when.input.value).toISOString() : null)));
+    pane.append(ui.button("Save reminder", () => {
+      if (!title.input.value.trim() || !due.input.value) return ui.toast("Add a title and a time.", "bad");
+      ui.saveReminder({
+        contact_id: lead.kind === "contact" ? lead.id : null,
+        target_id: lead.kind === "target" ? lead.id : null,
+        title: title.input.value.trim(),
+        due_at: new Date(due.input.value).toISOString(),
+        kind: "task",
+        source: "manual"
+      });
+    }));
   }
-  pane.append(ui.el("p", { class: "mute", text: "Queued here. Nothing is sent while live sync is off." }));
   return pane;
 }
 
