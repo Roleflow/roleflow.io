@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
   });
   const notice = flushSyncNotice(admin, businessId, {
     apiKey: Deno.env.get("RESEND_API_KEY") || "",
-    from: Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>"
+    from: Deno.env.get("RESEND_FROM") || ""
   });
   const edge = (globalThis as { EdgeRuntime?: { waitUntil?: (task: Promise<unknown>) => void } }).EdgeRuntime;
   if (edge && edge.waitUntil) edge.waitUntil(notice);

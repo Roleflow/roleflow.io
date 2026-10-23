@@ -226,7 +226,8 @@ const migrationNames = [
   "20261023060000_channel_connect_requests.sql",
   "20261023061000_acq_outbound_worker_pipeline.sql",
   "20261023070000_setter_studio.sql",
-  "20261023080000_engine_sync_notice.sql"
+  "20261023080000_engine_sync_notice.sql",
+  "20261023090000_resend_settings.sql"
 ];
 assert.deepEqual(
   migrationNames,

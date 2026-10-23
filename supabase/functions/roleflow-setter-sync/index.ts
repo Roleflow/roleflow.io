@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { assertReadOnly, dncHandles, dncSheetCount, sheetReadCall } from "./dnc.js";
 import { executePlan, logLine, pullRows, pushPlan, ROLEFLOW_ONLY } from "./plan.js";
-import { buildSyncNotice, postSyncNotice, shouldClaim } from "../_shared/sync-notice.js";
+import { buildSyncNotice, loadResendConfig, postSyncNotice, shouldClaim } from "../_shared/sync-notice.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
 const MARK_CONVERTED_URL = "https://api.tailortalk.ai/api/v1/mark_converted";
@@ -79,6 +79,11 @@ async function sweepSyncNotices(service: ReturnType<typeof createClient>, onlyBu
   if (onlyBusiness) query = query.eq("business_id", onlyBusiness);
   const pending = await query.order("created_at", { ascending: true }).limit(200);
   if (pending.error || !pending.data) return 0;
+  const config = await loadResendConfig(service, {
+    apiKey: Deno.env.get("RESEND_API_KEY") || "",
+    from: Deno.env.get("RESEND_FROM") || ""
+  });
+  if (!config.apiKey) return 0;
   const groups = new Map<string, { created_at: string }[]>();
   for (const row of pending.data) {
     const list = groups.get(row.business_id) || [];
@@ -92,10 +97,7 @@ async function sweepSyncNotices(service: ReturnType<typeof createClient>, onlyBu
     const items = Array.isArray(claimed.data) ? claimed.data : [];
     if (!items.length) continue;
     const mail = buildSyncNotice(items);
-    const ok = await postSyncNotice(mail, {
-      apiKey: Deno.env.get("RESEND_API_KEY") || "",
-      from: Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>"
-    });
+    const ok = await postSyncNotice(mail, config);
     if (!ok) {
       await service.rpc("acq_release_sync_notice", { p_ids: items.map((row: { id: string }) => row.id) });
       continue;
