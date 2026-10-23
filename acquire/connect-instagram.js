@@ -69,6 +69,30 @@ function statusPill(el, label, tone) {
   return el("span", { class: "integration-status " + tone, text: label });
 }
 
+export function connectOutcome(data) {
+  if (!data || data.configured === false) return { mode: "fallback" };
+  const authUrl = String(data.authUrl || "");
+  if (authUrl.startsWith("https://")) return { mode: "redirect", authUrl };
+  return {
+    mode: "error",
+    error: scrubChannelCopy(data.error || "Instagram didn't finish connecting. You can try again from the panel.")
+  };
+}
+
+export async function beginInstagramConnect(ctx) {
+  if (!ctx.state.supabase) return { mode: "fallback" };
+  let invoked;
+  try {
+    invoked = await ctx.state.supabase.functions.invoke("ig-connect-start", {
+      body: { business_id: ctx.state.businessId }
+    });
+  } catch (_error) {
+    return { mode: "fallback" };
+  }
+  if (!invoked || invoked.error) return connectOutcome(invoked && invoked.data);
+  return connectOutcome(invoked.data);
+}
+
 export function paintInstagramConnect(host, ctx) {
   const { state, el, button, field, toast, bootBusiness } = ctx;
   const waiting = waitingRequest(state.connectRequests);
@@ -96,17 +120,22 @@ export function paintInstagramConnect(host, ctx) {
   card.append(head);
   card.append(el("p", {
     text: failed
-      ? "We could not finish that connection. Send the Instagram Business username again."
-      : "Enter the Instagram Business username. We connect the Instagram channel for this business."
+      ? "We could not finish that connection. You can try again."
+      : "Connect the Instagram Business account for this business."
   }));
   if (state.canEdit) {
+    const fallback = el("div", { hidden: true });
+    fallback.append(el("p", {
+      text: failed
+        ? "We could not finish that connection. Send the Instagram Business username again."
+        : "Enter the Instagram Business username. We connect the Instagram channel for this business."
+    }));
     const username = field("Instagram Business username", "");
     const note = field("Note (optional)", "");
     username.input.autocomplete = "off";
     username.input.maxLength = 30;
     note.input.maxLength = 500;
-    card.append(username.label, note.label);
-    const connect = button("Connect Instagram", async () => {
+    const submit = button("Connect Instagram", async () => {
       const result = await submitInstagramConnect(ctx, username.input.value, note.input.value);
       if (!result.ok) {
         toast(result.error, "bad");
@@ -118,8 +147,25 @@ export function paintInstagramConnect(host, ctx) {
         ctx.go(state.tab || "integrations");
       } else ctx.go(state.tab || "integrations");
     });
+    submit.classList.add("connect-native");
+    fallback.append(username.label, note.label, submit);
+    const connect = button("Connect Instagram", async () => {
+      connect.disabled = true;
+      const result = await beginInstagramConnect(ctx);
+      if (result.mode === "redirect") {
+        location.assign(result.authUrl);
+        return;
+      }
+      if (result.mode === "fallback") {
+        connect.hidden = true;
+        fallback.hidden = false;
+        return;
+      }
+      toast(result.error, "bad");
+      connect.disabled = false;
+    });
     connect.classList.add("connect-native");
-    card.append(connect);
+    card.append(connect, fallback);
   }
   host.append(card);
 }

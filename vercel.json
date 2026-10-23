@@ -53,7 +53,7 @@
       ]
     },
     {
-      "source": "/(account|admin|reset|acquire)(.*)",
+      "source": "/(account|admin|reset|acquire|app)(.*)",
       "headers": [
         {
           "key": "X-Robots-Tag",
