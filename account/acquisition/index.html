@@ -55,6 +55,8 @@
         <p class="biz-name" id="page-sub">Loading…</p>
       </div>
       <h1 id="page-title" class="sr">Dashboard</h1>
+      <button type="button" class="notify-btn" id="notify-open" aria-controls="notify-panel">Notifications</button>
+      <div id="notify-panel" class="notify-panel" hidden></div>
     </header>
     <main class="wrap wide" id="app">
       <div class="state" id="boot-state" role="status" aria-busy="true">
@@ -89,6 +91,14 @@
     <button type="button" class="btn sm" id="how-close">Close</button>
   </div>
 </div>
+<div id="command-modal" class="modal" hidden>
+  <div class="modal-card command-card" role="dialog" aria-modal="true" aria-labelledby="command-title">
+    <h2 id="command-title">Search</h2>
+    <input id="command-input" type="search" placeholder="Jump to a screen or setting" aria-label="Search the panel">
+    <div id="command-results"></div>
+    <button type="button" class="btn ghost sm" id="command-close">Close</button>
+  </div>
+</div>
 <div id="accounts-modal" class="modal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
     <h2 id="accounts-title">Manage accounts</h2>
@@ -96,6 +106,7 @@
     <button type="button" class="btn ghost sm" id="accounts-close">Close</button>
   </div>
 </div>
+<aside id="next-step" class="next-step" hidden></aside>
 <button type="button" class="assistant-fab" id="assistant-open" aria-expanded="false" aria-controls="assistant-panel" aria-label="Ask Roleflow">
   <img src="/assets/logo.jpg" alt="" width="34" height="34">
 </button>
@@ -106,6 +117,13 @@
   </header>
   <div class="assistant-log" id="assistant-log"></div>
   <form id="assistant-form">
+    <label class="sr" for="assistant-mode">Assistant mode</label>
+    <select id="assistant-mode" aria-label="Assistant mode">
+      <option value="ask">Answer questions</option>
+      <option value="leads">Manage leads</option>
+      <option value="ai">Change my AI</option>
+      <option value="report">Report</option>
+    </select>
     <label class="sr" for="assistant-input">Ask how something works</label>
     <input id="assistant-input" name="message" type="text" maxlength="800" placeholder="How do I connect Instagram?" autocomplete="off">
     <button class="btn sm" type="submit">Send</button>

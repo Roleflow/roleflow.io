@@ -22,10 +22,10 @@ const MAP = [
   "Outbound Manager (#outbound): ICP Target Acquisition, Engagement Warm-Up, and Personalised Outreach. Daily cap is 20–30.",
   "Inbound Manager (#inbound): the Roleflow Setter Engine. Comment-to-DM, story DMs, qualification, follow-ups, and booking.",
   "CRM (#pipeline): Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board, filters, notes, and a message queue that does not send while live sync is off.",
-  "Stats (#stats): targets, conversations, qualified, booked, converted, conversion rate, attributed growth, and the 10% share, with a date range.",
-  "Performance (#performance): results by source, outbound versus inbound.",
-  "Configuration (#configuration): when the AI replies, who it replies to, when it stops, how it writes, lead classification, notifications, and connections.",
-  "Team (#team): members and the invite link for this business.",
+  "Stats (#stats): leads, agents, tags, links, funnel, follow-ups, reply time, and heatmaps. Each chart has Explain with assistant.",
+  "Performance (#performance): origins such as story, post, reel, ad, or a keyword, plus a 12-month projection from numbers the user types.",
+  "Configuration (#configuration): eight questions for hours, who is answered, when it stops, writing, filing, notifications, webhooks, and cloning. A save stays in the panel.",
+  "Team (#team): email invites with Conversations, Configuration, or Analysis, plus a join link that can be regenerated.",
   "Admin roster (/admin/): one card per business. Open enters that business."
 ].join("\n");
 
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
   const caller = userData?.user;
   if (userError || !caller) return json(401, { error: "Sign in required." });
 
-  let body: { business_id?: string; message?: string } = {};
+  let body: { business_id?: string; message?: string; mode?: string } = {};
   try {
     body = await req.json();
   } catch (_error) {
@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
   }
   const businessId = String(body.business_id || "");
   const message = String(body.message || "").trim().slice(0, 800);
+  const mode = ["ask", "leads", "ai", "report"].includes(String(body.mode || "ask")) ? String(body.mode || "ask") : "ask";
   if (!/^[0-9a-f-]{36}$/i.test(businessId)) return json(400, { error: "Choose a business first." });
   if (message.length < 2) return json(400, { error: "Ask a question." });
 
@@ -110,7 +111,7 @@ Deno.serve(async (req) => {
       model,
       temperature: 0.2,
       messages: [
-        { role: "system", content: SYSTEM + "\n\nWorkspace snapshot JSON:\n" + JSON.stringify(snapshot) },
+        { role: "system", content: SYSTEM + modeNote(mode) + "\n\nWorkspace snapshot JSON:\n" + JSON.stringify(snapshot) },
         { role: "user", content: message }
       ]
     })
@@ -124,8 +125,40 @@ Deno.serve(async (req) => {
     ? String(payload.choices[0].message.content || "").trim()
     : "";
   if (!reply) return json(502, { error: "The model returned an empty answer." });
-  return json(200, { reply });
+  if (mode === "ask" || mode === "report") return json(200, { reply });
+  const parsed = parseProposal(reply);
+  return json(200, { reply: parsed.reply, proposal: parsed.proposal });
 });
+
+function modeNote(mode: string) {
+  if (mode === "ask" || mode === "report") {
+    return mode === "report"
+      ? "\n\nWrite a short report from the snapshot. Do not invent numbers. Do not propose a change."
+      : "";
+  }
+  return [
+    "\n\nReply with JSON only: {\"reply\":\"short explanation\",\"proposal\":null}",
+    "For a lead change, proposal is {\"type\":\"lead\",\"handle\":\"name\",\"crm_state\":\"Booked\"}.",
+    "crm_state is one of Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, Postponed.",
+    "For a setting change, proposal is {\"type\":\"setting\",\"patch\":{}} with only keys you were asked to change.",
+    "Allowed patch keys: system_enabled, office_mode, timezone, reply_delay_seconds, reply_delay_max_seconds, keyword_only, skip_followed, strip_inverted_punct, disclosure_enabled, disclosure_text.",
+    "office_mode is always, same, or per_day.",
+    "If you are not sure, set proposal to null. Do not claim the change is already saved."
+  ].join(" ");
+}
+
+function parseProposal(reply: string) {
+  const start = reply.indexOf("{");
+  const end = reply.lastIndexOf("}");
+  if (start < 0 || end <= start) return { reply, proposal: null };
+  try {
+    const parsed = JSON.parse(reply.slice(start, end + 1));
+    const text = typeof parsed.reply === "string" ? parsed.reply : reply;
+    return { reply: text, proposal: parsed.proposal || null };
+  } catch (_error) {
+    return { reply, proposal: null };
+  }
+}
 
 function json(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
