@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { callbackFailure as pageFailure, finishConnect, panelReturn } from "../app/instagram/callback.js";
-import { beginInstagramConnect, connectOutcome, scrubChannelCopy } from "../acquire/connect-instagram.js";
+import { beginInstagramConnect, connectOutcome, disconnectInstagram, scrubChannelCopy } from "../acquire/connect-instagram.js";
 import {
   callbackFailure,
   connectQuery,
+  instagramAuthUrl,
   enqueueBody,
   gatewayConfigFrom,
   handleWebhook,
@@ -26,8 +27,7 @@ import {
   verifyState,
   verifyWebhook,
   API_BASE,
-  CALLBACK_URL,
-  LOGO_URL
+  CALLBACK_URL
 } from "../supabase/functions/_shared/ig-gateway.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -60,7 +60,7 @@ const fetchImpl = async (url, init) => {
   if (href.includes("billing=1")) {
     return { ok: false, status: 402, json: async () => ({ code: "PAYMENT_REQUIRED", dashboard_url: "https://billing.example/pay" }) };
   }
-  return { ok: true, status: 200, json: async () => ({ authUrl: "https://instagram.example/allow?welcome=1" }) };
+  return { ok: true, status: 200, json: async () => ({ authUrl: "https://www.instagram.com/oauth/authorize?welcome=1" }) };
 };
 
 const missing = await startConnect({ apiKey: "", business: { id: businessId, name: "Roleflow" }, fetchImpl });
@@ -77,7 +77,7 @@ const started = await startConnect({
 });
 assert.equal(started.configured, true);
 assert.equal(started.profileId, "profile-1");
-assert.equal(started.authUrl, "https://instagram.example/allow?welcome=1");
+assert.equal(started.authUrl, "https://www.instagram.com/oauth/authorize?welcome=1");
 assert.equal(calls.length, 3);
 assert.equal(calls[1].init.method, "POST");
 assert.equal(JSON.parse(calls[1].init.body).externalId, businessId);
@@ -86,9 +86,12 @@ const connectUrl = new URL(calls[2].url);
 assert.equal(connectUrl.origin + connectUrl.pathname, API_BASE + "/connect/instagram");
 assert.equal(connectUrl.searchParams.get("profileId"), "profile-1");
 assert.equal(connectUrl.searchParams.get("scopes"), "messaging,comments");
-assert.equal(connectUrl.searchParams.get("welcome"), "true");
-assert.equal(connectUrl.searchParams.get("brandName"), "Roleflow");
-assert.equal(connectUrl.searchParams.get("logoUrl"), LOGO_URL);
+assert.equal(connectUrl.searchParams.get("welcome"), "false");
+assert.equal(connectUrl.searchParams.get("brandName"), null);
+assert.equal(connectUrl.searchParams.get("logoUrl"), null);
+assert.equal(connectUrl.searchParams.get("username"), null);
+assert.equal(connectUrl.searchParams.get("handle"), null);
+assert.equal(instagramAuthUrl(started.authUrl).startsWith("https://www.instagram.com/"), true);
 const redirect = new URL(connectUrl.searchParams.get("redirect_url"));
 assert.equal(redirect.origin + redirect.pathname, CALLBACK_URL);
 assert.equal(verifyState(redirect.searchParams.get("state"), secret, 1_700_000_000_000).businessId, businessId);
@@ -115,6 +118,7 @@ const billed = await startConnect({
   nonce: "abc123"
 });
 assert.equal(billed.error, "Instagram connect needs a billing update before it can continue.");
+assert.equal(billed.profileId, "profile-1");
 assert.equal(billed.dashboard_url, undefined);
 assert.doesNotMatch(JSON.stringify(billed), /zernio|dashboard_url/i);
 
@@ -134,6 +138,32 @@ const reused = await startConnect({
   nonce: "abc123"
 });
 assert.equal(reused.profileId, "profile-existing");
+
+const otherBusiness = "1351d2ac-79bb-545d-8da0-c49ecff28a47";
+const otherCalls = [];
+const other = await startConnect({
+  apiKey,
+  webhookSecret: secret,
+  business: { id: otherBusiness, name: "Value Add Marketing" },
+  fetchImpl: async (url, init) => {
+    otherCalls.push({ url: String(url), init });
+    return fetchImpl(url, init);
+  },
+  nonce: "other-nonce"
+});
+assert.equal(other.profileId, "profile-1");
+assert.equal(JSON.parse(otherCalls[1].init.body).externalId, otherBusiness);
+assert.equal(other.authUrl.startsWith("https://www.instagram.com/"), true);
+
+const vendorPage = await startConnect({
+  apiKey,
+  existingProfileId: "profile-1",
+  business: { id: otherBusiness, name: "Value Add Marketing" },
+  fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ authUrl: "https://vendor.example/connect/welcome" }) }),
+  nonce: "other-nonce"
+});
+assert.equal(vendorPage.error, "Instagram connect could not start.");
+assert.equal(vendorPage.authUrl, undefined);
 
 const raw = JSON.stringify({
   id: "evt-1",
@@ -274,17 +304,38 @@ const denied = await finishConnect({
 });
 assert.match(denied.error, /didn't allow/);
 
-assert.deepEqual(connectOutcome(null), { mode: "fallback" });
-assert.deepEqual(connectOutcome({ configured: false }), { mode: "fallback" });
-assert.equal(connectOutcome({ configured: true, authUrl: "https://instagram.example/allow" }).mode, "redirect");
+assert.equal(connectOutcome(null).mode, "error");
+assert.equal(connectOutcome({ configured: false }).mode, "error");
+assert.equal(connectOutcome({ configured: true, authUrl: "https://www.instagram.com/oauth/authorize" }).mode, "redirect");
+assert.equal(connectOutcome({ configured: true, authUrl: "https://vendor.example/connect/welcome" }).mode, "error");
 assert.equal(connectOutcome({ configured: true, error: "Instagram connect could not start." }).mode, "error");
 const began = await beginInstagramConnect({
   state: {
     businessId,
-    supabase: { functions: { invoke: async (name) => ({ data: name === "ig-connect-start" ? { configured: false } : {} }) } }
+    supabase: { functions: { invoke: async () => ({ data: { configured: true, authUrl: "https://www.instagram.com/oauth/authorize?client_id=1" } }) } }
   }
 });
-assert.deepEqual(began, { mode: "fallback" });
+assert.equal(began.mode, "redirect");
+assert.equal(began.authUrl.startsWith("https://www.instagram.com/"), true);
+const unavailable = await beginInstagramConnect({
+  state: {
+    businessId,
+    supabase: { functions: { invoke: async () => ({ error: { message: "failed" }, data: null }) } }
+  }
+});
+assert.equal(unavailable.mode, "error");
+assert.doesNotMatch(unavailable.error, /username|handle/i);
+const disconnected = await disconnectInstagram({
+  state: {
+    businessId,
+    supabase: { functions: { invoke: async (_name, init) => {
+      assert.equal(init.body.action, "disconnect");
+      assert.equal(init.body.business_id, businessId);
+      return { data: { ok: true } };
+    } } }
+  }
+});
+assert.equal(disconnected.ok, true);
 assert.equal(scrubChannelCopy("TailorTalk"), "Instagram channel");
 
 const plan = await planGatewayReply({
@@ -330,7 +381,16 @@ assert.match(hookFn, /planGatewayReply/);
 assert.doesNotMatch(startFn + finishFn + hookFn, /console\.log/);
 assert.match(read("acquire/app.js"), /Instagram connected\./);
 assert.match(read("acquire/connect-instagram.js"), /ig-connect-start/);
-assert.match(read("acquire/connect-instagram.js"), /notify_sync/);
+assert.match(read("acquire/connect-instagram.js"), /action: "disconnect"/);
+assert.doesNotMatch(read("acquire/connect-instagram.js"), /Instagram Business username|notify_sync|we'll finish this for you/);
+const openSql = read("supabase/migrations/20261023170000_ig_connect_any_account.sql");
+assert.match(openSql, /acq_gateway_disconnect/);
+assert.match(openSql, /when unique_violation/);
+assert.match(openSql, /'taken'/);
+assert.doesNotMatch(openSql, /roleflow\.io|requested_handle/);
+assert.match(read("supabase/functions/ig-connect-finish/index.ts"), /taken/);
+assert.match(read("acquire/app.js"), /Instagram: not connected/);
+assert.doesNotMatch(read("acquire/app.js"), /we'll finish this for you/);
 assert.match(read("vercel.json"), /account\|admin\|reset\|acquire\|app/);
 
 const ignore = read(".vercelignore").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));

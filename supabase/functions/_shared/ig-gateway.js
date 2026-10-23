@@ -69,16 +69,27 @@ export function profileIdFrom(payload) {
   return String((profile && (profile._id || profile.id)) || (payload && (payload._id || payload.id)) || "");
 }
 
-export function connectQuery({ profileId, state, logoUrl }) {
+export function connectQuery({ profileId, state }) {
   const redirect = CALLBACK_URL + "?state=" + encodeURIComponent(state);
+  // welcome=false skips the vendor welcome page. logoUrl is rejected unless that page is on.
   return {
     profileId,
     redirect_url: redirect,
     scopes: "messaging,comments",
-    welcome: "true",
-    brandName: "Roleflow",
-    logoUrl: logoUrl || LOGO_URL
+    welcome: "false"
   };
+}
+
+export function instagramAuthUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value || ""));
+  } catch (_error) {
+    return "";
+  }
+  if (url.protocol !== "https:") return "";
+  if (!/(^|\.)instagram\.com$/i.test(url.hostname)) return "";
+  return url.toString();
 }
 
 export function callbackFailure(params) {
@@ -127,10 +138,12 @@ export async function startConnect(input) {
     headers: authHeaders(apiKey)
   });
   const payload = await response.json().catch(() => ({}));
-  if (response.status === 402) return { configured: true, error: "Instagram connect needs a billing update before it can continue." };
-  if (!response.ok) return { configured: true, error: "Instagram connect could not start." };
-  const authUrl = String(payload.authUrl || "");
-  if (!authUrl.startsWith("https://")) return { configured: true, error: "Instagram connect could not start." };
+  if (response.status === 402) {
+    return { configured: true, profileId, error: "Instagram connect needs a billing update before it can continue." };
+  }
+  if (!response.ok) return { configured: true, profileId, error: "Instagram connect could not start." };
+  const authUrl = instagramAuthUrl(payload.authUrl);
+  if (!authUrl) return { configured: true, profileId, error: "Instagram connect could not start." };
   return { configured: true, authUrl, profileId, state, nonce, expiresAt: new Date(now + STATE_MS).toISOString() };
 }
 

@@ -29,7 +29,9 @@ assert.match(dock, /aria-expanded/);
 assert.match(connect, /Connected/);
 assert.match(connect, /connect-native/);
 assert.match(connect, /Connect Instagram/);
-assert.match(connect, /Connecting… we'll finish this for you/);
+assert.match(connect, /Disconnect/);
+assert.doesNotMatch(connect, /Instagram Business username/);
+assert.doesNotMatch(connect, /we'll finish this for you/);
 
 assert.match(office, /desk-modal-title/);
 assert.match(office, /data-close-drawer/);

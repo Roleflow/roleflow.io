@@ -5,7 +5,6 @@ import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
-import { announceWaiting, waitingRequest } from "./connect-instagram.js";
 import { businessSync, queueSyncNotice } from "./sync-state.js";
 import {
   mountNav,
@@ -207,7 +206,6 @@ async function boot() {
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
     paint();
-    announceWaiting(state.connectRequests);
     consumeInstagramNotice();
     return;
   }
@@ -319,7 +317,6 @@ async function bootBusiness(id, options) {
     if (adminHome) adminHome.hidden = !state.isAdmin;
     armEditorRequest();
     paint();
-    announceWaiting(state.connectRequests);
   }
 }
 
@@ -2033,8 +2030,6 @@ function activityLine(values) {
 function instagramLine() {
   const ig = state.ig;
   if (ig && ig.username && ig.status === "connected") return "Instagram: @" + String(ig.username).replace(/^@/, "");
-  if (waitingRequest(state.connectRequests)) return "Connecting… we'll finish this for you";
-  if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram: @" + String(ig.username).replace(/^@/, "");
   return "Instagram: not connected";
 }
 

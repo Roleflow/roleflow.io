@@ -137,6 +137,7 @@ assert.match(read("acquire/app.js"), /resume_agent/);
 assert.match(read("acquire/app.js"), /pause_agent/);
 assert.match(read("acquire/sync-state.js"), /Setting up your AI setter…/);
 assert.match(read("acquire/sync-state.js"), /Setter ready/);
-assert.match(read("acquire/connect-instagram.js"), /notify_sync/);
+assert.match(read("acquire/connect-instagram.js"), /ig-connect-start/);
+assert.doesNotMatch(read("acquire/connect-instagram.js"), /notify_sync/);
 
 console.log("engine sync notice tests passed");
