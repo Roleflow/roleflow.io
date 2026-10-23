@@ -16,7 +16,7 @@
 <div class="app-shell">
   <div class="side-slot" id="side-slot">
   <aside class="icon-rail" id="icon-rail" aria-label="Sections">
-    <button type="button" class="rail-pin" id="rail-toggle" aria-pressed="false" aria-expanded="false" aria-controls="slide-panel" title="Pin menu" data-tip="Pin menu" aria-label="Pin menu">
+    <button type="button" class="rail-pin" id="rail-toggle" aria-pressed="false" aria-expanded="false" aria-controls="slide-panel" title="Expand sidebar" data-tip="Expand sidebar" aria-label="Expand sidebar">
       <span class="dock-scale"><span class="nav-ico t2" id="pin-ico"></span></span>
     </button>
     <nav class="rail-nav" id="rail-nav"></nav>
@@ -26,6 +26,9 @@
   </aside>
   <aside class="slide-panel" id="slide-panel" aria-label="Panel">
     <div class="slide-top">
+      <button type="button" class="nav-chevron" id="panel-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">
+        <span class="nav-ico" id="collapse-ico"></span>
+      </button>
       <button type="button" class="btn ghost sm" id="panel-close">Close</button>
       <a class="brand" href="/account/acquisition/"><img alt="" src="/assets/logo.jpg" width="28" height="28">Roleflow</a>
       <button type="button" class="menu-pin" id="menu-pin" aria-pressed="false" aria-expanded="false" aria-label="Pin menu" title="Pin menu">
@@ -129,9 +132,12 @@
     <button class="btn sm" type="submit">Send</button>
   </form>
 </section>
-<aside id="agent-drawer" class="agent-drawer" hidden aria-label="Agent details">
-  <div id="agent-drawer-body"></div>
-</aside>
+<div id="agent-drawer" class="desk-modal" hidden>
+  <button type="button" class="desk-modal-backdrop" data-close-drawer aria-label="Close"></button>
+  <div class="desk-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="desk-modal-title">
+    <div id="agent-drawer-body"></div>
+  </div>
+</div>
 <div id="toasts" class="toast-stack" aria-live="polite"></div>
 <script src="/supabase/config.js"></script>
 <script type="module" src="/acquire/app.js"></script>

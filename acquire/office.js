@@ -183,7 +183,10 @@ function openDesk(ui, spec, kind) {
   openKey = spec.key;
   openKind = kind;
   const drawer = document.getElementById("agent-drawer");
-  if (drawer) drawer.hidden = false;
+  if (drawer) {
+    drawer.hidden = false;
+    drawer.classList.toggle("desk-wide", spec.kind === "manager" && kind === "inbound");
+  }
   fillDrawer(ui, spec, kind);
 }
 
@@ -433,7 +436,7 @@ function fillDrawer(ui, spec, kind) {
   const head = ui.el("header", { class: "drawer-head" });
   head.append(ui.el("div", {}, [
     ui.el("p", { class: "metric-label", text: kind === "inbound" ? "Inbound office" : "Outbound office" }),
-    ui.el("h2", { text: spec.name }),
+    ui.el("h2", { id: "desk-modal-title", text: spec.name }),
     ui.el("p", { class: "drawer-status", text: spec.status + " · " + spec.capText })
   ]));
   head.append(ui.el("button", { type: "button", class: "btn ghost sm", "data-close-drawer": "true" }, ["Close"]));
