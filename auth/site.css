@@ -17,6 +17,7 @@ a{color:var(--gold)}
 .skip:focus{top:calc(12px + env(safe-area-inset-top,0px))}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .wrap{max-width:min(900px,100%);margin:0 auto;padding:0 22px;min-width:0}
+.wrap>*{min-width:0;overflow-wrap:anywhere}
 nav{position:sticky;top:0;z-index:5;background:rgba(10,18,38,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
 nav .in{position:relative;max-width:1080px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;justify-content:center}
 .brand{display:flex;align-items:center;gap:10px;font:800 1.2rem var(--h);color:inherit;text-decoration:none}
