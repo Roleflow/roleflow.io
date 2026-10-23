@@ -27,7 +27,7 @@ function download(name, text, type) {
 export function renderFollowups(ui) {
   const wrap = ui.el("div", { class: "studio" });
   wrap.append(header(ui, "Follow-ups", "A ladder inside the 24-hour messaging window, plus welcome messages and a 7-day list a person sends.", "followups", "send"));
-  wrap.append(ui.el("p", { text: "Instagram only delivers a business reply inside 24 hours of the lead's last message. Steps are 1 to 23 hours so the last one still fits. Nothing here is sent while live sync is off." }));
+  wrap.append(ui.el("p", { text: "Instagram only delivers a business reply inside 24 hours of the lead's last message. Steps are 1 to 23 hours so the last one still fits. The sender for this ladder stays off until it is turned on, and it refuses anything outside that window." }));
   const settings = ui.state.settings || {};
   const options = ui.el("section", { class: "agent" });
   options.append(ui.el("h3", { text: "Window options" }));
