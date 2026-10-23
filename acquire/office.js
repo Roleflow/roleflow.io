@@ -1,4 +1,5 @@
 import { renderDesk } from "./workforce-desk.js";
+import { renderSetterStudio } from "./setter-workflow.js";
 import { agentRole, deskStatus } from "./workforce-model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -54,7 +55,11 @@ export function renderOffice(ui, kind) {
   const cards = ui.el("div", { class: "office-cards" });
   specs.forEach((spec) => cards.append(officeCard(ui, spec, kind)));
   section.append(canvas, cards);
-  if (openKey && openKind === kind) {
+  if (ui.state.openDeskRequest && ui.state.openDeskRequest.kind === kind) {
+    const requested = specs.find((item) => item.key === ui.state.openDeskRequest.key);
+    ui.state.openDeskRequest = null;
+    if (requested) openDesk(ui, requested, kind);
+  } else if (openKey && openKind === kind) {
     const current = specs.find((item) => item.key === openKey);
     if (current) fillDrawer(ui, current, kind);
     else closeOffice();
@@ -441,10 +446,19 @@ function fillDrawer(ui, spec, kind) {
   ]));
   head.append(ui.el("button", { type: "button", class: "btn ghost sm", "data-close-drawer": "true" }, ["Close"]));
   body.append(head);
+  if (spec.kind === "manager" && spec.inbound) {
+    const toggle = ui.el("label", { class: "switch" });
+    const input = ui.el("input", { type: "checkbox", "aria-label": "Turn the system on" });
+    input.checked = Boolean(ui.state.settings && ui.state.settings.system_enabled);
+    input.disabled = !ui.state.canEdit;
+    input.addEventListener("change", () => ui.patchSettings({ system_enabled: input.checked }));
+    toggle.append(input, document.createTextNode(input.checked ? "System on" : "System off"));
+    body.append(toggle);
+    body.append(renderSetterStudio(ui));
+    return;
+  }
   if (spec.kind === "manager") {
-    body.append(ui.el("p", { text: spec.inbound
-      ? "The inbound manager watches the setter team. One switch runs Comment-to-DM, Qualification, Follow-up, and Booking."
-      : "The outbound manager watches target finding, warm-up, and personalised outreach. The daily cap counts new profiles." }));
+    body.append(ui.el("p", { text: "The outbound manager watches target finding, warm-up, and personalised outreach. The daily cap counts new profiles." }));
     const toggle = ui.el("label", { class: "switch" });
     const input = ui.el("input", { type: "checkbox", "aria-label": "Turn the system on" });
     input.checked = Boolean(ui.state.settings && ui.state.settings.system_enabled);

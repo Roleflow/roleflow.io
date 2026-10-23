@@ -4,6 +4,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { assertReadOnly, dncHandles, dncSheetCount, sheetReadCall } from "./dnc.js";
+import { deliveryRequest, settleDelivery } from "./deliver.js";
 import { executePlan, logLine, pullRows, pushPlan, ROLEFLOW_ONLY } from "./plan.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
@@ -43,7 +44,8 @@ Deno.serve(async (req) => {
       await pullBusiness(service, id);
       await pushBusiness(service, id);
     }
-    return json(200, { ok: true, checked: ids.length });
+    const delivered = await deliverPending(service);
+    return json(200, { ok: true, checked: ids.length, delivered });
   }
 
   const user = await service.auth.getUser(bearer);
@@ -56,8 +58,65 @@ Deno.serve(async (req) => {
   if (action === "push") return json(200, await pushBusiness(service, businessId));
   if (action === "pull") return json(200, await pullBusiness(service, businessId));
   if (action === "import_dnc") return json(200, await importDnc(service, businessId));
+  if (action === "deliver") return json(200, await deliverBusiness(service, businessId));
   return json(400, { error: "Unknown action." });
 });
+
+async function deliverPending(service: ReturnType<typeof createClient>) {
+  const rows = await service.from("engine_outbox")
+    .select("id, business_id, kind, payload")
+    .eq("status", "pending")
+    .in("kind", ["update_workflow", "deploy", "create_tool"])
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (rows.error) return 0;
+  let applied = 0;
+  for (const row of rows.data || []) {
+    if (await deliverRow(service, row)) applied += 1;
+  }
+  return applied;
+}
+
+async function deliverBusiness(service: ReturnType<typeof createClient>, businessId: string) {
+  const rows = await service.from("engine_outbox")
+    .select("id, business_id, kind, payload")
+    .eq("business_id", businessId)
+    .eq("status", "pending")
+    .in("kind", ["update_workflow", "deploy", "create_tool"])
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (rows.error) return { ok: false, applied: 0, pending: 0 };
+  let applied = 0;
+  for (const row of rows.data || []) {
+    if (await deliverRow(service, row)) applied += 1;
+  }
+  const pending = (rows.data || []).length - applied;
+  return { ok: true, applied, pending, sync: pending ? "pending" : "applied" };
+}
+
+async function deliverRow(service: ReturnType<typeof createClient>, row: { id: string; business_id: string; kind: string; payload: Record<string, unknown> }) {
+  const link = await service.from("acq_setter_links").select("external_agent_id").eq("business_id", row.business_id).maybeSingle();
+  const request = deliveryRequest({
+    kind: row.kind,
+    payload: row.payload,
+    external_agent_id: link.data && link.data.external_agent_id || ""
+  });
+  if (!request || !request.body.agent_id) return false;
+  const token = await sheetToken(service, row.business_id);
+  if (!token) return false;
+  const response = await fetch(request.url, {
+    method: request.method,
+    headers: { Authorization: "Agent " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(request.body)
+  }).catch(() => null);
+  if (!response || settleDelivery(response.status) !== "applied") return false;
+  const saved = await service.from("engine_outbox").update({
+    status: "applied",
+    applied_at: new Date().toISOString(),
+    error: null
+  }).eq("id", row.id).eq("status", "pending");
+  return !saved.error;
+}
 
 async function pushBusiness(service: ReturnType<typeof createClient>, businessId: string) {
   const snapshot = await loadSnapshot(service, businessId);

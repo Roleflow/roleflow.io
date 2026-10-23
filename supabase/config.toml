@@ -390,6 +390,10 @@ verify_jwt = false
 [functions.roleflow-setter-sync]
 verify_jwt = false
 
+# roleflow-add-business checks the caller JWT itself, then writes a paused workspace.
+[functions.roleflow-add-business]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

@@ -5,6 +5,7 @@ import { liveSections } from "../account/setter-model.js";
 import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
+import { openAddBusiness } from "../acquire/add-business.js";
 import { cancelWorkforce, fixtureClient, mountWorkforce } from "./workforce.js";
 
 bindShell();
@@ -565,42 +566,18 @@ function scrollRow(row, direction) {
 }
 
 function addCard(supabase, user, owned) {
-  const card = el("article", { class: "biz-card add", id: "add-business" });
+  const card = el("button", { type: "button", class: "biz-card add add-business", id: "add-business" });
+  card.append(el("span", { class: "add-plus", text: "+" }));
   card.append(el("h2", { text: "Add business" }));
-  if (owned) {
-    card.append(el("p", { text: "This account already has a business. Linking another one stays in admin." }));
-    return card;
-  }
-  const form = el("form", { id: "add-business-form" });
-  const input = el("input", { name: "name", type: "text", required: true, placeholder: "Business name", "aria-label": "Business name" });
-  const button = el("button", { class: "btn", type: "submit" }, ["Add business"]);
-  const note = el("p", { class: "mute", id: "add-business-note" });
-  form.append(input, button, note);
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = input.value.trim();
-    if (!name) return;
-    button.disabled = true;
-    const result = await supabase.rpc("link_business", { p_name: name });
-    button.disabled = false;
-    if (result.error) {
-      const message = missingRelation(result.error)
-        ? "Apply the businesses migration, then refresh."
-        : scrub(result.error.message);
-      note.textContent = message;
-      toast(message, "bad");
-      return;
-    }
-    if (result.data) {
-      toast("Matched and linked.");
-      window.location.reload();
-      return;
-    }
-    note.textContent = "Saved. It will show here once a business with this name is linked.";
-    toast(note.textContent);
-  });
-  card.append(form, el("p", { class: "mute", text: "One account links to one business. The name is matched exactly." }));
+  card.append(el("p", { text: owned ? "Add another business and review its setter prompt." : "Name, offer, and who the setter should book." }));
+  card.addEventListener("click", () => openAddBusiness({ supabase, preview: false }));
+  void user;
+  void linkByName;
   return card;
+}
+
+async function linkByName(supabase, name) {
+  return supabase.rpc("link_business", { p_name: name });
 }
 
 async function paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles) {

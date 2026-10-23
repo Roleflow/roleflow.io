@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
-import { renderAcquisitionRoster, renderConnectPreview } from "./acquisition-admin.js";
+import { renderAcquisitionRoster, renderAddPreview, renderConnectPreview } from "./acquisition-admin.js";
 import { bindAssistant } from "../acquire/assistant.js";
 
 bindShell();
@@ -48,7 +48,8 @@ const previewAdmin = previewHost && new URLSearchParams(location.search).get("pr
 if (previewAdmin) {
   hello.textContent = "Preview";
   hideBoot();
-  renderConnectPreview(app);
+  if (new URLSearchParams(window.location.search).get("add") === "1") renderAddPreview(app);
+  else renderConnectPreview(app);
 } else if (arriving.type === "recovery") {
   window.location.replace("/reset/" + window.location.hash);
 } else if (!isConfigured()) {
