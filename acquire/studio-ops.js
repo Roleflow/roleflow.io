@@ -65,7 +65,13 @@ function replyBody(ui) {
   const end = ui.field("Closes", ui.shortTime(settings.office_end, "18:00"), "time");
   const min = ui.field("Reply delay from (seconds)", settings.reply_delay_seconds == null ? 30 : settings.reply_delay_seconds, "number");
   const max = ui.field("Reply delay to (seconds)", settings.reply_delay_max_seconds == null ? 120 : settings.reply_delay_max_seconds, "number");
-  card.append(enabled.label, ui.el("label", { text: "Hours" }, [mode]), tz.label, start.label, end.label);
+  const model = ui.el("select", { "aria-label": "Setter model" });
+  [["grok-4.3", "grok-4.3, and grok-4.7 for objections or booking"], ["grok-4.7", "grok-4.7 for every reply"]].forEach(([value, label]) => {
+    const option = ui.el("option", { value, text: label });
+    if ((settings.setter_model || "grok-4.3") === value) option.selected = true;
+    model.append(option);
+  });
+  card.append(enabled.label, ui.el("label", { text: "Hours" }, [mode]), tz.label, start.label, end.label, ui.el("label", { text: "Model" }, [model]));
   const days = ui.el("div", { class: "day-hours" });
   const dayInputs = {};
   const stored = settings.hours_by_day || {};
@@ -77,7 +83,7 @@ function replyBody(ui) {
     days.append(ui.el("p", {}, [ui.el("span", { text: day }), open, close]));
   });
   card.append(days, min.label, max.label);
-  card.append(ui.el("p", { class: "mute", text: "The delay is a range. A reply waits a random time inside it. This save does not change the live setter." }));
+  card.append(ui.el("p", { class: "mute", text: "The live setter uses these hours. A reply waits a random time inside the delay, up to 25 seconds in the same turn." }));
   if (ui.state.canEdit) card.append(ui.button("Save", (event) => {
     event.preventDefault();
     const problem = officeError(mode.value) || delayError(min.input.value, max.input.value);
@@ -92,7 +98,8 @@ function replyBody(ui) {
       office_end: end.input.value || "18:00",
       hours_by_day: hours,
       reply_delay_seconds: Number(min.input.value),
-      reply_delay_max_seconds: Number(max.input.value)
+      reply_delay_max_seconds: Number(max.input.value),
+      setter_model: model.value === "grok-4.7" ? "grok-4.7" : "grok-4.3"
     });
   }));
   card.addEventListener("submit", (event) => event.preventDefault());
@@ -131,7 +138,7 @@ function stopBody(ui) {
   const link = switchLabel(ui, "Stop after a sales link is sent", settings.stop_after_link === true);
   const condition = ui.field("Custom condition for the AI", settings.stop_condition || "");
   card.append(human.label, first.label, link.label, condition.label);
-  card.append(ui.el("p", { class: "mute", text: "These rules are stored here. They are not pushed to the live setter." }));
+  card.append(ui.el("p", { class: "mute", text: "When the first switch is on, a message you send from Instagram pauses the setter on that chat." }));
   if (ui.state.canEdit) card.append(ui.button("Save", (event) => {
     event.preventDefault();
     ui.patchSettings({
