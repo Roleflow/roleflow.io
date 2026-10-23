@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { bindAssistant } from "./assistant.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
-import { bindDock } from "./dock.js";
+import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
 import { announceWaiting, waitingRequest } from "./connect-instagram.js";
@@ -143,11 +143,8 @@ const state = {
 
 logoutBtn.addEventListener("click", () => logout());
 if (panelLogout) panelLogout.addEventListener("click", () => logout());
-document.getElementById("nav-toggle").addEventListener("click", () => setPanel(!document.body.classList.contains("panel-open")));
-bindDock({
-  setOpen: setPanel,
-  isMobile: () => window.matchMedia("(max-width: 860px)").matches
-});
+const sidebar = bindSidebar();
+document.getElementById("nav-toggle").addEventListener("click", () => sidebar.setDrawer(!document.body.classList.contains("panel-open")));
 document.getElementById("how-close").addEventListener("click", () => { document.getElementById("how-modal").hidden = true; });
 document.getElementById("accounts-close").addEventListener("click", () => { document.getElementById("accounts-modal").hidden = true; });
 document.getElementById("acq-nav").addEventListener("click", (event) => {
@@ -2496,15 +2493,7 @@ function fillPicker() {
 }
 
 function setPanel(open) {
-  document.body.classList.toggle("panel-open", open);
-  document.body.classList.toggle("nav-open", open);
-  const mobile = window.matchMedia("(max-width: 860px)").matches;
-  document.getElementById("nav-toggle").setAttribute("aria-expanded", open ? "true" : "false");
-  const rail = document.getElementById("rail-toggle");
-  if (rail) rail.setAttribute("aria-expanded", open ? "true" : "false");
-  const menuPin = document.getElementById("menu-pin");
-  if (menuPin) menuPin.setAttribute("aria-expanded", open ? "true" : "false");
-  document.getElementById("nav-backdrop").hidden = !(open && mobile);
+  sidebar.setDrawer(open);
 }
 
 function go(tab) {
@@ -2518,7 +2507,7 @@ function go(tab) {
   state.tab = tabFromHash();
   markTab();
   paint();
-  if (window.matchMedia("(max-width: 860px)").matches) setPanel(false);
+  if (sidebar.isMobile()) setPanel(false);
 }
 
 function markTab() {

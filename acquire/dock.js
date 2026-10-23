@@ -1,279 +1,182 @@
-export function bindDock({ setOpen, isMobile }) {
-  const rail = document.getElementById("icon-rail");
-  const panel = document.getElementById("slide-panel");
-  const pin = document.getElementById("rail-toggle");
-  const menuPin = document.getElementById("menu-pin");
-  if (!rail || !panel || !pin) return;
+import {
+  SIDEBAR_MOBILE_QUERY,
+  drawerRequested,
+  persistExpanded,
+  readExpanded,
+  toggleExpanded,
+  toggleLabel
+} from "./sidebar-state.js";
 
+function safeStorage() {
+  try {
+    return localStorage;
+  } catch (_error) {
+    return null;
+  }
+}
+
+export function bindSidebar({ isMobile } = {}) {
+  const side = document.getElementById("app-side");
+  const toggle = document.getElementById("side-toggle");
+  const backdrop = document.getElementById("nav-backdrop");
+  const mobileQuery = window.matchMedia(SIDEBAR_MOBILE_QUERY);
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const coarse = window.matchMedia("(pointer: coarse)");
-  const scales = new WeakMap();
-  const velocity = new WeakMap();
-  const storeKey = "rf-sidebar";
-  let pinned = false;
-  let suppressHover = 0;
-  let pointerY = null;
-  let hovering = false;
-  let raf = 0;
-  let closeTimer = 0;
-  let openTimer = 0;
-  let lastX = 999;
+  const mobile = typeof isMobile === "function" ? isMobile : () => mobileQuery.matches;
+  if (!side || !toggle) return { setDrawer() {}, isMobile: mobile };
+
+  let expanded = readExpanded(safeStorage());
+  const tip = document.createElement("div");
+  tip.className = "side-tip";
+  tip.setAttribute("role", "tooltip");
+  tip.hidden = true;
+  document.body.append(tip);
 
   function syncMotion() {
     document.body.classList.toggle("reduce-motion", reduce.matches);
   }
+
+  function syncChrome() {
+    const collapsed = document.documentElement.classList.contains("side-collapsed");
+    const onMobile = mobile();
+    const drawer = document.body.classList.contains("panel-open");
+    const iconMode = collapsed && !onMobile;
+    const label = toggleLabel({ expanded: !collapsed, mobile: onMobile, drawerOpen: drawer });
+    toggle.setAttribute("aria-expanded", onMobile ? (drawer ? "true" : "false") : (collapsed ? "false" : "true"));
+    toggle.setAttribute("aria-label", label);
+    toggle.dataset.tip = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    const menu = document.getElementById("nav-toggle");
+    if (menu) {
+      const menuLabel = toggleLabel({ expanded: true, mobile: true, drawerOpen: drawer });
+      menu.setAttribute("aria-expanded", drawer ? "true" : "false");
+      menu.setAttribute("aria-controls", "app-side");
+      menu.setAttribute("aria-label", menuLabel);
+      menu.textContent = drawer ? "Close" : "Menu";
+    }
+    document.querySelectorAll(".nav-group").forEach((group) => {
+      const head = group.querySelector(".nav-group-toggle");
+      const items = group.querySelector(".nav-group-items");
+      const groupClosed = group.classList.contains("is-collapsed");
+      if (head) {
+        if (iconMode) {
+          head.tabIndex = -1;
+          head.setAttribute("aria-hidden", "true");
+        } else {
+          head.tabIndex = 0;
+          head.removeAttribute("aria-hidden");
+        }
+      }
+      if (items) {
+        if (groupClosed && !iconMode) items.setAttribute("inert", "");
+        else items.removeAttribute("inert");
+      }
+    });
+    const biz = document.getElementById("panel-business");
+    if (biz) {
+      if (iconMode) biz.setAttribute("inert", "");
+      else biz.removeAttribute("inert");
+    }
+    const brand = side.querySelector(".side-brand");
+    if (brand) {
+      if (iconMode) {
+        brand.tabIndex = -1;
+        brand.setAttribute("aria-hidden", "true");
+      } else {
+        brand.removeAttribute("tabindex");
+        brand.removeAttribute("aria-hidden");
+      }
+    }
+    if (!iconMode) tip.hidden = true;
+  }
+
+  function applyExpanded(next, persist) {
+    expanded = Boolean(next);
+    document.documentElement.classList.toggle("side-collapsed", !expanded);
+    document.body.classList.toggle("side-collapsed", !expanded);
+    if (persist) persistExpanded(safeStorage(), expanded);
+    syncChrome();
+  }
+
+  function setDrawer(open) {
+    const show = drawerRequested(open, mobile());
+    document.body.classList.toggle("panel-open", show);
+    document.body.classList.toggle("nav-open", show);
+    if (backdrop) backdrop.hidden = !show;
+    syncChrome();
+    if (show) side.querySelector(".side-nav a")?.focus();
+  }
+
+  function showTip(target) {
+    if (!document.documentElement.classList.contains("side-collapsed") || mobile()) return;
+    const text = target && target.dataset ? target.dataset.tip : "";
+    if (!text) return;
+    const rect = target.getBoundingClientRect();
+    tip.textContent = text;
+    tip.hidden = false;
+    tip.style.left = Math.round(rect.right + 10) + "px";
+    tip.style.top = Math.round(rect.top + rect.height / 2) + "px";
+  }
+
   syncMotion();
   reduce.addEventListener("change", syncMotion);
+  applyExpanded(expanded, false);
 
-  function nodes() {
-    return [...rail.querySelectorAll(".dock-scale")];
-  }
-
-  function tick() {
-    raf = 0;
-    let moving = false;
-    nodes().forEach((node) => {
-      const parent = node.closest("a, button");
-      if (!parent) return;
-      const rect = parent.getBoundingClientRect();
-      const center = rect.top + rect.height / 2;
-      let desired = 1;
-      if (hovering && pointerY != null && !reduce.matches && !coarse.matches && !document.body.classList.contains("panel-open")) {
-        const dy = pointerY - center;
-        const mag = Math.exp(-(dy * dy) / (2 * 46 * 46));
-        desired = 1 + 0.9 * mag;
-      }
-      const prev = scales.get(node) ?? 1;
-      const vel = velocity.get(node) ?? 0;
-      const nextVel = reduce.matches ? desired - prev : vel * 0.62 + (desired - prev) * 0.16;
-      const next = reduce.matches ? desired : prev + nextVel;
-      scales.set(node, next);
-      velocity.set(node, nextVel);
-      if (Math.abs(next - desired) > 0.004 || Math.abs(nextVel) > 0.004) moving = true;
-      const dy = pointerY == null ? 0 : pointerY - center;
-      const away = hovering && pointerY != null && !reduce.matches && !document.body.classList.contains("panel-open") ? -Math.sign(dy) * Math.abs(next - 1) * 34 : 0;
-      const scale = Math.abs(next - 1) < 0.004 ? 1 : next;
-      node.style.transform = scale === 1 && Math.abs(away) < 0.4 ? "" : "translateY(" + away.toFixed(2) + "px) scale(" + scale.toFixed(3) + ")";
-    });
-    if (moving) raf = requestAnimationFrame(tick);
-  }
-
-  function poke() {
-    if (!raf) raf = requestAnimationFrame(tick);
-  }
-
-  function zone() {
-    return document.body.classList.contains("panel-open") ? 288 : 84;
-  }
-
-  function readStored() {
-    try { return localStorage.getItem(storeKey); } catch (_error) { return null; }
-  }
-
-  function writeStored(open) {
-    if (isMobile()) return;
-    try { localStorage.setItem(storeKey, open ? "open" : "closed"); } catch (_error) { /* private browsing */ }
-  }
-
-  function armOpen() {
-    if (Date.now() < suppressHover) return;
-    if (isMobile() || pinned || coarse.matches || document.body.classList.contains("panel-open")) return;
-    if (openTimer) return;
-    clearTimeout(closeTimer);
-    closeTimer = 0;
-    openTimer = setTimeout(() => {
-      openTimer = 0;
-      if (isMobile() || pinned || document.body.classList.contains("panel-open")) return;
-      if (lastX > 84 && !rail.contains(document.activeElement)) return;
-      hovering = false;
-      pointerY = null;
-      poke();
-      setOpen(true);
-    }, reduce.matches ? 0 : 320);
-  }
-
-  function cancelOpen() {
-    clearTimeout(openTimer);
-    openTimer = 0;
-  }
-
-  function scheduleClose() {
-    if (isMobile() || pinned || closeTimer) return;
-    closeTimer = setTimeout(() => {
-      closeTimer = 0;
-      if (pinned || lastX <= zone()) return;
-      hovering = false;
-      pointerY = null;
-      poke();
-      setOpen(false);
-      syncPin();
-    }, reduce.matches ? 0 : 220);
-  }
-
-  function syncPin() {
-    const open = document.body.classList.contains("panel-open");
-    const label = open ? "Collapse sidebar" : "Expand sidebar";
-    [pin, menuPin].forEach((button) => {
-      if (!button) return;
-      button.setAttribute("aria-pressed", pinned ? "true" : "false");
-      button.dataset.tip = label;
-      button.title = label;
-      button.setAttribute("aria-label", label);
-    });
-    document.body.classList.toggle("panel-pinned", pinned);
-  }
-
-  function expandSidebar() {
-    pinned = true;
-    writeStored(true);
-    clearTimeout(closeTimer);
-    closeTimer = 0;
-    cancelOpen();
-    setOpen(true);
-    syncPin();
-  }
-
-  function collapseSidebar() {
-    pinned = false;
-    writeStored(false);
-    suppressHover = Date.now() + 450;
-    clearTimeout(closeTimer);
-    closeTimer = 0;
-    cancelOpen();
-    setOpen(false);
-    syncPin();
-  }
-
-  function togglePin() {
-    if (isMobile()) {
-      setOpen(!document.body.classList.contains("panel-open"));
+  toggle.addEventListener("click", () => {
+    if (mobile()) {
+      setDrawer(false);
+      document.getElementById("nav-toggle")?.focus();
       return;
     }
-    if (document.body.classList.contains("panel-open") && pinned) collapseSidebar();
-    else expandSidebar();
-  }
-
-  rail.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "touch" || coarse.matches || isMobile()) return;
-    if (document.body.classList.contains("panel-open")) return;
-    hovering = true;
-    pointerY = event.clientY;
-    lastX = event.clientX;
-    poke();
-    armOpen();
+    applyExpanded(toggleExpanded(expanded), true);
+    tip.hidden = true;
   });
 
-  document.addEventListener("pointermove", (event) => {
-    if (isMobile() || coarse.matches || event.pointerType === "touch") return;
-    lastX = event.clientX;
-    const open = document.body.classList.contains("panel-open");
-    if (!open && event.clientX <= 84) {
-      if (!hovering) {
-        hovering = true;
-        pointerY = event.clientY;
-        poke();
-      } else {
-        pointerY = event.clientY;
-        poke();
-      }
-      armOpen();
-      return;
-    }
-    if (open && event.clientX <= 288) {
-      clearTimeout(closeTimer);
-      closeTimer = 0;
-      return;
-    }
-    if (open) scheduleClose();
-    else {
-      cancelOpen();
-      if (hovering) {
-        hovering = false;
-        pointerY = null;
-        poke();
-      }
-    }
+  if (backdrop) backdrop.addEventListener("click", () => {
+    setDrawer(false);
+    document.getElementById("nav-toggle")?.focus();
   });
 
-  pin.addEventListener("click", togglePin);
-  if (menuPin) menuPin.addEventListener("click", togglePin);
-
-  document.getElementById("panel-close").addEventListener("click", () => {
-    if (isMobile()) {
-      pinned = false;
-      syncPin();
-      cancelOpen();
-      setOpen(false);
-      return;
-    }
-    collapseSidebar();
-  });
-  const collapse = document.getElementById("panel-collapse");
-  if (collapse) collapse.addEventListener("click", () => {
-    if (isMobile()) {
-      pinned = false;
-      syncPin();
-      cancelOpen();
-      setOpen(false);
-      return;
-    }
-    collapseSidebar();
-  });
-  document.getElementById("nav-backdrop").addEventListener("click", () => {
-    if (!isMobile() && pinned) collapseSidebar();
-    else {
-      pinned = false;
-      syncPin();
-      cancelOpen();
-      setOpen(false);
-    }
-  });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && document.body.classList.contains("panel-open")) {
+    if (event.key === "Escape" && mobile() && document.body.classList.contains("panel-open")) {
       const desk = document.getElementById("agent-drawer");
       if (desk && !desk.hidden) return;
-      if (!isMobile() && pinned) collapseSidebar();
-      else {
-        pinned = false;
-        syncPin();
-        cancelOpen();
-        setOpen(false);
-      }
+      setDrawer(false);
+      document.getElementById("nav-toggle")?.focus();
+      return;
     }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const scope = document.body.classList.contains("panel-open") ? panel : rail;
-    if (!scope.contains(document.activeElement)) return;
-    const links = [...scope.querySelectorAll("a")];
+    if (!side.contains(document.activeElement)) return;
+    const links = [...side.querySelectorAll("a[data-tab]")].filter((link) => !link.closest("[inert]"));
     const index = links.indexOf(document.activeElement);
     if (index < 0) return;
     event.preventDefault();
     const next = links[index + (event.key === "ArrowDown" ? 1 : -1)];
     if (next) next.focus();
   });
-  rail.addEventListener("focusin", (event) => {
-    if (isMobile()) return;
-    cancelOpen();
-    const current = event.target.closest("a, button");
-    setOpen(true);
-    requestAnimationFrame(() => {
-      if (!current) return;
-      if (current.id === "rail-toggle" && menuPin) {
-        menuPin.focus();
-        return;
-      }
-      if (current.id === "nav-logout") {
-        const logout = document.getElementById("panel-logout");
-        if (logout) logout.focus();
-        return;
-      }
-      const match = current.dataset.tab && panel.querySelector('a[data-tab="' + current.dataset.tab + '"]');
-      if (match) match.focus();
-    });
-  });
-  if (!isMobile() && readStored() === "open") expandSidebar();
 
-  panel.addEventListener("focusout", (event) => {
-    if (panel.contains(event.relatedTarget) || rail.contains(event.relatedTarget)) return;
-    scheduleClose();
+  side.addEventListener("pointerover", (event) => {
+    const item = event.target.closest("[data-tip]");
+    if (!item || !side.contains(item)) return;
+    showTip(item);
   });
+  side.addEventListener("pointerout", (event) => {
+    const item = event.target.closest("[data-tip]");
+    if (!item) return;
+    if (event.relatedTarget && item.contains(event.relatedTarget)) return;
+    tip.hidden = true;
+  });
+  side.addEventListener("focusin", (event) => {
+    const item = event.target.closest("[data-tip]");
+    if (item) showTip(item);
+  });
+  side.addEventListener("focusout", () => {
+    tip.hidden = true;
+  });
+
+  document.addEventListener("roleflow-nav", syncChrome);
+  mobileQuery.addEventListener("change", () => {
+    setDrawer(false);
+    syncChrome();
+  });
+
+  return { setDrawer, isMobile: mobile };
 }

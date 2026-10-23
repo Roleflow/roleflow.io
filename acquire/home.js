@@ -1,16 +1,17 @@
 import { renderOffice } from "./office.js";
+import { persistCollapsedGroups, readCollapsedGroups } from "./sidebar-state.js";
 import { renderConfiguration as opsConfig, renderPerformance as opsPerformance, renderStats as opsStats, renderTeam as opsTeam } from "./studio-ops.js";
 
 const GROUPS = [
-  { label: "Onboarding", items: [
+  { id: "onboarding", label: "Onboarding", items: [
     { tab: "brief", label: "Business", icon: "clipboard", tone: "t1" },
     { tab: "onboarding", label: "Setter questions", icon: "clipboard", tone: "t2" }
   ] },
-  { label: "Strategy", items: [
+  { id: "strategy", label: "Strategy", items: [
     { tab: "links", label: "Sales links", icon: "link", tone: "t2" },
     { tab: "content", label: "Value content", icon: "folder", tone: "t3" }
   ] },
-  { label: "AI Workforce", items: [
+  { id: "workforce", label: "AI Workforce", items: [
     { tab: "outbound", label: "Outbound Manager", icon: "send", tone: "t4" },
     { tab: "inbound", label: "Inbound Manager", icon: "inbox", tone: "t5" },
     { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" },
@@ -19,25 +20,14 @@ const GROUPS = [
     { tab: "reminders", label: "Reminders", icon: "clipboard", tone: "t4" },
     { tab: "ctas", label: "Calls to action", icon: "link", tone: "t5" }
   ] },
-  { label: "Analysis", items: [
+  { id: "analysis", label: "Analysis", items: [
     { tab: "stats", label: "Stats", icon: "chart", tone: "t2" },
     { tab: "performance", label: "Performance", icon: "trend", tone: "t3" }
   ] },
-  { label: "Settings", items: [
+  { id: "settings", label: "Settings", items: [
     { tab: "configuration", label: "Configuration", icon: "settings", tone: "t4" },
     { tab: "team", label: "Team", icon: "userplus", tone: "t5" }
   ] }
-];
-
-const RAIL = [
-  { tab: "dashboard", label: "Dashboard", icon: "grid", tone: "t1" },
-  { tab: "onboarding", label: "Onboarding", icon: "clipboard", tone: "t2" },
-  { tab: "links", label: "Strategy", icon: "link", tone: "t3" },
-  { tab: "outbound", label: "Outbound", icon: "send", tone: "t4" },
-  { tab: "inbound", label: "Inbound", icon: "inbox", tone: "t5" },
-  { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" },
-  { tab: "stats", label: "Stats", icon: "chart", tone: "t2" },
-  { tab: "configuration", label: "Settings", icon: "settings", tone: "t3" }
 ];
 
 const ICONS = {
@@ -53,6 +43,7 @@ const ICONS = {
   settings: ["M12.2 2h-.4a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
   userplus: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M19 8v6", "M22 11h-6"],
   pin: ["M9 18l6-6-6-6"],
+  chevron: ["M6 9l6 6 6-6"],
   chevronLeft: ["M15 18l-6-6 6-6"],
   chevronRight: ["M9 18l6-6-6-6"],
   logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"]
@@ -78,38 +69,58 @@ const HOW = {
 };
 
 
+function groupStorage() {
+  try {
+    return localStorage;
+  } catch (_error) {
+    return null;
+  }
+}
+
 export function mountNav(ui) {
-  const rail = document.getElementById("rail-nav");
   const slide = document.getElementById("slide-nav");
   const name = document.getElementById("panel-biz-name");
-  if (!rail || !slide) return;
+  if (!slide) return;
   const business = ui.state.businesses.find((row) => row.id === ui.state.businessId);
   if (name) name.textContent = business && business.agent_name ? business.agent_name : "This business";
-  paintGlyph("pin-ico", "chevronRight");
-  paintGlyph("menu-pin-ico", "chevronLeft");
-  paintGlyph("collapse-ico", "chevronLeft");
   paintGlyph("logout-ico", "logout");
-  paintGlyph("panel-logout-ico", "logout");
-  rail.replaceChildren();
-  RAIL.forEach((item) => rail.append(navLink(ui, item, true)));
+  const closed = new Set(readCollapsedGroups(groupStorage()));
   slide.replaceChildren();
-  const home = ui.el("a", { href: "#dashboard", "data-tab": "dashboard" }, [iconTile("grid", "t1"), "Dashboard"]);
-  home.addEventListener("click", (event) => {
-    event.preventDefault();
-    ui.go("dashboard");
-  });
-  slide.append(home);
+  slide.append(navLink(ui, { tab: "dashboard", label: "Dashboard", icon: "grid", tone: "t1" }));
   GROUPS.forEach((group) => {
-    const block = ui.el("div", { class: "nav-group" });
-    block.append(ui.el("h2", { text: group.label }));
-    group.items.forEach((item) => block.append(navLink(ui, item, false)));
+    const shut = closed.has(group.id);
+    const block = ui.el("div", { class: shut ? "nav-group is-collapsed" : "nav-group" });
+    const items = ui.el("div", { class: "nav-group-items", id: "nav-group-" + group.id });
+    const inner = ui.el("div", { class: "nav-group-inner" });
+    group.items.forEach((item) => inner.append(navLink(ui, item)));
+    items.append(inner);
+    const head = ui.el("button", {
+      type: "button",
+      class: "nav-group-toggle",
+      "aria-expanded": shut ? "false" : "true",
+      "aria-controls": "nav-group-" + group.id
+    });
+    const chevron = ui.el("span", { class: "nav-chevron", "aria-hidden": "true" });
+    chevron.append(glyph("chevron"));
+    head.append(ui.el("span", { class: "nav-group-label", text: group.label }), chevron);
+    head.addEventListener("click", () => {
+      const next = block.classList.toggle("is-collapsed");
+      head.setAttribute("aria-expanded", next ? "false" : "true");
+      const ids = new Set(readCollapsedGroups(groupStorage()));
+      if (next) ids.add(group.id);
+      else ids.delete(group.id);
+      persistCollapsedGroups(groupStorage(), ids);
+      document.dispatchEvent(new Event("roleflow-nav"));
+    });
+    block.append(head, items);
     slide.append(block);
   });
   const current = ui.tabGroup(ui.state.tab);
-  document.querySelectorAll("#rail-nav a, #slide-nav a, #acq-nav a").forEach((link) => {
+  document.querySelectorAll("#slide-nav a, #acq-nav a").forEach((link) => {
     if (ui.tabGroup(link.dataset.tab) === current) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  document.dispatchEvent(new Event("roleflow-nav"));
 }
 
 export function renderIntro(ui, tab) {
@@ -245,19 +256,9 @@ function openAccounts(ui) {
   modal.hidden = false;
 }
 
-function navLink(ui, item, rail) {
-  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab });
-  const tile = iconTile(item.icon, item.tone);
-  if (rail) {
-    link.dataset.tip = item.label;
-    link.title = item.label;
-    const scale = document.createElement("span");
-    scale.className = "dock-scale";
-    scale.append(tile);
-    link.append(scale);
-  } else {
-    link.append(tile, document.createTextNode(item.label));
-  }
+function navLink(ui, item) {
+  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": item.label });
+  link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: item.label }));
   link.addEventListener("click", (event) => {
     event.preventDefault();
     ui.go(item.tab);
