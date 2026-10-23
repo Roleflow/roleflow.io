@@ -57,7 +57,11 @@ async function finish(body: { state?: string; account_id?: string; accountId?: s
     p_username: username
   });
   if (saved.error || !saved.data || saved.data.ok !== true) {
-    return { ok: false, error: "This connection link expired. Start again from the panel.", businessId: checked.businessId };
+    const code = saved.data && saved.data.error;
+    const error = code === "taken"
+      ? "That Instagram account is already connected to another workspace. Disconnect it there, then try again."
+      : "This connection link expired. Start again from the panel.";
+    return { ok: false, error, businessId: checked.businessId };
   }
   return { ok: true, error: "", businessId: checked.businessId, username: String(saved.data.username || "") };
 }

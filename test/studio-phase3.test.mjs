@@ -79,9 +79,19 @@ test("checklist points at the first unfinished step", () => {
     offerLinks: [{}],
     valueAssets: [{}],
     voices: [],
-    ig: { username: "roleflow" }
+    ig: { username: "roleflow", status: "connected" }
   });
   assert.equal(nextStep(done), null);
+  const typedOnly = checklist({
+    settings: { office_mode: "always" },
+    brief: { fields: { sell: "x" } },
+    agentCards: [{}],
+    offerLinks: [{}],
+    valueAssets: [{}],
+    voices: [],
+    ig: { username: "valueaddmarketing", status: "error" }
+  });
+  assert.equal(nextStep(typedOnly).id, "instagram");
 });
 
 test("command search and proposals", () => {

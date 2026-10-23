@@ -12,15 +12,22 @@ Deno.serve(async (req) => {
   const userClient = userClientFrom(req);
   const { data: userData, error: userError } = await userClient.auth.getUser();
   if (userError || !userData.user) return json(401, { error: "Sign in required." });
-  let body: { business_id?: string } = {};
+  let body: { business_id?: string; action?: string } = {};
   try { body = await req.json(); } catch (_error) { body = {}; }
   const businessId = String(body.business_id || "");
   if (!UUID.test(businessId)) return json(400, { error: "That business was not found." });
   const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
   if (allowed.error || allowed.data !== true) return json(403, { error: "You can't edit this business." });
   const admin = adminClient();
+  if (body.action === "disconnect") {
+    const removed = await admin.rpc("acq_gateway_disconnect", { p_business: businessId });
+    if (removed.error || !removed.data || removed.data.ok !== true) {
+      return json(200, { ok: false, error: "Instagram could not be disconnected." });
+    }
+    return json(200, { ok: true });
+  }
   const config = await loadGatewayConfig(admin);
-  if (!config.apiKey) return json(200, { configured: false });
+  if (!config.apiKey) return json(200, { configured: true, error: "Instagram connect is not available yet." });
   const business = await admin.from("acq_workspaces").select("id, name").eq("id", businessId).maybeSingle();
   if (business.error || !business.data) return json(404, { error: "That business was not found." });
   const existing = await admin.from("ig_gateway_accounts").select("profile_id").eq("business_id", businessId).maybeSingle();
@@ -36,7 +43,7 @@ Deno.serve(async (req) => {
   } catch (_error) {
     return json(200, { configured: true, error: "Instagram connect could not start." });
   }
-  if (!result.configured) return json(200, { configured: false });
+  if (!result.configured) return json(200, { configured: true, error: "Instagram connect is not available yet." });
   if (result.profileId) {
     const saved = await admin.rpc("acq_gateway_save_profile", { p_business: businessId, p_profile: result.profileId });
     if (saved.error) return json(200, { configured: true, error: "Instagram connect could not start." });
