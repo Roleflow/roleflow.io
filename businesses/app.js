@@ -300,8 +300,7 @@ if (preview) {
   } else {
     clearAuthParams();
     clearCallbackMemory();
-    const adminRes = await supabase.from("admins").select("user_id").eq("user_id", resolved.session.user.id).maybeSingle();
-    window.location.replace(adminRes.data ? "/admin/" : "/account/acquisition/#dashboard");
+    await boot(supabase, resolved.session.user);
   }
 }
 

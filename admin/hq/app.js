@@ -15,16 +15,18 @@ import {
   createOfficeConfig,
   createOfficeStore,
   editorAvailable,
+  editorDocument,
   hqOfficeConfig,
   missingOfficeTables,
   moveStation,
+  nextArrow,
   officeFromStore,
   readOffice,
   removeEdge,
   removeStation,
   restoreOfficeRevision,
   saveOfficeConfig,
-  taskWrite,
+  taskPlacement,
   plainSaveNotice,
   validateEditorPayload
 } from "../office/office-editor.mjs";
@@ -126,8 +128,10 @@ const state = {
     revisions: [],
     notice: "",
     noticeKind: "",
-    loadedKey: ""
-  }
+    loadedKey: "",
+    dirty: false
+  },
+  officeStationIndex: {}
 };
 
 let officeHandle = null;
@@ -1632,7 +1636,7 @@ function boardEl() {
 
 function taskCard(task) {
   return el("article", { class: "hq-card" }, [
-    el("button", { type: "button", class: "hq-drag", draggable: "true", "data-drag": task.id, "aria-label": "Drag " + task.title }, ["⋮⋮"]),
+    el("span", { class: "hq-drag", draggable: "true", tabindex: "0", role: "button", "data-drag": task.id, "aria-label": "Drag " + task.title }, ["⋮⋮"]),
     el("button", { type: "button", class: "hq-card-title", "data-action": "open-task", "data-id": task.id }, [task.title]),
     el("p", { class: "hq-meta", text: agentName(task.agent_id) }),
     el("span", { class: "hq-pill " + (task.priority || ""), text: task.priority || "normal" }),
@@ -1888,6 +1892,7 @@ function paintOfficeEditor(force) {
   host.replaceChildren(officeEditorPanel(el, state.officeEdit, {
     tasks: officeTasks(),
     agents: state.agents || [],
+    stationIndex: state.officeStationIndex,
     floorNote: state.officeEdit.scope === "hq"
   }));
   host.scrollTop = scroll;
@@ -1900,6 +1905,10 @@ function subscribeOffice(configId) {
     channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
       const edit = state.officeEdit;
       if (!edit.scope) return;
+      if (edit.dirty) {
+        toast("Someone else saved this office. Your unsaved edits are still open.", "bad");
+        return;
+      }
       edit.loadedKey = "";
       ensureOfficeEdit(edit.scope, edit.businessId, edit.config).then(() => {
         if (route().section === "business" && state.officeEdit.config) refreshWorkforceConfig(state.officeEdit.config, false);
@@ -1934,6 +1943,7 @@ async function ensureOfficeEdit(scope, businessId, fallback) {
   state.officeEdit.noticeKind = loaded.notice ? "bad" : "";
     state.officeEdit.loadedKey = key;
     state.officeEdit.draft = loaded.draft || loaded.config;
+    state.officeEdit.dirty = false;
     state.officeEdit.open = open && loaded.mode === "editable";
     if (loaded.mode === "editable" && loaded.configId) subscribeOffice(loaded.configId);
     return state.officeEdit;
@@ -1954,11 +1964,51 @@ function probeHqOffice() {
   }).catch(() => {});
 }
 
+function rememberStations(rows) {
+  const index = {};
+  (rows || []).forEach((row) => {
+    if (!row || !row.id || !row.key || row.archived_at) return;
+    index[row.id] = row.key;
+  });
+  state.officeStationIndex = index;
+}
+
+async function refreshStationIndex() {
+  const configId = state.officeEdit.configId;
+  if (!configId) {
+    state.officeStationIndex = {};
+    return;
+  }
+  if (state.fixture) {
+    rememberStations(state.officeStore.stations.filter((row) => row.config_id === configId));
+    return;
+  }
+  const listed = await state.supabase.from("office_stations").select("id, key, archived_at").eq("config_id", configId);
+  if (!listed || listed.error || !Array.isArray(listed.data)) return;
+  rememberStations(listed.data);
+}
+
+function syncWorkforceTasks() {
+  const current = route();
+  if (current.section !== "business" || !state.ready || !state.workforceSource) return;
+  if (!state.businessView || state.businessView.missing || state.businessView.businessId !== current.id) return;
+  const tasks = (state.tasks || []).filter((task) => task && task.business_id === current.id);
+  state.workforceSource.tasks = tasks;
+  const config = state.officeEdit.config || state.businessView.config;
+  if (!config) return;
+  state.businessView = mapWorkforce(Object.assign({}, state.workforceSource, {
+    config,
+    stationIndex: state.officeStationIndex,
+    now: new Date()
+  }));
+}
+
 function refreshWorkforceConfig(config, remount) {
   if (!state.workforceSource) return;
-  const checked = validateOfficeConfig(config);
+  const checked = editorDocument(config);
   state.businessView = mapWorkforce(Object.assign({}, state.workforceSource, {
     config: checked.ok ? checked.value : config,
+    stationIndex: state.officeStationIndex,
     now: new Date()
   }));
   if (remount) {
@@ -1987,18 +2037,30 @@ function applyEditorField(node) {
   else if (field === "edge-to" && draft.edges[index]) draft.edges[index].to = node.value;
   else if (field === "edge-kind" && draft.edges[index]) draft.edges[index].kind = node.value;
   else if (field === "edge-label" && draft.edges[index]) draft.edges[index].label = node.value;
+  else return;
+  state.officeEdit.dirty = true;
 }
 
 async function stationIdFor(key) {
   if (state.fixture) {
     const row = state.officeStore.stations.find((item) => item.config_id === state.officeEdit.configId && item.key === key && !item.archived_at);
+    if (row) state.officeStationIndex[row.id] = key;
     return row ? row.id : null;
   }
   if (!state.officeEdit.configId) return null;
   const listed = await state.supabase.from("office_stations").select("id, key, archived_at").eq("config_id", state.officeEdit.configId);
   if (!listed || listed.error || !Array.isArray(listed.data)) return null;
+  rememberStations(listed.data);
   const row = listed.data.find((item) => item.key === key && !item.archived_at);
   return row ? row.id : null;
+}
+
+function editorConfig() {
+  return state.officeEdit.draft || state.officeEdit.config || null;
+}
+
+function placementFor(key, stationId) {
+  return taskPlacement(editorConfig(), key, stationId);
 }
 
 function showSaveNotice(raw, kind) {
@@ -2092,7 +2154,9 @@ async function saveOfficeEdit() {
     state.officeEdit.revisions = fresh.revisions;
   }
   state.officeEdit.open = true;
+  state.officeEdit.dirty = false;
   showSaveNotice("Saved.", "ok");
+  await refreshStationIndex();
   toast("Office saved.");
   if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
   else paintOfficeEditor(true);
@@ -2123,7 +2187,9 @@ async function restoreOfficeEdit(revisionId) {
     state.officeEdit.draft = fresh.draft;
     state.officeEdit.revisions = fresh.revisions;
     state.officeEdit.open = true;
+    state.officeEdit.dirty = false;
     showSaveNotice("Restored.", "ok");
+    await refreshStationIndex();
     toast("Revision restored.");
     if (route().section === "business") refreshWorkforceConfig(fresh.config, true);
     else paintOfficeEditor(true);
@@ -2149,7 +2215,9 @@ async function restoreOfficeEdit(revisionId) {
   edit.loadedKey = "";
   await ensureOfficeEdit(edit.scope, edit.businessId, edit.config);
   state.officeEdit.open = true;
+  state.officeEdit.dirty = false;
   showSaveNotice("Restored.", "ok");
+  await refreshStationIndex();
   toast("Revision restored.");
   if (route().section === "business") refreshWorkforceConfig(state.officeEdit.config, true);
   else paintOfficeEditor(true);
@@ -2158,7 +2226,12 @@ async function restoreOfficeEdit(revisionId) {
 async function moveOfficeTask(taskId, key) {
   if (!key) return;
   const stationId = await stationIdFor(key);
-  const patch = taskWrite(key, stationId);
+  const patch = placementFor(key, stationId);
+  if (!patch.station && !patch.station_id) {
+    toast("Save the office before moving a task onto this station.", "bad");
+    paintOfficeEditor(true);
+    return;
+  }
   const result = await state.supabase.from("hq_tasks").update(patch).eq("id", taskId);
   if (result && result.error) {
     toast(result.error.message || "Could not move the task.", "bad");
@@ -2194,7 +2267,11 @@ async function createOfficeTask() {
     agentId = state.user.id;
   }
   const stationId = await stationIdFor(key);
-  const patch = taskWrite(key, stationId);
+  const patch = placementFor(key, stationId);
+  if (!patch.station && !patch.station_id) {
+    toast("Save the office before creating a task on this station.", "bad");
+    return;
+  }
   const payload = {
     agent_id: agentId,
     title: title.slice(0, 240),
@@ -2275,8 +2352,11 @@ function paintWorkforceStation(id) {
     return;
   }
   panelTitle.textContent = node.role;
+  const assigned = (state.agents || []).find((agent) => agent.id && agent.id === node.hqAgentId);
   const blocks = [
     el("p", { text: node.description || "" }),
+    assigned ? el("p", { text: "Agent: " + (assigned.name || "Assigned") }) : null,
+    node.agentRole ? el("p", { class: "hq-note", text: node.agentRole }) : null,
     el("p", { class: "hq-note", text: node.detail || node.short || "" })
   ];
   const tasks = node.tasks || [];
@@ -2382,13 +2462,14 @@ async function loadWorkforceScreen() {
     if (!loaded.ok) throw new Error(loaded.errors.join(" "));
     const office = await ensureOfficeEdit("business", business.id, loaded.value);
     if (route().section !== "business" || route().id !== business.id) return;
-    const chosen = validateOfficeConfig(office.config || loaded.value);
-    const officeConfig = chosen.ok ? chosen.value : loaded.value;
+    const kept = editorDocument(office.config || loaded.value);
+    const officeConfig = kept.ok ? kept.value : (office.config || loaded.value);
+    await refreshStationIndex();
     const [leadsRes, statsRes, workRes, taskRes] = await Promise.all([
       state.supabase.from("engine_lead_cache").select("agent_id, lead_status, category, is_converted, converted_at, last_message_time, total_followups, source").eq("agent_id", business.id),
       state.supabase.from("engine_lead_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, computed_at, last_activity_at").eq("agent_id", business.id).maybeSingle(),
       state.supabase.from("business_workforce").select("agent_id, role, status, updated_at").eq("agent_id", business.id),
-      state.supabase.from("hq_tasks").select("id, business_id, setter_id, station, title, description, status, priority, updated_at, created_at").eq("business_id", business.id)
+      state.supabase.from("hq_tasks").select("id, business_id, setter_id, station, station_id, title, description, status, priority, updated_at, created_at").eq("business_id", business.id)
     ]);
     if (token !== state.businessToken) return;
     const failed = [leadsRes, statsRes, workRes, taskRes].find((result) => result.error);
@@ -2413,6 +2494,7 @@ async function loadWorkforceScreen() {
     };
     state.businessView = mapWorkforce(Object.assign({}, state.workforceSource, {
       config: officeConfig,
+      stationIndex: state.officeStationIndex,
       now: new Date()
     }));
     if (token !== state.businessToken || route().section !== "business") return;
@@ -2510,6 +2592,7 @@ function paint() {
     return;
   }
   if (workforce && document.getElementById("hq-stage") && state.businessMounted === current.id && (officeHandle || officeMounting)) {
+    syncWorkforceTasks();
     if (officeHandle && state.businessView) syncWorkforceScene();
     paintWorkforceHud();
     window.__hqPainted = current.section;
@@ -2650,7 +2733,7 @@ async function onSaveTask(form) {
     return;
   }
   const task = taskById(id);
-  const station = STATIONS.includes(data.station) ? data.station : homeStation(task ? agentById(task.agent_id) : null);
+  const chosenStation = STATIONS.includes(data.station) ? data.station : "";
   const payload = {
     title: title.slice(0, 240),
     description: String(data.description || ""),
@@ -2659,7 +2742,10 @@ async function onSaveTask(form) {
     due: data.due ? zonedInputToDate(data.due, "Europe/Madrid") : null,
     result: String(data.result || "").slice(0, 20000)
   };
-  if (station) payload.station = station;
+  if (chosenStation) {
+    payload.station = chosenStation;
+    if (!task || task.station !== chosenStation) payload.station_id = null;
+  }
   if (payload.status === "needs_diego") payload.decision = "pending";
   await commit(() => state.supabase.from("hq_tasks").update(payload).eq("id", id), "Task saved.");
 }
@@ -2927,6 +3013,7 @@ document.addEventListener("click", async (event) => {
       return;
     }
     state.officeEdit.draft = addStation(state.officeEdit.draft, label);
+    state.officeEdit.dirty = true;
     paintOfficeEditor(true);
   } else if (action === "editor-remove-station") {
     flushEditorField();
@@ -2934,24 +3021,34 @@ document.addEventListener("click", async (event) => {
     const name = station ? station.role : "this station";
     if (!window.confirm("Archive " + name + "? Tasks on it stay with the overseer.")) return;
     state.officeEdit.draft = removeStation(state.officeEdit.draft, id);
+    state.officeEdit.dirty = true;
     paintOfficeEditor(true);
   } else if (action === "editor-up") {
     flushEditorField();
     state.officeEdit.draft = moveStation(state.officeEdit.draft, id, -1);
+    state.officeEdit.dirty = true;
     paintOfficeEditor(true);
   } else if (action === "editor-down") {
     flushEditorField();
     state.officeEdit.draft = moveStation(state.officeEdit.draft, id, 1);
+    state.officeEdit.dirty = true;
     paintOfficeEditor(true);
   } else if (action === "editor-add-edge") {
     flushEditorField();
     const draft = state.officeEdit.draft;
-    const target = (draft.stations[0] && draft.stations[0].id) || draft.overseer.id;
-    state.officeEdit.draft = addEdge(draft, { from: draft.overseer.id, to: target, kind: "assign", label: "Next step" });
+    const arrow = nextArrow(draft);
+    if (!arrow) {
+      const hasStation = draft && Array.isArray(draft.stations) && draft.stations.some((station) => station && station.id && station.id !== (draft.overseer && draft.overseer.id));
+      toast(hasStation ? "Every station already has an arrow. Change From and To on an existing one, or add a station." : "Add a station before adding an arrow.", "bad");
+      return;
+    }
+    state.officeEdit.draft = addEdge(draft, arrow);
+    state.officeEdit.dirty = true;
     paintOfficeEditor(true);
   } else if (action === "editor-remove-edge") {
     flushEditorField();
     state.officeEdit.draft = removeEdge(state.officeEdit.draft, Number(trigger.dataset.index));
+    state.officeEdit.dirty = true;
     paintOfficeEditor(true);
   } else if (action === "editor-save") {
     flushEditorField();
@@ -3036,6 +3133,11 @@ document.addEventListener("keydown", (event) => {
   const dialog = document.getElementById("hq-key");
   if (dialog.open) {
     dialog.close();
+    return;
+  }
+  if (state.officeEdit.open) {
+    state.officeEdit.open = false;
+    paintOfficeEditor(true);
     return;
   }
   if (document.querySelector(".office-manage:not([hidden]), .office-tracker:not([hidden])")) {

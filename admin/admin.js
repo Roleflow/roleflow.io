@@ -2,6 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
+import { renderCrm } from "./crm.js";
 import { renderAcquisitionRoster, renderAddPreview, renderConnectPreview } from "./acquisition-admin.js";
 import { bindAssistant } from "../acquire/assistant.js";
 
@@ -78,26 +79,38 @@ if (previewAdmin) {
       showMessage("This page is only for Roleflow admins. Your businesses are on your account.");
       app.append(el("p", { class: "links" }, [el("a", { href: "/businesses/" }, ["Go to your businesses"])]));
     } else {
-      if (location.hash === "#applications") {
-        hello.textContent = "Signed in as " + (user.email || "admin") + ".";
-        hideBoot();
-        const tabs = document.getElementById("admin-tabs");
-        const tabApplications = document.getElementById("tab-applications");
-        if (tabs) tabs.hidden = false;
-        const headerApplications = document.getElementById("nav-applications");
-        if (headerApplications) headerApplications.hidden = false;
-        if (tabApplications) tabApplications.setAttribute("aria-selected", "true");
-        document.getElementById("main")?.classList.add("sheet-wide");
-        markNav();
-        await renderApplications(supabase, user, { app, hello });
-      } else {
+      const openAdmin = async () => {
         hello.textContent = "Signed in as " + (user.email || "admin") + ".";
         hideBoot();
         const title = document.getElementById("admin-title");
+        const tabs = document.getElementById("admin-tabs");
+        const tabApplications = document.getElementById("tab-applications");
+        const headerApplications = document.getElementById("nav-applications");
+        if (headerApplications) headerApplications.hidden = false;
+        if (location.hash === "#applications") {
+          if (tabs) tabs.hidden = false;
+          if (tabApplications) tabApplications.setAttribute("aria-selected", "true");
+          document.getElementById("main")?.classList.add("sheet-wide");
+          if (title) title.textContent = "Applications";
+          markNav();
+          await renderApplications(supabase, user, { app, hello });
+          return;
+        }
+        if (tabs) tabs.hidden = true;
+        if (tabApplications) tabApplications.setAttribute("aria-selected", "false");
+        document.getElementById("main")?.classList.remove("sheet-wide");
+        if (location.hash === "#crm") {
+          if (title) title.textContent = "CRM";
+          markNav();
+          await renderCrm(supabase, user, { app, hello });
+          return;
+        }
         if (title) title.textContent = "Your businesses";
         markNav();
         await renderAcquisitionRoster(supabase, app);
-      }
+      };
+      window.addEventListener("hashchange", () => { openAdmin(); });
+      await openAdmin();
     }
   }
 }

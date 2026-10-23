@@ -82,6 +82,7 @@ export function plainSaveNotice(error) {
   if (/kind/i.test(raw)) return lead + "An arrow type is not allowed.";
   if (/not allowed/i.test(raw)) return lead + "You do not have permission to edit this office.";
   if (/restored_from|another office/i.test(raw)) return lead + "That history entry is for a different office.";
+  if (/edges\[[^\]]*\] duplicates/i.test(raw)) return lead + "That arrow already exists.";
   if (/duplicate/i.test(raw)) return lead + "Two parts of this office use the same name.";
   if (/itself/i.test(raw)) return lead + "An arrow cannot point back at the same station.";
   if (/not a station|point at stations/i.test(raw)) return lead + "An arrow points somewhere that is not a station.";
@@ -285,7 +286,7 @@ export function addStation(doc, label) {
     role: name,
     description: "Describe this station.",
     color: "#ff4d8d",
-    taskStations: [],
+    taskStations: [key],
     workforceRole: "",
     metric: "none",
     hqAgentId: null,
@@ -312,6 +313,27 @@ export function moveStation(doc, key, delta) {
   return next;
 }
 
+export function nextArrow(doc) {
+  const overseer = doc && doc.overseer && text(doc.overseer.id);
+  const stations = ((doc && doc.stations) || []).filter((station) => station && text(station.id) && text(station.id) !== overseer);
+  const edges = (doc && doc.edges) || [];
+  const exists = (from, to) => edges.some((edge) => text(edge.from) === from && text(edge.to) === to);
+  if (!stations.length) return null;
+  if (overseer) {
+    const open = stations.find((station) => !exists(overseer, text(station.id)));
+    if (open) return { from: overseer, to: text(open.id), kind: "assign", label: "Next step" };
+  }
+  for (const from of stations) {
+    for (const to of stations) {
+      const fromId = text(from.id);
+      const toId = text(to.id);
+      if (fromId === toId || exists(fromId, toId)) continue;
+      return { from: fromId, to: toId, kind: "handoff", label: "Next step" };
+    }
+  }
+  return null;
+}
+
 export function addEdge(doc, edge) {
   const next = clone(doc);
   next.edges.push({
@@ -336,6 +358,25 @@ export function taskWrite(stationKeyValue, stationId) {
     station_id: stationId || null,
     station: legacy ? key : null
   };
+}
+
+export function legacyStationFor(config, stationKeyValue) {
+  const key = text(stationKeyValue);
+  if (!key) return "";
+  if (LEGACY_STATION_KEYS.includes(key)) return key;
+  const overseer = config && config.overseer;
+  const node = overseer && overseer.id === key
+    ? overseer
+    : ((config && config.stations) || []).find((station) => station.id === key);
+  const slots = node && Array.isArray(node.taskStations) ? node.taskStations : [];
+  return slots.find((slot) => LEGACY_STATION_KEYS.includes(slot)) || "";
+}
+
+export function taskPlacement(config, stationKeyValue, stationId) {
+  const patch = taskWrite(stationKeyValue, stationId);
+  const legacy = legacyStationFor(config, stationKeyValue);
+  if (legacy) patch.station = legacy;
+  return patch;
 }
 
 export function missingOfficeTables(error) {
