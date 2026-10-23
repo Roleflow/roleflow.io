@@ -294,8 +294,19 @@ body.admin-panel .biz-grid{gap:24px}
 .status-dot.working{transform-box:fill-box;transform-origin:center;animation:dotPulse 1.8s ease-in-out infinite}
 .tip{opacity:0;pointer-events:none}
 .station-g:hover .tip,.station-g:focus-visible .tip{opacity:1}
-.agent-drawer{position:fixed;top:0;right:0;bottom:0;z-index:45;width:min(400px,100%);overflow:auto;padding:24px;background:#101A33;border:0;box-shadow:var(--shadow)}
-.agent-drawer[hidden]{display:none !important}
+.desk-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:48px 24px}
+.desk-modal[hidden]{display:none !important}
+.desk-modal-backdrop{position:absolute;inset:0;border:0;padding:0;background:rgba(4,8,20,.55);cursor:pointer}
+.desk-modal-sheet{position:relative;z-index:1;width:min(720px,100%);max-height:min(780px,calc(100vh - 96px));overflow:auto;padding:24px;border-radius:20px;background:#101A33;box-shadow:var(--shadow)}
+.desk-modal.wide .desk-modal-sheet{width:min(1080px,100%)}
+.integration-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.integration-head h3{margin:0}
+.integration-status{display:inline-flex;align-items:center;gap:8px;padding:4px 10px;border-radius:999px;background:#1D2848;color:var(--ink);font-size:.78rem;font-weight:600;letter-spacing:.02em}
+.integration-status::before{content:"";width:8px;height:8px;border-radius:99px;background:#7E8AAE}
+.integration-status.on::before{background:#7B4DFF;box-shadow:0 0 0 4px rgba(123,77,255,.2)}
+.integration-status.wait::before{background:#E8B04A}
+.nav-chevron{width:40px;height:40px;border:0;border-radius:12px;background:#1D2848;color:#9AA6C6;display:grid;place-items:center;cursor:pointer;padding:0;flex:none}
+.nav-chevron .nav-ico{width:28px;height:28px;background:transparent}
 .drawer-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
 .drawer-head h2{margin:8px 0;font-size:1.35rem}
 .drawer-status{margin:0;color:var(--mute)}
@@ -313,7 +324,7 @@ body.admin-panel .biz-grid{gap:24px}
 .office-card-dot.error{background:#FF5A7A}
 .office-card-dot.idle{background:#9AA6C6}
 .office-card-dot.empty{background:transparent;border:1.5px dashed #7E8AAE}
-.agent-drawer{width:min(480px,100%)}
+.desk-modal .drawer-head{position:sticky;top:0;background:#101A33;z-index:2;padding-bottom:8px}
 .desk-tools{display:grid;gap:16px;margin-top:20px}
 .desk-pane{display:grid;gap:10px}
 .desk-pane textarea,.desk-routine{width:100%}

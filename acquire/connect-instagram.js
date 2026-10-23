@@ -62,24 +62,35 @@ export async function submitInstagramConnect(ctx, username, notes) {
   return { ok: true, username: handle };
 }
 
+function statusPill(el, label, tone) {
+  return el("span", { class: "integration-status " + tone, text: label });
+}
+
 export function paintInstagramConnect(host, ctx) {
   const { state, el, button, field, toast, bootBusiness } = ctx;
   const waiting = waitingRequest(state.connectRequests);
-  const card = el("article", { class: "agent", id: "connect-instagram" });
-  card.append(el("h3", { text: "Connect Instagram" }));
+  const card = el("article", { class: "agent integration-card", id: "connect-instagram" });
+  const head = el("div", { class: "integration-head" });
+  head.append(el("h3", { text: "Connect Instagram" }));
   if (waiting) {
+    head.append(statusPill(el, "Connecting", "wait"));
+    card.append(head);
     card.append(el("p", { text: "Connecting… we'll finish this for you" }));
     card.append(el("p", { class: "mute", text: "@" + waiting.username + (waiting.notes ? " · " + waiting.notes : "") }));
     host.append(card);
     return;
   }
   const ig = state.ig;
-  if (ig && ig.status === "connected" && ig.username) {
-    card.append(el("p", { text: "Instagram channel connected · @" + String(ig.username).replace(/^@/, "") }));
+  if (ig && ig.status === "connected") {
+    head.append(statusPill(el, "Connected", "on"));
+    card.append(head);
+    if (ig.username) card.append(el("p", { text: "@" + String(ig.username).replace(/^@/, "") }));
     host.append(card);
     return;
   }
   const failed = (state.connectRequests || []).find((row) => row.status === "failed");
+  head.append(statusPill(el, "Not connected", "off"));
+  card.append(head);
   card.append(el("p", {
     text: failed
       ? "We could not finish that connection. Send the Instagram Business username again."
@@ -92,7 +103,7 @@ export function paintInstagramConnect(host, ctx) {
     username.input.maxLength = 30;
     note.input.maxLength = 500;
     card.append(username.label, note.label);
-    card.append(button("Connect Instagram", async () => {
+    const connect = button("Connect Instagram", async () => {
       const result = await submitInstagramConnect(ctx, username.input.value, note.input.value);
       if (!result.ok) {
         toast(result.error, "bad");
@@ -103,7 +114,9 @@ export function paintInstagramConnect(host, ctx) {
         await bootBusiness(state.businessId);
         ctx.go(state.tab || "integrations");
       } else ctx.go(state.tab || "integrations");
-    }));
+    });
+    connect.classList.add("connect-native");
+    card.append(connect);
   }
   host.append(card);
 }

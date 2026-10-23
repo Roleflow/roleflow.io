@@ -2567,7 +2567,7 @@ function showMessage(title, text) {
 
 function readPreview() {
   const host = location.hostname;
-  if (host !== "localhost" && host !== "127.0.0.1") return null;
+  if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return null;
   const params = new URLSearchParams(location.search);
   if (params.get("preview") !== "1") return null;
   const pending = params.get("pending") === "1";

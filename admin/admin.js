@@ -43,8 +43,8 @@ function showMessage(text) {
 }
 
 const arriving = rememberCallback(window.location.href);
-const previewAdmin = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
-  && new URLSearchParams(location.search).get("preview") === "1";
+const previewHost = location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.hostname.endsWith(".vercel.app");
+const previewAdmin = previewHost && new URLSearchParams(location.search).get("preview") === "1";
 if (previewAdmin) {
   hello.textContent = "Preview";
   hideBoot();

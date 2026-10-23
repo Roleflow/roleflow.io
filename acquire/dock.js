@@ -9,7 +9,9 @@ export function bindDock({ setOpen, isMobile }) {
   const coarse = window.matchMedia("(pointer: coarse)");
   const scales = new WeakMap();
   const velocity = new WeakMap();
+  const storeKey = "rf-sidebar";
   let pinned = false;
+  let suppressHover = 0;
   let pointerY = null;
   let hovering = false;
   let raf = 0;
@@ -64,7 +66,17 @@ export function bindDock({ setOpen, isMobile }) {
     return document.body.classList.contains("panel-open") ? 288 : 84;
   }
 
+  function readStored() {
+    try { return localStorage.getItem(storeKey); } catch (_error) { return null; }
+  }
+
+  function writeStored(open) {
+    if (isMobile()) return;
+    try { localStorage.setItem(storeKey, open ? "open" : "closed"); } catch (_error) { /* private browsing */ }
+  }
+
   function armOpen() {
+    if (Date.now() < suppressHover) return;
     if (isMobile() || pinned || coarse.matches || document.body.classList.contains("panel-open")) return;
     if (openTimer) return;
     clearTimeout(closeTimer);
@@ -94,11 +106,13 @@ export function bindDock({ setOpen, isMobile }) {
       pointerY = null;
       poke();
       setOpen(false);
+      syncPin();
     }, reduce.matches ? 0 : 220);
   }
 
   function syncPin() {
-    const label = pinned ? "Unpin menu" : "Pin menu";
+    const open = document.body.classList.contains("panel-open");
+    const label = open ? "Collapse sidebar" : "Expand sidebar";
     [pin, menuPin].forEach((button) => {
       if (!button) return;
       button.setAttribute("aria-pressed", pinned ? "true" : "false");
@@ -109,17 +123,34 @@ export function bindDock({ setOpen, isMobile }) {
     document.body.classList.toggle("panel-pinned", pinned);
   }
 
+  function expandSidebar() {
+    pinned = true;
+    writeStored(true);
+    clearTimeout(closeTimer);
+    closeTimer = 0;
+    cancelOpen();
+    setOpen(true);
+    syncPin();
+  }
+
+  function collapseSidebar() {
+    pinned = false;
+    writeStored(false);
+    suppressHover = Date.now() + 450;
+    clearTimeout(closeTimer);
+    closeTimer = 0;
+    cancelOpen();
+    setOpen(false);
+    syncPin();
+  }
+
   function togglePin() {
     if (isMobile()) {
       setOpen(!document.body.classList.contains("panel-open"));
       return;
     }
-    pinned = !pinned;
-    syncPin();
-    clearTimeout(closeTimer);
-    closeTimer = 0;
-    cancelOpen();
-    setOpen(pinned || lastX <= zone());
+    if (document.body.classList.contains("panel-open") && pinned) collapseSidebar();
+    else expandSidebar();
   }
 
   rail.addEventListener("pointermove", (event) => {
@@ -168,23 +199,46 @@ export function bindDock({ setOpen, isMobile }) {
   if (menuPin) menuPin.addEventListener("click", togglePin);
 
   document.getElementById("panel-close").addEventListener("click", () => {
-    pinned = false;
-    syncPin();
-    cancelOpen();
-    setOpen(false);
-  });
-  document.getElementById("nav-backdrop").addEventListener("click", () => {
-    pinned = false;
-    syncPin();
-    cancelOpen();
-    setOpen(false);
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && document.body.classList.contains("panel-open")) {
+    if (isMobile()) {
       pinned = false;
       syncPin();
       cancelOpen();
       setOpen(false);
+      return;
+    }
+    collapseSidebar();
+  });
+  const collapse = document.getElementById("panel-collapse");
+  if (collapse) collapse.addEventListener("click", () => {
+    if (isMobile()) {
+      pinned = false;
+      syncPin();
+      cancelOpen();
+      setOpen(false);
+      return;
+    }
+    collapseSidebar();
+  });
+  document.getElementById("nav-backdrop").addEventListener("click", () => {
+    if (!isMobile() && pinned) collapseSidebar();
+    else {
+      pinned = false;
+      syncPin();
+      cancelOpen();
+      setOpen(false);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("panel-open")) {
+      const desk = document.getElementById("agent-drawer");
+      if (desk && !desk.hidden) return;
+      if (!isMobile() && pinned) collapseSidebar();
+      else {
+        pinned = false;
+        syncPin();
+        cancelOpen();
+        setOpen(false);
+      }
     }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const scope = document.body.classList.contains("panel-open") ? panel : rail;
@@ -216,6 +270,8 @@ export function bindDock({ setOpen, isMobile }) {
       if (match) match.focus();
     });
   });
+  if (!isMobile() && readStored() === "open") expandSidebar();
+
   panel.addEventListener("focusout", (event) => {
     if (panel.contains(event.relatedTarget) || rail.contains(event.relatedTarget)) return;
     scheduleClose();
