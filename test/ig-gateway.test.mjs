@@ -19,6 +19,7 @@ import {
   replyText,
   sendRequest,
   shouldEnqueue,
+  safeWebhookError,
   signState,
   signWebhook,
   startConnect,
@@ -142,6 +143,10 @@ const raw = JSON.stringify({
   conversation: { id: "conv-1" }
 });
 assert.equal(verifyWebhook(raw, signWebhook(raw, secret), secret), true);
+assert.match(read("supabase/functions/_shared/ig-gateway.js"), /from "node:buffer"/);
+assert.equal(safeWebhookError({ name: "ReferenceError", message: "Buffer is not defined" }), "ReferenceError: Buffer is not defined");
+assert.equal(safeWebhookError({ message: "Bearer abcdefghijklmnopqrstuvwxyz012345" }), "Error: Bearer [redacted]");
+assert.doesNotMatch(safeWebhookError({ message: "Bearer abcdefghijklmnopqrstuvwxyz012345" }), /abcdefghijklmnopqrstuvwxyz012345/);
 assert.equal(verifyWebhook(raw, "deadbeef", secret), false);
 assert.equal(verifyWebhook(raw, signWebhook(raw, secret), ""), false);
 const headers = readWebhookHeaders({ "X-Zernio-Signature": "abc", "X-Zernio-Event-Id": "evt-1" });
@@ -159,6 +164,22 @@ assert.equal(standby.standby, true);
 assert.equal(shouldEnqueue(standby, { systemEnabled: true, commentToDm: true }), false);
 assert.equal(shouldEnqueue(message, { systemEnabled: false, commentToDm: true }), false);
 assert.equal(shouldEnqueue(message, { systemEnabled: true, commentToDm: false }), true);
+const inbound = normalizeEvent({
+  id: "evt-live",
+  event: "message.received",
+  message: {
+    id: "msg-1",
+    conversationId: "conv-live",
+    text: "Hey boss",
+    direction: "incoming",
+    sender: { id: "2108532849767337", username: "diegocastanedo.g" }
+  },
+  account: { accountId: "acct-1" }
+});
+assert.equal(inbound.senderId, "2108532849767337");
+assert.equal(inbound.conversationId, "conv-live");
+assert.equal(inbound.kind, "message");
+assert.equal(shouldEnqueue(inbound, { systemEnabled: true, commentToDm: false }), true);
 const sent = normalizeEvent({
   id: "evt-sent",
   event: "message.sent",

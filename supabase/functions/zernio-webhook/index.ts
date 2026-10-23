@@ -14,6 +14,7 @@ import {
   planPayload,
   readWebhookHeaders,
   replyText,
+  safeWebhookError,
   sendRequest
 } from "../_shared/ig-gateway.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
@@ -72,7 +73,10 @@ Deno.serve(async (req) => {
           p_at: new Date().toISOString(),
           p_kind: event.kind
         });
-        if (stored.error || !stored.data || stored.data.ok !== true) throw new Error("store failed");
+        if (stored.error || !stored.data || stored.data.ok !== true) {
+          const detail = stored.error ? String(stored.error.code || stored.error.message || "rpc") : "rejected";
+          throw new Error("store failed: " + detail.slice(0, 120));
+        }
         if (event.kind === "sent") {
           const stop = await admin.from("acq_settings").select("stop_on_human").eq("agent_id", account.businessId).maybeSingle();
           if (stop.error) throw new Error("settings lookup failed");
@@ -100,7 +104,8 @@ Deno.serve(async (req) => {
         });
       }
     });
-  } catch (_error) {
+  } catch (error) {
+    console.error("webhook_failed", safeWebhookError(error));
     return json(500, { ok: false, error: "Could not store the event." });
   }
   if (result.body && result.body.queued && jobs.length) {
