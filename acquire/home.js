@@ -12,7 +12,11 @@ const GROUPS = [
   { label: "AI Workforce", items: [
     { tab: "outbound", label: "Outbound Manager", icon: "send", tone: "t4" },
     { tab: "inbound", label: "Inbound Manager", icon: "inbox", tone: "t5" },
-    { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" }
+    { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" },
+    { tab: "inbox", label: "Chats", icon: "inbox", tone: "t2" },
+    { tab: "followups", label: "Follow-ups", icon: "send", tone: "t3" },
+    { tab: "reminders", label: "Reminders", icon: "clipboard", tone: "t4" },
+    { tab: "ctas", label: "Calls to action", icon: "link", tone: "t5" }
   ] },
   { label: "Analysis", items: [
     { tab: "stats", label: "Stats", icon: "chart", tone: "t2" },
@@ -60,6 +64,10 @@ const HOW = {
   outbound: "Outbound Manager runs ICP Target Acquisition, Engagement Warm-Up, and Personalised Outreach. The daily cap is 20 to 30 new targets. Pending openers are drafts waiting in the queue.",
   inbound: "Inbound Manager is the Roleflow Setter Engine: comment-to-DM, story DMs, qualification, follow-ups, and booking. Pending activation means the engine agent is not linked yet. Syncing means a change is waiting to be applied.",
   pipeline: "CRM states are Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board show the leads stored for this business. Filters, notes, and the message queue stay here. Nothing in the queue is sent while live sync is off.",
+  followups: "Follow-ups stay inside the 24-hour messaging window. Steps run from 1 to 23 hours, as AI instructions or literal text, with a variant per lead state. Welcome messages are two at most. The 7-day list is drafted here and sent by a person.",
+  reminders: "Reminders are tasks or a conversation to resume. Overdue, today, and the next 7 days are counted from the due time. A suggestion from the model is saved only after you add it.",
+  ctas: "A comment keyword can send a private message, with an optional button of 20 characters, and a public reply drawn from the lines you wrote. A story keyword hands the reply to one agent.",
+  inbox: "Chats lists the leads stored for this business. The thread shows messages we have. A scheduled message stays in the queue. Live sync is off, so nothing is sent.",
   stats: "Stats counts only rows in the date range you pick. Conversion rate is converted divided by targets in that range. Attributed growth is the sum of attributed deals. Roleflow's share is 10%.",
   performance: "Performance groups the same targets by source. Outbound is discovery. Inbound is Instagram and comments. A source with no rows is omitted.",
   configuration: "Each question on the left is a real setting: hours, who gets a reply, when a human takes over, how the setter writes, how a lead is classified, and which accounts are connected.",

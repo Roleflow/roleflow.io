@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   }
   const action = String(body.action || "");
   const businessId = String(body.business_id || "");
-  if (!["score", "fix", "edit", "simulate"].includes(action)) return json(400, { error: "Choose score, fix, edit, or simulate." });
+  if (!["score", "fix", "edit", "simulate", "draft"].includes(action)) return json(400, { error: "Choose score, fix, edit, simulate, or draft." });
   if (!/^[0-9a-f-]{36}$/i.test(businessId)) return json(400, { error: "Choose a business first." });
 
   const workspace = await userClient.from("acq_workspaces").select("id").eq("id", businessId).maybeSingle();
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     const items = Array.isArray(parsed.items) ? parsed.items.map((item) => String(item).slice(0, 180)).slice(0, 8) : [];
     return json(200, { score, items });
   }
-  if (action === "simulate") {
+  if (action === "simulate" || action === "draft") {
     const reply = String(parsed.reply || "").trim().slice(0, 2000);
     if (!reply) return json(502, { error: "The model returned an empty reply." });
     return json(200, { reply });
@@ -113,6 +113,9 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
     return "Apply this edit to the brief and return {\"fields\": {same keys}}. Edit: " + instruction + "\nBrief JSON:\n" + JSON.stringify(fields);
   }
   const lines = Array.isArray(body.lines) ? body.lines.slice(-12) : [];
+  if (action === "draft") {
+    return "Draft one reply a person can edit. Do not claim it was sent. Return {\"reply\": string}. Lead state: " + String(body.lead_state || "open") + ". Thread JSON:\n" + JSON.stringify(lines) + "\nBrief JSON:\n" + JSON.stringify(fields);
+  }
   return "Practice reply only. The user is playing " + String(body.as || "lead") + ". Lead state: " + String(body.lead_state || "open") + ". Return {\"reply\": string}. Thread JSON:\n" + JSON.stringify(lines) + "\nBrief JSON:\n" + JSON.stringify(fields);
 }
 
