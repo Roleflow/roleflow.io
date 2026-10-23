@@ -1,4 +1,5 @@
 import { ENGINE_HINT, SLOTS } from "./model.js";
+import { paintInstagramConnect, scrubChannelCopy } from "./connect-instagram.js";
 
 const PROMPT_ROLES = [
   ["comment_to_dm", "Comment-to-DM"],
@@ -218,19 +219,19 @@ function paintSetterEngine(host, ctx) {
   const card = el("article", { class: "agent" });
   card.append(el("h3", { text: "Roleflow Setter Engine" }));
   card.append(el("p", { class: "mute", text: "Instagram DM engine" }));
-  const tested = link.last_test_error ? " · " + link.last_test_error : "";
+  const tested = link.last_test_error ? " · " + scrubChannelCopy(link.last_test_error) : "";
   card.append(el("p", { text: activationLabel(link.status) + tested }));
   card.append(el("p", { class: "mute", text: "The setter handles comment and story DMs, qualification, follow-ups, and booking. Enter the Instagram handle. An admin links the engine agent on the server. The access token is not shown again." }));
   card.append(el("p", { class: "mute", text: ENGINE_HINT }));
   if ((state.outbox || []).some((row) => row.status === "pending")) card.append(el("p", { text: "Syncing…" }));
   const failed = (state.outbox || []).find((row) => row.status === "failed" && row.error);
-  if (failed) card.append(el("p", { text: failed.error }));
+  if (failed) card.append(el("p", { text: scrubChannelCopy(failed.error) }));
   if (link.webhook_seen_at) {
     card.append(el("p", { text: "Full history and extracted attributes are arriving. Last event " + ctx.when(link.webhook_seen_at) + "." }));
   }
   if (link.last_synced_at) {
     const counts = link.last_sync_counts || {};
-    const note = counts.reason === "paused" ? "Last sync skipped because the setter is paused." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + link.last_sync_error : "");
+    const note = counts.reason === "paused" ? "Last sync skipped because the setter is paused." : "Last sync " + ctx.when(link.last_synced_at) + (link.last_sync_error ? " · " + scrubChannelCopy(link.last_sync_error) : "");
     card.append(el("p", { text: note }));
   }
   if (state.canEdit && state.supabase) {
@@ -263,7 +264,7 @@ function paintSetterEngine(host, ctx) {
     row.append(button("Disconnect", async () => {
       try {
         await callSetterEngine(ctx, "disconnect", {});
-        toast("Instagram DM engine disconnected. The setter is the Meta engine.");
+        toast("Instagram channel disconnected.");
         await bootBusiness(state.businessId);
         ctx.go(state.tab || "integrations");
       } catch (error) {
@@ -297,29 +298,9 @@ function paintSetterEngine(host, ctx) {
 
 function paintIntegrations(host, ctx) {
   const { state, el, button, field, toast, bootBusiness } = ctx;
-  paintSetterEngine(host, ctx);
-  const ig = state.ig || { status: "disconnected" };
+  paintInstagramConnect(host, ctx);
+  if (state.isAdmin) paintSetterEngine(host, ctx);
   const google = state.google || { status: "disconnected" };
-  const igCard = el("article", { class: "agent" });
-  igCard.append(el("h3", { text: "Instagram" }));
-  igCard.append(el("p", { text: "Status: " + ig.status + (ig.username ? " · @" + ig.username : "") + (ig.last_error ? " · " + ig.last_error : "") }));
-  igCard.append(el("p", { class: "mute", text: "Official Instagram Login for this business. Passwords are never stored. Comment-to-DM, qualification, recovery, and booking use this connection." }));
-  if (state.canEdit && state.supabase) {
-    const row = el("div", { class: "filters" });
-    row.append(button("Connect Instagram", () => startOauth(ctx, "meta_start")));
-    row.append(button("Disconnect", async () => {
-      try {
-        await callEngine(ctx, "disconnect_instagram", {});
-        toast("Instagram disconnected.");
-        await bootBusiness(state.businessId);
-        ctx.go("integrations");
-      } catch (error) {
-        toast(error.message, "bad");
-      }
-    }));
-    igCard.append(row);
-  }
-  host.append(igCard);
 
   const cal = el("article", { class: "agent" });
   cal.append(el("h3", { text: "Google Calendar" }));
@@ -409,7 +390,7 @@ function dncBlock(ctx) {
   const rows = state.dnc || [];
   if (!rows.length) card.append(el("p", { class: "mute", text: "No handles on the list." }));
   rows.forEach((row) => {
-    const line = el("p", { text: "@" + row.handle + (row.reason ? " · " + row.reason : "") });
+    const line = el("p", { text: "@" + row.handle + (row.reason ? " · " + scrubChannelCopy(row.reason) : "") });
     if (state.canEdit && state.supabase) {
       line.append(" ");
       line.append(button("Remove", async () => {
@@ -593,18 +574,8 @@ function paintOnboarding(host, ctx) {
   }
 
   if (step === "connect") {
-    card.append(el("h3", { text: "Connect Instagram" }));
-    card.append(el("p", { text: "Enter the Instagram handle. Status stays on Pending activation until an admin links the engine agent. The Roleflow Meta app is the other path when that app is available." }));
-    host.append(card);
-    paintSetterEngine(host, ctx);
-    const meta = el("article", { class: "agent" });
-    meta.append(el("h3", { text: "Roleflow Meta engine" }));
-    meta.append(el("p", { text: "Connect the professional Instagram account when the Meta app is available. The token stays on the server." }));
-    if (state.canEdit && state.supabase) {
-      meta.append(button("Connect Instagram", () => startOauth(ctx, "meta_start")));
-      meta.append(button("Continue to the worker", () => advanceWizard(ctx, "worker")));
-    }
-    host.append(meta);
+    paintInstagramConnect(host, ctx);
+    if (state.canEdit) host.append(button("Continue to the worker", () => advanceWizard(ctx, "worker")));
     return;
   }
 
@@ -686,6 +657,11 @@ function paintOnboarding(host, ctx) {
 }
 
 async function advanceWizard(ctx, next) {
+  if (!ctx.state.supabase) {
+    ctx.state.settings = Object.assign({}, ctx.state.settings, { onboarding_step: next });
+    ctx.go("onboarding");
+    return;
+  }
   const saved = await ctx.state.supabase.from("acq_settings").update({ onboarding_step: next }).eq("agent_id", ctx.state.businessId);
   if (saved.error) ctx.toast(saved.error.message, "bad");
   else {

@@ -88,8 +88,8 @@ Deno.serve(async (req) => {
 
 function publicError(message: string) {
   return message
-    .replace(/https?:\/\/api\.tailortalk\.ai\S*/gi, "the setter engine")
-    .replace(/tailortalk/gi, "setter engine")
+    .replace(/https?:\/\/api\.tailortalk\.ai\S*/gi, "the Instagram channel")
+    .replace(/tailortalk/gi, "Instagram channel")
     .slice(0, 300);
 }
 

@@ -166,7 +166,7 @@ async function importDnc(service: ReturnType<typeof createClient>, businessId: s
     const rows = handles.slice(i, i + 100).map((handle) => ({
       business_id: businessId,
       handle,
-      reason: "TailorTalk sheet"
+      reason: "Instagram channel"
     }));
     const saved = await service.from("acq_dnc").upsert(rows, { onConflict: "business_id,handle", ignoreDuplicates: true });
     if (saved.error) {

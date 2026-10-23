@@ -130,6 +130,7 @@ body.platform.panel-open .slide-panel{display:flex}
 .day-chart{display:flex;align-items:flex-end;gap:6px;min-height:140px;padding-top:8px}
 .day-chart i{display:block;flex:1;min-height:2px;border-radius:8px 8px 0 0;background:linear-gradient(180deg,var(--o),var(--m))}
 .assistant-fab{position:fixed;right:18px;bottom:18px;z-index:35;width:64px;height:64px;border-radius:22px;border:0;cursor:pointer;color:#0A1226;background:linear-gradient(145deg,var(--gold),var(--o) 55%,var(--m));font:800 .78rem/1.1 var(--h);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.assistant-fab.has-notice{box-shadow:0 0 0 3px #e8b931, 0 10px 30px rgba(0,0,0,.35)}
 .assistant-panel{position:fixed;right:18px;bottom:94px;z-index:35;width:min(380px,calc(100vw - 24px));max-height:min(70vh,560px);display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:22px;border:1px solid var(--line);background:#101A33;box-shadow:0 16px 40px rgba(0,0,0,.4)}
 .assistant-panel[hidden]{display:none !important}
 .assistant-panel header{display:flex;justify-content:space-between;align-items:center;gap:8px}
