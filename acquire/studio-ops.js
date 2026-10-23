@@ -233,6 +233,9 @@ function notifyBody(ui) {
 function connectBody(ui) {
   const settings = ui.state.settings || {};
   const wrap = ui.el("div", { "data-command": "cfg-connect" });
+  const host = ui.el("div");
+  if (ui.renderEngine) ui.renderEngine("integrations", host);
+  wrap.append(host);
   const hook = ui.el("form", { class: "agent" });
   hook.append(ui.el("h3", { text: "Custom webhook" }));
   hook.append(ui.el("p", { text: "Events are signed with HMAC-SHA256. The secret is stored encrypted and is not shown again." }));
@@ -316,9 +319,6 @@ function connectBody(ui) {
     keys.append(label.label, ui.button("Create key", () => ui.createApiKey(label.input.value.trim() || "Website")));
   }
   wrap.append(keys);
-  const host = ui.el("div");
-  if (ui.renderEngine) ui.renderEngine("integrations", host);
-  wrap.append(host);
   return wrap;
 }
 

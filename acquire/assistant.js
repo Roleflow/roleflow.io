@@ -10,9 +10,17 @@ export function bindAssistant(getContext) {
   const log = document.getElementById("assistant-log");
   if (!openBtn || !panel || !form || !log) return;
 
+  window.addEventListener("roleflow-notice", (event) => {
+    const text = event.detail && event.detail.text;
+    if (!text) return;
+    openBtn.classList.add("has-notice");
+    push("ask", text);
+  });
+
   function setOpen(open) {
     panel.hidden = !open;
     openBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) openBtn.classList.remove("has-notice");
     if (open && !log.childElementCount) {
       const ctx = getContext();
       push("ask", ctx && ctx.businessId

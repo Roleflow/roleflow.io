@@ -227,7 +227,7 @@ function openAccounts(ui) {
   body.replaceChildren();
   body.append(ui.el("p", { text: ui.instagramLine() }));
   body.append(ui.el("p", { text: "WhatsApp is not connected." }));
-  const go = ui.el("a", { class: "btn", href: "#configuration" }, ["Connect Instagram"]);
+  const go = ui.el("a", { class: "btn", href: "#configuration/connect" }, ["Connect Instagram"]);
   go.addEventListener("click", () => {
     ui.state.configKey = "connect";
     modal.hidden = true;

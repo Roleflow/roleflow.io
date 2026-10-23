@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
-import { renderAcquisitionRoster } from "./acquisition-admin.js";
+import { renderAcquisitionRoster, renderConnectPreview } from "./acquisition-admin.js";
 import { bindAssistant } from "../acquire/assistant.js";
 
 bindShell();
@@ -43,7 +43,13 @@ function showMessage(text) {
 }
 
 const arriving = rememberCallback(window.location.href);
-if (arriving.type === "recovery") {
+const previewAdmin = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  && new URLSearchParams(location.search).get("preview") === "1";
+if (previewAdmin) {
+  hello.textContent = "Preview";
+  hideBoot();
+  renderConnectPreview(app);
+} else if (arriving.type === "recovery") {
   window.location.replace("/reset/" + window.location.hash);
 } else if (!isConfigured()) {
   hello.textContent = "Add the Supabase keys in supabase/config.js.";

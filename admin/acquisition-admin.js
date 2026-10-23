@@ -1,3 +1,5 @@
+import { scrubChannelCopy } from "../acquire/connect-instagram.js";
+
 const ICP = "icp_acquisition";
 const WARMUP = "engagement_warmup";
 const OUTREACH = "personalised_outreach";
@@ -22,7 +24,7 @@ export async function renderAcquisitionRoster(supabase, app) {
   }
   const ids = businesses.map((row) => row.id);
   const ownerIds = [...new Set(businesses.map((row) => row.owner_id).filter(Boolean))];
-  const [profiles, settings, workforce, links, ig, workers, targets] = await Promise.all([
+  const [profiles, settings, workforce, links, ig, workers, targets, requests] = await Promise.all([
     ownerIds.length
       ? supabase.from("profiles").select("id, email, full_name").in("id", ownerIds)
       : Promise.resolve({ data: [], error: null }),
@@ -31,7 +33,8 @@ export async function renderAcquisitionRoster(supabase, app) {
     supabase.from("acq_setter_links").select("business_id, status, requested_handle, provider, last_synced_at, webhook_seen_at, external_agent_id, last_sync_error").in("business_id", ids),
     supabase.from("ig_connections").select("business_id, username, status, connected_at").in("business_id", ids),
     supabase.from("acq_workers").select("business_id, status, enabled, last_heartbeat_at").in("business_id", ids),
-    supabase.from("acq_targets").select("agent_id, created_at").gte("created_at", new Date(Date.now() - 6 * 86400000).toISOString()).limit(2000)
+    supabase.from("acq_targets").select("agent_id, created_at").gte("created_at", new Date(Date.now() - 6 * 86400000).toISOString()).limit(2000),
+    supabase.from("acq_channel_connect_requests").select("id, workspace_id, username, status, notes, created_at").in("status", ["pending", "in_progress"]).order("created_at", { ascending: true })
   ]);
   const failed = [profiles, settings, workforce, links, ig, workers].find((res) => res.error);
   if (failed) {
@@ -45,6 +48,18 @@ export async function renderAcquisitionRoster(supabase, app) {
   const igById = new Map((ig.data || []).map((row) => [row.business_id, row]));
   const workersById = group(workers.data || [], "business_id");
   const targetsById = group(targets.error ? [] : targets.data || [], "agent_id");
+  const waiting = requests.error ? [] : requests.data || [];
+  const shell = el("div");
+  shell.append(connectQueue(waiting, businesses, (row, status, buttons) => resolveConnectRequest(supabase, app, row, status, buttons)));
+  if (requests.error && !/schema cache|does not exist|PGRST205/i.test(requests.error.message || "")) {
+    shell.append(el("p", { class: "roster-note", text: "Connect requests could not be read." }));
+  }
+  if (waiting.length && !window.__rfConnectQueueNoted) {
+    window.__rfConnectQueueNoted = true;
+    window.dispatchEvent(new CustomEvent("roleflow-notice", {
+      detail: { text: waiting.length === 1 ? "An Instagram connection is waiting." : waiting.length + " Instagram connections are waiting." }
+    }));
+  }
   const root = el("div", { class: "biz-grid", id: "admin-roster" });
   if (targets.error) {
     root.append(el("p", { class: "roster-note", text: "Lead history could not be read." }));
@@ -64,7 +79,71 @@ export async function renderAcquisitionRoster(supabase, app) {
   add.append(el("h2", { text: "Add business" }));
   add.append(el("p", { text: "A business appears here when its owner signs up. Opening this page does not create one." }));
   root.append(add);
-  app.replaceChildren(root);
+  shell.append(root);
+  app.replaceChildren(shell);
+}
+
+export function renderConnectPreview(app) {
+  const rows = [
+    { id: "preview-a", workspace_id: "w1", username: "vam.coach", status: "pending", notes: "Business account" },
+    { id: "preview-b", workspace_id: "w2", username: "northstar.coach", status: "in_progress", notes: "" }
+  ];
+  const businesses = [
+    { id: "w1", name: "Value Add Marketing" },
+    { id: "w2", name: "Northstar Coaching" }
+  ];
+  const draw = () => {
+    const waiting = rows.filter((row) => row.status === "pending" || row.status === "in_progress");
+    app.replaceChildren(connectQueue(waiting, businesses, (row, status) => {
+      row.status = status;
+      draw();
+    }));
+  };
+  draw();
+}
+
+function resolveConnectRequest(supabase, app, row, status, buttons) {
+  buttons.forEach((button) => { button.disabled = true; });
+  return supabase.rpc("acq_admin_resolve_instagram_connection", {
+    p_request: row.id,
+    p_status: status
+  }).then((saved) => {
+    if (saved.error) {
+      buttons.forEach((button) => { button.disabled = false; });
+      const note = document.createElement("p");
+      note.textContent = scrubChannelCopy(saved.error.message || "That connection request could not be updated.");
+      buttons[0].parentElement.append(note);
+      return;
+    }
+    return renderAcquisitionRoster(supabase, app);
+  });
+}
+
+function connectQueue(rows, businesses, onResolve) {
+  const section = el("section", { class: "agent", id: "connect-requests" });
+  section.append(el("h2", { text: "Connect requests" }));
+  section.append(el("p", { class: "roster-note", text: "Instagram usernames waiting for this channel to be finished." }));
+  if (!rows.length) {
+    section.append(el("p", { text: "No Instagram connections are waiting." }));
+    return section;
+  }
+  const names = new Map((businesses || []).map((row) => [row.id, row.name || "Untitled business"]));
+  rows.forEach((row) => {
+    const block = el("article", { class: "roster-biz" });
+    block.append(el("h3", { text: names.get(row.workspace_id) || "This business" }));
+    block.append(el("p", { text: "@" + row.username + (row.notes ? " · " + row.notes : "") }));
+    block.append(el("p", { text: row.status === "in_progress" ? "Syncing" : "Waiting" }));
+    const actions = el("div", { class: "filters" });
+    const connected = el("button", { type: "button", class: "btn sm" }, ["Mark connected"]);
+    const failed = el("button", { type: "button", class: "btn sm ghost" }, ["Mark failed"]);
+    const buttons = [connected, failed];
+    connected.addEventListener("click", () => onResolve(row, "connected", buttons));
+    failed.addEventListener("click", () => onResolve(row, "failed", buttons));
+    actions.append(connected, failed);
+    block.append(actions);
+    section.append(block);
+  });
+  return section;
 }
 
 function gridCard(business, data) {

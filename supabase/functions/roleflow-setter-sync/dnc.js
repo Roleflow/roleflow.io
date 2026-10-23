@@ -1,4 +1,4 @@
-// Read a TailorTalk Sheet tool list into do-not-contact handles.
+// Read a setter sheet tool list into do-not-contact handles.
 // The request only asks for the sheet. It never updates the sheet.
 
 const HANDLE = /^@?([a-z0-9._]{1,30})$/i;

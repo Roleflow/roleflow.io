@@ -46,7 +46,7 @@ assert.match(wizard, /CTA keywords/);
 assert.match(wizard, /Generate worker key/);
 assert.match(wizard, /shown once/);
 assert.match(wizard, /Upload recording/);
-assert.match(wizard, /Connect Instagram/);
+assert.match(wizard + read("acquire/connect-instagram.js"), /Connect Instagram/);
 
 const preview = panel.slice(panel.indexOf("function readPreview"));
 assert.match(preview, /host !== "localhost"/);

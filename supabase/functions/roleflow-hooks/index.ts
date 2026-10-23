@@ -12,11 +12,12 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(405, { error: "Use POST." });
-  let body: { action?: string; webhook_id?: string; lead?: string; state?: string; email?: string; token?: string; business_id?: string } = {};
+  let body: { action?: string; webhook_id?: string; lead?: string; state?: string; email?: string; token?: string; business_id?: string; request_id?: string } = {};
   try { body = await req.json(); } catch (_error) { body = {}; }
   if (body.action === "convert") return convert(req, body);
   if (body.action === "test") return testHook(req, body);
   if (body.action === "invite") return invite(req, body);
+  if (body.action === "notify_connect") return notifyConnect(req, body);
   return json(400, { error: "Unknown action." });
 });
 
@@ -78,6 +79,35 @@ async function invite(req: Request, body: { email?: string; token?: string; busi
     })
   });
   if (!response.ok) return json(200, { error: "The invite is saved. The email was not sent." });
+  return json(200, { emailed: true });
+}
+
+async function notifyConnect(req: Request, body: { request_id?: string }) {
+  const userClient = userClientFrom(req);
+  const { data: userData, error: userError } = await userClient.auth.getUser();
+  if (userError || !userData.user) return json(401, { error: "Sign in required." });
+  const id = String(body.request_id || "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json(400, { error: "That connection request was not found." });
+  const row = await userClient.from("acq_channel_connect_requests").select("id, workspace_id, username, status").eq("id", id).maybeSingle();
+  if (row.error || !row.data) return json(404, { error: "That connection request was not found." });
+  const admin = adminClient();
+  const workspace = await admin.from("acq_workspaces").select("name").eq("id", row.data.workspace_id).maybeSingle();
+  const name = workspace.data && workspace.data.name ? String(workspace.data.name) : "A business";
+  const handle = String(row.data.username || "").replace(/[^a-z0-9._]/gi, "");
+  const resend = Deno.env.get("RESEND_API_KEY") || "";
+  if (!resend) return json(200, { emailed: false, error: "Email sending is not configured yet." });
+  const from = Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + resend, "content-type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: ["diego@roleflow.io"],
+      subject: "Instagram connection waiting",
+      text: name + " asked to connect @" + handle + ".\n\nFinish it in the Roleflow admin businesses list.\n"
+    })
+  });
+  if (!response.ok) return json(200, { emailed: false, error: "The connection is saved. The email was not sent." });
   return json(200, { emailed: true });
 }
 

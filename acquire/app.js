@@ -5,6 +5,7 @@ import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindDock } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
+import { announceWaiting, waitingRequest } from "./connect-instagram.js";
 import {
   mountNav,
   pageHeader,
@@ -86,6 +87,7 @@ const state = {
   engineMessages: [],
   messageCount: 0,
   outbox: [],
+  connectRequests: [],
   openThread: "",
   promptRole: "qualification",
   tab: "dashboard",
@@ -171,10 +173,12 @@ boot();
 async function boot() {
   const preview = readPreview();
   if (preview) {
-    Object.assign(state, preview, { canEdit: false, tab: tabFromHash() });
+    Object.assign(state, preview, { tab: tabFromHash() });
+    state.canEdit = preview.canEdit === true;
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
     paint();
+    announceWaiting(state.connectRequests);
     return;
   }
   if (!isConfigured()) {
@@ -283,12 +287,13 @@ async function bootBusiness(id, options) {
     const adminHome = document.getElementById("nav-admin-home");
     if (adminHome) adminHome.hidden = !state.isAdmin;
     paint();
+    announceWaiting(state.connectRequests);
   }
 }
 
 async function loadAll(id) {
   const q = state.supabase;
-  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, outbox] = await Promise.all([
+  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, outbox, connectRequests] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
     q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, created_at, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
@@ -310,7 +315,8 @@ async function loadAll(id) {
     q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count, automated, sales_link_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
-    q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(20)
+    q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(20),
+    q.from("acq_channel_connect_requests").select("id, workspace_id, channel, username, status, notes, requested_by, created_at, updated_at").eq("workspace_id", id).order("created_at", { ascending: false }).limit(10)
   ]);
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
   if (firstError) {
@@ -343,6 +349,7 @@ async function loadAll(id) {
   state.engineMessages = [];
   state.threadMore = false;
   state.outbox = outbox.error ? [] : outbox.data || [];
+  state.connectRequests = connectRequests.error ? [] : connectRequests.data || [];
   const [brief, versions, cards, notes, queue, links, schedules, assets] = await Promise.all([
     q.from("acq_business_briefs").select("business_id, fields, updated_at").eq("business_id", id).maybeSingle(),
     q.from("acq_brief_versions").select("id, fields, cards, char_count, note, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
@@ -488,6 +495,10 @@ function paint() {
   }
   app.append(root);
   paintChrome(pageUi());
+  const connectCard = document.getElementById("connect-instagram");
+  if (connectCard && (state.tab === "integrations" || state.tab === "onboarding" || state.configKey === "connect")) {
+    connectCard.scrollIntoView({ block: "start" });
+  }
   armRefresh();
 }
 
@@ -1932,6 +1943,7 @@ function activityLine(values) {
 function instagramLine() {
   const ig = state.ig;
   if (ig && ig.username && ig.status === "connected") return "Instagram: @" + String(ig.username).replace(/^@/, "");
+  if (waitingRequest(state.connectRequests)) return "Connecting… we'll finish this for you";
   if (ig && ig.username && ig.status && ig.status !== "disconnected") return "Instagram: @" + String(ig.username).replace(/^@/, "");
   return "Instagram: not connected";
 }
@@ -2414,6 +2426,7 @@ function markTab() {
     performance: "Performance",
     settings: "Configuration",
     configuration: "Configuration",
+    integrations: "Integrations",
     integrations: "Configuration",
     billing: "Configuration",
     controls: "Configuration",
@@ -2449,7 +2462,9 @@ function tabGroup(tab) {
 }
 
 function tabFromHash() {
-  const raw = location.hash.replace("#", "").split("/")[0];
+  const parts = location.hash.replace("#", "").split("/");
+  const raw = parts[0];
+  if ((raw === "configuration" || raw === "settings") && parts[1] === "connect") state.configKey = "connect";
   if (raw === "overview" || raw === "agents") return "outbound";
   if (raw === "reports") return "stats";
   if (raw === "settings") return "configuration";
@@ -2553,11 +2568,15 @@ function showMessage(title, text) {
 function readPreview() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1") return null;
-  if (new URLSearchParams(location.search).get("preview") !== "1") return null;
+  const params = new URLSearchParams(location.search);
+  if (params.get("preview") !== "1") return null;
+  const pending = params.get("pending") === "1";
+  const connect = params.get("connect") === "1" || pending;
   return {
     businessId: "preview",
     businesses: [{ id: "preview", agent_name: "Preview coaching" }],
-    settings: { system_enabled: true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false },
+    canEdit: params.get("edit") === "1",
+    settings: { system_enabled: true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false },
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
     targets: [
       { id: "t1", handle: "northstar", stage: "outreach", peak_stage: "outreach", lead_status: "warm", icp_score: 90, source: "competitor_followers", bio: "Coach. DM me to apply.", cta_detected: true, updated_at: "2026-10-21T09:00:00Z", budget: "", timeline: "", fit: "", qual_score: null, decision_maker: null },
@@ -2576,7 +2595,8 @@ function readPreview() {
     leads: [],
     threads: [{ id: "th1", igsid: "1", username: "northstar", state: "qualification", lead_status: "warm", human_locked: false, followup_count: 0, meet_link: "", updated_at: "2026-10-21T09:10:00Z" }],
     messages: [{ id: "m1", thread_id: "th1", direction: "in", body: "Are you a bot?", kind: "text", created_at: "2026-10-21T09:10:00Z" }],
-    ig: { status: "connected", username: "previewcoach" },
+    ig: connect ? { status: "disconnected" } : { status: "connected", username: "previewcoach" },
+    connectRequests: pending ? [{ id: "preview-request", workspace_id: "preview", channel: "instagram", username: "previewcoach", status: "pending", notes: "Business account" }] : [],
     google: { status: "disconnected" },
     workers: [{ id: "w1", label: "Outreach worker", key_prefix: "rfw_preview", enabled: true, status: "offline", last_heartbeat_at: null, pause_reason: null }],
     dnc: [{ handle: "donotcontact", reason: "asked to stop" }],
