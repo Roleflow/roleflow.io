@@ -30,8 +30,6 @@ export const ROLES = [
   { id: "appointment_booking", name: "Appointment Booking & Show-Up", detail: "Books the call. A booking in the Instagram DM engine becomes an appointment here." }
 ];
 
-export const BOOKING_FALLBACK_URL = "https://calendar.app.google/8i1gomkozavqYU5b8";
-
 export const DISCLOSURE = "Diego's team uses an AI assistant to keep up with conversations. Diego personally reviews them and takes the calls.";
 
 export const SLOTS = [

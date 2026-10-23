@@ -6,7 +6,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { hubChallenge, verifySignature, extractEvents, eventId } from "./ig/webhook.js";
 import { planTurn } from "./ig/engine.js";
 import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/llm.js";
-import { loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
@@ -27,8 +28,6 @@ const cors = {
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GRAPH = () => Deno.env.get("GRAPH_API_VERSION") || "v21.0";
-const FALLBACK = "https://calendar.app.google/8i1gomkozavqYU5b8";
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
@@ -244,6 +243,7 @@ async function runOutbox(db, row) {
   const prompts = await currentPrompt(db, businessId, role);
   const env = Deno.env.toObject();
   const loaded = await loadBusinessRuntime(db, businessId, "setter", env);
+  const booking = await loadBooking(db, businessId, prompts, settings);
   const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
   const clips = clipRows.error ? [] : (clipRows.data || []);
   let plan;
@@ -254,12 +254,14 @@ async function runOutbox(db, row) {
       kind: "ai",
       dnc: false,
       now: Date.now(),
+      booking,
       llm: (input) => completeJson({
         env,
         runtime: loaded.runtime,
         fallback: loaded.fallback,
         onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
-        system: systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }) + clipInstructions(clips),
+        tools: [bookingTool()],
+        system: systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }, booking) + clipInstructions(clips),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -286,7 +288,7 @@ async function runOutbox(db, row) {
   }).eq("id", thread.id).eq("business_id", businessId);
   if (plan.escalate) await escalate(db, businessId, thread.target_id, plan.escalateReason || plan.state, plan.escalateReason || plan.state);
   if (plan.noResponse) return finish("done");
-  const bubbles = await maybeBook(db, businessId, thread, settings, plan);
+  const bubbles = await maybeBook(db, businessId, thread, settings, plan, booking);
   const decision = messagingDecision({
     lastUserMessageAt: thread.last_user_message_at,
     now: Date.now(),
@@ -391,10 +393,21 @@ async function postGraph(token, body) {
   return { ok: false, error: payload?.error?.message || "Instagram send failed.", retry };
 }
 
-async function maybeBook(db, businessId, thread, settings, plan) {
+async function loadBooking(db, businessId, sections, settings) {
+  const tools = await db.from("acq_agent_tools").select("kind, name, config").eq("business_id", businessId);
+  if (tools.error) throw new Error("tools lookup failed");
+  return bookingBehaviour({
+    sections,
+    tools: tools.data || [],
+    settings: { booking_fallback_url: (settings && settings.booking_fallback_url) || "" }
+  });
+}
+
+async function maybeBook(db, businessId, thread, settings, plan, booking) {
   const bubbles = [...(plan.bubbles || [])];
   if (plan.state !== "booking" && plan.bookingAction !== "book") return bubbles;
-  if (!qualifiersPass(plan.attributes)) return bubbles;
+  const allowed = booking ? bookingAllows(booking, plan.attributes) : qualifiersPass(plan.attributes);
+  if (!allowed) return bubbles;
   const calendar = await db.from("google_connections").select("*").eq("business_id", businessId).maybeSingle();
   if (plan.bookingAction === "book" && plan.slotStart) {
     const offered = Array.isArray(thread.offered_slots) ? thread.offered_slots : [];
@@ -419,8 +432,8 @@ async function maybeBook(db, businessId, thread, settings, plan) {
       return bubbles.slice(-2);
     }
   }
-  const link = settings.booking_fallback_url || FALLBACK;
-  bubbles.push(`easiest is to grab a time here: ${link}. what day did you go for?`);
+  const link = String((plan && plan.link) || (settings && settings.booking_fallback_url) || "").trim();
+  if (link.startsWith("https://")) bubbles.push(link);
   return bubbles.slice(-2);
 }
 
@@ -485,6 +498,7 @@ async function playground(db, businessId, body) {
   const settings = await loadSettings(db, businessId);
   const env = Deno.env.toObject();
   const loaded = await loadBusinessRuntime(db, businessId, "setter", env);
+  const booking = await loadBooking(db, businessId, prompts, settings);
   try {
     const plan = await planTurn({
       thread: {
@@ -496,12 +510,14 @@ async function playground(db, businessId, body) {
       eventKind: "message",
       kind: "ai",
       now: Date.now(),
+      booking,
       llm: () => completeJson({
         env,
         runtime: loaded.runtime,
         fallback: loaded.fallback,
         onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
-        system: systemPrompt({ ...prompts, notes: (prompts.notes || "") + knowledgeBlock(settings) }),
+        tools: [bookingTool()],
+        system: systemPrompt({ ...prompts, notes: (prompts.notes || "") + knowledgeBlock(settings) }, booking),
         messages: Array.isArray(body.messages) ? body.messages : [{ role: "user", content: String(body.text || "") }]
       })
     });

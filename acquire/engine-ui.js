@@ -566,13 +566,13 @@ function paintOnboarding(host, ctx) {
     card.append(el("h3", { text: "Offer and booking link" }));
     card.append(el("p", { text: "The opener and the setter may use only this offer. The booking link is sent when Google Calendar is not connected." }));
     const offer = area(ctx, "Offer", settings.offer_summary || "");
-    const booking = field("Booking link", settings.booking_fallback_url || "https://calendar.app.google/8i1gomkozavqYU5b8");
+    const booking = field("Booking link", settings.booking_fallback_url || "");
     card.append(offer.label, booking.label);
     if (state.canEdit && state.supabase) {
       card.append(button("Save and continue", async () => {
         const saved = await state.supabase.from("acq_settings").update({
           offer_summary: offer.input.value.trim(),
-          booking_fallback_url: booking.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
+          booking_fallback_url: booking.input.value.trim(),
           onboarding_step: "connect"
         }).eq("agent_id", state.businessId);
         if (saved.error) toast(saved.error.message, "bad");

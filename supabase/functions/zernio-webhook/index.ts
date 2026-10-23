@@ -3,7 +3,7 @@
 // provider's retry window; the setter runs after the response.
 
 import { completeJson, systemPrompt } from "../roleflow-acquisition/ig/llm.js";
-import { loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 import { chooseClip, clipFromSlot, clipInstructions } from "../_shared/clip-plan.js";
 import { sentMessage, withAttachment } from "../_shared/clip-send.js";
 import {
@@ -22,6 +22,7 @@ import {
 } from "../_shared/ig-gateway.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
+import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 
 Deno.serve(async (req) => {
@@ -162,7 +163,7 @@ async function planJob(admin, job) {
     GEMINI_MODEL: Deno.env.get("GEMINI_MODEL") || ""
   };
   const role = job.event.kind === "comment" ? "comment_to_dm" : "qualification";
-  const gate = await admin.from("acq_settings").select("office_mode, timezone, office_start, office_end, hours_by_day, reply_delay_seconds, reply_delay_max_seconds, setter_model").eq("agent_id", job.account.businessId).maybeSingle();
+  const gate = await admin.from("acq_settings").select("office_mode, timezone, office_start, office_end, hours_by_day, reply_delay_seconds, reply_delay_max_seconds, setter_model, booking_fallback_url").eq("agent_id", job.account.businessId).maybeSingle();
   if (gate.error) {
     await admin.from("ig_outbox").update({ status: "failed", last_error: "The reply was not prepared." }).eq("id", job.id).eq("status", "pending");
     return;
@@ -190,27 +191,38 @@ async function planJob(admin, job) {
   }
   let plan;
   try {
-    const sections = await promptSections(admin, job.account.businessId, role);
+    const studio = await promptSections(admin, job.account.businessId, "inbound_manager");
+    const roleSections = await promptSections(admin, job.account.businessId, role);
+    const sections = { ...roleSections, ...studio };
+    const tools = await admin.from("acq_agent_tools").select("kind, name, config").eq("business_id", job.account.businessId);
+    if (tools.error) throw new Error("tools lookup failed");
     const settings = await admin.from("acq_settings").select("offer_summary, icp_notes, knowledge_base").eq("agent_id", job.account.businessId).maybeSingle();
     const brief = await admin.from("acq_business_briefs").select("fields").eq("business_id", job.account.businessId).maybeSingle();
     const knowledge = (settings.data
       ? "\n\nBusiness knowledge\nOffer: " + (settings.data.offer_summary || "") + "\nICP: " + (settings.data.icp_notes || "") + "\nNotes: " + (settings.data.knowledge_base || "")
       : "") + briefKnowledge(brief.data && brief.data.fields);
+    const booking = bookingBehaviour({
+      sections,
+      tools: tools.data || [],
+      settings: { booking_fallback_url: prefs.booking_fallback_url || "" }
+    });
     const clipRows = await admin.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, mime_type, delivery_path, delivery_mime, active, speech_provider").eq("business_id", job.account.businessId).eq("active", true);
     const clips = clipRows.error ? [] : (clipRows.data || []);
     const sentRows = await admin.from("acq_clip_sends").select("clip_id").eq("business_id", job.account.businessId).eq("conversation_key", String(job.threadId || ""));
     const alreadySent = sentRows.error ? [] : (sentRows.data || []).map((item) => item.clip_id);
-    const promptBody = systemPrompt(sections) + knowledge + clipInstructions(clips);
+    const promptBody = systemPrompt(sections, booking) + knowledge + clipInstructions(clips);
     plan = await planGatewayReply({
       thread,
       eventKind: job.event.kind,
       text: job.event.text,
       now: Date.now(),
+      booking,
       llm: () => completeJson({
         env,
         runtime,
         fallback: loaded.fallback,
         onError: (info) => logLlmError(admin, { businessId: job.account.businessId, purpose: "setter", ...info }),
+        tools: [bookingTool()],
         system: promptBody,
         messages: [{ role: "user", content: JSON.stringify({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }) }]
       })

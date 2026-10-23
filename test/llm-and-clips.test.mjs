@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { bookingTool, chatRequest, completeChat, parseChat, redactSecret, resolveRuntime } from "../supabase/functions/_shared/llm-provider.js";
+import { completeJson } from "../supabase/functions/roleflow-acquisition/ig/llm.js";
+import { planTurn } from "../supabase/functions/roleflow-acquisition/ig/engine.js";
+import { bookingBehaviour } from "../supabase/functions/_shared/booking-plan.js";
 import { assertInstagramContainer, encodeWav, ffmpegWavCommand, instagramAudioReady, needsAudioConvert, sniffAudio } from "../supabase/functions/_shared/clip-audio.js";
 import { chooseClip, clipInstructions, promptForbidsClips, usableClips } from "../supabase/functions/_shared/clip-plan.js";
 import { officialReady, postOfficial } from "../supabase/functions/_shared/official-outbox.js";
@@ -208,5 +211,46 @@ assert.equal(llmChoiceError({ provider: "openai", model: "gpt-4.1", own: false, 
 assert.match(llmChoiceError({ provider: "custom", model: "local", own: true, baseUrl: "http://nope", apiKey: "longenough", hasHint: false }), /https/);
 assert.match(llmChoiceError({ provider: "openai", model: "gpt-4.1", own: true, baseUrl: "", apiKey: "", hasHint: false }), /Add a key/);
 assert.equal(llmChoiceError({ provider: "openai", model: "gpt-4.1", own: true, baseUrl: "", apiKey: "", hasHint: true }), "");
+
+const bookedJson = await completeJson({
+  runtime: { provider: "openai", model: "gpt-4.1-mini", apiKey: "sk-testkeyvalue" },
+  tools: [bookingTool()],
+  system: "book",
+  messages: [{ role: "user", content: "Thursday" }],
+  fetchImpl: async () => ({
+    ok: true,
+    json: async () => ({
+      choices: [{
+        message: {
+          content: "{\"bubbles\":[\"Thursday works.\"],\"next_state\":\"booking\"}",
+          tool_calls: [{ id: "1", function: { name: "book_call", arguments: "{\"action\":\"book\",\"slot_start\":\"2026-10-24T10:00:00Z\",\"email\":\"ada@example.com\"}" } }]
+        }
+      }]
+    })
+  })
+});
+const bookedFields = JSON.parse(bookedJson);
+assert.equal(bookedFields.booking_action, "book");
+assert.equal(bookedFields.slot_start, "2026-10-24T10:00:00Z");
+assert.equal(bookedFields.email, "ada@example.com");
+assert.equal(bookedFields.bubbles[0], "Thursday works.");
+
+const cityBooking = bookingBehaviour({
+  sections: { workflow: "Required before booking: city.\nConfirmation: City locked." },
+  tools: [{ kind: "booking", config: { calendar_link: "https://cal.example/city" } }]
+});
+const held = await planTurn({
+  thread: { state: "qualification", lastUserMessageAt: "2026-10-23T12:00:00Z", attributes: {} },
+  now: Date.parse("2026-10-23T12:00:00Z"),
+  booking: cityBooking,
+  llm: async () => JSON.parse(bookedJson)
+});
+assert.equal(held.state, "qualification");
+assert.equal(held.rejectedTransition, true);
+assert.equal(held.link, "https://cal.example/city");
+assert.match(read("supabase/functions/zernio-webhook/index.ts"), /bookingBehaviour/);
+assert.match(read("supabase/functions/zernio-webhook/index.ts"), /bookingTool\(\)/);
+assert.match(read("supabase/functions/roleflow-acquisition/ig/llm.js"), /clip_id/);
+assert.match(read("supabase/functions/roleflow-acquisition/ig/llm.js"), /book_call/);
 
 console.log("llm and clips tests passed");

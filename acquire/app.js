@@ -201,7 +201,7 @@ async function boot() {
     }
     state.agentTools = [
       { id: "tool-voice", agent_role: "inbound_manager", kind: "media", name: "Gap building", config: { media_type: "voice" } },
-      { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "https://calendar.app.google/8i1gomkozavqYU5b8" } }
+      { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "" } }
     ];
     armEditorRequest();
     hideBoot();
@@ -2218,7 +2218,7 @@ function controls() {
   const delay = field("Reply delay seconds (0–300)", settings.reply_delay_seconds == null ? 60 : settings.reply_delay_seconds, "number");
   const followHours = field("Hours between recovery follow-ups", settings.followup_hours || 6, "number");
   const followCount = field("Recovery follow-ups inside 24h", settings.followup_count || 3, "number");
-  const fallback = field("Booking link if Calendar is off", settings.booking_fallback_url || "https://calendar.app.google/8i1gomkozavqYU5b8");
+  const fallback = field("Booking link for this business", settings.booking_fallback_url || "");
   const publicReplies = el("label", { class: "switch", text: " Public comment replies" });
   const publicInput = el("input", { type: "checkbox" });
   publicInput.checked = settings.public_comment_replies === true;
@@ -2326,7 +2326,7 @@ async function saveControls(event, fields) {
     reply_delay_seconds: Math.min(300, Math.max(0, Number(fields.delay.input.value) || 0)),
     followup_hours: Math.min(23, Math.max(1, Number(fields.followHours.input.value) || 6)),
     followup_count: Math.min(5, Math.max(1, Number(fields.followCount.input.value) || 3)),
-    booking_fallback_url: fields.fallback.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
+    booking_fallback_url: fields.fallback.input.value.trim(),
     public_comment_replies: fields.publicInput.checked,
     setter_provider: fields.provider.value === "engine" ? "engine" : "roleflow_meta"
   }).eq("agent_id", state.businessId);
@@ -2356,7 +2356,7 @@ async function saveControls(event, fields) {
           reply_delay_seconds: Math.min(300, Math.max(0, Number(fields.delay.input.value) || 0)),
           followup_hours: Math.min(23, Math.max(1, Number(fields.followHours.input.value) || 6)),
           followup_count: Math.min(5, Math.max(1, Number(fields.followCount.input.value) || 3)),
-          booking_link: fields.fallback.input.value.trim() || "https://calendar.app.google/8i1gomkozavqYU5b8",
+          booking_link: fields.fallback.input.value.trim(),
           trigger_keywords: fields.keywords.input.value.trim(),
           trigger_message: fields.triggerMessage.input.value.trim(),
           budget_rule: fields.budgetRule.input.value.trim(),
