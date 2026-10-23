@@ -51,7 +51,8 @@ const panelFiles = [
 ];
 const brand = /tailor\s*talk|tailortalk\.ai/i;
 panelFiles.forEach((file) => assert.doesNotMatch(read(file), brand, file));
-assert.match(read("acquire/connect-instagram.js"), /Connecting… we'll finish this for you/);
+assert.match(read("acquire/connect-instagram.js"), /ig-connect-start/);
+assert.doesNotMatch(read("acquire/connect-instagram.js"), /Instagram Business username|we'll finish this for you/);
 assert.match(read("acquire/engine-ui.js"), /paintInstagramConnect/);
 assert.match(read("admin/acquisition-admin.js"), /Mark connected/);
 assert.match(read("admin/acquisition-admin.js"), /Mark failed/);

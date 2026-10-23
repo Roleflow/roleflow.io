@@ -227,7 +227,7 @@ export function checklist(snapshot) {
     { id: "link", label: "Add a sales link", done: (snapshot.offerLinks || []).length > 0, tab: "links" },
     { id: "content", label: "Add value content", done: (snapshot.valueAssets || []).length > 0 || (snapshot.voices || []).length > 0, tab: "content" },
     { id: "hours", label: "Choose when the AI answers", done: Boolean(settings.office_mode), tab: "configuration", key: "reply" },
-    { id: "instagram", label: "Connect Instagram", done: Boolean(snapshot.ig && snapshot.ig.username), tab: "configuration", key: "connect" }
+    { id: "instagram", label: "Connect Instagram", done: Boolean(snapshot.ig && snapshot.ig.status === "connected"), tab: "configuration", key: "connect" }
   ];
 }
 
