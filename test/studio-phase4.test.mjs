@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { assertReadOnly, dncHandles, sheetReadCall } from "../supabase/functions/roleflow-setter-sync/dnc.js";
 import {
   ROLEFLOW_ONLY, ROUND_TRIP, executePlan, isPaid, logLine, newExternalIds, pullRows, pushPlan
 } from "../supabase/functions/roleflow-setter-sync/plan.js";
@@ -77,6 +78,29 @@ test("logs do not keep a token", () => {
   assert.equal(line.detail.includes("supersecretokenvalue12345"), false);
   assert.equal(isPaid({ lead_status: "converted" }), true);
   assert.equal(isPaid({ crm_state: "open" }), false);
+});
+
+test("a sheet tool list becomes do-not-contact handles and the fetch does not write", () => {
+  const call = assertReadOnly(sheetReadCall());
+  assert.equal(call.method, "POST");
+  assert.equal(call.body.mode, "read");
+  assert.equal(call.body.tool_type, "sheet");
+  assert.throws(() => assertReadOnly({ method: "POST", url: "https://api.tailortalk.ai/api/v1/update_sheet", body: { mode: "read" } }));
+  const handles = dncHandles({
+    tools: [
+      { type: "sheet", name: "query_sheet", description: "exclusion list", rows: [["instagram"], ["@Ada.Coach"], ["not a handle"], ["bee.coach"]] },
+      { type: "sheet", name: "inventory", rows: [["sku"], ["coach.extra"]] }
+    ]
+  });
+  assert.deepEqual(handles, ["ada.coach", "bee.coach"]);
+  const app = readFileSync(new URL("../acquire/app.js", import.meta.url), "utf8");
+  assert.match(app, /\.eq\("conversation_id", conversationId\)/);
+  assert.doesNotMatch(app, /acq_messages[\s\S]{0,180}\.limit\(400\)/);
+  assert.match(app, /Load earlier|loadEarlier/);
+  assert.match(readFileSync(new URL("../acquire/studio-flow.js", import.meta.url), "utf8"), /Load earlier/);
+  assert.match(readFileSync(new URL("../supabase/migrations/20261023040000_vam_chats_dnc.sql", import.meta.url), "utf8"), /sender in \('ai', 'human', 'lead'\)/);
+  assert.match(readFileSync(new URL("../supabase/migrations/20261023040000_vam_chats_dnc.sql", import.meta.url), "utf8"), /udnnperp/);
+  assert.match(readFileSync(new URL("../supabase/migrations/20261023040000_vam_chats_dnc.sql", import.meta.url), "utf8"), /studio_setter_sync = false/);
 });
 
 test("the panel names round trip and Roleflow only, and the flag stays off", () => {

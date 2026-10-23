@@ -19,6 +19,7 @@ import {
 } from "./home.js";
 import { renderBusiness, renderCrm, renderSalesLinks, renderValueContent } from "./studio.js";
 import { MAX_CHARS, charCount, collectLeads } from "./studio-model.js";
+import { THREAD_PAGE, senderLabel } from "./studio-flow-model.js";
 import { renderChats, renderCtas, renderFollowups, renderReminders } from "./studio-flow.js";
 import {
   ENGINE_HINT,
@@ -280,7 +281,7 @@ async function bootBusiness(id, options) {
 
 async function loadAll(id) {
   const q = state.supabase;
-  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, threadMessages, outbox] = await Promise.all([
+  const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, outbox] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
     q.from("acq_targets").select("id, handle, stage, peak_stage, lead_status, icp_score, source, source_detail, created_at, updated_at, bio, cta_detected, score_summary, score_model, budget, timeline, fit, qual_score, decision_maker, owner_notes, tt_category, followups, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count").eq("agent_id", id).order("updated_at", { ascending: false }).limit(500),
@@ -302,7 +303,6 @@ async function loadAll(id) {
     q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count, automated, sales_link_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
-    q.from("acq_messages").select("conversation_id, role, body, sent_at, created_at").eq("business_id", id).order("created_at", { ascending: true }).limit(400),
     q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(20)
   ]);
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
@@ -333,7 +333,8 @@ async function loadAll(id) {
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
-  state.engineMessages = threadMessages.error ? [] : threadMessages.data || [];
+  state.engineMessages = [];
+  state.threadMore = false;
   state.outbox = outbox.error ? [] : outbox.data || [];
   const [brief, versions, cards, notes, queue, links, schedules, assets] = await Promise.all([
     q.from("acq_business_briefs").select("business_id, fields, updated_at").eq("business_id", id).maybeSingle(),
@@ -385,7 +386,52 @@ async function loadAll(id) {
   state.origins = origins.error ? [] : origins.data || [];
   const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
   state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
+  const selected = state.flow && state.flow.chat && state.flow.chat.startsWith("contact:") ? state.flow.chat.slice("contact:".length) : "";
+  const openConversation = selected ? (state.conversations || []).find((row) => row.contact_id === selected) : null;
+  if (openConversation) await loadThread(openConversation.id, "newest");
   return true;
+}
+
+async function loadThread(conversationId, mode) {
+  if (!state.supabase || !conversationId) {
+    state.engineMessages = [];
+    state.threadMore = false;
+    state.threadConversationId = "";
+    return;
+  }
+  const offset = mode === "earlier" ? (state.engineMessages || []).length : 0;
+  const result = await state.supabase.from("acq_messages")
+    .select("id, conversation_id, role, sender, body, sent_at, created_at, metadata")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + THREAD_PAGE - 1);
+  const page = result.error ? [] : result.data || [];
+  const chronological = page.slice().reverse();
+  state.engineMessages = mode === "earlier" ? chronological.concat(state.engineMessages || []) : chronological;
+  state.threadMore = page.length === THREAD_PAGE;
+  state.threadConversationId = conversationId;
+}
+
+async function openChat(lead) {
+  if (!state.flow) state.flow = { chat: "", chatQuery: "", chatState: "all", reminderFilter: "open", ctaPreview: "" };
+  state.flow.chat = lead ? lead.kind + ":" + lead.id : "";
+  const conversation = lead && lead.kind === "contact"
+    ? (state.conversations || []).find((row) => row.contact_id === lead.id)
+    : null;
+  if (conversation) await loadThread(conversation.id, "newest");
+  else {
+    state.engineMessages = [];
+    state.threadMore = false;
+    state.threadConversationId = "";
+  }
+  paint();
+}
+
+async function loadEarlier() {
+  if (!state.threadConversationId) return;
+  await loadThread(state.threadConversationId, "earlier");
+  paint();
 }
 
 function paint() {
@@ -514,6 +560,9 @@ function pageUi() {
     deleteFlowRow,
     draftReply,
     ignoreHandles,
+    importDnc,
+    openChat,
+    loadEarlier,
     saveStateRule,
     saveTagRule,
     saveWebhook,
@@ -968,6 +1017,17 @@ async function patchSettings(patch, enginePayload) {
   await bootBusiness(state.businessId);
 }
 
+async function importDnc() {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const invoked = await state.supabase.functions.invoke("roleflow-setter-sync", {
+    body: { action: "import_dnc", business_id: state.businessId }
+  });
+  if (invoked.error || !invoked.data || invoked.data.ok === false) return toast("The do-not-contact list did not import.", "bad");
+  if (invoked.data.result === "skipped") return toast(invoked.data.detail || "Nothing was imported.");
+  toast((invoked.data.imported || 0) + " handles imported.");
+  await bootBusiness(state.businessId, { quiet: true });
+}
+
 async function ignoreHandles(handles) {
   if (!readyToSave()) return;
   const existing = new Set((state.dnc || []).map((row) => row.handle));
@@ -1366,7 +1426,7 @@ function leadDetail(target) {
     talk.append(el("h3", { text: "Conversation" }));
     thread.forEach((message) => {
       const item = el("article");
-      item.append(el("strong", { text: message.role === "assistant" ? "Setter" : "Lead" }), el("span", { class: "mute", text: " · " + when(message.sent_at || message.created_at) }));
+      item.append(el("strong", { text: senderLabel(message) }), el("span", { class: "mute", text: " · " + when(message.sent_at || message.created_at) }));
       item.append(el("p", { text: message.body }));
       talk.append(item);
     });

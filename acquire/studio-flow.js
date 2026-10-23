@@ -1,6 +1,6 @@
 import { ROLES } from "./model.js";
 import { CRM_STATES } from "./studio-model.js";
-import { exportThread, matchKeyword, reminderBucket, reminderKpis, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { chatIntro, exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
 
 function box(ui) {
   if (!ui.state.flow) ui.state.flow = { chat: "", chatQuery: "", chatState: "all", reminderFilter: "open", ctaPreview: "" };
@@ -321,7 +321,7 @@ function stories(ui) {
 export function renderChats(ui) {
   const flow = box(ui);
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Chats", "The threads stored for this business. Full history appears when the event stream is connected. Status and a summary are what sync today.", "inbox", "inbox"));
+  wrap.append(header(ui, "Chats", chatIntro(ui.state.messageCount), "inbox", "inbox"));
   const leads = ui.collectLeads ? ui.collectLeads(ui.state.contacts, ui.state.targets) : [];
   const filters = ui.el("form", { class: "filters" });
   const query = ui.field("Search", flow.chatQuery || "");
@@ -348,7 +348,10 @@ export function renderChats(ui) {
   if (!matched.length) list.append(ui.el("p", { text: "No chats match. Nothing here is a sample." }));
   matched.forEach((lead) => {
     const button = ui.el("button", { type: "button", "aria-pressed": flow.chat === lead.kind + ":" + lead.id ? "true" : "false" }, [lead.name || (lead.handle ? "@" + lead.handle : "Unnamed")]);
-    button.addEventListener("click", () => { flow.chat = lead.kind + ":" + lead.id; ui.paint(); });
+    button.addEventListener("click", () => {
+      if (ui.openChat) ui.openChat(lead);
+      else { flow.chat = lead.kind + ":" + lead.id; ui.paint(); }
+    });
     list.append(button);
   });
   const open = matched.find((lead) => lead.kind + ":" + lead.id === flow.chat) || null;
@@ -374,7 +377,8 @@ function threadPane(ui, lead) {
   pane.append(ui.el("h3", { text: lead.name || (lead.handle ? "@" + lead.handle : "Chat") }));
   const messages = threadMessages(ui, lead);
   if (!messages.length) pane.append(ui.el("p", { text: "No chat history yet. Status and a summary sync today." }));
-  messages.forEach((message) => pane.append(ui.el("p", { class: "bubble-line", text: (message.role === "assistant" ? "Agent" : "Lead") + ": " + message.body })));
+  messages.forEach((message) => pane.append(ui.el("p", { class: "bubble-line", text: senderLabel(message) + ": " + message.body })));
+  if (ui.state.threadMore && ui.loadEarlier) pane.append(ui.button("Load earlier", () => ui.loadEarlier()));
   const row = ui.el("div", { class: "filters" });
   row.append(ui.button("Export CSV", () => download("chat.csv", exportThread(messages, "csv"), "text/csv")));
   row.append(ui.button("Export JSON", () => download("chat.json", exportThread(messages, "json"), "application/json")));
@@ -423,6 +427,7 @@ function threadMessages(ui, lead) {
   const conversations = (ui.state.conversations || []).filter((row) => row.contact_id === lead.id).map((row) => row.id);
   return (ui.state.engineMessages || []).filter((row) => conversations.includes(row.conversation_id)).map((row) => ({
     role: row.role === "assistant" ? "assistant" : "user",
+    sender: row.sender || "",
     body: row.body,
     at: row.sent_at || row.created_at
   }));

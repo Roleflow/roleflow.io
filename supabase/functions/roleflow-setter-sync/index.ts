@@ -3,6 +3,7 @@
 // true. This function does not message leads.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { assertReadOnly, dncHandles, dncSheetCount, sheetReadCall } from "./dnc.js";
 import { executePlan, logLine, pullRows, pushPlan, ROLEFLOW_ONLY } from "./plan.js";
 
 const LEADS_URL = "https://api.tailortalk.ai/api/v1/get_leads";
@@ -54,6 +55,7 @@ Deno.serve(async (req) => {
 
   if (action === "push") return json(200, await pushBusiness(service, businessId));
   if (action === "pull") return json(200, await pullBusiness(service, businessId));
+  if (action === "import_dnc") return json(200, await importDnc(service, businessId));
   return json(400, { error: "Unknown action." });
 });
 
@@ -135,6 +137,54 @@ async function pullBusiness(service: ReturnType<typeof createClient>, businessId
   await writeLog(service, businessId, { direction: "pull", action: "leads", result: "ok", detail: applied + " leads applied by external id." });
   await touchLink(service, businessId, null, { pulled: rows.length });
   return { ok: true, result: "ok", pulled: rows.length };
+}
+
+async function importDnc(service: ReturnType<typeof createClient>, businessId: string) {
+  const token = await sheetToken(service, businessId);
+  if (!token) {
+    await writeLog(service, businessId, { direction: "pull", action: "dnc", result: "skipped", detail: "No setter key is stored for this business." });
+    return { ok: true, result: "skipped", detail: "No setter key is stored for this business.", imported: 0 };
+  }
+  const call = assertReadOnly(sheetReadCall());
+  const response = await fetch(call.url, {
+    method: call.method,
+    headers: { Authorization: "Agent " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(call.body || {})
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    await writeLog(service, businessId, { direction: "pull", action: "dnc", result: "error", detail: "The setter did not return a sheet list." });
+    return { ok: false, result: "error", imported: 0 };
+  }
+  if (!dncSheetCount(payload)) {
+    await writeLog(service, businessId, { direction: "pull", action: "dnc", result: "error", detail: "The setter did not return a sheet list." });
+    return { ok: false, result: "error", imported: 0 };
+  }
+  const handles = dncHandles(payload);
+  let imported = 0;
+  for (let i = 0; i < handles.length; i += 100) {
+    const rows = handles.slice(i, i + 100).map((handle) => ({
+      business_id: businessId,
+      handle,
+      reason: "TailorTalk sheet"
+    }));
+    const saved = await service.from("acq_dnc").upsert(rows, { onConflict: "business_id,handle", ignoreDuplicates: true });
+    if (saved.error) {
+      await writeLog(service, businessId, { direction: "pull", action: "dnc", result: "error", detail: "The do-not-contact list did not save." });
+      return { ok: false, result: "error", imported };
+    }
+    imported += rows.length;
+  }
+  await writeLog(service, businessId, { direction: "pull", action: "dnc", result: "ok", detail: imported + " handles read from the sheet." });
+  return { ok: true, result: "ok", imported };
+}
+
+async function sheetToken(service: ReturnType<typeof createClient>, businessId: string) {
+  const secret = await service.rpc("acq_read_tt_secret", { p_business: businessId });
+  if (!secret.error && secret.data && secret.data.ok === true && secret.data.api_key) return String(secret.data.api_key);
+  const linked = await service.rpc("acq_read_linked_agent_token", { p_business: businessId });
+  if (!linked.error && typeof linked.data === "string" && linked.data.length >= 8) return linked.data;
+  return "";
 }
 
 async function loadSnapshot(service: ReturnType<typeof createClient>, businessId: string) {

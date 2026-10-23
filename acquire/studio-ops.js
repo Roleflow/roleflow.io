@@ -110,6 +110,7 @@ function whoBody(ui) {
   if (!(ui.state.dnc || []).length) card.append(ui.el("p", { text: "No ignored handles yet." }));
   (ui.state.dnc || []).forEach((row) => card.append(ui.el("p", { text: "@" + row.handle })));
   card.append(batch);
+  if (ui.state.canEdit && ui.importDnc) card.append(ui.button("Import do-not-contact list", () => ui.importDnc()));
   if (ui.state.canEdit) card.append(ui.button("Save", async (event) => {
     event.preventDefault();
     await ui.patchSettings({ keyword_only: keyword.input.checked, skip_followed: skip.input.checked });

@@ -56,6 +56,7 @@ function syncCard(ui) {
   card.append(ui.el("p", { text: "Last sync: " + (when && ui.when ? ui.when(when) : "No sync yet") }));
   card.append(ui.el("p", { text: failed && failed.detail ? failed.detail : "No errors" }));
   card.append(ui.el("p", { text: link.external_agent_id ? "Setter agent id " + link.external_agent_id : "No setter agent id stored yet." }));
+  if (link.agent_hint && String(link.agent_hint).length > 4) card.append(ui.el("p", { text: "Organization " + link.agent_hint }));
   card.append(ui.el("h3", { text: "Round trip" }));
   SYNC_ROUND.forEach((label) => card.append(ui.el("p", { text: label })));
   card.append(ui.el("h3", { text: "Roleflow only" }));
