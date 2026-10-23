@@ -35,6 +35,11 @@ assert.match(office, /desk-modal-title/);
 assert.match(office, /data-close-drawer/);
 assert.match(office, /Escape/);
 
-assert.doesNotMatch(connect + html + dock + office, /tailor\s*talk|tailortalk\.ai/i);
+assert.doesNotMatch(connect + html + dock + office, /tailor\s*talk|tailortalk\.ai|\btailor\b/i);
+assert.doesNotMatch(css, /outline:2px solid #FF8A3D/);
+assert.doesNotMatch(css, /border-radius:0 0 12px 12px/);
+assert.match(css, /body\.platform \.agent input:not\(\[type="checkbox"\]/);
+assert.match(css, /box-shadow:0 0 0 3px rgba\(123,77,255,\.28\)/);
+assert.match(css, /\.setter-section textarea\{min-height:160px;margin:0 12px 12px;width:calc\(100% - 24px\)\}/);
 
 console.log("panel chrome tests passed");
