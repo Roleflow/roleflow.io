@@ -407,6 +407,9 @@ verify_jwt = false
 [functions.zernio-webhook]
 verify_jwt = false
 
+[functions.inbox-reply]
+verify_jwt = true
+
 [analytics]
 enabled = false
 port = 54327

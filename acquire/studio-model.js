@@ -125,6 +125,7 @@ export function contactLead(row) {
     weFollow: row.we_follow === true,
     theyFollow: row.they_follow === true,
     messages: Number(row.message_count) || 0,
+    unread: Number(row.unread_count) || 0,
     followups: Number(row.followups) || 0,
     lastMessageAt: row.last_message_at || null,
     salesLinkId: row.sales_link_id || null,
@@ -149,6 +150,7 @@ export function targetLead(row) {
     weFollow: row.we_follow === true,
     theyFollow: row.they_follow === true,
     messages: Number(row.message_count) || 0,
+    unread: Number(row.unread_count) || 0,
     followups: Number(row.followups) || 0,
     lastMessageAt: row.updated_at || null,
     report: row.score_summary || ""
@@ -166,6 +168,10 @@ export function filterLeads(leads, query) {
   return (leads || []).filter((lead) => {
     if (text && !(lead.name || "").toLowerCase().includes(text) && !(lead.handle || "").toLowerCase().includes(text)) return false;
     if (q.state && q.state !== "all" && lead.state !== q.state) return false;
+    if (q.ai === "on" && !lead.ai) return false;
+    if (q.ai === "off" && lead.ai) return false;
+    if (q.unread === "yes" && !(Number(lead.unread) > 0)) return false;
+    if (q.unread === "no" && Number(lead.unread) > 0) return false;
     if (q.agent && lead.agent !== q.agent) return false;
     if (q.tag && !(lead.tags || []).includes(q.tag)) return false;
     if (q.automated === "yes" && !lead.automated) return false;

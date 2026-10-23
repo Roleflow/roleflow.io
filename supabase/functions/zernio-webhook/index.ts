@@ -17,6 +17,7 @@ import {
   sendRequest
 } from "../_shared/ig-gateway.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
+import { shouldAutoReply } from "../_shared/inbox-send.js";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST." });
@@ -72,6 +73,9 @@ Deno.serve(async (req) => {
         });
         if (stored.error || !stored.data || stored.data.ok !== true) throw new Error("store failed");
         if (!queued) return;
+        const lead = await admin.from("acq_contacts").select("ai_enabled").eq("business_id", account.businessId).eq("external_id", event.senderId).maybeSingle();
+        if (lead.error) throw new Error("lead lookup failed");
+        if (!shouldAutoReply(true, lead.data)) return;
         const queuedRow = await admin.rpc("acq_gateway_enqueue", {
           p_business: account.businessId,
           p_thread: stored.data.thread_id,

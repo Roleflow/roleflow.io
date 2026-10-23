@@ -358,7 +358,7 @@ async function loadAll(id) {
     q.from("acq_workers").select("id, label, key_prefix, enabled, status, last_heartbeat_at, pause_reason").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_dnc").select("handle, reason, created_at").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_setter_links").select("business_id, provider, agent_hint, external_agent_id, requested_handle, status, last_tested_at, last_test_ok, last_test_error, last_synced_at, last_sync_error, last_sync_counts, webhook_seen_at").eq("business_id", id).maybeSingle(),
-    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count, automated, sales_link_id").eq("business_id", id).limit(1000),
+    q.from("acq_contacts").select("id, name, ig_handle, target_id, lead_status, last_message_at, attributes, detail_source, contact, is_converted, followups, source_detail, category, crm_state, ai_enabled, assigned_agent, tags, follower_count, is_verified, we_follow, they_follow, message_count, unread_count, automated, sales_link_id").eq("business_id", id).limit(1000),
     q.from("acq_messages").select("id", { count: "exact", head: true }).eq("business_id", id),
     q.from("acq_conversations").select("id, contact_id").eq("business_id", id).limit(1000),
     q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
@@ -496,16 +496,25 @@ async function loadThread(conversationId, mode) {
 }
 
 async function openChat(lead) {
-  if (!state.flow) state.flow = { chat: "", chatQuery: "", chatState: "all", reminderFilter: "open", ctaPreview: "" };
+  if (!state.flow) state.flow = { chat: "", chatQuery: "", chatState: "all", chatTag: "", chatAi: "all", chatUnread: "all", reminderFilter: "open", ctaPreview: "" };
   state.flow.chat = lead ? lead.kind + ":" + lead.id : "";
   const conversation = lead && lead.kind === "contact"
     ? (state.conversations || []).find((row) => row.contact_id === lead.id)
     : null;
+  if (!state.supabase) {
+    paint();
+    return;
+  }
   if (conversation) await loadThread(conversation.id, "newest");
   else {
     state.engineMessages = [];
     state.threadMore = false;
     state.threadConversationId = "";
+  }
+  if (lead && lead.kind === "contact" && Number(lead.unread) > 0) {
+    await state.supabase.from("acq_contacts").update({ unread_count: 0 }).eq("id", lead.id).eq("business_id", state.businessId);
+    const row = (state.contacts || []).find((item) => item.id === lead.id);
+    if (row) row.unread_count = 0;
   }
   paint();
 }
@@ -646,6 +655,7 @@ function pageUi() {
     saveStoryCta,
     deleteFlowRow,
     draftReply,
+    sendInboxReply,
     ignoreHandles,
     importDnc,
     openChat,
@@ -1044,6 +1054,26 @@ async function deleteFlowRow(table, id) {
   const saved = await state.supabase.from(table).delete().eq("id", id).eq("business_id", state.businessId);
   if (saved.error) toast(saved.error.message, "bad");
   else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function sendInboxReply(lead, text) {
+  const body = String(text || "").trim();
+  if (!body) return toast("Write a reply first.", "bad");
+  if (!lead || lead.kind !== "contact") return toast("This chat has no Instagram thread yet.", "bad");
+  if (!readyToSave()) {
+    state.chatDraft = body;
+    toast("Preview only. Nothing was sent.");
+    paint();
+    return;
+  }
+  const invoked = await state.supabase.functions.invoke("inbox-reply", {
+    body: { business_id: state.businessId, contact_id: lead.id, text: body }
+  });
+  const payload = invoked.data || {};
+  if (invoked.error || payload.ok !== true) return toast(payload.error || "The reply was not sent.", "bad");
+  state.chatDraft = "";
+  toast("Reply sent.");
+  await bootBusiness(state.businessId, { quiet: true });
 }
 
 async function draftReply(lead, messages) {
@@ -2697,6 +2727,28 @@ function readPreview() {
     members: [],
     isAdmin: false,
     openThread: "th1",
-    promptRole: "qualification"
+    promptRole: "qualification",
+    ...(params.get("inbox") === "1" ? inboxPreview() : {})
+  };
+}
+
+function inboxPreview() {
+  return {
+    messageCount: 4,
+    contacts: [
+      { id: "c-unread", name: "Ada North", ig_handle: "adanorth", crm_state: "qualifying", ai_enabled: true, tags: ["hot"], unread_count: 2, message_count: 4, last_message_at: "2026-10-22T18:00:00Z" },
+      { id: "c-paused", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "open", ai_enabled: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z" }
+    ],
+    conversations: [
+      { id: "cv-unread", contact_id: "c-unread", external_id: "thread-ada" },
+      { id: "cv-paused", contact_id: "c-paused", external_id: "thread-sam" }
+    ],
+    engineMessages: [
+      { id: "m-ada", conversation_id: "cv-unread", role: "user", sender: "adanorth", body: "What does the program include?", sent_at: "2026-10-22T18:00:00Z", created_at: "2026-10-22T18:00:00Z" }
+    ],
+    reminders: [
+      { id: "rem-1", contact_id: "c-unread", title: "Send the calendar link", due_at: "2026-10-23T15:00:00Z", status: "open", kind: "task", source: "manual" }
+    ],
+    flow: { chat: "contact:c-unread", chatQuery: "", chatState: "all", chatTag: "", chatAi: "all", chatUnread: "all", reminderFilter: "open", ctaPreview: "" }
   };
 }
