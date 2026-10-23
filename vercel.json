@@ -1,6 +1,11 @@
 {
   "redirects": [
     {
+      "source": "/favicon.ico",
+      "destination": "/assets/logo.jpg",
+      "statusCode": 307
+    },
+    {
       "source": "/acquire",
       "destination": "/account/acquisition/",
       "statusCode": 301
