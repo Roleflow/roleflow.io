@@ -2,6 +2,7 @@
 // Conversions use a workspace API key. The signing secret is never returned.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { completeChat, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 import { flushSyncNotice, loadResendConfig, sendSyncNotice, SYNC_INBOX } from "../_shared/sync-notice.js";
 
 const cors = {
@@ -141,29 +142,28 @@ async function promptTest(req: Request, body: { business_id?: string; message?: 
   const message = String(body.message || "").trim().slice(0, 800);
   if (!message) return json(400, { error: "Write a test message." });
   const fallback = "Test only. Nothing was sent to a lead.";
-  const key = Deno.env.get("XAI_API_KEY") || "";
-  if (!key) return json(200, { ok: true, reply: fallback, sent: false });
+  const admin = adminClient();
+  const env = Deno.env.toObject();
+  const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
+  if (!loaded.runtime) return json(200, { ok: true, reply: fallback, sent: false });
   const sections = body.sections && typeof body.sections === "object" ? body.sections : {};
   const system = "This is a private test of a setter. Nothing you write is sent to a lead or to Instagram. Reply in one short message, in the setter's voice.\n\n" +
     Object.entries(sections).map(([name, text]) => name + "\n" + String(text || "").slice(0, 3000)).join("\n\n");
   try {
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: Deno.env.get("XAI_MODEL") || "grok-4.7",
-        temperature: 0.4,
-        max_completion_tokens: 300,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: message }
-        ]
-      })
+    const runtime = loaded.runtime;
+    if (runtime.provider === "xai") runtime.endpoint = "https://api.x.ai/v1/chat/completions";
+    const result = await completeChat({
+      runtime,
+      fallback: loaded.fallback,
+      system,
+      messages: [{ role: "user", content: message }],
+      temperature: 0.4,
+      maxTokens: 300,
+      onError: (info) => logLlmError(admin, { businessId, purpose: "setter", ...info })
     });
-    const payload = await response.json().catch(() => ({}));
-    const reply = payload?.choices?.[0]?.message?.content;
-    if (!response.ok || typeof reply !== "string" || !reply.trim()) return json(200, { ok: true, reply: fallback, sent: false });
-    return json(200, { ok: true, reply: reply.trim().slice(0, 800), sent: false });
+    const reply = String(result.text || "").trim();
+    if (!reply) return json(200, { ok: true, reply: fallback, sent: false });
+    return json(200, { ok: true, reply: reply.slice(0, 800), sent: false });
   } catch (_error) {
     return json(200, { ok: true, reply: fallback, sent: false });
   }

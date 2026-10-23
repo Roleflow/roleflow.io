@@ -98,6 +98,7 @@ export async function planTurn(input) {
     bookingAction: parsed.bookingAction,
     slotStart: parsed.slotStart,
     email: parsed.email,
+    clipId: parsed.clipId || null,
     confirmation: input.booking ? String(input.booking.confirmation || "") : "",
     reminder: input.booking ? String(input.booking.reminder || "") : "",
     link: input.booking ? String(input.booking.link || "") : ""

@@ -2,7 +2,10 @@
 // replies through the official inbox from the outbox. Ack stays under the
 // provider's retry window; the setter runs after the response.
 
-import { completeJson, resolveProvider, systemPrompt } from "../roleflow-acquisition/ig/llm.js";
+import { completeJson, systemPrompt } from "../roleflow-acquisition/ig/llm.js";
+import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { chooseClip, clipFromSlot, clipInstructions } from "../_shared/clip-plan.js";
+import { sentMessage, withAttachment } from "../_shared/clip-send.js";
 import {
   API_BASE,
   enqueueBody,
@@ -177,10 +180,14 @@ async function planJob(admin, job) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "Outside office hours." }).eq("id", job.id).eq("status", "pending");
     return;
   }
-  env.XAI_MODEL = chooseModel({ preferred: prefs.setter_model, text: job.event.text, state: thread.state });
-  if (!resolveProvider(env)) {
+  const loaded = await loadBusinessRuntime(admin, job.account.businessId, "setter", env);
+  const runtime = loaded.runtime;
+  if (!runtime) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "The setter is not configured." }).eq("id", job.id).eq("status", "pending");
     return;
+  }
+  if (runtime.provider === "xai" && (runtime.model === "grok-4.3" || runtime.model === "grok-4.7")) {
+    runtime.model = chooseModel({ preferred: runtime.model, text: job.event.text, state: thread.state });
   }
   let plan;
   try {
@@ -199,6 +206,11 @@ async function planJob(admin, job) {
       tools: tools.data || [],
       settings: { booking_fallback_url: prefs.booking_fallback_url || "" }
     });
+    const clipRows = await admin.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, mime_type, delivery_path, delivery_mime, active, speech_provider").eq("business_id", job.account.businessId).eq("active", true);
+    const clips = clipRows.error ? [] : (clipRows.data || []);
+    const sentRows = await admin.from("acq_clip_sends").select("clip_id").eq("business_id", job.account.businessId).eq("conversation_key", String(job.threadId || ""));
+    const alreadySent = sentRows.error ? [] : (sentRows.data || []).map((item) => item.clip_id);
+    const promptBody = systemPrompt(sections, booking) + knowledge + clipInstructions(clips);
     plan = await planGatewayReply({
       thread,
       eventKind: job.event.kind,
@@ -207,9 +219,19 @@ async function planJob(admin, job) {
       booking,
       llm: () => completeJson({
         env,
-        system: systemPrompt(sections, booking) + knowledge,
+        runtime,
+        fallback: loaded.fallback,
+        onError: (info) => logLlmError(admin, { businessId: job.account.businessId, purpose: "setter", ...info }),
+        tools: [bookingTool()],
+        system: promptBody,
         messages: [{ role: "user", content: JSON.stringify({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }) }]
       })
+    });
+    plan.clipChoice = chooseClip({
+      requestedId: plan.clipId || clipFromSlot(plan.voiceNoteSlot, clips),
+      clips,
+      alreadySent,
+      promptText: promptBody
     });
   } catch (error) {
     const unconfigured = Boolean(error && typeof error === "object" && "code" in error && error.code === "llm_unconfigured");
@@ -242,12 +264,31 @@ async function planJob(admin, job) {
     }
   }
   const text = replyText(plan);
-  if (!text) {
+  let chosen = plan.clipChoice || null;
+  if (chosen) {
+    const recorded = await admin.from("acq_clip_sends").insert({
+      business_id: job.account.businessId,
+      clip_id: chosen.id,
+      conversation_key: String(job.threadId || "")
+    }).select("id");
+    if (recorded.error || !recorded.data || !recorded.data.length) chosen = null;
+  }
+  if (!text && !chosen) {
     await admin.from("ig_outbox").update({ status: "done", last_error: null, payload: enqueueBody(job.event, "", current.data.payload.conversationRowId) }).eq("id", job.id).eq("status", "pending");
     return;
   }
   const wait = delaySeconds(prefs.reply_delay_seconds, prefs.reply_delay_max_seconds, Math.random);
   const payload = enqueueBody({ ...job.event, text }, text, current.data.payload.conversationRowId);
+  if (chosen) {
+    payload.clip = {
+      id: chosen.id,
+      path: chosen.delivery_path || chosen.storage_path,
+      mime: chosen.delivery_mime || chosen.mime_type,
+      kind: chosen.kind || "audio",
+      label: chosen.label || "Voice note",
+      filename: clipFileName(chosen)
+    };
+  }
   if (wait > 25) {
     await admin.from("ig_outbox").update({ payload, run_at: new Date(Date.now() + wait * 1000).toISOString() }).eq("id", job.id).eq("status", "pending");
     return;
@@ -268,7 +309,8 @@ async function sendPending(admin, apiKey, businessId) {
   if (!apiKey) return;
   const pending = await admin.from("ig_outbox").select("id, business_id, thread_id, kind, payload, attempts, status").eq("business_id", businessId).eq("transport", "official").eq("status", "pending").lte("run_at", new Date().toISOString()).order("run_at", { ascending: true }).limit(5);
   for (const row of pending.data || []) {
-    if (!row.payload || !row.payload.text || row.payload.needsPlan) continue;
+    if (!row.payload || row.payload.needsPlan) continue;
+    if (!String(row.payload.text || "").trim() && !(row.payload.clip && row.payload.clip.path)) continue;
     await sendOne(admin, apiKey, row);
   }
 }
@@ -276,7 +318,14 @@ async function sendPending(admin, apiKey, businessId) {
 async function sendOne(admin, apiKey, row) {
   const locked = await admin.from("ig_outbox").update({ status: "running", attempts: (row.attempts || 0) + 1 }).eq("id", row.id).eq("status", "pending").select("id");
   if (!locked.data || !locked.data.length) return;
-  const request = sendRequest(row);
+  let prepared = row;
+  try {
+    prepared = await withAttachment(row, apiKey, fetch, (clip) => downloadOwnerClip(admin, clip));
+  } catch (_error) {
+    await admin.from("ig_outbox").update({ status: "failed", last_error: "The voice note was not sent." }).eq("id", row.id);
+    return;
+  }
+  const request = sendRequest(prepared);
   let result;
   try {
     const response = await fetch(API_BASE + request.path, {
@@ -292,7 +341,7 @@ async function sendOne(admin, apiKey, row) {
   const written = outboxWriteStatus(result);
   await admin.from("ig_outbox").update({ status: written.status, last_error: written.last_error }).eq("id", row.id);
   if (!result.ok) return;
-  const text = String(row.payload.text || "").slice(0, 4000);
+  const recorded = sentMessage(prepared);
   const conversationId = row.payload.conversationRowId;
   if (conversationId) {
     await admin.from("acq_messages").insert({
@@ -300,7 +349,8 @@ async function sendOne(admin, apiKey, row) {
       conversation_id: conversationId,
       external_id: "out:" + row.id,
       role: "assistant",
-      body: text,
+      body: recorded.body,
+      metadata: recorded.metadata,
       sent_at: new Date().toISOString()
     });
   }
@@ -309,8 +359,25 @@ async function sendOne(admin, apiKey, row) {
       business_id: row.business_id,
       thread_id: row.thread_id,
       direction: "out",
-      body: text,
-      kind: "text"
+      body: recorded.body,
+      kind: recorded.kind === "text" ? "text" : recorded.kind
     });
   }
+}
+
+async function downloadOwnerClip(admin, clip) {
+  const file = await admin.storage.from("owner-clips").download(clip.path);
+  if (file.error || !file.data) throw new Error("The voice note could not be read.");
+  const bytes = new Uint8Array(await file.data.arrayBuffer());
+  return { bytes, mime: clip.mime || "audio/wav", filename: clip.filename || "clip.wav" };
+}
+
+function clipFileName(clip) {
+  const mime = String(clip.delivery_mime || clip.mime_type || "");
+  const kind = clip.kind || "audio";
+  if (kind === "image") return mime.includes("png") ? "clip.png" : "clip.jpg";
+  if (kind === "video") return "clip.mp4";
+  if (mime.includes("wav")) return "clip.wav";
+  if (mime.includes("aac")) return "clip.aac";
+  return "clip.m4a";
 }

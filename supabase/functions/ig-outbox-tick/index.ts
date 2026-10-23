@@ -4,6 +4,7 @@
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { outboxWriteStatus } from "../_shared/ig-gateway.js";
 import { postOfficial } from "../_shared/official-outbox.js";
+import { sentMessage } from "../_shared/clip-send.js";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "POST required." });
@@ -18,7 +19,9 @@ Deno.serve(async (req) => {
   const rows = claimed.data || [];
   let sent = 0;
   for (const row of rows) {
-    const result = await postOfficial(row, config.apiKey, fetch);
+    const result = await postOfficial(row, config.apiKey, fetch, {
+      download: (clip) => downloadOwnerClip(admin, clip)
+    });
     const written = outboxWriteStatus(result);
     await admin.from("ig_outbox").update({ status: written.status, last_error: written.last_error }).eq("id", row.id).eq("status", "running");
     if (!result.ok) continue;
@@ -29,7 +32,7 @@ Deno.serve(async (req) => {
 });
 
 async function recordSent(admin, row) {
-  const text = String(row.payload && row.payload.text || "").slice(0, 4000);
+  const recorded = sentMessage(row);
   const conversationId = row.payload && row.payload.conversationRowId;
   if (conversationId) {
     await admin.from("acq_messages").insert({
@@ -37,7 +40,8 @@ async function recordSent(admin, row) {
       conversation_id: conversationId,
       external_id: "out:" + row.id,
       role: "assistant",
-      body: text,
+      body: recorded.body,
+      metadata: recorded.metadata,
       sent_at: new Date().toISOString()
     });
   }
@@ -46,8 +50,15 @@ async function recordSent(admin, row) {
       business_id: row.business_id,
       thread_id: row.thread_id,
       direction: "out",
-      body: text,
-      kind: "text"
+      body: recorded.body,
+      kind: recorded.kind === "text" ? "text" : recorded.kind
     });
   }
+}
+
+async function downloadOwnerClip(admin, clip) {
+  const file = await admin.storage.from("owner-clips").download(clip.path);
+  if (file.error || !file.data) throw new Error("The voice note could not be read.");
+  const bytes = new Uint8Array(await file.data.arrayBuffer());
+  return { bytes, mime: clip.mime || "audio/wav", filename: clip.filename || "clip.wav" };
 }

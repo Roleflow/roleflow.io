@@ -598,8 +598,54 @@ export function renderValueContent(ui) {
     wrap.append(card);
   });
   if (ui.state.canEdit) wrap.append(assetForm(ui));
+  wrap.append(ownerClips(ui));
   if (ui.voiceLibrary) wrap.append(ui.voiceLibrary());
   return wrap;
+}
+
+function ownerClips(ui) {
+  const section = ui.el("section", { class: "agent" });
+  section.append(ui.el("h3", { text: "Recordings the setter can send" }));
+  section.append(ui.el("p", { text: "Add a label and when to use it. The setter sends a recording only when that description fits the chat, and only once in that chat." }));
+  const clips = ui.state.ownerClips || [];
+  if (!clips.length) section.append(ui.el("p", { text: "No recordings yet." }));
+  clips.forEach((clip) => {
+    const card = ui.el("article", { class: "voice-card" });
+    card.append(ui.el("h3", { text: clip.label || "Recording" }));
+    if (clip.when_to_use) card.append(ui.el("p", { text: clip.when_to_use }));
+    if (clip.kind === "audio" && ui.signClip) {
+      const audio = ui.el("audio", { controls: true, preload: "none" });
+      ui.signClip(clip.storage_path).then((url) => { if (url) audio.src = url; });
+      card.append(audio);
+    }
+    if (ui.state.canEdit && ui.deleteOwnerClip) card.append(ui.button("Remove", () => ui.deleteOwnerClip(clip)));
+    section.append(card);
+  });
+  if (ui.state.canEdit && ui.saveOwnerClip) section.append(clipForm(ui));
+  return section;
+}
+
+function clipForm(ui) {
+  const form = ui.el("form", { class: "agent" });
+  form.append(ui.el("h3", { text: "Add a recording" }));
+  const label = ui.field("Label", "");
+  const when = ui.el("textarea", { rows: "3", "aria-label": "When to use", placeholder: "When the lead asks about the offer" });
+  const file = ui.el("input", {
+    type: "file",
+    accept: "audio/*,video/mp4,video/quicktime,video/webm,image/jpeg,image/png",
+    "aria-label": "Recording file"
+  });
+  const source = ui.el("select", { "aria-label": "Voice source", disabled: true });
+  source.append(ui.el("option", { value: "recording", text: "Recording you upload" }));
+  source.append(ui.el("option", { value: "clone", text: "Cloned voice, later", disabled: true }));
+  form.append(label.label, ui.el("label", { text: "When to use" }, [when]), file, ui.el("label", { text: "Voice source" }, [source]));
+  form.append(ui.button("Save recording", async (event) => {
+    event.preventDefault();
+    if (!label.input.value.trim() || !when.value.trim()) return ui.toast("Add a label and when to use it.", "bad");
+    await ui.saveOwnerClip(file.files && file.files[0], { label: label.input.value, when: when.value });
+  }));
+  form.addEventListener("submit", (event) => event.preventDefault());
+  return form;
 }
 
 function assetForm(ui) {

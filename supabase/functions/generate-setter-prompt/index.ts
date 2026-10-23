@@ -22,6 +22,7 @@
 // of that client's business, or an admin regenerating with { "user_id": "<client uuid>" }.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { completeChat, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 
 const DIEGO_EMAIL = "diego@roleflow.io";
 const HIGH_PRIORITY_RULES = [
@@ -115,8 +116,13 @@ Deno.serve(async (req) => {
     email_error: null
   });
 
-  const xaiKey = Deno.env.get("XAI_API_KEY") || "";
-  if (!xaiKey) {
+  const env = Deno.env.toObject();
+  const workspace = await admin.from("acq_workspaces").select("id").eq("owner_id", target).order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const businessId = workspace.data && workspace.data.id ? String(workspace.data.id) : "";
+  const loaded = businessId ? await loadBusinessRuntime(admin, businessId, "prompt", env) : { runtime: null, fallback: null };
+  const runtime = loaded.runtime;
+  if (runtime && runtime.provider === "xai") runtime.endpoint = "https://api.x.ai/v1/chat/completions";
+  if (!runtime) {
     await writeRow(admin, target, {
       generation_status: "failed",
       generation_error: "XAI_API_KEY is not set.",
@@ -142,8 +148,8 @@ Deno.serve(async (req) => {
       example = EXAMPLE_PROMPT;
     }
     if (!example.includes("IDENTITY & MISSION")) throw new Error("The example prompt is missing.");
-    const model = Deno.env.get("XAI_MODEL") || "grok-4.7";
-    const drafted = await draftSections(xaiKey, model, example, {
+    const model = runtime.model || Deno.env.get("XAI_MODEL") || "grok-4.7";
+    const drafted = await draftSections(runtime, model, example, {
       name,
       email,
       handle,
@@ -362,45 +368,30 @@ function sectionSchema() {
   };
 }
 
-async function draftSections(apiKey: string, model: string, example: string, input: {
+async function draftSections(runtime: { provider: string; model: string; apiKey: string; baseUrl?: string; source?: string; endpoint?: string }, model: string, example: string, input: {
   name: string;
   email: string;
   handle: string;
   submittedAt: string;
   answers: Record<string, unknown>;
 }) {
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json"
+  const result = await completeChat({
+    runtime: { ...runtime, model },
+    temperature: 0.4,
+    maxTokens: 12000,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "setter_sections",
+        strict: true,
+        schema: sectionSchema()
+      }
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.4,
-      max_completion_tokens: 12000,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "setter_sections",
-          strict: true,
-          schema: sectionSchema()
-        }
-      },
-      messages: [
-        { role: "system", content: systemPrompt(example) },
-        { role: "user", content: briefOf(input) }
-      ]
-    })
+    system: systemPrompt(example),
+    messages: [{ role: "user", content: briefOf(input) }],
+    onError: (info) => logLlmError(null, info)
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload?.error?.message || "xAI returned " + response.status + ".";
-    throw new Error(message);
-  }
-  const choice = payload?.choices?.[0];
-  if (choice?.finish_reason === "length") throw new Error("The model response was cut off.");
-  const text = choice?.message?.content;
+  const text = result.text;
   if (!text || typeof text !== "string") throw new Error("The model returned an empty prompt.");
   const trimmed = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
   let parsed: unknown;

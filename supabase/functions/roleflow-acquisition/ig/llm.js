@@ -49,58 +49,53 @@ export function systemPrompt(sections, booking) {
 
 Non-negotiable output contract:
 - If the lead sincerely asks whether they are talking to a bot or to AI, answer honestly with this sentence and then return to the current question: "${DISCLOSURE}" Never claim to be Diego himself.
-- Reply as JSON only. Keys: bubbles (array of 1-2 short strings), voice_note_slot (or null), attributes (object of the fields this business asked you to collect), score (Hot, Warm, or Cold), next_state, escalate (boolean), escalate_reason, no_response (boolean), booking_action (offer, book, reschedule, cancel, or null), slot_start (ISO or null), email.
+- Reply as JSON only. Keys: bubbles (array of 1-2 short strings), voice_note_slot (or null), clip_id (an owner clip id you were given, or null), attributes (object of the fields this business asked you to collect), score (Hot, Warm, or Cold), next_state, escalate (boolean), escalate_reason, no_response (boolean), booking_action (offer, book, reschedule, cancel, or null), slot_start (ISO or null), email. Use the book_call tool for the same booking fields when the provider calls tools.
 - One question in the whole reply. Max 30 words per bubble. No emojis. No exclamation marks.
 - Do not invent numbers or results.
 - ${slotLine} Never say a voice note was sent.${savedBooking}`;
 }
 
-export async function completeJson({ env, system, messages, fetchImpl }) {
-  const provider = resolveProvider(env || {});
-  if (!provider) {
+export async function completeJson({ env, system, messages, fetchImpl, tools, runtime, fallback, onError, responseFormat, maxTokens, temperature }) {
+  const { completeChat, runtimeFromEnv } = await import("../../_shared/llm-provider.js");
+  const chosen = runtime || runtimeFromEnv(env || {});
+  if (chosen && chosen.provider === "xai" && !chosen.endpoint) chosen.endpoint = XAI_CHAT_URL;
+  if (!chosen) {
     const error = new Error(providerHelp());
     error.code = "llm_unconfigured";
     throw error;
   }
-  const fetchFn = fetchImpl || fetch;
-  if (provider === "xai" || provider === "openai") {
-    const xai = provider === "xai";
-    const response = await fetchFn(xai ? XAI_CHAT_URL : "https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + (xai ? env.XAI_API_KEY : env.OPENAI_API_KEY),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: xai ? (env.XAI_MODEL || DEFAULT_XAI_MODEL) : (env.OPENAI_MODEL || "gpt-4.1-mini"),
-        temperature: 0.4,
-        response_format: { type: "json_object" },
-        messages: [{ role: "system", content: system }, ...(messages || [])]
-      })
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload?.error?.message || (xai ? "xAI request failed." : "OpenAI request failed."));
-    return payload?.choices?.[0]?.message?.content || "";
-  }
-  const key = env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
-  const model = env.GEMINI_MODEL || "gemini-2.0-flash";
-  const contents = (messages || []).map((message) => ({
-    role: message.role === "assistant" ? "model" : "user",
-    parts: [{ text: message.content }]
-  }));
-  const response = await fetchFn(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-        generationConfig: { temperature: 0.4, responseMimeType: "application/json" }
-      })
+  const result = await completeChat({
+    runtime: chosen,
+    fallback: fallback || null,
+    system,
+    messages,
+    fetchImpl,
+    tools,
+    json: !responseFormat && !(tools && tools.length),
+    responseFormat,
+    maxTokens,
+    temperature,
+    onError
+  });
+  return foldBookingCall(result.text || "", result.toolCalls || []);
+}
+
+function foldBookingCall(text, toolCalls) {
+  const call = (toolCalls || []).find((item) => item && item.name === "book_call");
+  if (!call) return text;
+  let body = {};
+  const raw = String(text || "").trim();
+  if (raw) {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+      try { body = JSON.parse(raw.slice(start, end + 1)); } catch (_error) { body = {}; }
     }
-  );
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload?.error?.message || "Gemini request failed.");
-  return payload?.candidates?.[0]?.content?.parts?.map((part) => part.text).join("") || "";
+  }
+  if (!body || typeof body !== "object") body = {};
+  const args = call.arguments && typeof call.arguments === "object" ? call.arguments : {};
+  if (args.action) body.booking_action = args.action;
+  if (args.slot_start) body.slot_start = args.slot_start;
+  if (args.email) body.email = args.email;
+  return JSON.stringify(body);
 }

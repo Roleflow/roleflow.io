@@ -30,6 +30,22 @@ export const REPLY_BUCKETS = [
 const OUTBOUND = new Set(["competitor_followers", "keyword", "hashtag", "manual"]);
 const INBOUND = new Set(["instagram", "comment"]);
 
+const LLM_IDS = new Set(["xai", "openai", "anthropic", "gemini", "openrouter", "custom"]);
+
+export function llmChoiceError({ provider, model, own, baseUrl, apiKey, hasHint }) {
+  if (!LLM_IDS.has(provider)) return "Choose a provider.";
+  const named = String(model || "").trim();
+  if (!named || named.length > 120) return "Enter a model id.";
+  if (provider === "custom") {
+    const base = String(baseUrl || "").trim();
+    if (!base.startsWith("https://") || base.includes("@")) return "The custom address has to be https.";
+  }
+  const typed = String(apiKey || "").trim();
+  if (typed && (typed.length < 8 || typed.length > 400)) return "That key is not a usable length.";
+  if (own && !hasHint && typed.length < 8) return "Add a key, or use Roleflow's key.";
+  return "";
+}
+
 export function officeError(mode) {
   if (!OFFICE_MODES.includes(mode)) return "Choose 24 hours, the same hours every day, or hours per day.";
   return "";

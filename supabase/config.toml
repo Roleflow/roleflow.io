@@ -414,6 +414,10 @@ verify_jwt = false
 [functions.inbox-reply]
 verify_jwt = true
 
+# llm-check runs a tiny completion with the caller's JWT. Keys are not returned.
+[functions.llm-check]
+verify_jwt = true
+
 [analytics]
 enabled = false
 port = 54327

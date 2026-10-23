@@ -11,6 +11,7 @@
 // reports voice_send after it actually sends the file.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { completeChat, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -226,9 +227,9 @@ async function ingestScored(service: Service, agentId: string, targets: unknown[
   const settings = await service.from("acq_settings").select("niche, follower_min, follower_max, cta_keywords, offer_summary").eq("agent_id", agentId).maybeSingle();
   if (settings.error) return json(400, { error: settings.error.message });
   const icp = (settings.data || {}) as Icp;
-  const key = Deno.env.get("XAI_API_KEY") || "";
-  if (!key) return json(503, { error: "XAI_API_KEY is not set. Profiles were not stored." });
-  const scored = await mapPool(targets.slice(0, 50), 4, (item) => scoreTarget(key, icp, item));
+  const speak = (system: string, user: string) => grok(service, agentId, system, user);
+  if (!await modelReady(service, agentId)) return json(503, { error: "XAI_API_KEY is not set. Profiles were not stored." });
+  const scored = await mapPool(targets.slice(0, 50), 4, (item) => scoreTarget(speak, icp, item));
   const result = await service.rpc("acq_bot_ingest", { p_agent: agentId, p_targets: scored.map((entry) => entry.row) });
   if (result.error) return json(400, { error: result.error.message });
   const payload = (result.data || {}) as Record<string, unknown>;
@@ -241,7 +242,7 @@ async function ingestScored(service: Service, agentId: string, targets: unknown[
     const source = scored.find((entry) => entry.row.handle === row.handle);
     if (!source) continue;
     try {
-      const opener = await writeOpener(key, icp, source.row);
+      const opener = await writeOpener(speak, icp, source.row);
       const stored = await service.rpc("acq_store_opener", { p_target: row.id, p_opener: opener });
       const storedPayload = (stored.data || {}) as { stored?: boolean };
       row.opener = opener;
@@ -264,15 +265,16 @@ async function runChiefDaily(service: Service) {
 }
 
 async function runChiefFor(service: Service, agentId: string) {
-  const key = Deno.env.get("XAI_API_KEY") || "";
+  const ready = await modelReady(service, agentId);
   const settings = await service.from("acq_settings").select("niche, follower_min, follower_max, cta_keywords, offer_summary").eq("agent_id", agentId).maybeSingle();
   const icp = (settings.data || {}) as Icp;
   const needed = await service.rpc("acq_openers_needed", { p_agent: agentId });
   const drafted = [];
-  if (key) {
+  if (ready) {
+    const speak = (system: string, user: string) => grok(service, agentId, system, user);
     for (const row of asArray(needed.data)) {
       try {
-        const opener = await writeOpener(key, icp, row);
+        const opener = await writeOpener(speak, icp, row);
         const stored = await service.rpc("acq_store_opener", { p_target: row.id, p_opener: opener });
         const storedPayload = (stored.data || {}) as { stored?: boolean };
         drafted.push({ id: row.id, stored: storedPayload.stored === true });
@@ -294,7 +296,7 @@ type Icp = {
   offer_summary?: string;
 };
 
-async function scoreTarget(key: string, icp: Icp, item: unknown) {
+async function scoreTarget(speak: (system: string, user: string) => Promise<string>, icp: Icp, item: unknown) {
   const row = item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : { handle: "" };
   const followers = Number(row.followers);
   const min = Number(icp.follower_min) || 5000;
@@ -312,7 +314,7 @@ async function scoreTarget(key: string, icp: Icp, item: unknown) {
     row.score_model = XAI_MODEL;
     return { row };
   }
-  const content = await grok(key, `You qualify an Instagram account for this business. Reply with JSON only: {"score": number, "qualified": boolean, "summary": string}.
+  const content = await speak(`You qualify an Instagram account for this business. Reply with JSON only: {"score": number, "qualified": boolean, "summary": string}.
 Score 0-100. Set qualified true only when the account fits the niche and the bio asks the reader to take a next step.
 Niche: ${icp.niche || "not set"}
 Offer: ${icp.offer_summary || "not set"}
@@ -332,8 +334,8 @@ The follower count is already inside the range. Do not invent facts.`, JSON.stri
   return { row };
 }
 
-async function writeOpener(key: string, icp: Icp, row: Record<string, unknown>) {
-  const content = await grok(key, `Write one Instagram opener DM. Reply with JSON only: {"opener": string}.
+async function writeOpener(speak: (system: string, user: string) => Promise<string>, icp: Icp, row: Record<string, unknown>) {
+  const content = await speak(`Write one Instagram opener DM. Reply with JSON only: {"opener": string}.
 Maximum 40 words. No emoji. No exclamation marks. Use one specific detail from the bio or recent posts. Do not invent metrics, mutual friends, or posts that are not in the profile. Sound like a peer. End with one question.
 Niche: ${icp.niche || ""}
 Offer: ${icp.offer_summary || ""}`, JSON.stringify({
@@ -346,28 +348,37 @@ Offer: ${icp.offer_summary || ""}`, JSON.stringify({
   return opener.slice(0, 1000);
 }
 
-async function grok(key: string, system: string, user: string) {
-  const response = await fetch(XAI_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + key,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: XAI_MODEL,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ]
-    })
+async function modelReady(service: Service, agentId: string) {
+  const loaded = await loadBusinessRuntime(service, agentId, "setter", modelEnv());
+  return Boolean(loaded.runtime && loaded.runtime.apiKey);
+}
+
+function modelEnv() {
+  return {
+    XAI_API_KEY: Deno.env.get("XAI_API_KEY") || "",
+    XAI_MODEL,
+    OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || "",
+    GEMINI_API_KEY: Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "",
+    ANTHROPIC_API_KEY: Deno.env.get("ANTHROPIC_API_KEY") || "",
+    OPENROUTER_API_KEY: Deno.env.get("OPENROUTER_API_KEY") || ""
+  };
+}
+
+async function grok(service: Service, agentId: string, system: string, user: string) {
+  const loaded = await loadBusinessRuntime(service, agentId, "setter", modelEnv());
+  if (!loaded.runtime) throw new Error("XAI_API_KEY is not set. Profiles were not stored.");
+  const runtime = loaded.runtime;
+  if (runtime.provider === "xai") runtime.endpoint = XAI_CHAT_URL;
+  const result = await completeChat({
+    runtime: { ...runtime, model: runtime.model || XAI_MODEL },
+    fallback: loaded.fallback,
+    system,
+    messages: [{ role: "user", content: user }],
+    json: true,
+    temperature: 0.2,
+    onError: (info) => logLlmError(service, { businessId: agentId, purpose: "setter", ...info })
   });
-  const payload = await response.json().catch(() => ({})) as { error?: { message?: string }; choices?: { message?: { content?: string } }[] };
-  if (!response.ok) {
-    throw new Error(payload.error?.message || "xAI request failed.");
-  }
-  return payload.choices?.[0]?.message?.content || "";
+  return result.text || "";
 }
 
 function parseJson(text: string) {

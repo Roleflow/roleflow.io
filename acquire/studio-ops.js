@@ -1,6 +1,6 @@
 import {
   QUESTIONS, CRM_STATES, DAYS, WEBHOOK_EVENTS, SCOPES, REPLY_BUCKETS,
-  officeError, delayError, webhookError, tagError, scopeError,
+  officeError, delayError, webhookError, tagError, scopeError, llmChoiceError,
   inRange, conversationsPerDay, agentPerformance, tagConversion, linkConversions,
   funnel, followupRate, replyBuckets, heatmaps, originBreakdown, topOrigins,
   projectRevenue, checklist, nextStep, commandItems, filterCommands, snippet, originCsv
@@ -65,13 +65,7 @@ function replyBody(ui) {
   const end = ui.field("Closes", ui.shortTime(settings.office_end, "18:00"), "time");
   const min = ui.field("Reply delay from (seconds)", settings.reply_delay_seconds == null ? 30 : settings.reply_delay_seconds, "number");
   const max = ui.field("Reply delay to (seconds)", settings.reply_delay_max_seconds == null ? 120 : settings.reply_delay_max_seconds, "number");
-  const model = ui.el("select", { "aria-label": "Setter model" });
-  [["grok-4.3", "grok-4.3, and grok-4.7 for objections or booking"], ["grok-4.7", "grok-4.7 for every reply"]].forEach(([value, label]) => {
-    const option = ui.el("option", { value, text: label });
-    if ((settings.setter_model || "grok-4.3") === value) option.selected = true;
-    model.append(option);
-  });
-  card.append(enabled.label, ui.el("label", { text: "Hours" }, [mode]), tz.label, start.label, end.label, ui.el("label", { text: "Model" }, [model]));
+  card.append(enabled.label, ui.el("label", { text: "Hours" }, [mode]), tz.label, start.label, end.label);
   const days = ui.el("div", { class: "day-hours" });
   const dayInputs = {};
   const stored = settings.hours_by_day || {};
@@ -98,12 +92,156 @@ function replyBody(ui) {
       office_end: end.input.value || "18:00",
       hours_by_day: hours,
       reply_delay_seconds: Number(min.input.value),
-      reply_delay_max_seconds: Number(max.input.value),
-      setter_model: model.value === "grok-4.7" ? "grok-4.7" : "grok-4.3"
+      reply_delay_max_seconds: Number(max.input.value)
     });
   }));
   card.addEventListener("submit", (event) => event.preventDefault());
+  const wrap = ui.el("div", { class: "model-stack" });
+  wrap.append(card, modelCard(ui));
+  return wrap;
+}
+
+const LLM_CHOICES = [
+  ["xai", "xAI", ["grok-4.3", "grok-4.7"]],
+  ["openai", "OpenAI", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o"]],
+  ["anthropic", "Anthropic", ["claude-sonnet-4-5", "claude-3-5-haiku-latest"]],
+  ["gemini", "Google Gemini", ["gemini-2.0-flash", "gemini-2.5-pro"]],
+  ["openrouter", "OpenRouter", ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash", "x-ai/grok-4"]],
+  ["custom", "Custom OpenAI-compatible", []]
+];
+
+function modelCard(ui) {
+  const settings = ui.state.settings || {};
+  const card = ui.el("form", { class: "agent", "data-command": "cfg-model" });
+  card.append(ui.el("h3", { text: "Which model answers?" }));
+  card.append(ui.el("p", { class: "mute", text: "Roleflow's key is used until you save your own. A saved key is encrypted and is not shown again. When live replies use grok-4.3, booking and objections still use grok-4.7." }));
+  const live = providerGroup(ui, "Live replies", {
+    provider: settings.llm_setter_provider || "xai",
+    model: settings.setter_model || "grok-4.3",
+    own: settings.llm_setter_own_key === true,
+    base: settings.llm_setter_base_url || ""
+  }, "setter");
+  const prompt = providerGroup(ui, "Prompt writing", {
+    provider: settings.llm_prompt_provider || "xai",
+    model: settings.llm_prompt_model || "grok-4.7",
+    own: settings.llm_prompt_own_key === true,
+    base: settings.llm_prompt_base_url || ""
+  }, "prompt");
+  card.append(live.block, prompt.block);
+  if (ui.state.canEdit && ui.saveLlm) {
+    const row = ui.el("div", { class: "filters" });
+    row.append(ui.button("Save models", (event) => {
+      event.preventDefault();
+      const liveValue = live.value();
+      const promptValue = prompt.value();
+      const problem = llmChoiceError(liveValue) || llmChoiceError(promptValue);
+      if (problem) return ui.toast(problem, "bad");
+      ui.saveLlm({
+        llm_setter_provider: liveValue.provider,
+        setter_model: liveValue.model.trim(),
+        llm_setter_own_key: liveValue.own,
+        llm_setter_base_url: liveValue.provider === "custom" ? liveValue.baseUrl.trim() : "",
+        llm_prompt_provider: promptValue.provider,
+        llm_prompt_model: promptValue.model.trim(),
+        llm_prompt_own_key: promptValue.own,
+        llm_prompt_base_url: promptValue.provider === "custom" ? promptValue.baseUrl.trim() : ""
+      }, [secretOf(liveValue), secretOf(promptValue)].filter(Boolean));
+    }));
+    row.append(ui.button("Test connection", (event) => {
+      event.preventDefault();
+      testChoice(ui, live.value(), "setter");
+    }));
+    row.append(ui.button("Test prompt writing", (event) => {
+      event.preventDefault();
+      testChoice(ui, prompt.value(), "prompt");
+    }));
+    card.append(row);
+  }
+  card.addEventListener("submit", (event) => event.preventDefault());
   return card;
+}
+
+function testChoice(ui, value, purpose) {
+  const problem = llmChoiceError(value);
+  if (problem) return ui.toast(problem, "bad");
+  if (ui.testLlm) ui.testLlm({
+    purpose,
+    provider: value.provider,
+    model: value.model.trim(),
+    base_url: value.baseUrl.trim(),
+    api_key: value.apiKey
+  });
+}
+
+function secretOf(value) {
+  if (!value.own || !String(value.apiKey || "").trim()) return null;
+  return { provider: value.provider, apiKey: value.apiKey.trim(), baseUrl: value.provider === "custom" ? value.baseUrl.trim() : "" };
+}
+
+function providerGroup(ui, title, preset, purpose) {
+  const block = ui.el("fieldset", { class: "voice-card" });
+  block.append(ui.el("legend", { text: title }));
+  const provider = ui.el("select", { "aria-label": title + " provider" });
+  LLM_CHOICES.forEach(([id, label]) => {
+    const option = ui.el("option", { value: id, text: label });
+    if (preset.provider === id) option.selected = true;
+    provider.append(option);
+  });
+  const model = ui.el("input", {
+    type: "text",
+    "aria-label": title + " model",
+    value: preset.model || "",
+    list: "models-" + purpose,
+    autocomplete: "off"
+  });
+  const list = ui.el("datalist", { id: "models-" + purpose });
+  const base = ui.el("input", {
+    type: "url",
+    "aria-label": title + " address",
+    value: preset.base || "",
+    placeholder: "https://",
+    autocomplete: "off"
+  });
+  const baseLabel = ui.el("label", { text: "API address" }, [base]);
+  const platform = ui.el("input", { type: "radio", name: "key-" + purpose, value: "platform" });
+  const own = ui.el("input", { type: "radio", name: "key-" + purpose, value: "own" });
+  if (preset.own) own.checked = true;
+  else platform.checked = true;
+  const key = ui.el("input", { type: "password", "aria-label": title + " key", autocomplete: "off", placeholder: "Paste a key to replace the saved one" });
+  const hint = ui.el("p", { class: "mute" });
+  const fill = () => {
+    const found = LLM_CHOICES.find((item) => item[0] === provider.value);
+    list.replaceChildren();
+    (found ? found[2] : []).forEach((id) => list.append(ui.el("option", { value: id })));
+    baseLabel.hidden = provider.value !== "custom";
+    const saved = (ui.state.llmKeys || []).find((item) => item.provider === provider.value && item.last4);
+    hint.textContent = saved ? "Key ending in " + saved.last4 + "." : "No key saved for this provider.";
+  };
+  provider.addEventListener("change", fill);
+  fill();
+  const platformLabel = ui.el("label", { text: " Roleflow key" });
+  platformLabel.prepend(platform);
+  const ownLabel = ui.el("label", { text: " My key" });
+  ownLabel.prepend(own);
+  block.append(
+    ui.el("label", { text: "Provider" }, [provider]),
+    ui.el("label", { text: "Model" }, [model, list]),
+    baseLabel,
+    ui.el("div", { class: "filters" }, [platformLabel, ownLabel]),
+    ui.el("label", { text: "API key" }, [key]),
+    hint
+  );
+  return {
+    block,
+    value: () => ({
+      provider: provider.value,
+      model: model.value,
+      own: own.checked,
+      baseUrl: base.value,
+      apiKey: key.value,
+      hasHint: Boolean((ui.state.llmKeys || []).find((item) => item.provider === provider.value && item.last4))
+    })
+  };
 }
 
 function whoBody(ui) {

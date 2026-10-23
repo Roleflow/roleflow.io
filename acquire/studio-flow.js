@@ -388,7 +388,13 @@ function threadPane(ui, lead) {
   pane.append(ui.el("h3", { text: lead.name || (lead.handle ? "@" + lead.handle : "Chat") }));
   const messages = threadMessages(ui, lead);
   if (!messages.length) pane.append(ui.el("p", { text: "No chat history yet. Status and a summary sync today." }));
-  messages.forEach((message) => pane.append(ui.el("p", { class: "bubble-line", text: senderLabel(message) + ": " + message.body })));
+  messages.forEach((message) => {
+    const line = ui.el("div", { class: "bubble-line" });
+    const text = message.body ? senderLabel(message) + ": " + message.body : senderLabel(message);
+    line.append(ui.el("p", { text }));
+    if (message.playbackUrl) line.append(ui.el("audio", { controls: true, preload: "none", src: message.playbackUrl }));
+    pane.append(line);
+  });
   if (ui.state.threadMore && ui.loadEarlier) pane.append(ui.button("Load earlier", () => ui.loadEarlier()));
   const row = ui.el("div", { class: "filters" });
   row.append(ui.button("Export CSV", () => download("chat.csv", exportThread(messages, "csv"), "text/csv")));
@@ -469,7 +475,9 @@ function threadMessages(ui, lead) {
     role: row.role === "assistant" ? "assistant" : "user",
     sender: row.sender || "",
     body: row.body,
-    at: row.sent_at || row.created_at
+    at: row.sent_at || row.created_at,
+    playbackUrl: row.playbackUrl || "",
+    mediaKind: row.mediaKind || ""
   }));
 }
 
