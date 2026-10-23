@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 
 export const CALLBACK_URL = "https://roleflow.io/app/instagram/callback";
 export const LOGO_URL = "https://roleflow.io/assets/logo.jpg";
@@ -23,6 +24,15 @@ export function signWebhook(raw, secret) {
 export function verifyWebhook(raw, header, secret) {
   if (!secret || !header) return false;
   return sameHex(signWebhook(raw, secret), String(header).trim().toLowerCase());
+}
+
+export function safeWebhookError(error) {
+  const name = error && error.name ? String(error.name) : "Error";
+  const message = String((error && error.message) || "unknown")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/[A-Za-z0-9_-]{24,}/g, "[redacted]")
+    .slice(0, 160);
+  return name + ": " + message;
 }
 
 export function signState(payload, secret) {
