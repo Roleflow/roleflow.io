@@ -127,6 +127,11 @@ const state = {
   studio: null,
   studioScore: null,
   agentPrompts: [],
+  setterPrompts: [],
+  setterCurrentId: "",
+  agentTools: [],
+  setterOutbox: [],
+  openDeskRequest: null,
   agentRoutines: [],
   agentRuns: [],
   agentActions: [],
@@ -175,6 +180,14 @@ async function boot() {
   if (preview) {
     Object.assign(state, preview, { tab: tabFromHash() });
     state.canEdit = preview.canEdit === true;
+    const seed = await import("./setter-seed.js");
+    state.setterPrompts = [{ id: "preview-v1", role: "inbound_manager", version: 1, sections: seed.sections, created_at: "2026-10-23T06:00:00Z" }];
+    state.setterCurrentId = "preview-v1";
+    state.agentTools = [
+      { id: "tool-voice", agent_role: "inbound_manager", kind: "media", name: "Gap building", config: { media_type: "voice" } },
+      { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "https://calendar.app.google/8i1gomkozavqYU5b8" } }
+    ];
+    armEditorRequest();
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
     paint();
@@ -286,9 +299,21 @@ async function bootBusiness(id, options) {
     state.tab = tabFromHash();
     const adminHome = document.getElementById("nav-admin-home");
     if (adminHome) adminHome.hidden = !state.isAdmin;
+    armEditorRequest();
     paint();
     announceWaiting(state.connectRequests);
   }
+}
+
+let editorArmed = false;
+
+function armEditorRequest() {
+  if (editorArmed) return;
+  const params = new URLSearchParams(location.search);
+  if (params.get("editor") !== "1" && params.get("desk") !== "manager") return;
+  editorArmed = true;
+  state.openDeskRequest = { kind: "inbound", key: "manager" };
+  if (state.tab !== "inbound") state.tab = "inbound";
 }
 
 async function loadAll(id) {
@@ -412,6 +437,16 @@ async function loadAll(id) {
   state.agentRuns = agentRuns.error ? [] : agentRuns.data || [];
   state.agentActions = agentActions.error ? [] : agentActions.data || [];
   state.agentSettings = agentSettings.error ? [] : agentSettings.data || [];
+  const [setterPrompts, setterCurrent, agentTools, setterOutbox] = await Promise.all([
+    q.from("acq_prompt_versions").select("id, role, version, sections, created_at").eq("business_id", id).eq("role", "inbound_manager").order("version", { ascending: false }).limit(20),
+    q.from("acq_prompt_current").select("version_id").eq("business_id", id).eq("role", "inbound_manager").maybeSingle(),
+    q.from("acq_agent_tools").select("id, agent_role, kind, name, config, created_at").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("engine_outbox").select("id, kind, status, created_at, error").eq("business_id", id).in("kind", ["update_workflow", "deploy", "create_tool"]).order("created_at", { ascending: false }).limit(12)
+  ]);
+  state.setterPrompts = setterPrompts.error ? [] : setterPrompts.data || [];
+  state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
+  state.agentTools = agentTools.error ? [] : agentTools.data || [];
+  state.setterOutbox = setterOutbox.error ? [] : setterOutbox.data || [];
   const selected = state.flow && state.flow.chat && state.flow.chat.startsWith("contact:") ? state.flow.chat.slice("contact:".length) : "";
   const openConversation = selected ? (state.conversations || []).find((row) => row.contact_id === selected) : null;
   if (openConversation) await loadThread(openConversation.id, "newest");

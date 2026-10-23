@@ -12,12 +12,13 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(405, { error: "Use POST." });
-  let body: { action?: string; webhook_id?: string; lead?: string; state?: string; email?: string; token?: string; business_id?: string; request_id?: string } = {};
+  let body: { action?: string; webhook_id?: string; lead?: string; state?: string; email?: string; token?: string; business_id?: string; request_id?: string; message?: string; sections?: Record<string, string> } = {};
   try { body = await req.json(); } catch (_error) { body = {}; }
   if (body.action === "convert") return convert(req, body);
   if (body.action === "test") return testHook(req, body);
   if (body.action === "invite") return invite(req, body);
   if (body.action === "notify_connect") return notifyConnect(req, body);
+  if (body.action === "prompt_test") return promptTest(req, body);
   return json(400, { error: "Unknown action." });
 });
 
@@ -109,6 +110,44 @@ async function notifyConnect(req: Request, body: { request_id?: string }) {
   });
   if (!response.ok) return json(200, { emailed: false, error: "The connection is saved. The email was not sent." });
   return json(200, { emailed: true });
+}
+
+async function promptTest(req: Request, body: { business_id?: string; message?: string; sections?: Record<string, string> }) {
+  const userClient = userClientFrom(req);
+  const { data: userData, error: userError } = await userClient.auth.getUser();
+  if (userError || !userData.user) return json(401, { error: "Sign in required." });
+  const businessId = String(body.business_id || "");
+  const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
+  if (allowed.error || allowed.data !== true) return json(403, { error: "You can't edit this business." });
+  const message = String(body.message || "").trim().slice(0, 800);
+  if (!message) return json(400, { error: "Write a test message." });
+  const fallback = "Test only. Nothing was sent to a lead.";
+  const key = Deno.env.get("XAI_API_KEY") || "";
+  if (!key) return json(200, { ok: true, reply: fallback, sent: false });
+  const sections = body.sections && typeof body.sections === "object" ? body.sections : {};
+  const system = "This is a private test of a setter. Nothing you write is sent to a lead or to Instagram. Reply in one short message, in the setter's voice.\n\n" +
+    Object.entries(sections).map(([name, text]) => name + "\n" + String(text || "").slice(0, 3000)).join("\n\n");
+  try {
+    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: Deno.env.get("XAI_MODEL") || "grok-4.7",
+        temperature: 0.4,
+        max_completion_tokens: 300,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: message }
+        ]
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    const reply = payload?.choices?.[0]?.message?.content;
+    if (!response.ok || typeof reply !== "string" || !reply.trim()) return json(200, { ok: true, reply: fallback, sent: false });
+    return json(200, { ok: true, reply: reply.trim().slice(0, 800), sent: false });
+  } catch (_error) {
+    return json(200, { ok: true, reply: fallback, sent: false });
+  }
 }
 
 function userClientFrom(req: Request) {

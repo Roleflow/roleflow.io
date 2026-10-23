@@ -1,3 +1,4 @@
+import { openAddBusiness } from "../acquire/add-business.js";
 import { scrubChannelCopy } from "../acquire/connect-instagram.js";
 
 const ICP = "icp_acquisition";
@@ -75,12 +76,28 @@ export async function renderAcquisitionRoster(supabase, app) {
       leads: targets.error ? null : (targetsById.get(business.id) || [])
     }));
   });
-  const add = el("section", { class: "biz-tile add" });
-  add.append(el("h2", { text: "Add business" }));
-  add.append(el("p", { text: "A business appears here when its owner signs up. Opening this page does not create one." }));
-  root.append(add);
+  root.append(addBusinessCard(() => openAddBusiness({ supabase, preview: false })));
   shell.append(root);
   app.replaceChildren(shell);
+}
+
+export function renderAddPreview(app) {
+  const root = el("div", { class: "biz-grid", id: "admin-roster" });
+  const sample = el("section", { class: "biz-tile" });
+  sample.append(el("h2", { text: "Roleflow" }));
+  sample.append(el("p", { text: "Live" }));
+  root.append(sample);
+  root.append(addBusinessCard(() => openAddBusiness({ supabase: null, preview: true })));
+  app.replaceChildren(root);
+}
+
+function addBusinessCard(onClick) {
+  const add = el("button", { type: "button", class: "biz-tile add-business", id: "add-business" });
+  add.append(el("span", { class: "add-plus", text: "+" }));
+  add.append(el("h2", { text: "Add business" }));
+  add.append(el("p", { text: "Name, offer, and who the setter should book." }));
+  add.addEventListener("click", onClick);
+  return add;
 }
 
 export function renderConnectPreview(app) {

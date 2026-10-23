@@ -223,7 +223,8 @@ const migrationNames = [
   "20261022240000_studio_phase4.sql",
   "20261023040000_vam_chats_dnc.sql",
   "20261023050000_studio_phase5.sql",
-  "20261023060000_channel_connect_requests.sql"
+  "20261023060000_channel_connect_requests.sql",
+  "20261023070000_setter_studio.sql"
 ];
 assert.deepEqual(
   migrationNames,
