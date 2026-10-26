@@ -9,7 +9,6 @@ from pages_data import PAGES
 
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://www.roleflow.io"
-BOOK = "https://calendar.app.google/8i1gomkozavqYU5b8"
 ONE = "Roleflow is a Client Acquisition System. We build and run your Instagram DM system: every lead answered in seconds, voice notes in your own voice (cloned from a short recording), follow-ups sent automatically and only within 24 hours, and qualified leads booked on your calendar."
 IG = "https://www.instagram.com/roleflow.io"
 TT = "https://www.tiktok.com/@roleflow.io"
@@ -62,7 +61,9 @@ def footer():
 <p class="social">{social_html}</p>
 <p class="fine">© Roleflow. Client Acquisition System. <a href="mailto:diego@roleflow.io">diego@roleflow.io</a></p>
 </div></footer>
-<script src="/assets/site-config.js"></script>'''
+<script src="/assets/site-config.js"></script>
+<script src="/supabase/config.js"></script>
+<script type="module" src="/assets/qualify-ui.js"></script>'''
 
 
 def url_for(page, lang):
@@ -241,8 +242,8 @@ def faq_html(pairs, heading):
 
 def cta(lang):
     if lang == "en":
-        return f'<p class="cta"><a class="btn" href="/#start">See if you qualify</a> <a class="btn ghost" href="{BOOK}" target="_blank" rel="noopener">Book a demo</a></p>'
-    return f'<p class="cta"><a class="btn" href="/#start">Haz el cuestionario (inglés)</a> <a class="btn ghost" href="{BOOK}" target="_blank" rel="noopener">Agenda una demo</a></p>'
+        return '<p class="cta"><a class="btn" href="#qualify" data-qualify>See if you qualify</a> <a class="btn ghost" href="#qualify" data-qualify>Book a demo</a></p>'
+    return '<p class="cta"><a class="btn" href="#qualify" data-qualify>Comprueba si calificas</a> <a class="btn ghost" href="#qualify" data-qualify>Agenda una demo</a></p>'
 
 
 def crumbs_html(page, lang):
@@ -351,6 +352,7 @@ def llms():
         "",
         "Who it fits: businesses with 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+/month cash collected.",
         "Who it does not fit: businesses selling mainly through WhatsApp, email or phone (Instagram DMs only), low-ticket offers, or very low DM volume.",
+        "Roleflow is an AI Client Acquisition Engine. Book a demo opens the on-site qualification (#qualify on English pages, and the same quiz in Spanish on /es/ pages). Public pages do not link to a calendar.",
         "",
         "## Social",
         f"- Instagram: {IG}",

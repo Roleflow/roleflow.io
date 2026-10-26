@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BOOKING_URL, FIELDS, QUESTIONS, failures, fieldError, qualified, resultHtml, signupHref } from "../assets/qualify.js";
+import { BOOKING_URL, FIELDS, QUESTIONS, failures, fieldError, leadPayload, locale, qualified, resultHtml, signupHref } from "../assets/qualify.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
@@ -11,24 +11,29 @@ const ui = fs.readFileSync(path.join(root, "assets/qualify-ui.js"), "utf8");
 const demoCtas = [...homepage.matchAll(/<a\b[^>]*>Book a demo<\/a>/g)].map((match) => match[0]);
 assert.equal(demoCtas.length, 2);
 for (const tag of demoCtas) {
-  assert.match(tag, /href="https:\/\/calendar\.app\.google\/R4wpQ4b8F5J7xnD39"/);
+  assert.match(tag, /href="#qualify"/);
+  assert.match(tag, /data-qualify/);
   assert.match(tag, /class="btn"/);
   assert.doesNotMatch(tag, /class="btn ghost"/);
-  assert.match(tag, /rel="noopener"/);
+  assert.doesNotMatch(tag, /calendar\.app\.google/);
 }
 assert.doesNotMatch(homepage, /See if you qualify/);
 assert.doesNotMatch(homepage, /book your call|book a call/i);
 assert.match(homepage, /id="start"/);
 assert.doesNotMatch(homepage, /id="qz"/);
-assert.doesNotMatch(homepage, /\/assets\/qualify-ui\.js/);
+assert.match(homepage, /\/assets\/qualify-ui\.js/);
 const qualifySource = fs.readFileSync(path.join(root, "assets/qualify.js"), "utf8");
-assert.equal((qualifySource.match(/calendar\.app\.google\/8i1gomkozavqYU5b8/g) || []).length, 1);
+assert.equal((qualifySource.match(/calendar\.app\.google\/R4wpQ4b8F5J7xnD39/g) || []).length, 1);
+assert.equal((qualifySource.match(/8i1gomkozavqYU5b8/g) || []).length, 0);
 assert.doesNotMatch(homepage, /Qualification bar/);
 assert.doesNotMatch(ui, /calendar\.app\.google/);
 assert.match(ui, /resultHtml/);
 assert.match(ui, /class="qstep/);
 assert.doesNotMatch(ui, /class="screen/);
-assert.doesNotMatch(fs.readFileSync(path.join(root, "assets/qualify.js"), "utf8"), /fetch\(|supabase/);
+assert.match(ui, /prefers-reduced-motion/);
+assert.match(ui, /submit_qualification_lead/);
+assert.match(fs.readFileSync(path.join(root, "assets/qualify.css"), "utf8"), /prefers-reduced-motion:reduce/);
+assert.doesNotMatch(qualifySource, /fetch\(|supabase/);
 
 assert.deepEqual(QUESTIONS.map((question) => [question.q, question.o]), [
   ["How many DMs do you get from potential customers per day?", [["20 or fewer", 0], ["21 to 50", 1], ["51 to 100", 1], ["More than 100", 1]]],
@@ -57,8 +62,10 @@ assert.equal(qualified(pass), true);
 assert.deepEqual(failures(pass), []);
 const booked = resultHtml(pass);
 assert.match(booked, /You qualify, Ada\./);
-assert.match(booked, /id="bookbtn" href="https:\/\/calendar\.app\.google\/8i1gomkozavqYU5b8" target="_blank" rel="noopener"/);
-assert.equal(BOOKING_URL, "https://calendar.app.google/8i1gomkozavqYU5b8");
+assert.match(booked, /id="bookbtn" href="https:\/\/calendar\.app\.google\/R4wpQ4b8F5J7xnD39" target="_blank" rel="noopener"/);
+assert.match(booked, /AI Client Acquisition Engine/);
+assert.doesNotMatch(booked, /cloned|guarantee/i);
+assert.equal(BOOKING_URL, "https://calendar.app.google/R4wpQ4b8F5J7xnD39");
 assert.match(booked, /id="signupbtn" href="\/signup\/\?name=Ada\+Lovelace&email=ada%40co\.test&ig=%40ada"/);
 assert.equal(signupHref(pass), "/signup/?name=Ada+Lovelace&email=ada%40co.test&ig=%40ada");
 
@@ -83,5 +90,62 @@ assert.equal(fieldError("e", "not-an-email"), "Enter a valid email address.");
 assert.equal(fieldError("n", "  "), "This field is required.");
 assert.equal(fieldError("ig", "@roleflow"), "");
 assert.equal(fieldError("e", "ada@co.test"), "");
+
+const spanish = locale("es");
+assert.equal(spanish.questions.length, QUESTIONS.length);
+spanish.questions.forEach((question, index) => {
+  assert.equal(question.k, QUESTIONS[index].k);
+  assert.deepEqual(question.o.map((option) => option[1]), QUESTIONS[index].o.map((option) => option[1]));
+  assert.notEqual(question.q, QUESTIONS[index].q);
+});
+assert.equal(locale("en").questions, QUESTIONS);
+const spanishPass = resultHtml(pass, "es");
+assert.match(spanishPass, /Calificas, Ada\./);
+assert.match(spanishPass, /AI Client Acquisition Engine/);
+assert.match(spanishPass, /id="bookbtn" href="https:\/\/calendar\.app\.google\/R4wpQ4b8F5J7xnD39"/);
+const spanishFail = resultHtml(answers([0, 1, 1, 1]), "es");
+assert.doesNotMatch(spanishFail, /calendar\.app\.google/);
+assert.match(spanishFail, /Todavía no encaja, Ada\./);
+assert.match(spanishFail, /más de 20 DMs al día/);
+assert.equal(fieldError("e", "nope", "es"), "Introduce un email válido.");
+
+const payload = leadPayload(pass, "/es/para/coaches/", "es");
+assert.equal(payload.p_lang, "es");
+assert.equal(payload.p_source_page, "/es/para/coaches/");
+assert.equal(payload.p_answers.dms.score, 1);
+assert.equal(payload.p_answers.close.score, 1);
+assert.equal("p_qualified" in payload, false);
+
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20261026200000_qualification_leads.sql"), "utf8");
+assert.match(migration, /create table public\.qualification_leads/);
+assert.match(migration, /enable row level security/);
+assert.match(migration, /revoke all on table public\.qualification_leads from public, anon, authenticated/);
+assert.match(migration, /grant execute on function public\.submit_qualification_lead\(text, text, text, jsonb, text, text\) to anon, authenticated/);
+assert.match(migration, /#>> '\{dms,score\}'/);
+assert.doesNotMatch(migration, /grant select|for select/i);
+
+function htmlFiles(dir, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === ".git") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) htmlFiles(full, out);
+    else if (entry.name.endsWith(".html")) out.push(full);
+  }
+  return out;
+}
+for (const file of htmlFiles(root)) {
+  const text = fs.readFileSync(file, "utf8");
+  assert.equal(text.includes("calendar.app.google"), false, path.relative(root, file));
+}
+for (const file of fs.readdirSync(path.join(root, "scripts")).filter((name) => name.endsWith(".py"))) {
+  const text = fs.readFileSync(path.join(root, "scripts", file), "utf8");
+  assert.equal(text.includes("calendar.app.google"), false, file);
+}
+const llms = fs.readFileSync(path.join(root, "llms.txt"), "utf8");
+assert.equal(llms.includes("calendar.app.google"), false);
+assert.match(llms, /#qualify/);
+assert.match(fs.readFileSync(path.join(root, "es/index.html"), "utf8"), /lang="es"/);
+assert.match(fs.readFileSync(path.join(root, "es/index.html"), "utf8"), /data-qualify/);
+assert.match(fs.readFileSync(path.join(root, "signup/index.html"), "utf8"), /data-qualify/);
 
 console.log("qualify tests passed");
