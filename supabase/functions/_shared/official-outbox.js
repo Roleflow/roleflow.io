@@ -1,4 +1,4 @@
-import { API_BASE, interpretSend, sendRequest } from "./ig-gateway.js";
+import { API_BASE, interpretSend, privateReplyKind, sendRequest } from "./ig-gateway.js";
 import { withAttachment } from "./clip-send.js";
 import { sendBlocked } from "./agent-control.js";
 
@@ -49,7 +49,7 @@ export async function postOfficial(row, apiKey, fetchImpl, extras) {
     return { ok: false, status: "failed", error: "The reply was not sent." };
   }
   let prepared = row;
-  if (hasClip && !hasAttachment) {
+  if (hasClip && !hasAttachment && !privateReplyKind(row.kind)) {
     try {
       prepared = await withAttachment(row, apiKey, fetchImpl, extras && extras.download);
     } catch (_error) {

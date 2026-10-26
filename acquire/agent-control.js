@@ -1,7 +1,7 @@
 // Pure rules for the client dashboard agents. No network, no secrets.
 // An agent with no saved switch is off. Human replies from the CRM are not agent actions.
 
-export const AGENT_KEYS = ["warmer", "outreacher", "setter", "followup"];
+export const AGENT_KEYS = ["warmer", "outreacher", "setter", "followup", "comment_voice"];
 
 export const DEFAULT_POLICY = {
   hoursSinceLastMessage: 4,
@@ -21,6 +21,7 @@ export function agentKeyForKind(kind) {
   if (name === "recovery" || name === "followup") return "followup";
   if (name === "warmup" || name === "warmer") return "warmer";
   if (name === "outreach" || name === "opener" || name === "ingest") return "outreacher";
+  if (name === "comment_voice") return "comment_voice";
   return "setter";
 }
 

@@ -9,6 +9,7 @@ import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/
 import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
+import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog } from "../_shared/prompt-tokens.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
@@ -250,6 +251,9 @@ async function runOutbox(db, row) {
   const booking = await loadBooking(db, businessId, prompts, settings);
   const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
   const clips = clipRows.error ? [] : (clipRows.data || []);
+  const voiceRows = await db.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", businessId).eq("active", true);
+  const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
+  const bookingLink = bookingLinkFor(settings.booking_fallback_url || "");
   let plan;
   try {
     plan = await planTurn({
@@ -265,7 +269,7 @@ async function runOutbox(db, row) {
         fallback: loaded.fallback,
         onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
         tools: [bookingTool()],
-        system: (savedPrompt ? savedPrompt + "\n\n" : "") + systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }, booking) + clipInstructions(clips),
+        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -292,7 +296,9 @@ async function runOutbox(db, row) {
   }).eq("id", thread.id).eq("business_id", businessId);
   if (plan.escalate) await escalate(db, businessId, thread.target_id, plan.escalateReason || plan.state, plan.escalateReason || plan.state);
   if (plan.noResponse) return finish("done");
-  const bubbles = await maybeBook(db, businessId, thread, settings, plan, booking);
+  const bubbles = (await maybeBook(db, businessId, thread, settings, plan, booking)).map((text) => resolveOutgoing(text, { voices: catalog, bookingLink }));
+  const spoken = bubbles.map((item) => item.text).filter(Boolean);
+  const tokenNote = row.kind === "comment_private" ? null : (bubbles.find((item) => item.voices && item.voices[0]) || { voices: [] }).voices[0] || null;
   const decision = messagingDecision({
     lastUserMessageAt: thread.last_user_message_at,
     now: Date.now(),
@@ -300,7 +306,7 @@ async function runOutbox(db, row) {
     humanLocked: false
   });
   if (!decision.allow) return finish("blocked", decision.reason);
-  const sent = await deliver(db, businessId, thread, settings, bubbles, plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id);
+  const sent = await deliver(db, businessId, thread, settings, spoken, tokenNote ? null : plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id, tokenNote);
   return finish(sent.ok ? "done" : "failed", sent.error || null);
 }
 
@@ -322,12 +328,29 @@ async function sendHuman(db, row, thread, settings) {
   }).eq("id", row.id).eq("business_id", row.business_id);
 }
 
-async function deliver(db, businessId, thread, settings, bubbles, slot, decision, kind, commentId) {
+function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink) {
+  const knowledge = knowledgeBlock(settings);
+  const sections = savedPrompt
+    ? { notes: knowledge }
+    : { ...prompts, notes: (prompts.notes || "") + knowledge };
+  const saved = savedPrompt
+    ? expandPrompt(savedPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n"
+    : "";
+  return saved + systemPrompt(sections, booking) + clipInstructions(clips);
+}
+
+async function deliver(db, businessId, thread, settings, bubbles, slot, decision, kind, commentId, voiceNote) {
   const token = await readIgToken(db, businessId);
   if (!token) return { ok: false, error: "Instagram is not connected." };
   const texts = (bubbles || []).filter(Boolean);
   let voiceUrl = null;
-  if (slot) {
+  if (voiceNote && voiceNote.path && kind !== "comment_private" && kind !== "comment_voice") {
+    const signed = await db.storage.from(voiceNote.bucket || "acq-voice").createSignedUrl(voiceNote.path, 3600);
+    voiceUrl = signed.data?.signedUrl || null;
+    if (voiceUrl) {
+      await postGraph(token, withPolicy(audioBody({ recipientId: thread.igsid, url: voiceUrl }), decision));
+    }
+  } else if (slot) {
     const picked = await db.rpc("acq_pick_voice_note", { p_agent: businessId, p_slot: slot, p_niche: null, p_variant: null });
     const note = picked.data;
     if (note?.storage_path) {

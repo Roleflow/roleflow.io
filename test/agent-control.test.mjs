@@ -23,6 +23,9 @@ assert.equal(sendBlocked({ kind: "recovery", agent_enabled: "true" }), true);
 assert.equal(sendBlocked({ kind: "reply", agent_enabled: true }), false);
 assert.equal(sendBlocked({ kind: "human" }), false);
 assert.equal(sendBlocked({ kind: "human", agent_enabled: false }), false);
+assert.equal(sendBlocked({ kind: "comment_voice", agent_enabled: false }), true);
+assert.equal(sendBlocked({ kind: "comment_voice" }), true);
+assert.equal(sendBlocked({ kind: "comment_voice", agent_enabled: true }), false);
 
 const blocked = await postOfficial({
   kind: "reply",

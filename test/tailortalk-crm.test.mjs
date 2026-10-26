@@ -236,7 +236,8 @@ const migrationNames = [
   "20261023170000_ig_connect_any_account.sql",
   "20261023180000_llm_providers_and_clips.sql",
   "20261026120000_client_dashboard_agents.sql",
-  "20261026140000_business_model_keys.sql"
+  "20261026140000_business_model_keys.sql",
+  "20261026160000_prompt_versions_and_comment_voice.sql"
 ];
 assert.deepEqual(
   migrationNames,

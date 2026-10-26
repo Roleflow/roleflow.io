@@ -15,14 +15,28 @@
 // If no model key is set, the try panel uses the local preview reply.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
-import { normalizePolicy, previewReply, setterMayEnable } from "../_shared/agent-control.js";
+import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
 import { completeJson } from "../roleflow-acquisition/ig/llm.js";
 import { loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
+import { PROMPT_MAX } from "../_shared/prompt-history.js";
+import { normalizeCap } from "../_shared/comment-voice.js";
+import {
+  bookingLinkFor,
+  expandPrompt,
+  localTrialText,
+  normalizeBookingLink,
+  promptVersionLabel,
+  resolveOutgoing,
+  unwrapModelText,
+  tokenGuide,
+  trialScenario,
+  voiceCatalog
+} from "../_shared/prompt-tokens.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KEYS = new Set(["warmer", "outreacher", "setter", "followup"]);
+const KEYS = new Set(["warmer", "outreacher", "setter", "followup", "comment_voice"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" } });
@@ -41,7 +55,10 @@ Deno.serve(async (req) => {
   if (allowed.error || allowed.data !== true) return json(403, { ok: false, error: "You can't edit this business." });
   if (action === "load") return load(admin, businessId, user.data.user.id);
   if (action === "save_prompt") return savePrompt(admin, businessId, user.data.user.id, body.prompt);
+  if (action === "restore_prompt") return restorePrompt(admin, businessId, user.data.user.id, body.version_id);
   if (action === "preview_setter") return previewSetter(admin, businessId, user.data.user.id, body);
+  if (action === "save_booking_link") return saveBookingLink(admin, businessId, body.booking_link);
+  if (action === "save_comment_voice") return saveCommentVoice(admin, businessId, body);
   if (action === "set_agent") return setAgent(admin, businessId, user.data.user.id, body);
   if (action === "save_policy") return savePolicy(admin, businessId, body.policy);
   return json(400, { ok: false, error: "Unknown action." });
@@ -66,25 +83,73 @@ async function load(admin, businessId, userId) {
 }
 
 async function savePrompt(admin, businessId, userId, prompt) {
-  const body = String(prompt || "").trim().slice(0, 12000);
+  const written = await writePrompt(admin, businessId, userId, prompt, { tested: false });
+  if (written.error) return json(200, { ok: false, error: "The prompt was not saved. Apply the client dashboard migration first." });
+  return json(200, { ok: true, prompt: written.prompt, tested_at: written.tested_at, version: written.version, sent: false });
+}
+
+async function restorePrompt(admin, businessId, userId, versionId) {
+  if (!UUID.test(String(versionId || ""))) return json(200, { ok: false, error: "That version is not on this business." });
+  const row = await admin.from("acq_agent_prompt_versions").select("body").eq("id", versionId).eq("business_id", businessId).maybeSingle();
+  if (row.error || !row.data) return json(200, { ok: false, error: "That version is not on this business." });
+  const written = await writePrompt(admin, businessId, userId, row.data.body, { tested: false });
+  if (written.error) return json(200, { ok: false, error: "The prompt was not restored." });
+  return json(200, { ok: true, prompt: written.prompt, tested_at: written.tested_at, version: written.version, sent: false });
+}
+
+async function writePrompt(admin, businessId, userId, prompt, options) {
+  const body = String(prompt || "").trim().slice(0, PROMPT_MAX);
+  const current = await admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle();
+  if (current.error) return { error: current.error };
+  const previous = current.data ? String(current.data.body || "") : "";
+  const changed = previous !== body;
+  const markTested = Boolean(options && options.tested);
+  if (!changed && !markTested) {
+    return { prompt: previous, tested_at: current.data ? current.data.tested_at : null, version: null };
+  }
+  let version = null;
+  if (changed) {
+    const latest = await admin.from("acq_agent_prompt_versions").select("version").eq("business_id", businessId).order("version", { ascending: false }).limit(1);
+    if (latest.error) return { error: latest.error };
+    const number = ((latest.data && latest.data[0] && latest.data[0].version) || 0) + 1;
+    const inserted = await admin.from("acq_agent_prompt_versions").insert({
+      business_id: businessId,
+      version: number,
+      body,
+      created_by: userId
+    }).select("id, version, body, created_at, created_by").single();
+    if (inserted.error) return { error: inserted.error };
+    version = inserted.data;
+  }
+  const testedAt = markTested ? new Date().toISOString() : null;
   const saved = await admin.from("acq_agent_prompts").upsert({
     business_id: businessId,
     agent_key: "setter",
     body,
-    tested_at: null,
+    tested_at: testedAt,
     updated_at: new Date().toISOString(),
     updated_by: userId
   });
-  if (saved.error) return json(200, { ok: false, error: "The prompt was not saved. Apply the client dashboard migration first." });
-  return json(200, { ok: true, prompt: body, tested_at: null });
+  if (saved.error) return { error: saved.error };
+  return { prompt: body, tested_at: testedAt, version };
 }
 
 async function previewSetter(admin, businessId, userId, body) {
-  const prompt = String(body.prompt || "").trim().slice(0, 12000);
+  const prompt = String(body.prompt || "").trim().slice(0, PROMPT_MAX);
   const message = String(body.message || "").trim().slice(0, 500);
-  const local = previewReply(prompt, message);
-  if (!local.ok) return json(200, local);
-  let reply = local.reply;
+  if (!prompt) return json(200, { ok: false, error: "Save a system prompt first." });
+  if (!message) return json(200, { ok: false, error: "Write a message to try." });
+  const scenario = trialScenario(body.scenario);
+  const settings = await admin.from("acq_settings").select("booking_fallback_url").eq("agent_id", businessId).maybeSingle();
+  const bookingLink = bookingLinkFor(settings.data && settings.data.booking_fallback_url);
+  const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", businessId).eq("active", true);
+  const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
+  const history = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
+  const messages = history.map((item) => ({
+    role: item && item.role === "assistant" ? "assistant" : "user",
+    content: String(item && item.content || "").slice(0, 500)
+  })).concat([{ role: "user", content: message }]);
+  let raw = localTrialText({ prompt, inbound: message, scenario: scenario.id, voices: catalog });
   let source = "preview";
   const env = Deno.env.toObject();
   try {
@@ -94,31 +159,92 @@ async function previewSetter(admin, businessId, userId, body) {
       runtime: loaded.runtime,
       fallback: loaded.fallback,
       onError: (info) => logLlmError(admin, { businessId, purpose: "setter_preview", ...info }),
-      system: prompt + "\n\nReply as the setter would in one short Instagram message. Do not call tools. Do not send anything.",
-      messages: [{ role: "user", content: message }],
-      responseFormat: { type: "text" }
+      system: expandPrompt(prompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n" + scenario.context + "\nReply as the setter in one short Instagram message. You may include one voice token and the booking token. Do not call tools. This is a practice thread and it sends nothing.",
+      messages,
+      responseFormat: { type: "text" },
+      maxTokens: 300
     });
-    const raw = typeof result === "string" ? result : "";
-    const text = raw.trim();
-    const safe = clientSafeText(text).slice(0, 500);
-    if (safe) {
-      reply = safe;
+    const text = typeof result === "string" ? result.trim() : "";
+    if (text) {
+      raw = text;
       source = "model";
     }
   } catch (error) {
     if (!error || error.code !== "llm_unconfigured") source = "preview";
   }
-  const testedAt = new Date().toISOString();
-  const saved = await admin.from("acq_agent_prompts").upsert({
-    business_id: businessId,
-    agent_key: "setter",
-    body: prompt,
+  const resolved = resolveOutgoing(unwrapModelText(raw), { voices: catalog, bookingLink });
+  const reply = clientSafeText(resolved.text).slice(0, 1000);
+  const versions = await admin.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", businessId).order("version", { ascending: false }).limit(30);
+  const version = promptVersionLabel(versions.error ? [] : versions.data || [], prompt);
+  const current = await admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle();
+  const savedBody = current.data ? String(current.data.body || "") : "";
+  let testedAt = current.data ? current.data.tested_at : null;
+  if (savedBody === prompt) {
+    testedAt = new Date().toISOString();
+    await admin.from("acq_agent_prompts").upsert({
+      business_id: businessId,
+      agent_key: "setter",
+      body: prompt,
+      tested_at: testedAt,
+      updated_at: testedAt,
+      updated_by: userId
+    });
+  }
+  return json(200, {
+    ok: true,
+    reply,
+    source,
     tested_at: testedAt,
-    updated_at: testedAt,
-    updated_by: userId
+    sent: false,
+    booking_link: bookingLink,
+    voices: resolved.voices.map((note) => ({ id: note.id, title: note.title, slug: note.slug, path: note.path, mime: note.mime })),
+    version,
+    prompt
   });
-  if (saved.error) return json(200, { ok: false, error: "The tryout ran, but it was not saved. Apply the client dashboard migration first." });
-  return json(200, { ok: true, reply, source, tested_at: testedAt });
+}
+
+async function saveBookingLink(admin, businessId, value) {
+  const link = normalizeBookingLink(value);
+  if (link == null) return json(200, { ok: false, error: "Use a full https booking link." });
+  const saved = await admin.from("acq_settings").upsert({ agent_id: businessId, booking_fallback_url: link });
+  if (saved.error) return json(200, { ok: false, error: "The booking link was not saved." });
+  return json(200, { ok: true, booking_link: bookingLinkFor(link), sent: false });
+}
+
+async function saveCommentVoice(admin, businessId, body) {
+  const cap = normalizeCap(body.daily_cap);
+  const settings = await admin.from("acq_comment_voice_settings").upsert({
+    business_id: businessId,
+    daily_cap: cap,
+    updated_at: new Date().toISOString()
+  });
+  if (settings.error) return json(200, { ok: false, error: "Comment voice is not ready. Apply the migration first." });
+  const cleared = await admin.from("acq_comment_voice_rules").delete().eq("business_id", businessId);
+  if (cleared.error) return json(200, { ok: false, error: "The rules were not saved." });
+  const incoming = Array.isArray(body.rules) ? body.rules.slice(0, 30) : [];
+  const rows = incoming.map((rule, index) => {
+    const keywords = (Array.isArray(rule.keywords) ? rule.keywords : String(rule.keywords || "").split(/[,;\n]/))
+      .map((item) => String(item || "").trim().slice(0, 40))
+      .filter(Boolean)
+      .slice(0, 20);
+    const intent = String(rule.intent || "").trim().slice(0, 1000);
+    if (!keywords.length && !intent) return null;
+    const clip = String(rule.clip_id || rule.clipId || "");
+    return {
+      business_id: businessId,
+      keywords,
+      intent,
+      message: String(rule.message || "").trim().slice(0, 500),
+      clip_id: UUID.test(clip) ? clip : null,
+      position: index
+    };
+  }).filter(Boolean);
+  if (rows.length) {
+    const inserted = await admin.from("acq_comment_voice_rules").insert(rows).select("id, keywords, intent, message, clip_id, position");
+    if (inserted.error) return json(200, { ok: false, error: "The rules were not saved." });
+    return json(200, { ok: true, daily_cap: cap, rules: inserted.data || [], sent: false });
+  }
+  return json(200, { ok: true, daily_cap: cap, rules: [], sent: false });
 }
 
 async function setAgent(admin, businessId, userId, body) {
