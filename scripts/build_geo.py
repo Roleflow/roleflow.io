@@ -148,7 +148,7 @@ def org_node(lang):
 
 def app_node(lang):
     if lang == "en":
-        desc = "$0 setup and $0 retainer; 10% of revenue generated"
+        desc = "$0 setup and $0 retainer; 10% of the cash recorded on deals the system sourced"
         features = [
             "Replies to Instagram DMs in seconds, 24/7",
             "Personal voice notes you record",
@@ -158,7 +158,7 @@ def app_node(lang):
             "Done-for-you setup and management",
         ]
     else:
-        desc = "$0 de setup y $0 de cuota mensual; el 10 % de los ingresos generados"
+        desc = "$0 de setup y $0 de cuota mensual; el 10 % del dinero cobrado que se registra en ventas que originó el sistema"
         features = [
             "Responde DMs de Instagram en segundos, 24/7",
             "Notas de voz con grabaciones personales del dueño",
@@ -552,7 +552,7 @@ def patch_home():
         '<div id="quiz"><div class="panel" id="start"><div id="qz" tabindex="-1" style="outline:0" aria-live="polite"></div></div></div>',
         1,
     )
-    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends personal voice notes you record, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow is paid 10% of the revenue the system generates. The rate is set on the demo call."
+    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends personal voice notes you record, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow takes 10% of the cash you record on deals the system sourced."
     if not 40 <= words(answer) <= 60:
         raise SystemExit(f"home answer {words(answer)}")
     home = next(p for p in PAGES if p.get("home"))
@@ -569,7 +569,7 @@ def patch_home():
 </div></section>
 <section class="geo-block" id="pricing-summary"><div class="wrap">
 <h2>Pricing: $0 setup, $0 retainer, 10% of revenue</h2>
-<p class="sub" style="margin-top:14px">No setup fee. No monthly retainer. If the system generates nothing, you owe nothing. The rate is set on the demo call. <a href="/pricing/">Read the pricing page</a>. [CONFIRM whether 10% is the final published range.]</p>
+<p class="sub" style="margin-top:14px">No setup fee. No monthly retainer. If you record nothing, you owe nothing. The rate is a flat 10%. <a href="/pricing/">Read the pricing page</a>.</p>
 </div></section>
 <section class="geo-block"><div class="wrap">
 <h2>Who it is for, and who it is not for</h2>

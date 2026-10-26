@@ -12,7 +12,7 @@ def table(headers, rows):
 FAQ_EN = [
     ("What is an AI DM setter?", "Software that answers inbound DMs, qualifies leads, follows up and books calls, doing the job of a human appointment setter. Roleflow is a done-for-you AI DM setter for Instagram.", True),
     ("What does Roleflow do?", "It replies to every Instagram DM in seconds, 24/7, sends personal voice notes you record, follows up automatically, and books qualified leads on your calendar. We build and run it for you.", True),
-    ("How much does it cost?", "$0 setup, $0 retainer. We're paid 10% of the revenue the system generates; the rate is set on your demo call.", True),
+    ("How much does it cost?", "$0 setup, $0 retainer. Roleflow takes 10% of the cash you record on deals the system sourced. If you record nothing, nothing is owed.", True),
     ("How is \"revenue generated\" measured?", "[CONFIRM: attribution method, e.g. booked calls sourced from Roleflow conversations that close.]", False),
     ("Who qualifies?", "20+ DMs/day, an offer above $1k, a close rate above 20%, and $30k+/month collected.", True),
     ("Will it sound fake?", "Voice notes are personal voice notes you record, and replies follow your offer and tone. [CONFIRM: review/approval process.]", True),
@@ -26,7 +26,7 @@ FAQ_EN = [
 FAQ_ES = [
     ("¿Qué es un setter con IA?", "Un software que responde los DMs entrantes, califica leads, hace seguimiento y agenda llamadas: el trabajo de un appointment setter humano. Roleflow es un setter con IA para Instagram, hecho para ti.", True),
     ("¿Qué hace Roleflow?", "Responde cada DM de Instagram en segundos, 24/7, envía notas de voz personales que grabas, hace seguimientos automáticos y agenda a los leads calificados en tu calendario. Nosotros lo montamos y lo gestionamos.", True),
-    ("¿Cuánto cuesta?", "$0 de setup y $0 de cuota mensual. Cobramos el 10 % de los ingresos que genera el sistema; el porcentaje se define en la llamada demo.", True),
+    ("¿Cuánto cuesta?", "$0 de setup y $0 de cuota mensual. Cobramos el 10 % del dinero cobrado que registras en las ventas que originó el sistema. Si no registras nada, no debes nada.", True),
     ("¿Cómo se mide lo que genera?", "[CONFIRMAR método de atribución.]", False),
     ("¿Quién califica?", "Más de 20 DMs al día, una oferta de más de $1.000, una tasa de cierre superior al 20 % y más de $30.000 cobrados al mes.", True),
     ("¿Va a sonar a bot?", "Las notas de voz usan notas de voz que grabas tú y las respuestas siguen tu oferta y tu tono. [CONFIRMAR proceso de revisión/aprobación.]", True),
@@ -39,14 +39,14 @@ FAQ_ES = [
 ]
 HOME_FAQ_EN = [
     ("What is an AI DM setter?", "An AI DM setter is software that replies to inbound direct messages, qualifies leads, follows up and books sales calls, doing the job of a human appointment setter. Roleflow is a done-for-you AI DM setter for Instagram.", True),
-    ("How much does Roleflow cost?", "$0 setup and $0 monthly retainer. Roleflow is paid 10% of the revenue its system generates; the exact rate is set on the demo call.", True),
+    ("How much does Roleflow cost?", "$0 setup and $0 monthly retainer. Roleflow takes 10% of the cash you record on deals its system sourced. If you record nothing, nothing is owed.", True),
     ("Who is Roleflow for?", "High-ticket coaches, consultants and creators selling on Instagram with 20+ DMs a day, an offer over $1,000, a close rate over 20% and $30k+/month in cash collected.", True),
     ("Does it sound like a bot?", "Roleflow sends personal voice notes you record, plus written replies, so leads hear from you, not a generic template.", True),
     ("Which channels does Roleflow support?", "Instagram DMs only.", True),
 ]
 HOME_FAQ_ES = [
     ("¿Qué es un setter con IA?", "Un setter con IA es un software que responde los mensajes directos, califica leads, hace seguimiento y agenda llamadas de venta: el trabajo de un appointment setter humano. Roleflow es un setter con IA para Instagram, hecho para ti.", True),
-    ("¿Cuánto cuesta Roleflow?", "$0 de setup y $0 de cuota mensual. Roleflow cobra el 10 % de los ingresos que genera su sistema; el porcentaje exacto se define en la llamada demo.", True),
+    ("¿Cuánto cuesta Roleflow?", "$0 de setup y $0 de cuota mensual. Roleflow cobra el 10 % del dinero cobrado que registras en las ventas que originó su sistema. Si no registras nada, no debes nada.", True),
     ("¿Para quién es Roleflow?", "Coaches, consultores y creadores de ticket alto que venden en Instagram, con más de 20 DMs al día, una oferta de más de $1.000, una tasa de cierre superior al 20 % y más de $30.000 cobrados al mes.", True),
     ("¿Suena a bot?", "Roleflow envía notas de voz personales con notas de voz que grabas tú, además de respuestas escritas, para que el lead te escuche a ti y no a una plantilla genérica.", True),
     ("¿Qué canales cubre Roleflow?", "Solo DMs de Instagram.", True),

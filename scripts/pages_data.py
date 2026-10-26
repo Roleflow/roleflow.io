@@ -25,7 +25,7 @@ HOME_ES_BODY = '''
 <article class="card"><h3>$0 por adelantado</h3><p>Sin setup y sin cuota. El fee es el 10 % de lo que genera, y nosotros lo montamos y lo operamos.</p></article>
 </div>
 <h2>Precio</h2>
-<p>$0 de setup, $0 de cuota, el 10 % de los ingresos. El porcentaje se define en la demo. <a href="/es/precios/">Ver precios</a>. [CONFIRM whether 10% is the final published range.]</p>
+<p>$0 de setup, $0 de cuota, el 10 % del dinero cobrado que registras en las ventas que originó el sistema. <a href="/es/precios/">Ver precios</a>.</p>
 <h2>Para quién es, y para quién no</h2>
 <div class="grid">
 <article class="card"><h3>Sí</h3><p>Coaches, consultores, infoproductores y dueños de agencia en Instagram. Califican con más de 20 DMs al día, una oferta de más de $1.000, una tasa de cierre superior al 20 % y más de $30.000 cobrados al mes.</p></article>
@@ -68,10 +68,10 @@ DEF_ES = '''
 
 PRICE_EN = '''
 <h2>The model</h2>
-<p>There is no setup invoice and no monthly retainer. Roleflow is paid 10% of the revenue the system generates. The exact rate is set on the demo call. [CONFIRM whether 10% is the final published range.] If the system generates nothing, you owe nothing for that work.</p>
+<p>There is no setup invoice and no monthly retainer. Roleflow takes a flat 10% of the cash you record on deals the system sourced. If you record nothing, you owe nothing for that work.</p>
 <h2>How attribution works</h2>
 <p>[CONFIRM: attribution method, e.g. booked calls sourced from Roleflow conversations that close.]</p>
-<p>Illustrative formula, not a client result and not a promise: attributed revenue in a month × the rate from the demo call = the Roleflow share. If the attributed amount were $10,000 and the rate were 6%, the share would be $600. Your rate can sit anywhere from 5% to 7%. This is arithmetic, not a case study.</p>
+<p>Illustrative formula, not a client result and not a promise: cash you record on sourced deals × 10% = the Roleflow share. If you recorded $10,000, the share would be $1,000 and you would keep $9,000. The rate stays at 10%. This is arithmetic, not a case study.</p>
 <h2>Who qualifies</h2>
 <p>20+ DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ a month in cash collected. We fund the setup, so the offer has to be able to produce revenue from Instagram DMs.</p>
 <h2>Percent of revenue, or a flat fee</h2>
@@ -82,10 +82,10 @@ PRICE_EN = '''
 
 PRICE_ES = '''
 <h2>El modelo</h2>
-<p>No hay factura de setup ni cuota mensual. Roleflow cobra el 10 % de los ingresos que genera el sistema. El porcentaje exacto se define en la demo. [CONFIRM whether 10% is the final published range.] Si el sistema no genera, no debes nada por ese trabajo.</p>
+<p>No hay factura de setup ni cuota mensual. Roleflow cobra un 10 % fijo del dinero cobrado que registras en las ventas que originó el sistema. Si no registras nada, no debes nada por ese trabajo.</p>
 <h2>Cómo se atribuye</h2>
 <p>[CONFIRMAR método de atribución.]</p>
-<p>Fórmula ilustrativa, no un resultado de un cliente y no una promesa: ingresos atribuidos en un mes × el porcentaje de la demo = la parte de Roleflow. Si el monto atribuido fuera $10.000 y el porcentaje fuera 6 %, la parte sería $600. Tu porcentaje puede estar el 10 %. Es aritmética, no un caso.</p>
+<p>Fórmula ilustrativa, no un resultado de un cliente y no una promesa: dinero cobrado que registras en ventas originadas × 10 % = la parte de Roleflow. Si registraras $10.000, la parte sería $1.000 y tú te quedarías con $9.000. El porcentaje se mantiene en el 10 %. Es aritmética, no un caso.</p>
 <h2>Quién califica</h2>
 <p>Más de 20 DMs al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes. Nosotros financiamos el setup, así que la oferta tiene que poder generar ingresos desde los DMs de Instagram.</p>
 <h2>Porcentaje de ingresos, o cuota fija</h2>
@@ -110,7 +110,7 @@ BEST_EN = '''
     ],
 ) + '''
 <h2>Roleflow</h2>
-<p>Done for you. Instagram DMs only. Personal voice notes you record. Follow-ups and booked calls. $0 setup, $0 retainer, 10% of revenue generated, rate set on the demo call. Wrong for: WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume. <a href="/pricing/">Pricing</a>.</p>
+<p>Done for you. Instagram DMs only. Personal voice notes you record. Follow-ups and booked calls. $0 setup, $0 retainer, a flat 10% of the cash you record on sourced deals. Wrong for: WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume. <a href="/pricing/">Pricing</a>.</p>
 <h2>RipDrip</h2>
 <p>The RipDrip homepage says its team builds a custom AI sales clone for an Instagram DM funnel, trained on your voice, offer, sales process, and personality. It says the clone qualifies leads and books calls, and is usually live in 72 hours after an onboarding form. You apply, and you book a demo if you qualify. You do not write the code. That page does not publish a price. Price: [CONFIRM]. Audio voice notes, as distinct from writing trained on your voice: [CONFIRM]. Wrong for: buyers who need a published price and a percent-of-revenue fee before they apply. <a href="/vs/ripdrip/">Roleflow vs RipDrip</a>.</p>
 <h2>Mochi</h2>
@@ -138,7 +138,7 @@ BEST_ES = '''
     ],
 ) + '''
 <h2>Roleflow</h2>
-<p>Hecho para ti. Solo DMs de Instagram. Notas de voz con tu nota personal. Seguimientos y llamadas agendadas. $0 de setup, $0 de cuota, el 10 % de los ingresos, porcentaje en la demo. No recomendable si vendes por WhatsApp, email o teléfono, si el ticket es bajo o si hay muy pocos DMs. <a href="/es/precios/">Precios</a>.</p>
+<p>Hecho para ti. Solo DMs de Instagram. Notas de voz con tu nota personal. Seguimientos y llamadas agendadas. $0 de setup, $0 de cuota, un 10 % fijo del dinero cobrado que registras en ventas originadas. No recomendable si vendes por WhatsApp, email o teléfono, si el ticket es bajo o si hay muy pocos DMs. <a href="/es/precios/">Precios</a>.</p>
 <h2>RipDrip</h2>
 <p>El home de RipDrip dice que su equipo arma un clon de ventas con IA para un embudo de DMs de Instagram, entrenado con tu voz, tu oferta, tu proceso y tu personalidad. Dice que el clon califica y agenda llamadas, y que en general está en vivo en 72 horas después de un formulario de onboarding. Solicitas, y agendas una demo si calificas. No escribes el código. Esa página no publica un precio. Precio: [CONFIRM]. Notas de voz de audio, distintas de un texto entrenado con tu voz: [CONFIRM]. No recomendable si necesitas un precio publicado y un fee sobre ingresos antes de solicitar. <a href="/es/vs/ripdrip/">Roleflow frente a RipDrip</a>.</p>
 <h2>Mochi</h2>
