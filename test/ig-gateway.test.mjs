@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { callbackFailure as pageFailure, finishConnect, panelReturn } from "../app/instagram/callback.js";
-import { beginInstagramConnect, connectOutcome, disconnectInstagram, scrubChannelCopy } from "../acquire/connect-instagram.js";
+import { beginInstagramConnect, connectOutcome, connectPlan, disconnectInstagram, scrubChannelCopy } from "../acquire/connect-instagram.js";
 import {
   callbackFailure,
   connectQuery,
@@ -306,6 +306,9 @@ assert.match(denied.error, /didn't allow/);
 
 assert.equal(connectOutcome(null).mode, "error");
 assert.equal(connectOutcome({ configured: false }).mode, "error");
+assert.equal(connectPlan({ configured: false }).mode, "manual");
+assert.equal(connectPlan({ configured: true, authUrl: "https://www.instagram.com/oauth/authorize" }).mode, "redirect");
+assert.equal(connectPlan(null).mode, "error");
 assert.equal(connectOutcome({ configured: true, authUrl: "https://www.instagram.com/oauth/authorize" }).mode, "redirect");
 assert.equal(connectOutcome({ configured: true, authUrl: "https://vendor.example/connect/welcome" }).mode, "error");
 assert.equal(connectOutcome({ configured: true, error: "Instagram connect could not start." }).mode, "error");

@@ -1,6 +1,9 @@
 # Client dashboard setup
 
-The migration in this change is **NOT APPLIED**. Apply `supabase/migrations/20261026120000_client_dashboard_agents.sql` yourself when you are ready. It adds row-level security and does not delete TailorTalk rows. Until it is applied, every agent switch reads as off and no agent send leaves Roleflow.
+Two migrations in this area are **NOT APPLIED**. Apply them yourself when you are ready.
+
+- `supabase/migrations/20261026120000_client_dashboard_agents.sql` adds row-level security and does not delete TailorTalk rows. Until it is applied, every agent switch reads as off and no agent send leaves Roleflow.
+- `supabase/migrations/20261026140000_business_model_keys.sql` limits who can save or remove a model key. It does not recreate `private.business_llm_secrets` and does not delete a key. Until it is applied, the older save function still allows an editor to set a key.
 
 ## What you set
 
@@ -13,12 +16,14 @@ Instagram through Zernio:
 
 If both are unset, the gateway falls back to the values already stored for `acq_read_gateway_settings`. A missing key means nothing is sent.
 
-One model key for the setter and the try panel. The try panel stays inside Roleflow and does not send a message. With no key, the try panel uses the local preview sentence.
+Platform model keys. The reply engine and the try panel use the business's own saved key first. If that business has no key, these env keys are the fallback. The try panel stays inside Roleflow and does not send a message. With no business key and no env key, the try panel uses the local preview sentence.
 
 - `LLM_PROVIDER` — optional: `xai`, `openai`, or `gemini`
 - `XAI_API_KEY` and optional `XAI_MODEL`
 - `OPENAI_API_KEY` and optional `OPENAI_MODEL`
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`, and optional `GEMINI_MODEL`
+
+Each business can save its own xAI, OpenAI, or Gemini key from Settings (linked from Agentic Setter). The key is encrypted with `extensions.pgp_sym_encrypt` and the server-held `llm_token_key`. After save, the browser receives only the last 4 characters. `acq_llm_read_key` is service-role only. Only the workspace owner, an owner member, or a platform admin can save or remove it. Test key calls `llm-check`, which asks the provider for the single word `pong` and returns OK or a redacted error. A typed key is used once for that check and is not stored.
 
 The follow-up job and the outbox tick use the cron secret already stored in `private.acquisition_settings` (`cron_secret`), read with `acq_read_cron_secret`. There is no new cron env name.
 
@@ -35,6 +40,19 @@ After the migration is applied:
 3. Redeploy `zernio-webhook`, `ig-outbox-tick`, `roleflow-acquisition`, `acquisition-bot`, `inbox-reply`, `tailortalk-sync`, `acq-tailortalk`, `roleflow-setter-sync`, and `setter-engine`.
 
 Point the Zernio webhook at `functions/v1/zernio-webhook`. Inbound Instagram DMs are stored there. A reply is planned only when Agentic Setter is Live and a system prompt is saved.
+
+## Connect Instagram
+
+Connect Instagram in Settings and on Agentic Setter calls `GET https://zernio.com/api/v1/connect/instagram` for that business's profile and opens the returned Instagram login URL. That is the path to use when `ZERNIO_API_KEY` is set.
+
+If the key is missing, the button cannot start that login. Open https://zernio.com/dashboard and do this by hand:
+
+1. Sign in.
+2. Create a profile for the business, or open the profile whose external id is the business id.
+3. Connect an Instagram Business or Creator account. A personal account cannot connect.
+4. Create an API key at https://zernio.com/dashboard/api-keys, set `ZERNIO_API_KEY`, and use Connect Instagram again so Roleflow receives the account and the webhook.
+
+Connecting only in the dashboard does not attach the account to Roleflow until the connect call succeeds.
 
 ## What you turn on
 

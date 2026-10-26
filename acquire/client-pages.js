@@ -1,5 +1,9 @@
 import { AGENT_KEYS, DEFAULT_POLICY, dashboardMetrics, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
 import { grokLaunchUrl } from "./client-config.js";
+import { beginInstagramConnect } from "./connect-instagram.js";
+import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
+
+export const ZERNIO_DASHBOARD = "https://zernio.com/dashboard";
 
 const COPY = {
   en: {
@@ -17,7 +21,31 @@ const COPY = {
     outreach: "Outreacher finds people who fit the offer and starts conversations from your own Grok Bot. Roleflow does not send those first messages from this page.",
     setter: "Agentic Setter replies in Instagram DMs through the Roleflow connection. The system prompt below is what the reply engine uses. A tryout stays inside Roleflow and does not send a message.",
     follow: "Follow Up Boss sends the next message only when the rules below match: quiet time, stage, booking, and the cap. It stays off until you turn it on.",
-    channel: "Instagram is connected through Zernio. Messages are sent only while this agent is Live."
+    channel: "Instagram is connected through Zernio. Messages are sent only while this agent is Live.",
+    keyTitle: "Model key",
+    keyLink: "Model key",
+    keyBody: "The reply engine and the try panel use this business's key first. If none is saved, Roleflow uses its own key. After you save, this page shows only the last 4 characters.",
+    keyProvider: "Provider",
+    keyLabel: "API key",
+    keyPlaceholder: "Paste a key to replace the saved one",
+    keySaved: "Key ending in {last4}.",
+    keyNone: "No key saved for this provider.",
+    keySave: "Save key",
+    keyRemove: "Remove key",
+    keyTest: "Test key",
+    keyChecking: "Checking…",
+    keyLocked: "Only an owner or admin can change this key.",
+    igOn: "Instagram is connected for this business.",
+    igOff: "Instagram is not connected for this business.",
+    igBody: "Connect Instagram starts the account login for this business.",
+    igManual: "If Connect Instagram cannot start the login, open the Zernio dashboard and follow these steps.",
+    igDashboard: "Open Zernio dashboard",
+    igSteps: [
+      "Sign in at the Zernio dashboard.",
+      "Create a profile for this business, or open the profile already used for it.",
+      "Connect an Instagram Business or Creator account. A personal account cannot connect.",
+      "Come back here and use Connect Instagram again once the platform key is set, so Roleflow can send and receive DMs."
+    ]
   },
   es: {
     off: "Apagado",
@@ -34,7 +62,31 @@ const COPY = {
     outreach: "Prospección busca gente que encaja con la oferta y abre la conversación desde tu Grok Bot. Roleflow no envía esos primeros mensajes desde aquí.",
     setter: "El setter responde DMs de Instagram con la conexión de Roleflow. El prompt de abajo es el que usa el motor. La prueba se queda en Roleflow y no envía un mensaje.",
     follow: "Seguimiento escribe el siguiente mensaje solo cuando encajan estas reglas. Sigue apagado hasta que lo actives.",
-    channel: "Instagram se conecta por Zernio. Solo envía mensajes cuando este agente está activo."
+    channel: "Instagram se conecta por Zernio. Solo envía mensajes cuando este agente está activo.",
+    keyTitle: "Clave del modelo",
+    keyLink: "Clave del modelo",
+    keyBody: "El motor y la prueba usan primero la clave de este negocio. Si no hay ninguna, Roleflow usa la suya. Después de guardar, esta página solo muestra los últimos 4 caracteres.",
+    keyProvider: "Proveedor",
+    keyLabel: "Clave API",
+    keyPlaceholder: "Pega una clave para reemplazar la guardada",
+    keySaved: "Clave que termina en {last4}.",
+    keyNone: "No hay clave guardada para este proveedor.",
+    keySave: "Guardar clave",
+    keyRemove: "Quitar clave",
+    keyTest: "Probar clave",
+    keyChecking: "Comprobando…",
+    keyLocked: "Solo un propietario o un admin puede cambiar esta clave.",
+    igOn: "Instagram está conectado para este negocio.",
+    igOff: "Instagram no está conectado para este negocio.",
+    igBody: "Conectar Instagram abre el acceso de la cuenta de este negocio.",
+    igManual: "Si Conectar Instagram no puede abrir el acceso, entra en el panel de Zernio y sigue estos pasos.",
+    igDashboard: "Abrir panel de Zernio",
+    igSteps: [
+      "Entra en el panel de Zernio.",
+      "Crea un perfil para este negocio, o abre el que ya usa.",
+      "Conecta una cuenta de Instagram Business o Creator. Una cuenta personal no se puede conectar.",
+      "Vuelve aquí y usa Conectar Instagram cuando la clave de la plataforma esté puesta, para que Roleflow envíe y reciba DMs."
+    ]
   }
 };
 
@@ -113,6 +165,10 @@ export function renderSetter(ui) {
   const wrap = ui.el("div", { class: "platform-home" });
   wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
   wrap.append(ui.el("p", { text: copy.channel }));
+  wrap.append(ui.el("p", {}, [
+    ui.el("a", { class: "btn ghost sm", id: "setter-key-link", href: "#settings/model" }, [copy.keyLink])
+  ]));
+  wrap.append(renderInstagramConnect(ui));
   wrap.append(switchCard(ui, "setter", copy));
   const prompt = ui.el("section", { class: "agent" });
   prompt.append(ui.el("h3", { text: "System prompt" }));
@@ -163,6 +219,109 @@ export function renderFollowBoss(ui) {
   form.append(ui.button("Save triggers", null, "submit"));
   wrap.append(form);
   return wrap;
+}
+
+export function renderModelKey(ui) {
+  const copy = text(ui.language());
+  const card = ui.el("form", { class: "agent", id: "model-key" });
+  card.append(ui.el("h3", { text: copy.keyTitle }));
+  card.append(ui.el("p", { text: copy.keyBody }));
+  const current = ui.state.settings && ui.state.settings.llm_setter_provider;
+  const provider = ui.el("select", { id: "model-key-provider", "aria-label": copy.keyProvider });
+  CLIENT_PROVIDERS.forEach((item) => {
+    provider.append(ui.el("option", { value: item.id, text: item.label, selected: item.id === current ? true : null }));
+  });
+  const key = ui.el("input", {
+    id: "model-key-input",
+    type: "password",
+    autocomplete: "off",
+    "aria-label": copy.keyLabel,
+    placeholder: copy.keyPlaceholder
+  });
+  const hint = ui.el("p", { id: "model-key-hint", class: "mute" });
+  const status = ui.el("p", { id: "model-key-result", role: "status" });
+  const paintHint = () => {
+    const last4 = keyHint(ui.state.llmKeys, provider.value);
+    hint.textContent = last4 ? copy.keySaved.replace("{last4}", last4) : copy.keyNone;
+  };
+  provider.addEventListener("change", paintHint);
+  paintHint();
+  card.append(
+    ui.el("label", { text: copy.keyProvider }, [provider]),
+    ui.el("label", { text: copy.keyLabel }, [key]),
+    hint,
+    status
+  );
+  const manage = ui.state.canManageKeys === true;
+  const row = ui.el("div", { class: "filters" });
+  if (manage && ui.saveLlm) {
+    row.append(ui.button(copy.keySave, (event) => {
+      event.preventDefault();
+      const providerId = provider.value;
+      const apiKey = key.value;
+      key.value = "";
+      ui.saveLlm(modelPatch(providerId, false), [{ provider: providerId, apiKey }]);
+    }));
+    row.append(ui.button(copy.keyRemove, (event) => {
+      event.preventDefault();
+      const providerId = provider.value;
+      key.value = "";
+      ui.saveLlm(modelPatch(providerId, true), [{ provider: providerId, clear: true }]);
+    }));
+  }
+  if (ui.state.canEdit && ui.testLlm) {
+    row.append(ui.button(copy.keyTest, async (event) => {
+      event.preventDefault();
+      status.textContent = copy.keyChecking;
+      const message = await ui.testLlm({
+        purpose: "setter",
+        provider: provider.value,
+        model: CLIENT_PROVIDERS.find((item) => item.id === provider.value).model,
+        api_key: key.value
+      });
+      status.textContent = message || "";
+    }));
+  }
+  if (row.childElementCount) card.append(row);
+  if (!manage) card.append(ui.el("p", { class: "hq-note", text: copy.keyLocked }));
+  card.addEventListener("submit", (event) => event.preventDefault());
+  return card;
+}
+
+export function renderInstagramConnect(ui) {
+  const copy = text(ui.language());
+  const card = ui.el("section", { class: "agent", id: "instagram-connect" });
+  card.append(ui.el("h3", { text: "Connect Instagram" }));
+  const connected = Boolean(ui.state.ig && ui.state.ig.status === "connected");
+  card.append(ui.el("p", { text: connected ? copy.igOn : copy.igOff }));
+  card.append(ui.el("p", { text: copy.igBody }));
+  const status = ui.el("p", { class: "mute", "data-connect-status": "1", text: copy.igManual });
+  if (ui.state.canEdit) {
+    const control = ui.button("Connect Instagram", async () => {
+      control.disabled = true;
+      const result = await beginInstagramConnect({ state: ui.state, toast: ui.toast });
+      if (result.mode === "redirect") {
+        location.assign(result.authUrl);
+        return;
+      }
+      if (result.mode === "manual") status.textContent = copy.igManual;
+      else if (ui.toast) ui.toast(result.error, "bad");
+      control.disabled = false;
+    });
+    card.append(control);
+  }
+  card.append(status);
+  card.append(ui.el("a", {
+    class: "btn ghost sm",
+    id: "zernio-dashboard-link",
+    href: ZERNIO_DASHBOARD,
+    target: "_blank",
+    rel: "noopener noreferrer"
+  }, [copy.igDashboard]));
+  const steps = ui.el("ol");
+  copy.igSteps.forEach((line) => steps.append(ui.el("li", { text: line })));
+  card.append(steps);
+  return card;
 }
 
 export function localTry(prompt, message) {
