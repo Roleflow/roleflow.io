@@ -111,7 +111,7 @@ Set these on the Supabase project. None are committed. The product still loads w
 | `OPENAI_API_KEY` | Used when `LLM_PROVIDER=openai`, or when no xAI key is set |
 | `OPENAI_MODEL` | Optional. Default `gpt-4.1-mini` |
 | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Used when `LLM_PROVIDER=gemini`, or when xAI and OpenAI are unset |
-| `GEMINI_MODEL` | Optional. Default `gemini-2.0-flash` |
+| `GEMINI_MODEL` | Optional. Default `gemini-3-flash-preview` |
 | `ENGINE_OUTBOX_SECRET` | Optional. When set, it is the bearer for `setter-engine` actions `outbox_list` and `outbox_mark`. Otherwise the function reads `private.acquisition_settings` key `engine_outbox_secret`. |
 
 When `XAI_API_KEY` is set and `LLM_PROVIDER` is empty, the engine calls `https://api.x.ai/v1/chat/completions` with JSON output. The default model is `grok-4.3`: on the October 2026 xAI price table it is the cheapest general model that documents structured output. `grok-build-0.1` is cheaper and is the coding model. Set `LLM_PROVIDER=openai` or `gemini` to use those keys instead.

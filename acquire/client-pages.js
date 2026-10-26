@@ -271,7 +271,12 @@ function practiceThread(ui) {
 
 function trialBubble(ui, message) {
   const bubble = ui.el("article", { class: message.role === "assistant" ? "dm-bubble setter" : "dm-bubble lead" });
+  if (message.error) {
+    bubble.append(ui.el("p", { text: message.error }));
+    return bubble;
+  }
   if (message.text) bubble.append(ui.el("p", { text: message.text }));
+  if (message.modelLine) bubble.append(ui.el("p", { class: "mute dm-model", text: message.modelLine }));
   (message.voices || []).forEach((note) => {
     const card = ui.el("div", { class: "dm-voice" });
     card.append(ui.el("p", { text: "Voice note · " + (note.title || note.slug || "note") }));
@@ -447,15 +452,19 @@ export function renderModelKey(ui) {
     placeholder: copy.keyPlaceholder
   });
   const hint = ui.el("p", { id: "model-key-hint", class: "mute" });
+  const modelNote = ui.el("p", { id: "model-key-default", class: "mute" });
   const status = ui.el("p", { id: "model-key-result", role: "status" });
   const paintHint = () => {
     const last4 = keyHint(ui.state.llmKeys, provider.value);
+    const chosen = CLIENT_PROVIDERS.find((item) => item.id === provider.value);
     hint.textContent = last4 ? copy.keySaved.replace("{last4}", last4) : copy.keyNone;
+    modelNote.textContent = chosen ? "Default model: " + chosen.model : "";
   };
   provider.addEventListener("change", paintHint);
   paintHint();
   card.append(
     ui.el("label", { text: copy.keyProvider }, [provider]),
+    modelNote,
     ui.el("label", { text: copy.keyLabel }, [key]),
     hint,
     status

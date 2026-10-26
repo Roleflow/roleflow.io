@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { bookingTool, chatRequest, completeChat, parseChat, redactSecret, resolveRuntime } from "../supabase/functions/_shared/llm-provider.js";
+import { PROVIDERS, bookingTool, chatRequest, completeChat, parseChat, redactSecret, resolveRuntime } from "../supabase/functions/_shared/llm-provider.js";
 import { completeJson } from "../supabase/functions/roleflow-acquisition/ig/llm.js";
 import { planTurn } from "../supabase/functions/roleflow-acquisition/ig/engine.js";
 import { bookingBehaviour } from "../supabase/functions/_shared/booking-plan.js";
@@ -44,6 +44,66 @@ const gemini = chatRequest({
 assert.match(gemini.url, /^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-2\.0-flash:generateContent$/);
 assert.equal(gemini.init.headers["x-goog-api-key"], "gem-test-key");
 assert.equal(gemini.url.includes("gem-test-key"), false);
+assert.equal(JSON.parse(gemini.init.body).generationConfig.temperature, 0.4);
+assert.equal(JSON.parse(gemini.init.body).generationConfig.thinkingConfig, undefined);
+
+const gemini3 = chatRequest({
+  runtime: { provider: "gemini", model: "gemini-3-flash-preview", apiKey: "gem-test-key" },
+  system: "You are the setter.",
+  messages: [
+    { role: "user", content: "hey" },
+    { role: "assistant", content: "What do you sell?" },
+    { role: "user", content: "coaching" }
+  ],
+  temperature: 0.2
+});
+const gemini3Body = JSON.parse(gemini3.init.body);
+assert.match(gemini3.url, /models\/gemini-3-flash-preview:generateContent$/);
+assert.equal(gemini3Body.generationConfig.thinkingConfig.thinkingLevel, "low");
+assert.equal(gemini3Body.generationConfig.temperature, undefined);
+assert.match(gemini3Body.systemInstruction.parts[0].text, /You are the setter\./);
+assert.deepEqual(gemini3Body.contents.map((item) => item.role), ["user", "model", "user"]);
+assert.equal(gemini3Body.contents[1].parts[0].text, "What do you sell?");
+assert.equal(PROVIDERS.gemini.defaultModel, "gemini-3-flash-preview");
+assert.equal(PROVIDERS.gemini.models.includes("gemini-2.0-flash"), true);
+assert.equal(PROVIDERS.openrouter.models.includes("google/gemini-3-flash-preview"), true);
+
+let geminiCapture = null;
+const geminiAnswer = await completeChat({
+  runtime: { provider: "gemini", model: "gemini-3-flash-preview", apiKey: "gem-secret-key", source: "platform" },
+  system: "You are the setter.",
+  messages: [
+    { role: "user", content: "hey" },
+    { role: "assistant", content: "What do you sell?" },
+    { role: "user", content: "coaching" }
+  ],
+  fetchImpl: async (url, init) => {
+    geminiCapture = { url, body: JSON.parse(init.body), key: init.headers["x-goog-api-key"] };
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [
+              { text: "hidden thought", thought: true },
+              { text: "Want to book a call?" }
+            ]
+          }
+        }]
+      })
+    };
+  }
+});
+assert.equal(geminiAnswer.text, "Want to book a call?");
+assert.equal(geminiAnswer.text.includes("hidden thought"), false);
+assert.equal(geminiAnswer.provider, "gemini");
+assert.equal(geminiAnswer.model, "gemini-3-flash-preview");
+assert.equal(geminiAnswer.keySource, "platform");
+assert.match(geminiCapture.url, /gemini-3-flash-preview:generateContent$/);
+assert.equal(geminiCapture.body.generationConfig.thinkingConfig.thinkingLevel, "low");
+assert.equal(Object.hasOwn(geminiCapture.body.generationConfig, "temperature"), false);
+assert.equal(geminiCapture.key, "gem-secret-key");
+assert.equal(geminiCapture.url.includes("gem-secret-key"), false);
 
 const router = chatRequest({
   runtime: { provider: "openrouter", model: "openai/gpt-4.1-mini", apiKey: "or-test" },

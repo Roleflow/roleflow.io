@@ -30,8 +30,8 @@ export const PROVIDERS = {
   gemini: {
     id: "gemini",
     label: "Google Gemini",
-    defaultModel: "gemini-2.0-flash",
-    models: ["gemini-2.0-flash", "gemini-2.5-pro"],
+    defaultModel: "gemini-3-flash-preview",
+    models: ["gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.0-flash"],
     kind: "gemini",
     url: ""
   },
@@ -39,7 +39,7 @@ export const PROVIDERS = {
     id: "openrouter",
     label: "OpenRouter",
     defaultModel: "openai/gpt-4.1-mini",
-    models: ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash", "x-ai/grok-4"],
+    models: ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-3-flash-preview", "google/gemini-2.5-flash", "x-ai/grok-4"],
     kind: "openai",
     url: "https://openrouter.ai/api/v1/chat/completions"
   },
@@ -150,8 +150,8 @@ export function resolveRuntime({ purpose, settings, secret, env }) {
   const prefs = settings || {};
   const prompt = purpose === "prompt";
   const provider = normalizeProvider(prompt ? prefs.llm_prompt_provider : prefs.llm_setter_provider) || "xai";
-  const named = String(prompt ? (prefs.llm_prompt_model || PROVIDERS.xai.defaultModel) : (prefs.setter_model || PROVIDERS.xai.defaultModel)).trim().slice(0, 120);
-  const model = named || PROVIDERS[provider].defaultModel;
+  const named = prompt ? prefs.llm_prompt_model : prefs.setter_model;
+  const model = modelForProvider(provider, named);
   const baseUrl = safeBaseUrl(prompt ? prefs.llm_prompt_base_url : prefs.llm_setter_base_url);
   const owned = secret && String(secret.apiKey || "").trim();
   // A saved business key wins whenever one exists. The platform env key is the fallback.
@@ -289,7 +289,13 @@ async function once(runtime, input) {
   if (payload && payload.choices && payload.choices[0] && payload.choices[0].finish_reason === "length") {
     throw new Error("The model response was cut off.");
   }
-  return parsed;
+  return {
+    text: parsed.text,
+    toolCalls: parsed.toolCalls,
+    provider: runtime.provider,
+    model: String(runtime.model || ""),
+    keySource: runtime.source === "own" ? "business" : "platform"
+  };
 }
 
 function openaiRequest({ runtime, spec, model, system, messages, json, toolList, responseFormat, heat, maxTokens }) {
@@ -357,14 +363,19 @@ function anthropicRequest({ runtime, spec, model, system, messages, json, toolLi
 }
 
 function geminiRequest({ runtime, model, system, messages, json, toolList, heat }) {
-  const contents = plainMessages(messages).map((message) => ({
-    role: message.role === "assistant" ? "model" : "user",
-    parts: [{ text: message.content }]
-  }));
+  const gemini3 = /^gemini-3/i.test(model);
+  const generationConfig = {};
+  if (json) generationConfig.responseMimeType = "application/json";
+  if (gemini3) {
+    generationConfig.thinkingConfig = { thinkingLevel: "low" };
+    if (Number.isFinite(heat) && heat >= 1) generationConfig.temperature = heat;
+  } else {
+    generationConfig.temperature = heat;
+  }
   const body = {
     systemInstruction: { parts: [{ text: json ? String(system || "") + "\n\nReply with JSON only." : String(system || "") }] },
-    contents: contents.length ? contents : [{ role: "user", parts: [{ text: "Continue." }] }],
-    generationConfig: { temperature: heat, ...(json ? { responseMimeType: "application/json" } : {}) }
+    contents: geminiContents(messages),
+    generationConfig
   };
   if (toolList.length) {
     body.tools = [{
@@ -390,6 +401,28 @@ function customUrl(baseUrl) {
   if (!base) throw new Error("The custom address has to be https.");
   if (base.endsWith("/chat/completions")) return base;
   return base + "/chat/completions";
+}
+
+function modelForProvider(provider, value) {
+  const spec = PROVIDERS[provider] || PROVIDERS.xai;
+  const named = String(value || "").trim().slice(0, 120);
+  if (provider === "custom" || provider === "openrouter") return named || spec.defaultModel;
+  if (!named || (spec.models.length && !spec.models.includes(named))) return spec.defaultModel;
+  return named;
+}
+
+function geminiContents(messages) {
+  const rows = [];
+  plainMessages(messages).forEach((message) => {
+    if (!message.content) return;
+    const role = message.role === "assistant" ? "model" : "user";
+    const last = rows[rows.length - 1];
+    if (last && last.role === role) last.parts[0].text += "\n" + message.content;
+    else rows.push({ role, parts: [{ text: message.content }] });
+  });
+  if (!rows.length) return [{ role: "user", parts: [{ text: "Continue." }] }];
+  if (rows[0].role !== "user") rows.unshift({ role: "user", parts: [{ text: "Continue." }] });
+  return rows;
 }
 
 function plainMessages(messages) {
@@ -437,7 +470,7 @@ function parseGemini(body) {
   let text = "";
   const toolCalls = [];
   parts.forEach((part) => {
-    if (!part) return;
+    if (!part || part.thought === true) return;
     if (part.text) text += part.text;
     if (part.functionCall && part.functionCall.name) {
       toolCalls.push({
