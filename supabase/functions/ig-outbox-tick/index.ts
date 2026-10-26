@@ -3,6 +3,7 @@
 
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { outboxWriteStatus } from "../_shared/ig-gateway.js";
+import { stampAgentEnabled } from "../_shared/agent-control.js";
 import { postOfficial } from "../_shared/official-outbox.js";
 import { sentMessage } from "../_shared/clip-send.js";
 
@@ -19,7 +20,8 @@ Deno.serve(async (req) => {
   const rows = claimed.data || [];
   let sent = 0;
   for (const row of rows) {
-    const result = await postOfficial(row, config.apiKey, fetch, {
+    const stamped = await stampAgentEnabled(admin, row);
+    const result = await postOfficial(stamped, config.apiKey, fetch, {
       download: (clip) => downloadOwnerClip(admin, clip)
     });
     const written = outboxWriteStatus(result);

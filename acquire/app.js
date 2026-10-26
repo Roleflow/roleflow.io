@@ -1,5 +1,7 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
+import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
+import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderSetter, text as agentText } from "./client-pages.js";
 import { bindAssistant } from "./assistant.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindSidebar } from "./dock.js";
@@ -138,11 +140,17 @@ const state = {
   agentActions: [],
   agentSettings: [],
   agentPromptScore: null,
-  refreshTimer: 0
+  refreshTimer: 0,
+  agentSwitches: [],
+  setterPrompt: "",
+  setterTestedAt: null,
+  followupPolicy: null,
+  language: "en"
 };
 
 logoutBtn.addEventListener("click", () => logout());
 if (panelLogout) panelLogout.addEventListener("click", () => logout());
+bindProfile();
 const sidebar = bindSidebar();
 document.getElementById("nav-toggle").addEventListener("click", () => sidebar.setDrawer(!document.body.classList.contains("panel-open")));
 document.getElementById("how-close").addEventListener("click", () => { document.getElementById("how-modal").hidden = true; });
@@ -174,6 +182,7 @@ window.addEventListener("hashchange", () => {
 boot();
 
 async function boot() {
+  state.language = readLanguage(safeStorage());
   const preview = readPreview();
   if (preview) {
     Object.assign(state, preview, { tab: tabFromHash() });
@@ -222,8 +231,8 @@ async function boot() {
     return;
   }
   state.user = data.session.user;
-  logoutBtn.hidden = false;
-  if (panelLogout) panelLogout.hidden = false;
+  logoutBtn.hidden = true;
+  if (panelLogout) panelLogout.hidden = true;
   const inviteToken = new URLSearchParams(location.search).get("invite");
   if (inviteToken) {
     const accepted = await state.supabase.rpc("acq_accept_invite", { p_token: inviteToken });
@@ -469,6 +478,19 @@ async function loadAll(id) {
   state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
   state.agentTools = agentTools.error ? [] : agentTools.data || [];
   state.setterOutbox = setterOutbox.error ? [] : setterOutbox.data || [];
+  const [switches, setterPrompt, followPolicy, prefs] = await Promise.all([
+    q.from("acq_agent_switches").select("agent_key, enabled").eq("business_id", id),
+    q.from("acq_agent_prompts").select("body, tested_at").eq("business_id", id).eq("agent_key", "setter").maybeSingle(),
+    q.from("acq_followup_policy").select("*").eq("business_id", id).maybeSingle(),
+    state.user ? q.from("acq_user_prefs").select("language").eq("user_id", state.user.id).maybeSingle() : Promise.resolve({ data: null, error: null })
+  ]);
+  state.agentSwitches = switches.error ? [] : switches.data || [];
+  state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
+  state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
+  state.followupPolicy = followPolicy.error ? null : followPolicy.data;
+  if (!prefs.error && prefs.data && (prefs.data.language === "en" || prefs.data.language === "es")) {
+    state.language = writeLanguage(safeStorage(), prefs.data.language);
+  }
   const selected = state.flow && state.flow.chat && state.flow.chat.startsWith("contact:") ? state.flow.chat.slice("contact:".length) : "";
   const openConversation = selected ? (state.conversations || []).find((row) => row.contact_id === selected) : null;
   if (openConversation) await loadThread(openConversation.id, "newest");
@@ -534,6 +556,7 @@ async function loadEarlier() {
 }
 
 function paint() {
+  parkAssistant();
   markTab();
   app.innerHTML = "";
   const root = el("div", { class: "acq" });
@@ -543,24 +566,28 @@ function paint() {
     if (state.canEdit) banner.append(button("Resume", resumeInstagram));
     root.append(banner);
   }
-  if (state.tab === "dashboard") root.append(dashboard());
-  if (state.tab === "agents" || state.tab === "overview" || state.tab === "outbound") root.append(renderOutbound(pageUi()));
-  if (state.tab === "inbound") root.append(renderInbound(pageUi()));
-  const intro = renderIntro(pageUi(), state.tab);
-  if (intro) root.append(intro);
-  if (state.tab === "brief") root.append(renderBusiness(pageUi()));
-  if (state.tab === "pipeline") root.append(renderCrm(pageUi()));
-  if (state.tab === "voice" || state.tab === "content") root.append(renderValueContent(pageUi()));
-  if (state.tab === "links") root.append(renderSalesLinks(pageUi()));
-  if (state.tab === "followups") root.append(renderFollowups(pageUi()));
-  if (state.tab === "reminders") root.append(renderReminders(pageUi()));
-  if (state.tab === "ctas") root.append(renderCtas(pageUi()));
-  if (state.tab === "inbox") root.append(renderChats(pageUi()));
-  if (state.tab === "reports" || state.tab === "stats") root.append(renderStats(pageUi()));
-  if (state.tab === "performance") root.append(renderPerformance(pageUi()));
-  if (state.tab === "team") root.append(renderTeam(pageUi()));
-  if (state.tab === "controls") root.append(controls());
-  if (state.tab === "settings" || state.tab === "configuration") root.append(renderConfiguration(pageUi()));
+  const ui = pageUi();
+  if (state.tab === "dashboard") root.append(renderDashboardHome(ui));
+  if (state.tab === "performance") {
+    root.append(renderPerformance(ui));
+    root.append(renderStats(ui));
+  }
+  if (state.tab === "assistant") root.append(dockAssistant(ui));
+  if (state.tab === "chats") root.append(renderChats(ui));
+  if (state.tab === "opportunities") root.append(renderCrm(ui));
+  if (state.tab === "calendar") root.append(renderCalendar(ui));
+  if (state.tab === "sops") root.append(renderBusiness(ui));
+  if (state.tab === "content") root.append(renderValueContent(ui));
+  if (state.tab === "voice") root.append(voiceLibrary());
+  if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
+  if (state.tab === "outreacher") root.append(renderGrokAgent(ui, "outreacher"));
+  if (state.tab === "setter") root.append(renderSetter(ui));
+  if (state.tab === "followup") root.append(renderFollowBoss(ui));
+  if (state.tab === "settings") {
+    root.append(renderConfiguration(ui));
+    root.append(renderSalesLinks(ui));
+    root.append(renderTeam(ui));
+  }
   if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox") {
     const host = el("div");
     root.append(host);
@@ -692,8 +719,202 @@ function pageUi() {
     setRoutineEnabled,
     setAutoApprove,
     approveAction,
-    rejectAction
+    rejectAction,
+    language,
+    setAgent,
+    saveSetterPrompt,
+    trySetter,
+    saveFollowupPolicy
   };
+}
+
+function language() {
+  return state.language === "es" ? "es" : "en";
+}
+
+function safeStorage() {
+  try { return localStorage; } catch (_error) { return null; }
+}
+
+function parkAssistant() {
+  const panel = document.getElementById("assistant-panel");
+  const fab = document.getElementById("assistant-open");
+  if (panel && panel.parentElement !== document.body) document.body.append(panel);
+  if (panel) {
+    panel.classList.remove("is-docked");
+    panel.hidden = true;
+  }
+  if (fab) fab.hidden = false;
+  document.body.classList.remove("assistant-page");
+}
+
+function dockAssistant(ui) {
+  const wrap = ui.el("div", { class: "assistant-dock" });
+  wrap.append(ui.pageHeader(ui, "Roleflow Assistant", "Ask about this business. Answers stay on the numbers and settings stored here.", "assistant", "clipboard"));
+  const panel = document.getElementById("assistant-panel");
+  const fab = document.getElementById("assistant-open");
+  if (panel) {
+    panel.hidden = false;
+    panel.classList.add("is-docked");
+    wrap.append(panel);
+  }
+  if (fab) fab.hidden = true;
+  document.body.classList.add("assistant-page");
+  return wrap;
+}
+
+function bindProfile() {
+  const open = document.getElementById("profile-open");
+  const panel = document.getElementById("profile-panel");
+  const settings = document.getElementById("profile-settings");
+  const lang = document.getElementById("profile-language");
+  const signOut = document.getElementById("profile-logout");
+  if (!open || !panel) return;
+  open.addEventListener("click", (event) => {
+    event.stopPropagation();
+    panel.hidden = !panel.hidden;
+    open.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+  });
+  document.addEventListener("click", (event) => {
+    if (panel.hidden) return;
+    if (panel.contains(event.target) || open.contains(event.target)) return;
+    panel.hidden = true;
+    open.setAttribute("aria-expanded", "false");
+  });
+  if (settings) settings.addEventListener("click", () => { panel.hidden = true; go("settings"); });
+  if (lang) {
+    lang.value = language();
+    lang.addEventListener("change", () => saveLanguage(lang.value));
+  }
+  if (signOut) signOut.addEventListener("click", () => logout());
+}
+
+function paintProfile() {
+  const lang = document.getElementById("profile-language");
+  const open = document.getElementById("profile-open");
+  if (lang && document.activeElement !== lang) lang.value = language();
+  const avatar = document.getElementById("profile-avatar");
+  const business = state.businesses.find((row) => row.id === state.businessId);
+  const name = business && business.agent_name ? business.agent_name : "Roleflow";
+  const letter = name.trim().charAt(0).toUpperCase() || "R";
+  if (avatar) avatar.textContent = letter;
+  if (open) open.setAttribute("aria-label", "Account menu for " + name);
+}
+
+async function saveLanguage(value) {
+  state.language = writeLanguage(safeStorage(), value);
+  paint();
+  if (!state.supabase || !state.user) return;
+  try {
+    await dashboardCall({ action: "save_language", language: state.language });
+  } catch (error) {
+    const saved = await state.supabase.from("acq_user_prefs").upsert({
+      user_id: state.user.id,
+      language: state.language,
+      updated_at: new Date().toISOString()
+    });
+    if (saved.error && !missing(saved.error)) toast(error.message || saved.error.message, "bad");
+  }
+}
+
+async function dashboardCall(body) {
+  const { data, error } = await state.supabase.functions.invoke("client-dashboard", {
+    body: { business_id: state.businessId, ...body }
+  });
+  if (error) throw new Error(error.message || "The dashboard could not save.");
+  if (data && data.ok === false) throw new Error(data.error || "The dashboard could not save.");
+  return data || {};
+}
+
+async function setAgent(key, enabled) {
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  if (enabled && key === "setter") {
+    const gate = gateSetter(state);
+    if (!gate.ok) {
+      toast(gate.error, "bad");
+      return;
+    }
+  }
+  if (enabled && !window.confirm(agentText(language()).confirm)) return;
+  const next = (state.agentSwitches || []).filter((row) => row.agent_key !== key).concat([{ agent_key: key, enabled: enabled === true }]);
+  if (!state.supabase) {
+    state.agentSwitches = next;
+    paint();
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "set_agent", agent_key: key, enabled: enabled === true });
+    state.agentSwitches = next.map((row) => row.agent_key === key ? { agent_key: key, enabled: saved.enabled === true } : row);
+    paint();
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+async function saveSetterPrompt(value) {
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  const body = String(value || "").trim();
+  state.setterPrompt = body;
+  state.setterTestedAt = null;
+  if (!state.supabase) {
+    toast(agentText(language()).saved);
+    return;
+  }
+  try {
+    await dashboardCall({ action: "save_prompt", prompt: body });
+    toast(agentText(language()).saved);
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+async function trySetter(prompt, message, logEl) {
+  const body = String(prompt || "").trim();
+  const sample = String(message || "").trim();
+  if (logEl && sample) logEl.append(el("p", { class: "me", text: sample }));
+  let result;
+  if (!state.supabase) result = localTry(body, sample);
+  else {
+    try {
+      result = await dashboardCall({ action: "preview_setter", prompt: body, message: sample });
+    } catch (error) {
+      result = { ok: false, error: error.message };
+    }
+  }
+  if (!result.ok) {
+    toast(result.error || "The tryout did not run.", "bad");
+    if (logEl && result.error) logEl.append(el("p", { text: result.error }));
+    return;
+  }
+  state.setterPrompt = body;
+  state.setterTestedAt = result.tested_at || new Date().toISOString();
+  if (logEl) logEl.append(el("p", { text: result.reply }));
+  toast("Tried. Nothing was sent.");
+}
+
+async function saveFollowupPolicy(policy) {
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  state.followupPolicy = policy;
+  if (!state.supabase) {
+    toast(agentText(language()).saved);
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "save_policy", policy });
+    state.followupPolicy = saved.policy || policy;
+    toast(agentText(language()).saved);
+  } catch (error) {
+    toast(error.message, "bad");
+  }
 }
 
 function armRefresh() {
@@ -2603,13 +2824,11 @@ function setPanel(open) {
 
 function go(tab) {
   closeOffice();
-  if (tab === "settings") tab = "configuration";
-  if (tab === "agents" || tab === "overview") tab = "outbound";
-  if (tab === "reports") tab = "stats";
+  const next = canonicalTab(tab);
   const url = new URL(location.href);
-  url.hash = tab;
+  url.hash = next;
   history.replaceState(null, "", url.pathname + url.search + url.hash);
-  state.tab = tabFromHash();
+  state.tab = next;
   markTab();
   paint();
   if (sidebar.isMobile()) setPanel(false);
@@ -2617,34 +2836,23 @@ function go(tab) {
 
 function markTab() {
   mountNav(pageUi());
+  paintProfile();
   const title = document.getElementById("page-title");
   const names = {
     dashboard: "Dashboard",
-    agents: "Outbound Manager",
-    overview: "Outbound Manager",
-    outbound: "Outbound Manager",
-    inbound: "Inbound Manager",
-    pipeline: "CRM",
-    inbox: "CRM",
-    reports: "Stats",
-    stats: "Stats",
     performance: "Performance",
-    settings: "Configuration",
-    configuration: "Configuration",
-    integrations: "Integrations",
-    billing: "Configuration",
-    controls: "Configuration",
-    voice: "Value content",
-    content: "Value content",
-    links: "Sales links",
-    prompts: "Setter prompt",
-    onboarding: "Onboarding",
-    team: "Team",
-    brief: "Business",
-    followups: "Follow-ups",
-    reminders: "Reminders",
-    ctas: "Calls to action",
-    inbox: "Chats"
+    assistant: "Roleflow Assistant",
+    chats: "Chats",
+    opportunities: "Opportunities",
+    calendar: "Calendar",
+    sops: "SOPs",
+    content: "Content",
+    voice: "Voice Gen",
+    warmer: "Lead Warmer",
+    outreacher: "Outreacher",
+    setter: "Agentic Setter",
+    followup: "Follow Up Boss",
+    settings: "Settings"
   };
   if (title) title.textContent = names[state.tab] || "Dashboard";
   const business = state.businesses.find((row) => row.id === state.businessId);
@@ -2656,13 +2864,7 @@ function markTab() {
 }
 
 function tabGroup(tab) {
-  if (tab === "overview" || tab === "agents" || tab === "outbound") return "outbound";
-  if (tab === "inbox" || tab === "followups" || tab === "reminders" || tab === "ctas") return "inbound";
-  if (tab === "reports" || tab === "stats") return "stats";
-  if (tab === "voice" || tab === "content") return "content";
-  if (tab === "integrations" || tab === "billing" || tab === "controls" || tab === "settings" || tab === "configuration") return "configuration";
-  if (tab === "prompts" || tab === "brief") return "onboarding";
-  return tab;
+  return canonicalTab(tab);
 }
 
 function consumeInstagramNotice() {
@@ -2676,16 +2878,10 @@ function consumeInstagramNotice() {
 function tabFromHash() {
   const parts = location.hash.replace("#", "").split("/");
   const raw = parts[0];
-  if (raw === "integrations" || raw === "billing") {
-    state.configKey = "connect";
-    return raw;
-  }
-  if ((raw === "configuration" || raw === "settings") && parts[1] === "connect") state.configKey = "connect";
-  else if (raw === "configuration" || raw === "settings") state.configKey = "reply";
-  if (raw === "overview" || raw === "agents") return "outbound";
-  if (raw === "reports") return "stats";
-  if (raw === "settings") return "configuration";
-  return TABS.includes(raw) ? raw : "dashboard";
+  const tab = canonicalTab(raw);
+  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "billing")) state.configKey = "connect";
+  else if (tab === "settings" && (raw === "configuration" || raw === "settings" || raw === "controls")) state.configKey = state.configKey || "reply";
+  return tab;
 }
 
 function field(label, value, type) {
@@ -2815,6 +3011,10 @@ function readPreview() {
     ig: connect ? { status: "disconnected" } : { status: "connected", username: "previewcoach" },
     connectRequests: pending ? [{ id: "preview-request", workspace_id: "preview", channel: "instagram", username: "previewcoach", status: "pending", notes: "Business account" }] : [],
     google: { status: "disconnected" },
+    agentSwitches: [],
+    setterPrompt: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.",
+    setterTestedAt: null,
+    followupPolicy: null,
     workers: [{ id: "w1", label: "Outreach worker", key_prefix: "rfw_preview", enabled: true, status: "offline", last_heartbeat_at: null, pause_reason: null }],
     dnc: [{ handle: "donotcontact", reason: "asked to stop" }],
     prompts: [],

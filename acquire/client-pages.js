@@ -1,0 +1,229 @@
+import { AGENT_KEYS, DEFAULT_POLICY, dashboardMetrics, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
+import { grokLaunchUrl } from "./client-config.js";
+
+const COPY = {
+  en: {
+    off: "Off",
+    live: "Live",
+    turnOn: "Turn on",
+    turnOff: "Turn off",
+    confirm: "Turn this agent live? It can message people on Instagram while it stays on.",
+    saved: "Saved.",
+    promptNeeded: "Save a system prompt, then try it below, before this can go live.",
+    grokTitle: "Sign in to your Grok Bot",
+    grokMissing: "The Grok Bot sign-in URL is not configured yet. This button stays off until a real https address is set. Nothing here pretends to scan Instagram.",
+    grokOpen: "Open Grok Bot",
+    warmer: "Lead Warmer watches new followers and recent likers, then runs the warm-up steps you approve in your own Grok Bot. Roleflow does not run that scan from this page.",
+    outreach: "Outreacher finds people who fit the offer and starts conversations from your own Grok Bot. Roleflow does not send those first messages from this page.",
+    setter: "Agentic Setter replies in Instagram DMs through the Roleflow connection. The system prompt below is what the reply engine uses. A tryout stays inside Roleflow and does not send a message.",
+    follow: "Follow Up Boss sends the next message only when the rules below match: quiet time, stage, booking, and the cap. It stays off until you turn it on.",
+    channel: "Instagram is connected through Zernio. Messages are sent only while this agent is Live."
+  },
+  es: {
+    off: "Apagado",
+    live: "Activo",
+    turnOn: "Activar",
+    turnOff: "Apagar",
+    confirm: "¿Activar este agente? Puede escribir por Instagram mientras siga activo.",
+    saved: "Guardado.",
+    promptNeeded: "Guarda un prompt y pruébalo abajo antes de activarlo.",
+    grokTitle: "Entra en tu Grok Bot",
+    grokMissing: "La URL de Grok Bot todavía no está configurada. El botón sigue apagado hasta que haya una dirección https real. Esta página no simula un escaneo de Instagram.",
+    grokOpen: "Abrir Grok Bot",
+    warmer: "El calentador mira seguidores nuevos y likes recientes, y ejecuta el calentamiento en tu propio Grok Bot. Roleflow no hace ese escaneo desde aquí.",
+    outreach: "Prospección busca gente que encaja con la oferta y abre la conversación desde tu Grok Bot. Roleflow no envía esos primeros mensajes desde aquí.",
+    setter: "El setter responde DMs de Instagram con la conexión de Roleflow. El prompt de abajo es el que usa el motor. La prueba se queda en Roleflow y no envía un mensaje.",
+    follow: "Seguimiento escribe el siguiente mensaje solo cuando encajan estas reglas. Sigue apagado hasta que lo actives.",
+    channel: "Instagram se conecta por Zernio. Solo envía mensajes cuando este agente está activo."
+  }
+};
+
+export function text(language) {
+  return COPY[language] || COPY.en;
+}
+
+export function renderDashboardHome(ui) {
+  const copy = text(ui.language());
+  const metrics = dashboardMetrics({
+    targets: ui.state.targets,
+    threads: ui.state.threads,
+    bookings: ui.state.bookings,
+    switches: ui.state.agentSwitches
+  });
+  const wrap = ui.el("div", { class: "platform-home" });
+  wrap.append(ui.pageHeader(ui, "Dashboard", "One business. Live numbers only.", "dashboard", "grid"));
+  const grid = ui.el("div", { class: "home-grid" });
+  grid.append(metricCard(ui, "Leads", String(metrics.leads), "People stored for this business."));
+  grid.append(metricCard(ui, "Chats", String(metrics.chats), "Threads Roleflow can open."));
+  grid.append(metricCard(ui, "Booked", String(metrics.booked), "Calendar rows that are not cancelled."));
+  grid.append(metricCard(ui, "Agents live", String(metrics.liveAgents) + " / " + AGENT_KEYS.length, "Each agent stays off until you turn it on."));
+  wrap.append(grid);
+  const banner = ui.el("div", { class: "info-banner", role: "status" });
+  const on = ui.state.settings && ui.state.settings.system_enabled;
+  banner.append(ui.el("p", { text: (on ? "The workspace is on." : "The workspace is off.") + " " + ui.instagramLine() }));
+  wrap.append(banner);
+  wrap.append(ui.el("p", { class: "hq-note", text: copy.channel }));
+  return wrap;
+}
+
+export function renderCalendar(ui) {
+  const wrap = ui.el("div", { class: "platform-home" });
+  wrap.append(ui.pageHeader(ui, "Calendar", "Booked calls stored for this business.", "calendar", "clipboard"));
+  const google = ui.state.google;
+  const account = ui.el("section", { class: "agent" });
+  account.append(ui.el("h3", { text: "Google Calendar" }));
+  account.append(ui.el("p", { text: google && google.status === "connected" ? "Connected" + (google.email ? " · " + google.email : "") : "Not connected yet. Connect it from Settings." }));
+  account.append(ui.el("a", { class: "btn ghost sm", href: "#settings" }, ["Open settings"]));
+  wrap.append(account);
+  const rows = ui.state.bookings || [];
+  if (!rows.length) wrap.append(ui.el("p", { text: "No bookings yet." }));
+  rows.forEach((row) => {
+    const target = (ui.state.targets || []).find((item) => item.id === row.target_id);
+    const card = ui.el("article", { class: "agent" });
+    card.append(ui.el("h3", { text: target && target.handle ? "@" + target.handle : "Booking" }));
+    card.append(ui.el("p", { text: (row.show_status || "scheduled") + (row.meet_link ? " · " + row.meet_link : "") }));
+    wrap.append(card);
+  });
+  return wrap;
+}
+
+export function renderGrokAgent(ui, kind) {
+  const copy = text(ui.language());
+  const title = kind === "warmer" ? "Lead Warmer" : "Outreacher";
+  const body = kind === "warmer" ? copy.warmer : copy.outreach;
+  const wrap = ui.el("div", { class: "platform-home" });
+  wrap.append(ui.pageHeader(ui, title, body, kind, kind === "warmer" ? "users" : "send"));
+  wrap.append(switchCard(ui, kind, copy));
+  const launch = ui.el("section", { class: "agent" });
+  launch.append(ui.el("h3", { text: copy.grokTitle }));
+  const url = grokLaunchUrl(kind);
+  if (!url) {
+    launch.append(ui.el("p", { text: copy.grokMissing }));
+    const button = ui.el("button", { type: "button", class: "btn", disabled: true }, [copy.grokOpen]);
+    launch.append(button);
+  } else {
+    launch.append(ui.el("a", { class: "btn", href: url, target: "_blank", rel: "noopener noreferrer" }, [copy.grokOpen]));
+  }
+  wrap.append(launch);
+  return wrap;
+}
+
+export function renderSetter(ui) {
+  const copy = text(ui.language());
+  const wrap = ui.el("div", { class: "platform-home" });
+  wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
+  wrap.append(ui.el("p", { text: copy.channel }));
+  wrap.append(switchCard(ui, "setter", copy));
+  const prompt = ui.el("section", { class: "agent" });
+  prompt.append(ui.el("h3", { text: "System prompt" }));
+  const area = ui.el("textarea", { id: "setter-prompt", rows: "10", maxlength: "12000", "aria-label": "Setter system prompt" });
+  area.value = ui.state.setterPrompt || "";
+  prompt.append(area);
+  const save = ui.button("Save prompt", () => ui.saveSetterPrompt(area.value));
+  prompt.append(save);
+  wrap.append(prompt);
+  const trial = ui.el("section", { class: "agent", id: "setter-trial" });
+  trial.append(ui.el("h3", { text: "Try a message" }));
+  trial.append(ui.el("p", { text: "This stays in Roleflow. It does not send an Instagram message." }));
+  const log = ui.el("div", { id: "setter-trial-log", class: "assistant-log" });
+  const input = ui.el("input", { id: "setter-trial-input", type: "text", maxlength: "500", placeholder: "Write what a lead might say", "aria-label": "Sample lead message" });
+  const send = ui.button("Try it", () => ui.trySetter(area.value, input.value, log));
+  trial.append(log, input, send);
+  wrap.append(trial);
+  return wrap;
+}
+
+export function renderFollowBoss(ui) {
+  const copy = text(ui.language());
+  const policy = normalizePolicy(ui.state.followupPolicy || DEFAULT_POLICY);
+  const wrap = ui.el("div", { class: "platform-home" });
+  wrap.append(ui.pageHeader(ui, "Follow Up Boss", copy.follow, "followup", "trend"));
+  wrap.append(ui.el("p", { text: copy.channel }));
+  wrap.append(switchCard(ui, "followup", copy));
+  const form = ui.el("form", { class: "agent grid-2", id: "followup-policy" });
+  form.append(numberField(ui, "Hours since last message", "hours", policy.hoursSinceLastMessage, 1, 23));
+  form.append(selectField(ui, "Lead stage", "stage", [
+    ["any", "Any stage"],
+    ["open", "Open"],
+    ["discovering", "Discovering"],
+    ["qualifying", "Qualifying"],
+    ["proposal", "Proposal"],
+    ["booked", "Booked"],
+    ["paid", "Paid"]
+  ], policy.leadStage));
+  form.append(numberField(ui, "No reply after N messages", "quietCount", policy.noReplyAfter, 1, 20));
+  form.append(selectField(ui, "Booking", "booked", [["any", "Booked or not"], ["booked", "Booked"], ["not_booked", "Not booked"]], policy.booked));
+  form.append(numberField(ui, "Max follow-ups", "max", policy.maxFollowups, 1, 10));
+  form.append(textField(ui, "Quiet hours start", "quietStart", policy.quietStart));
+  form.append(textField(ui, "Quiet hours end", "quietEnd", policy.quietEnd));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    ui.saveFollowupPolicy(readPolicy(form));
+  });
+  form.append(ui.button("Save triggers", null, "submit"));
+  wrap.append(form);
+  return wrap;
+}
+
+export function localTry(prompt, message) {
+  return previewReply(prompt, message);
+}
+
+export function gateSetter(state) {
+  return setterMayEnable({ prompt: state.setterPrompt, testedAt: state.setterTestedAt });
+}
+
+function switchCard(ui, key, copy) {
+  const row = (ui.state.agentSwitches || []).find((item) => item.agent_key === key);
+  const on = Boolean(row && row.enabled);
+  const card = ui.el("section", { class: "agent agent-switch" });
+  const status = ui.el("p", { class: on ? "integration-status on" : "integration-status", text: on ? copy.live : copy.off });
+  status.setAttribute("role", "status");
+  const button = ui.button(on ? copy.turnOff : copy.turnOn, () => ui.setAgent(key, !on));
+  button.setAttribute("data-agent", key);
+  card.append(status, button);
+  if (key === "setter" && !on) card.append(ui.el("p", { class: "hq-note", text: copy.promptNeeded }));
+  return card;
+}
+
+function metricCard(ui, title, value, note) {
+  const card = ui.el("section", { class: "home-card" });
+  card.append(ui.el("h3", { text: title }));
+  card.append(ui.el("p", { class: "metric-value", text: value }));
+  card.append(ui.el("p", { class: "metric-note", text: note }));
+  return card;
+}
+
+function numberField(ui, label, name, value, min, max) {
+  const wrap = ui.el("label", { text: label });
+  const input = ui.el("input", { type: "number", name, min: String(min), max: String(max), value: String(value), required: true });
+  wrap.append(input);
+  return wrap;
+}
+
+function textField(ui, label, name, value) {
+  const wrap = ui.el("label", { text: label });
+  wrap.append(ui.el("input", { type: "time", name, value, required: true }));
+  return wrap;
+}
+
+function selectField(ui, label, name, options, value) {
+  const wrap = ui.el("label", { text: label });
+  const select = ui.el("select", { name });
+  options.forEach(([option, text]) => select.append(ui.el("option", { value: option, text, selected: option === value ? true : null })));
+  wrap.append(select);
+  return wrap;
+}
+
+function readPolicy(form) {
+  const data = new FormData(form);
+  return normalizePolicy({
+    hoursSinceLastMessage: data.get("hours"),
+    leadStage: data.get("stage"),
+    noReplyAfter: data.get("quietCount"),
+    booked: data.get("booked"),
+    maxFollowups: data.get("max"),
+    quietStart: data.get("quietStart"),
+    quietEnd: data.get("quietEnd")
+  });
+}

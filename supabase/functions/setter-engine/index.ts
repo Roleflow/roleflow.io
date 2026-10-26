@@ -54,6 +54,9 @@ Deno.serve(async (req) => {
   try {
     if (REGISTRY_ACTIONS.has(action) || (action === "mark_booked" && !body.business_id)) {
       if (!await isAdmin(service, userId)) return json(403, { error: "Admin only." });
+      if (Deno.env.get("TAILORTALK_SYNC_ENABLED") !== "1") {
+        return json(410, { error: "TailorTalk sync is retired. Instagram messages run on Roleflow." });
+      }
       return forward(supabaseUrl, "tailortalk-sync", bearer, body);
     }
 
@@ -65,6 +68,9 @@ Deno.serve(async (req) => {
     if (action === "request_activation") return json(200, await requestActivation(service, businessId, body));
     if (action === "link_agent") {
       if (!await isAdmin(service, userId)) return json(403, { error: "Admin only." });
+      if (Deno.env.get("TAILORTALK_SYNC_ENABLED") !== "1") {
+        return json(410, { error: "TailorTalk sync is retired. Instagram messages run on Roleflow." });
+      }
       return forward(supabaseUrl, "acq-tailortalk", bearer, {
         action: "connect",
         business_id: businessId,
@@ -73,6 +79,9 @@ Deno.serve(async (req) => {
       });
     }
     if (action === "mark_won" || action === "sync_one" || action === "mark_booked" || action === "disconnect") {
+      if (Deno.env.get("TAILORTALK_SYNC_ENABLED") !== "1") {
+        return json(410, { error: "TailorTalk sync is retired. Instagram messages run on Roleflow." });
+      }
       return forward(supabaseUrl, "acq-tailortalk", bearer, body);
     }
   } catch (error) {

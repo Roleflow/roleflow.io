@@ -61,8 +61,21 @@ try {
         <p class="biz-name" id="page-sub">Loading…</p>
       </div>
       <h1 id="page-title" class="sr">Dashboard</h1>
-      <button type="button" class="notify-btn" id="notify-open" aria-controls="notify-panel">Notifications</button>
-      <div id="notify-panel" class="notify-panel" hidden></div>
+      <div class="profile-menu">
+        <button type="button" class="profile-open" id="profile-open" aria-expanded="false" aria-controls="profile-panel" aria-label="Account menu">
+          <span class="biz-avatar" id="profile-avatar">R</span>
+        </button>
+        <div id="profile-panel" class="profile-panel" hidden>
+          <button type="button" class="btn ghost sm" id="profile-settings">Settings</button>
+          <label>Language
+            <select id="profile-language" aria-label="Language">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+          </label>
+          <button type="button" class="btn ghost sm" id="profile-logout">Sign out</button>
+        </div>
+      </div>
     </header>
     <main class="wrap wide" id="app">
       <div class="state" id="boot-state" role="status" aria-busy="true">

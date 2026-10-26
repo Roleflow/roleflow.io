@@ -60,6 +60,9 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(405, { error: "POST only." });
+  if (Deno.env.get("TAILORTALK_SYNC_ENABLED") !== "1") {
+    return json(410, { error: "TailorTalk sync is retired. Instagram messages run on Roleflow." });
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";

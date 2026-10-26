@@ -161,7 +161,8 @@ const clipRow = {
     accountId: "acct",
     conversationId: "2108532849767337",
     clip: { id: clipId, path: "biz/a.wav", mime: "audio/wav", kind: "audio", filename: "clip.wav" }
-  }
+  },
+  agent_enabled: true
 };
 assert.equal(officialReady(clipRow, due), true);
 assert.equal(officialReady({ ...clipRow, payload: { text: "  " } }, due), false);
