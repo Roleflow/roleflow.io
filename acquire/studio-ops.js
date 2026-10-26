@@ -430,12 +430,6 @@ function connectBody(ui) {
   }));
   hook.addEventListener("submit", (event) => event.preventDefault());
   wrap.append(hook);
-  const soon = ui.el("section", { class: "agent" });
-  soon.append(ui.el("h3", { text: "Other tools" }));
-  ["GoHighLevel", "HubSpot", "Kommo", "Airtable"].forEach((name) => {
-    soon.append(ui.el("p", { text: name + " · coming soon" }));
-  });
-  wrap.append(soon);
   const convert = ui.el("section", { class: "agent" });
   convert.append(ui.el("h3", { text: "Conversion tracking" }));
   const param = ui.field("Lead id parameter", settings.conversion_param || "lead");

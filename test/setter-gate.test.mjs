@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../supabase/functions/_shared/setter-gate.js";
+import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen, practiceDelaySeconds } from "../supabase/functions/_shared/setter-gate.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -23,6 +23,9 @@ assert.equal(delaySeconds(30, 90, () => 0), 30);
 assert.equal(delaySeconds(30, 90, () => 0.5), 60);
 assert.equal(delaySeconds(300, 900, () => 1), 300);
 assert.equal(delaySeconds("nope", 10, () => 0), 0);
+assert.equal(practiceDelaySeconds(30, 120, false, () => 1), 0);
+assert.equal(practiceDelaySeconds(30, 120, true, () => 0), 30);
+assert.equal(practiceDelaySeconds(0, 0, true, () => 1), 0);
 
 assert.equal(chooseModel({ preferred: "grok-4.3", text: "What is the price?", state: "qualification" }), "grok-4.3");
 assert.equal(chooseModel({ preferred: "grok-4.3", text: "That is too expensive", state: "qualification" }), "grok-4.7");

@@ -55,6 +55,11 @@ export function delaySeconds(min, max, random) {
   return low + Math.floor((high - low) * unit);
 }
 
+export function practiceDelaySeconds(min, max, simulate, random) {
+  if (simulate !== true) return 0;
+  return delaySeconds(min, max, random);
+}
+
 export function chooseModel({ preferred, text, state }) {
   const base = preferred === ESCALATION_MODEL ? ESCALATION_MODEL : DEFAULT_MODEL;
   if (base === ESCALATION_MODEL) return base;

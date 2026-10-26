@@ -1,6 +1,8 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
+import { delayError } from "./studio-ops-model.js";
+import { practiceDelaySeconds } from "../supabase/functions/_shared/setter-gate.js";
 import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
@@ -747,6 +749,7 @@ function pageUi() {
     saveSetterPrompt,
     restoreSetterPrompt,
     saveBookingLink,
+    saveReplyDelay,
     sendTrial,
     startTrial,
     restartTrial,
@@ -885,6 +888,7 @@ async function setAgent(key, enabled) {
 
 function rememberPrompt(body, version, testedAt) {
   state.setterPrompt = body;
+  state.setterDraft = body;
   if (testedAt !== undefined) state.setterTestedAt = testedAt;
   if (version) {
     state.promptVersions = [version].concat((state.promptVersions || []).filter((row) => row.id !== version.id && Number(row.version) !== Number(version.version)));
@@ -935,6 +939,24 @@ async function restoreSetterPrompt(version) {
   } catch (error) {
     toast(error.message, "bad");
   }
+}
+
+async function saveReplyDelay(min, max) {
+  const problem = delayError(min, max);
+  if (problem) {
+    toast(problem, "bad");
+    return;
+  }
+  const patch = {
+    reply_delay_seconds: Number(min),
+    reply_delay_max_seconds: Number(max)
+  };
+  if (!state.supabase) {
+    state.settings = Object.assign({}, state.settings, patch);
+    toast(agentText(language()).saved);
+    return;
+  }
+  await patchSettings(patch);
 }
 
 async function saveBookingLink(value) {
@@ -1000,12 +1022,19 @@ async function sendTrial(prompt, message) {
   const sample = String(message || "").trim();
   const body = String(prompt || "");
   if (!sample) return;
+  state.setterDraft = body;
+  state.setterPane = "chat";
+  const delayMin = document.getElementById("reply-delay-min");
+  const delayMax = document.getElementById("reply-delay-max");
+  const minValue = delayMin ? delayMin.value : (state.settings && state.settings.reply_delay_seconds);
+  const maxValue = delayMax ? delayMax.value : (state.settings && state.settings.reply_delay_max_seconds);
   const trial = ensureTrial();
   const history = (trial.messages || []).filter((item) => item.role === "user" || item.role === "assistant").map((item) => ({
     role: item.role,
     content: item.text || ""
   }));
   trial.messages = (trial.messages || []).concat([{ role: "user", text: sample }]);
+  paint();
   let result;
   if (!state.supabase) {
     result = previewPracticeReply({
@@ -1053,13 +1082,16 @@ async function sendTrial(prompt, message) {
   const label = result.version && result.version.draft
     ? "Unsaved draft" + (result.version.version ? ", after version " + result.version.version : "")
     : "Version " + ((result.version && result.version.version) || 1);
+  const waited = practiceDelaySeconds(minValue, maxValue, state.practiceSimulateDelay === true, Math.random);
+  if (waited > 0) await new Promise((resolve) => setTimeout(resolve, waited * 1000));
   trial.messages = trial.messages.concat([{
     role: "assistant",
     text: result.reply || "",
     voices,
     modelLine: trialModelLine(result),
     versionLabel: label,
-    prompt: result.prompt || body
+    prompt: result.prompt || body,
+    delayLine: waited > 0 ? "Waited " + waited + " seconds." : "Delay skipped."
   }]);
   paint();
 }
@@ -3133,6 +3165,7 @@ function markTab() {
     warmer: "Lead Warmer",
     outreacher: "Outreacher",
     setter: "Agentic Setter",
+    commentvoice: "Comment voice",
     followup: "Follow Up Boss",
     settings: "Settings"
   };
@@ -3270,7 +3303,7 @@ function readPreview() {
     canEdit: params.get("edit") === "1",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
-    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "" },
+    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120 },
     setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : null,
     outbox: [],
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
