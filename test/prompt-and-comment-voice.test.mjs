@@ -55,6 +55,20 @@ assert.match(save, /tested: false/);
 const trial = dashboard.slice(dashboard.indexOf("async function previewSetter"), dashboard.indexOf("async function saveBookingLink"));
 assert.match(trial, /sent: false/);
 assert.doesNotMatch(trial, /acq_agent_switches/);
+assert.doesNotMatch(trial, /slice\(-12\)/);
+assert.doesNotMatch(trial, /one short/);
+assert.doesNotMatch(trial, /maxTokens/);
+assert.doesNotMatch(trial, /localTrialText/);
+assert.match(trial, /key_source/);
+assert.match(trial, /practiceError/);
+const sendTrial = read("acquire/app.js").slice(read("acquire/app.js").indexOf("async function sendTrial"), read("acquire/app.js").indexOf("function previewPracticeReply"));
+assert.match(sendTrial, /messages: history/);
+assert.match(sendTrial, /safeTrialError/);
+assert.match(read("acquire/client-pages.js"), /dm-model/);
+assert.match(read("acquire/model-key.js"), /Gemini 3 Flash/);
+assert.match(read("acquire/model-key.js"), /gemini-3-flash-preview/);
+assert.match(read("acquire/studio-ops.js"), /Gemini 3 Flash/);
+assert.match(read("acquire/studio-ops.js"), /gemini-3-flash-preview/);
 
 const rules = [
   { id: "rule-system", keywords: ["SYSTEM", "SYSTEMS", "SISTEM"], intent: "Someone asking how the growth system works", message: "Thanks for the comment.", clip_id: "clip-1" },

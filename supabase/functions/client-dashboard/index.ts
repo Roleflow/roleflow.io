@@ -12,12 +12,11 @@
 //   GOOGLE_API_KEY        accepted in place of GEMINI_API_KEY
 //   GEMINI_MODEL          optional model name
 // SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are injected.
-// If no model key is set, the try panel uses the local preview reply.
+// If no model key is set, the practice thread returns an error and does not invent a reply.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
-import { completeJson } from "../roleflow-acquisition/ig/llm.js";
-import { loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { PROVIDERS, completeChat, loadBusinessRuntime, logLlmError, redactSecret } from "../_shared/llm-provider.js";
 import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
@@ -25,7 +24,6 @@ import { normalizeCap } from "../_shared/comment-voice.js";
 import {
   bookingLinkFor,
   expandPrompt,
-  localTrialText,
   normalizeBookingLink,
   promptVersionLabel,
   resolveOutgoing,
@@ -144,36 +142,38 @@ async function previewSetter(admin, businessId, userId, body) {
   const bookingLink = bookingLinkFor(settings.data && settings.data.booking_fallback_url);
   const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", businessId).eq("active", true);
   const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
-  const history = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
+  const history = Array.isArray(body.messages) ? body.messages : [];
   const messages = history.map((item) => ({
     role: item && item.role === "assistant" ? "assistant" : "user",
-    content: String(item && item.content || "").slice(0, 500)
-  })).concat([{ role: "user", content: message }]);
-  let raw = localTrialText({ prompt, inbound: message, scenario: scenario.id, voices: catalog });
-  let source = "preview";
+    content: String(item && (item.content || item.text) || "").trim().slice(0, 8000)
+  })).filter((item) => item.content).concat([{ role: "user", content: message }]);
   const env = Deno.env.toObject();
+  const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
+  const runtime = loaded.runtime;
+  if (!runtime || !runtime.apiKey) return json(200, { ok: false, error: "No model key is configured.", sent: false });
+  let result;
   try {
-    const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
-    const result = await completeJson({
-      env,
-      runtime: loaded.runtime,
+    result = await completeChat({
+      runtime,
       fallback: loaded.fallback,
-      onError: (info) => logLlmError(admin, { businessId, purpose: "setter_preview", ...info }),
-      system: expandPrompt(prompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n" + scenario.context + "\nReply as the setter in one short Instagram message. You may include one voice token and the booking token. Do not call tools. This is a practice thread and it sends nothing.",
-      messages,
-      responseFormat: { type: "text" },
-      maxTokens: 300
+      onError: (info) => logLlmError(admin, { businessId, purpose: "setter", ...info }),
+      system: [
+        expandPrompt(prompt, bookingLink),
+        tokenGuide(catalog, bookingLink),
+        scenario.context,
+        "Reply as the setter. Follow the system prompt for length and style. You may include a voice token and the booking token when that prompt calls for them. Do not call tools. This is a practice thread and it sends nothing."
+      ].join("\n\n"),
+      messages
     });
-    const text = typeof result === "string" ? result.trim() : "";
-    if (text) {
-      raw = text;
-      source = "model";
-    }
   } catch (error) {
-    if (!error || error.code !== "llm_unconfigured") source = "preview";
+    return json(200, { ok: false, error: practiceError(error, [runtime.apiKey, loaded.fallback && loaded.fallback.apiKey]), sent: false });
   }
-  const resolved = resolveOutgoing(unwrapModelText(raw), { voices: catalog, bookingLink });
-  const reply = clientSafeText(resolved.text).slice(0, 1000);
+  const text = unwrapModelText(result && result.text).trim();
+  if (!text) return json(200, { ok: false, error: "The model returned an empty reply.", sent: false });
+  const resolved = resolveOutgoing(text, { voices: catalog, bookingLink });
+  const reply = clientSafeText(resolved.text).slice(0, 8000);
+  const providerId = String(result.provider || runtime.provider || "");
+  const spec = PROVIDERS[providerId];
   const versions = await admin.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", businessId).order("version", { ascending: false }).limit(30);
   const version = promptVersionLabel(versions.error ? [] : versions.data || [], prompt);
   const current = await admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle();
@@ -193,7 +193,10 @@ async function previewSetter(admin, businessId, userId, body) {
   return json(200, {
     ok: true,
     reply,
-    source,
+    provider: providerId,
+    provider_label: spec ? spec.label : providerId,
+    model: String(result.model || runtime.model || ""),
+    key_source: result.keySource === "business" ? "business" : "platform",
     tested_at: testedAt,
     sent: false,
     booking_link: bookingLink,
@@ -201,6 +204,15 @@ async function previewSetter(admin, businessId, userId, body) {
     version,
     prompt
   });
+}
+
+function practiceError(error, secrets) {
+  let cleaned = String(error && error.message || "");
+  (Array.isArray(secrets) ? secrets : [secrets]).forEach((secret) => {
+    cleaned = redactSecret(cleaned, secret);
+  });
+  cleaned = clientSafeText(cleaned).replace(/\s+/g, " ").trim();
+  return cleaned || "The model did not answer.";
 }
 
 async function saveBookingLink(admin, businessId, value) {

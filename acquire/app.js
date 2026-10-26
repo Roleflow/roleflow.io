@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
-import { bookingLinkFor, localTrialText, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
+import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { bindAssistant } from "./assistant.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
@@ -1008,19 +1008,16 @@ async function sendTrial(prompt, message) {
   trial.messages = (trial.messages || []).concat([{ role: "user", text: sample }]);
   let result;
   if (!state.supabase) {
-    const catalog = voiceCatalog(state.voices || []);
-    const raw = localTrialText({ prompt: body, inbound: sample, scenario: trial.scenario, voices: catalog });
-    const resolved = resolveOutgoing(raw, { voices: catalog, bookingLink: state.bookingLink });
-    result = {
-      ok: Boolean(raw),
-      error: raw ? "" : "Save a system prompt first.",
-      reply: resolved.text,
-      voices: resolved.voices,
-      version: promptVersionLabel(state.promptVersions, body),
+    result = previewPracticeReply({
       prompt: body,
-      sent: false,
-      tested_at: body === state.setterPrompt ? new Date().toISOString() : state.setterTestedAt
-    };
+      history,
+      inbound: sample,
+      voices: state.voices || [],
+      bookingLink: state.bookingLink,
+      versions: state.promptVersions,
+      testedAt: state.setterTestedAt,
+      savedPrompt: state.setterPrompt
+    });
   } else {
     try {
       result = await dashboardCall({
@@ -1035,7 +1032,9 @@ async function sendTrial(prompt, message) {
     }
   }
   if (!result.ok) {
-    toast(result.error || "The practice thread did not run.", "bad");
+    const error = safeTrialError(result.error);
+    trial.messages = trial.messages.concat([{ role: "assistant", error }]);
+    toast(error, "bad");
     paint();
     return;
   }
@@ -1058,10 +1057,54 @@ async function sendTrial(prompt, message) {
     role: "assistant",
     text: result.reply || "",
     voices,
+    modelLine: trialModelLine(result),
     versionLabel: label,
     prompt: result.prompt || body
   }]);
   paint();
+}
+
+function previewPracticeReply(input) {
+  const body = String(input.prompt || "");
+  if (!body.trim()) return { ok: false, error: "Save a system prompt first." };
+  const catalog = voiceCatalog(input.voices || []);
+  const prior = (input.history || []).filter((item) => item.role === "user").length;
+  const voice = (body.match(/\{\{\s*voice\s*:\s*[a-z0-9_-]+\s*\}\}/i) || [""])[0];
+  const booking = /\{\{\s*booking_link\s*\}\}/i.test(body) ? "{{booking_link}}" : "";
+  let text = "Hey. What are you working on right now?";
+  if (prior === 1) text = "That helps. What do you want to change first?";
+  if (prior >= 2) text = ["We can look at that together.", voice, booking].filter(Boolean).join(" ");
+  const resolved = resolveOutgoing(text, { voices: catalog, bookingLink: input.bookingLink });
+  return {
+    ok: true,
+    reply: resolved.text,
+    voices: resolved.voices,
+    provider: "gemini",
+    provider_label: "Google Gemini",
+    model: "gemini-3-flash-preview",
+    key_source: "platform",
+    version: promptVersionLabel(input.versions, body),
+    prompt: body,
+    sent: false,
+    tested_at: body === input.savedPrompt ? new Date().toISOString() : input.testedAt
+  };
+}
+
+function trialModelLine(result) {
+  if (!result || !result.model) return "";
+  const provider = result.provider_label || result.provider || "Model";
+  const key = result.key_source === "business" ? "Business key" : "Platform key";
+  return provider + " · " + result.model + " · " + key;
+}
+
+function safeTrialError(message) {
+  const text = String(message || "")
+    .replace(/sk-[A-Za-z0-9_-]{6,}/g, "")
+    .replace(/xai-[A-Za-z0-9_-]{6,}/g, "")
+    .replace(/Bearer\s+\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || "The model did not answer.";
 }
 
 function addCommentRule() {

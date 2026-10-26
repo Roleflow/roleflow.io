@@ -105,8 +105,8 @@ const LLM_CHOICES = [
   ["xai", "xAI", ["grok-4.3", "grok-4.7"]],
   ["openai", "OpenAI", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o"]],
   ["anthropic", "Anthropic", ["claude-sonnet-4-5", "claude-3-5-haiku-latest"]],
-  ["gemini", "Google Gemini", ["gemini-2.0-flash", "gemini-2.5-pro"]],
-  ["openrouter", "OpenRouter", ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash", "x-ai/grok-4"]],
+  ["gemini", "Gemini 3 Flash", ["gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.0-flash"]],
+  ["openrouter", "OpenRouter", ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-3-flash-preview", "google/gemini-2.5-flash", "x-ai/grok-4"]],
   ["custom", "Custom OpenAI-compatible", []]
 ];
 
@@ -117,13 +117,13 @@ function modelCard(ui) {
   card.append(ui.el("p", { class: "mute", text: "Roleflow's key is used until you save your own. A saved key is encrypted and is not shown again. When live replies use grok-4.3, booking and objections still use grok-4.7." }));
   const live = providerGroup(ui, "Live replies", {
     provider: settings.llm_setter_provider || "xai",
-    model: settings.setter_model || "grok-4.3",
+    model: settings.setter_model || "",
     own: settings.llm_setter_own_key === true,
     base: settings.llm_setter_base_url || ""
   }, "setter");
   const prompt = providerGroup(ui, "Prompt writing", {
     provider: settings.llm_prompt_provider || "xai",
-    model: settings.llm_prompt_model || "grok-4.7",
+    model: settings.llm_prompt_model || ((settings.llm_prompt_provider && settings.llm_prompt_provider !== "xai") ? "" : "grok-4.7"),
     own: settings.llm_prompt_own_key === true,
     base: settings.llm_prompt_base_url || ""
   }, "prompt");
@@ -178,6 +178,16 @@ function secretOf(value) {
   return { provider: value.provider, apiKey: value.apiKey.trim(), baseUrl: value.provider === "custom" ? value.baseUrl.trim() : "" };
 }
 
+function alignedModel(providerId, current) {
+  const found = LLM_CHOICES.find((item) => item[0] === providerId);
+  const models = found ? found[2] : [];
+  const value = String(current || "").trim();
+  if (providerId === "custom" || providerId === "openrouter") return value || (models[0] || "");
+  if (!models.length) return value;
+  if (!value || !models.includes(value)) return models[0];
+  return value;
+}
+
 function providerGroup(ui, title, preset, purpose) {
   const block = ui.el("fieldset", { class: "voice-card" });
   block.append(ui.el("legend", { text: title }));
@@ -190,7 +200,7 @@ function providerGroup(ui, title, preset, purpose) {
   const model = ui.el("input", {
     type: "text",
     "aria-label": title + " model",
-    value: preset.model || "",
+    value: alignedModel(preset.provider, preset.model),
     list: "models-" + purpose,
     autocomplete: "off"
   });
@@ -217,7 +227,10 @@ function providerGroup(ui, title, preset, purpose) {
     const saved = (ui.state.llmKeys || []).find((item) => item.provider === provider.value && item.last4);
     hint.textContent = saved ? "Key ending in " + saved.last4 + "." : "No key saved for this provider.";
   };
-  provider.addEventListener("change", fill);
+  provider.addEventListener("change", () => {
+    model.value = alignedModel(provider.value, "");
+    fill();
+  });
   fill();
   const platformLabel = ui.el("label", { text: " Roleflow key" });
   platformLabel.prepend(platform);

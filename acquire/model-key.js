@@ -3,7 +3,7 @@
 export const CLIENT_PROVIDERS = [
   { id: "xai", label: "xAI", model: "grok-4.3" },
   { id: "openai", label: "OpenAI", model: "gpt-4.1-mini" },
-  { id: "gemini", label: "Gemini", model: "gemini-2.0-flash" }
+  { id: "gemini", label: "Gemini 3 Flash", model: "gemini-3-flash-preview" }
 ];
 
 const PROVIDER_ID = /^[a-z0-9_-]{2,40}$/;

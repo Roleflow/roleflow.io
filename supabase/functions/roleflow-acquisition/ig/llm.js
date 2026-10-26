@@ -24,7 +24,7 @@ export function resolveProvider(env) {
 }
 
 export function providerHelp() {
-  return "Set XAI_API_KEY (optional XAI_MODEL, default grok-4.3). Alternatives: OPENAI_API_KEY (optional OPENAI_MODEL, default gpt-4.1-mini) or GEMINI_API_KEY / GOOGLE_API_KEY (optional GEMINI_MODEL, default gemini-2.0-flash). LLM_PROVIDER defaults to xai when XAI_API_KEY is set. Set openai or gemini to use those instead.";
+  return "Set XAI_API_KEY (optional XAI_MODEL, default grok-4.3). Alternatives: OPENAI_API_KEY (optional OPENAI_MODEL, default gpt-4.1-mini) or GEMINI_API_KEY / GOOGLE_API_KEY (optional GEMINI_MODEL, default gemini-3-flash-preview). LLM_PROVIDER defaults to xai when XAI_API_KEY is set. Set openai or gemini to use those instead.";
 }
 
 const PROMPT_KEYS = [

@@ -28,6 +28,52 @@ const fallback = resolveRuntime({
 assert.equal(fallback.source, "platform");
 assert.equal(fallback.provider, "gemini");
 assert.equal(fallback.apiKey, "gem-platform");
+assert.equal(fallback.model, "gemini-2.0-flash");
+
+const emptyGemini = resolveRuntime({
+  purpose: "setter",
+  settings: { llm_setter_provider: "gemini", setter_model: "" },
+  secret: { apiKey: "gem-business-key" },
+  env: { XAI_API_KEY: "xai-platform" }
+});
+assert.equal(emptyGemini.provider, "gemini");
+assert.equal(emptyGemini.model, "gemini-3-flash-preview");
+assert.notEqual(emptyGemini.model, "grok-4.3");
+
+const wrongModel = resolveRuntime({
+  purpose: "setter",
+  settings: { llm_setter_provider: "gemini", setter_model: "grok-4.3" },
+  secret: { apiKey: "gem-business-key" },
+  env: {}
+});
+assert.equal(wrongModel.model, "gemini-3-flash-preview");
+
+const emptyPrompt = resolveRuntime({
+  purpose: "prompt",
+  settings: { llm_prompt_provider: "gemini", llm_prompt_model: "   " },
+  secret: { apiKey: "gem-business-key" },
+  env: { XAI_API_KEY: "xai-platform" }
+});
+assert.equal(emptyPrompt.provider, "gemini");
+assert.equal(emptyPrompt.model, "gemini-3-flash-preview");
+
+const openModel = resolveRuntime({
+  purpose: "setter",
+  settings: { llm_setter_provider: "openrouter", setter_model: "google/some-new-model" },
+  secret: { apiKey: "or-business-key" },
+  env: {}
+});
+assert.equal(openModel.provider, "openrouter");
+assert.equal(openModel.model, "google/some-new-model");
+
+const customModel = resolveRuntime({
+  purpose: "setter",
+  settings: { llm_setter_provider: "custom", setter_model: "my-model", llm_setter_base_url: "https://llm.example.com/v1" },
+  secret: { apiKey: "local-key-value" },
+  env: { XAI_API_KEY: "xai-platform" }
+});
+assert.equal(customModel.provider, "custom");
+assert.equal(customModel.model, "my-model");
 
 const other = resolveRuntime({
   purpose: "setter",
@@ -85,7 +131,7 @@ assert.deepEqual(leaked, [{ provider: "xai", last4: "ab12" }]);
 assert.equal(JSON.stringify(leaked).includes(businessKey), false);
 assert.equal(previewKeySave([], { provider: "openai", apiKey: "short" }).ok, false);
 assert.equal(modelPatch("gemini", false).llm_setter_own_key, true);
-assert.equal(modelPatch("gemini", false).setter_model, "gemini-2.0-flash");
+assert.equal(modelPatch("gemini", false).setter_model, "gemini-3-flash-preview");
 assert.equal(modelPatch("xai", true).llm_setter_own_key, false);
 assert.equal(Object.hasOwn(modelPatch("openai", false), "apiKey"), false);
 
