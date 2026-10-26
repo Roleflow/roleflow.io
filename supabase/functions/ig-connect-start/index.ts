@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     return json(200, { ok: true });
   }
   const config = await loadGatewayConfig(admin);
-  if (!config.apiKey) return json(200, { configured: true, error: "Instagram connect is not available yet." });
+  if (!config.apiKey) return json(200, { configured: false, error: "Instagram connect is not available yet." });
   const business = await admin.from("acq_workspaces").select("id, name").eq("id", businessId).maybeSingle();
   if (business.error || !business.data) return json(404, { error: "That business was not found." });
   const existing = await admin.from("ig_gateway_accounts").select("profile_id").eq("business_id", businessId).maybeSingle();
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
   } catch (_error) {
     return json(200, { configured: true, error: "Instagram connect could not start." });
   }
-  if (!result.configured) return json(200, { configured: true, error: "Instagram connect is not available yet." });
+  if (!result.configured) return json(200, { configured: false, error: "Instagram connect is not available yet." });
   if (result.profileId) {
     const saved = await admin.rpc("acq_gateway_save_profile", { p_business: businessId, p_profile: result.profileId });
     if (saved.error) return json(200, { configured: true, error: "Instagram connect could not start." });

@@ -34,8 +34,15 @@ export function connectOutcome(data) {
   };
 }
 
+export function connectPlan(data) {
+  if (data && data.configured === false) {
+    return { mode: "manual", error: "Instagram connect is not available yet." };
+  }
+  return connectOutcome(data);
+}
+
 export async function beginInstagramConnect(ctx) {
-  if (!ctx.state || !ctx.state.supabase) return { mode: "error", error: CONNECT_ERROR };
+  if (!ctx.state || !ctx.state.supabase) return { mode: "manual", error: "Instagram connect is not available yet." };
   let invoked;
   try {
     invoked = await ctx.state.supabase.functions.invoke("ig-connect-start", {
@@ -44,7 +51,7 @@ export async function beginInstagramConnect(ctx) {
   } catch (_error) {
     return { mode: "error", error: CONNECT_ERROR };
   }
-  return connectOutcome(invoked && invoked.data);
+  return connectPlan(invoked && invoked.data);
 }
 
 export async function disconnectInstagram(ctx) {

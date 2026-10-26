@@ -150,16 +150,16 @@ export function resolveRuntime({ purpose, settings, secret, env }) {
   const prefs = settings || {};
   const prompt = purpose === "prompt";
   const provider = normalizeProvider(prompt ? prefs.llm_prompt_provider : prefs.llm_setter_provider) || "xai";
-  const own = prompt ? prefs.llm_prompt_own_key === true : prefs.llm_setter_own_key === true;
   const named = String(prompt ? (prefs.llm_prompt_model || PROVIDERS.xai.defaultModel) : (prefs.setter_model || PROVIDERS.xai.defaultModel)).trim().slice(0, 120);
   const model = named || PROVIDERS[provider].defaultModel;
   const baseUrl = safeBaseUrl(prompt ? prefs.llm_prompt_base_url : prefs.llm_setter_base_url);
   const owned = secret && String(secret.apiKey || "").trim();
-  if (own && owned && (provider !== "custom" || baseUrl)) {
+  // A saved business key wins whenever one exists. The platform env key is the fallback.
+  if (owned && (provider !== "custom" || baseUrl)) {
     return { provider, model, apiKey: String(secret.apiKey).trim(), baseUrl: provider === "custom" ? baseUrl : "", source: "own" };
   }
   const platformKey = platformEnv(env)[provider] || "";
-  if (!own && provider !== "custom" && platformKey) {
+  if (provider !== "custom" && platformKey) {
     return { provider, model, apiKey: platformKey, baseUrl: "", source: "platform" };
   }
   return platformDefault(env);
@@ -236,13 +236,10 @@ export async function loadBusinessRuntime(admin, businessId, purpose, env) {
   const settings = row.data;
   const prompt = purpose === "prompt";
   const provider = normalizeProvider(prompt ? settings.llm_prompt_provider : settings.llm_setter_provider) || "xai";
-  const own = prompt ? settings.llm_prompt_own_key === true : settings.llm_setter_own_key === true;
   let secret = null;
-  if (own) {
-    const loaded = await admin.rpc("acq_llm_read_key", { p_business: businessId, p_provider: provider });
-    const data = loaded && !loaded.error ? loaded.data : null;
-    if (data && data.ok === true && data.api_key) secret = { apiKey: data.api_key, baseUrl: data.base_url || "" };
-  }
+  const loaded = await admin.rpc("acq_llm_read_key", { p_business: businessId, p_provider: provider });
+  const data = loaded && !loaded.error ? loaded.data : null;
+  if (data && data.ok === true && data.api_key) secret = { apiKey: data.api_key, baseUrl: data.base_url || "" };
   const runtime = resolveRuntime({ purpose, settings, secret, env });
   const fallback = runtime && platform && runtime.apiKey === platform.apiKey && runtime.provider === platform.provider && runtime.model === platform.model
     ? null

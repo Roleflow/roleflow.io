@@ -1,7 +1,8 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
-import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderSetter, text as agentText } from "./client-pages.js";
+import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
+import { keyHint, previewKeys } from "./model-key.js";
 import { bindAssistant } from "./assistant.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindSidebar } from "./dock.js";
@@ -187,6 +188,7 @@ async function boot() {
   if (preview) {
     Object.assign(state, preview, { tab: tabFromHash() });
     state.canEdit = preview.canEdit === true;
+    state.canManageKeys = state.canEdit === true;
     const seed = await import("./setter-seed.js");
     state.setterPrompts = [{ id: "preview-v1", role: "inbound_manager", version: 1, sections: seed.sections, created_at: "2026-10-23T06:00:00Z" }];
     state.setterCurrentId = "preview-v1";
@@ -308,6 +310,7 @@ async function bootBusiness(id, options) {
   } else state.memberProfiles = [];
   const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
   state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
+  state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
   if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
   const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
   if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
@@ -584,6 +587,8 @@ function paint() {
   if (state.tab === "setter") root.append(renderSetter(ui));
   if (state.tab === "followup") root.append(renderFollowBoss(ui));
   if (state.tab === "settings") {
+    root.append(renderModelKey(ui));
+    root.append(renderInstagramConnect(ui));
     root.append(renderConfiguration(ui));
     root.append(renderSalesLinks(ui));
     root.append(renderTeam(ui));
@@ -595,6 +600,10 @@ function paint() {
   }
   app.append(root);
   paintChrome(pageUi());
+  if (state.tab === "settings" && state.settingsFocus === "model") {
+    const keyCard = document.getElementById("model-key");
+    if (keyCard) keyCard.scrollIntoView({ block: "start" });
+  }
   const connectCard = document.getElementById("connect-instagram");
   if (connectCard && (state.tab === "integrations" || state.tab === "onboarding" || state.configKey === "connect")) {
     connectCard.scrollIntoView({ block: "start" });
@@ -1466,7 +1475,15 @@ async function syncSetter() {
 }
 
 async function saveLlm(patch, secrets) {
-  if (!readyToSave()) return;
+  const checked = previewKeys(state.llmKeys, secrets);
+  if (!checked.ok) return toast(checked.error, "bad");
+  if (!readyToSave()) {
+    state.llmKeys = checked.hints;
+    if (patch) state.settings = { ...(state.settings || {}), ...patch };
+    toast("Saved. Only the last 4 characters stay on this page.");
+    paint();
+    return;
+  }
   const saved = await state.supabase.from("acq_settings").update(patch).eq("agent_id", state.businessId);
   if (saved.error) return toast(saved.error.message, "bad");
   for (const secret of secrets || []) {
@@ -1490,13 +1507,24 @@ async function saveLlm(patch, secrets) {
 }
 
 async function testLlm(body) {
-  if (!state.supabase) return toast("This preview does not call a model.", "bad");
+  const typed = String(body && body.api_key || "").trim();
+  if (typed && (typed.length < 8 || typed.length > 400)) return failLlm("That key is not a usable length.");
+  if (!state.supabase) {
+    if (!typed && !keyHint(state.llmKeys, body && body.provider)) return failLlm("No key is saved for that provider.");
+    return failLlm("This preview does not call a model.");
+  }
   const invoked = await state.supabase.functions.invoke("llm-check", {
     body: { ...body, business_id: state.businessId }
   });
   const data = invoked.data || {};
-  if (invoked.error || data.ok === false) return toast(data.error || "The connection did not answer.", "bad");
-  toast("Connection works.");
+  if (invoked.error || data.ok === false) return failLlm(data.error || "The connection did not answer.");
+  toast("OK");
+  return "OK";
+}
+
+function failLlm(message) {
+  toast(message, "bad");
+  return message;
 }
 
 async function saveOwnerClip(file, meta) {
@@ -2879,6 +2907,7 @@ function tabFromHash() {
   const parts = location.hash.replace("#", "").split("/");
   const raw = parts[0];
   const tab = canonicalTab(raw);
+  state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
   if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "billing")) state.configKey = "connect";
   else if (tab === "settings" && (raw === "configuration" || raw === "settings" || raw === "controls")) state.configKey = state.configKey || "reply";
   return tab;

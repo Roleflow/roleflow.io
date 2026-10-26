@@ -3,7 +3,7 @@ import {
   officeError, delayError, webhookError, tagError, scopeError, llmChoiceError,
   inRange, conversationsPerDay, agentPerformance, tagConversion, linkConversions,
   funnel, followupRate, replyBuckets, heatmaps, originBreakdown, topOrigins,
-  projectRevenue, checklist, nextStep, commandItems, filterCommands, snippet, originCsv
+  projectRevenue, commandItems, filterCommands, snippet, originCsv
 } from "./studio-ops-model.js";
 
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -702,19 +702,8 @@ export function bindOps(ui) {
 export function paintChrome(ui) {
   const host = document.getElementById("next-step");
   if (host) {
-    const step = nextStep(checklist(ui.state));
     host.replaceChildren();
-    if (!step) host.hidden = true;
-    else {
-      host.hidden = false;
-      host.append(ui.el("p", { text: "Next step" }), ui.el("strong", { text: step.label }));
-      const go = ui.el("a", { href: "#" + step.tab }, ["Open"]);
-      go.addEventListener("click", () => {
-        if (step.key) ui.state.configKey = step.key;
-        ui.state.highlight = step.key ? "cfg-" + step.key : "";
-      });
-      host.append(go);
-    }
+    host.hidden = true;
   }
   const panel = document.getElementById("notify-panel");
   const bell = document.getElementById("notify-open");
