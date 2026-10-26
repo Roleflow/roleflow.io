@@ -5,6 +5,7 @@ import {
   funnel, followupRate, replyBuckets, heatmaps, originBreakdown, topOrigins,
   projectRevenue, commandItems, filterCommands, snippet, originCsv
 } from "./studio-ops-model.js";
+import { sectionAlert, sectionText } from "./section-copy.js";
 
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -555,8 +556,11 @@ export function renderStats(ui) {
 }
 
 export function renderPerformance(ui) {
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Performance", "Where leads started: story, post, reel, ad, or a keyword you name.", "performance", "trend"));
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "performanceTitle"), sectionText(lang, "performanceBody"), "performance", "trend"));
+  const alert = sectionAlert(ui, "performance");
+  if (alert) wrap.append(alert);
   const days = ui.state.rangeDays || 30;
   const leads = inRange(snapshotLeads(ui), days, "updated");
   const rows = originBreakdown(leads, ui.state.origins || []);
@@ -567,7 +571,7 @@ export function renderPerformance(ui) {
   ["Origin", "Leads", "Paid"].forEach((label) => head.append(ui.el("th", { text: label })));
   table.append(ui.el("thead", {}, [head]));
   const body = ui.el("tbody");
-  if (!rows.length) body.append(ui.el("tr", {}, [ui.el("td", { colspan: "3", text: "No origin is recorded for this range yet." })]));
+  if (!rows.length) body.append(ui.el("tr", {}, [ui.el("td", { colspan: "3", text: sectionText(lang, "performanceEmpty") })]));
   rows.forEach((row) => body.append(ui.el("tr", {}, [ui.el("td", { text: row.origin }), ui.el("td", { text: String(row.leads) }), ui.el("td", { text: String(row.paid) })])));
   table.append(body);
   wrap.append(ui.el("div", { class: "table-wrap" }, [table]));

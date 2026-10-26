@@ -191,6 +191,34 @@ export function renderConfiguration(ui) {
   return opsConfig(ui);
 }
 
+const STRATEGY_TABS = [
+  { tab: "sops", en: "SOPs", es: "SOPs" },
+  { tab: "content", en: "Content", es: "Contenido" },
+  { tab: "voice", en: "Voice Gen", es: "Voz" },
+  { tab: "commentvoice", en: "Comment voice", es: "Voz en comentarios" }
+];
+
+export function strategyTabs(ui) {
+  const current = ui.state && ui.state.tab;
+  if (!STRATEGY_TABS.some((item) => item.tab === current)) return null;
+  const language = ui.language ? ui.language() : "en";
+  const nav = ui.el("nav", { class: "section-tabs", "aria-label": language === "es" ? "Estrategia" : "Strategy" });
+  STRATEGY_TABS.forEach((item) => {
+    const link = ui.el("a", {
+      href: "#" + item.tab,
+      text: language === "es" ? item.es : item.en
+    });
+    if (item.tab === current) link.setAttribute("aria-current", "page");
+    link.addEventListener("click", (event) => {
+      if (!ui.go) return;
+      event.preventDefault();
+      ui.go(item.tab);
+    });
+    nav.append(link);
+  });
+  return nav;
+}
+
 export function pageHeader(ui, title, text, how, iconName) {
   const card = ui.el("section", { class: "page-card" });
   const copy = ui.el("div", { class: "page-copy" });
@@ -205,7 +233,11 @@ export function pageHeader(ui, title, text, how, iconName) {
   }
   actions.append(button);
   card.append(copy, actions, ui.el("span", { class: "page-rule" }));
-  return card;
+  const tabs = strategyTabs(ui);
+  if (!tabs) return card;
+  const stack = ui.el("div", { class: "page-stack" });
+  stack.append(card, tabs);
+  return stack;
 }
 
 function openHow(title, text) {

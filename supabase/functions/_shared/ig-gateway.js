@@ -121,6 +121,51 @@ export function instagramAuthUrl(value) {
   return url.toString();
 }
 
+const AUTH_FIELDS = ["authUrl", "auth_url", "url", "redirectUrl", "redirect_url", "authorizationUrl", "authorization_url"];
+
+export function authCandidates(payload) {
+  const bodies = [];
+  if (payload && typeof payload === "object") {
+    bodies.push(payload);
+    if (payload.data && typeof payload.data === "object") bodies.push(payload.data);
+    if (payload.result && typeof payload.result === "object") bodies.push(payload.result);
+  }
+  const found = [];
+  bodies.forEach((body) => {
+    AUTH_FIELDS.forEach((field) => {
+      const value = body[field];
+      if (typeof value === "string" && value) found.push(value);
+    });
+  });
+  return found;
+}
+
+export async function resolveInstagramAuth(fetchImpl, value) {
+  let current = String(value || "");
+  for (let hop = 0; hop < 4; hop += 1) {
+    const direct = instagramAuthUrl(current);
+    if (direct) return direct;
+    let url;
+    try { url = new URL(current); } catch (_error) { return ""; }
+    if (url.protocol !== "https:") return "";
+    const response = await fetchImpl(current, { method: "GET", redirect: "manual" });
+    const headers = response && response.headers;
+    const location = headers && (typeof headers.get === "function" ? headers.get("location") : headers.location);
+    if (!location) return "";
+    current = new URL(location, current).toString();
+  }
+  return instagramAuthUrl(current);
+}
+
+export function connectFailure(status, payload) {
+  const body = payload && typeof payload === "object" ? payload : {};
+  const text = [body.code, body.error, body.message, body.detail].filter((item) => typeof item === "string").join(" ").toLowerCase();
+  if (status === 402 || /payment|billing/.test(text)) return "Instagram connect needs a billing update before it can continue.";
+  if (status === 401 || status === 403) return "Instagram connect is not available yet.";
+  if (/redirect|callback|whitelist|not allowed|uri/.test(text)) return "Instagram connect needs its return address allowed before it can open. Try again after that is saved.";
+  return "Instagram connect could not start.";
+}
+
 export function callbackFailure(params) {
   const error = String(params.get("error") || "");
   if (!error) return "";
@@ -176,11 +221,12 @@ export async function startConnect(input) {
     headers: authHeaders(apiKey)
   });
   const payload = await response.json().catch(() => ({}));
-  if (response.status === 402) {
-    return { configured: true, profileId, error: "Instagram connect needs a billing update before it can continue." };
+  if (!response.ok) return { configured: true, profileId, error: connectFailure(response.status, payload) };
+  let authUrl = "";
+  for (const candidate of authCandidates(payload)) {
+    authUrl = await resolveInstagramAuth(fetchImpl, candidate);
+    if (authUrl) break;
   }
-  if (!response.ok) return { configured: true, profileId, error: "Instagram connect could not start." };
-  const authUrl = instagramAuthUrl(payload.authUrl);
   if (!authUrl) return { configured: true, profileId, error: "Instagram connect could not start." };
   return { configured: true, authUrl, profileId, state, nonce, expiresAt: new Date(now + STATE_MS).toISOString() };
 }

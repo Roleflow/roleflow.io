@@ -97,6 +97,15 @@ assert.equal(connectUrl.searchParams.get("logoUrl"), null);
 assert.equal(connectUrl.searchParams.get("username"), null);
 assert.equal(connectUrl.searchParams.get("handle"), null);
 assert.equal(instagramAuthUrl(started.authUrl).startsWith("https://www.instagram.com/"), true);
+assert.equal(
+  instagramAuthUrl("https://www.instagram.com/oauth/authorize?redirect_uri=https%3A%2F%2Fzernio.com%2Fapi%2Fv1%2Fconnect%2Finstagram%2Fcallback").startsWith("https://www.instagram.com/oauth/authorize"),
+  true
+);
+assert.equal(instagramAuthUrl("https://zernio.com/connect/welcome?ticket=1"), "");
+const startSource = read("supabase/functions/ig-connect-start/index.ts");
+assert.match(startSource, /instagramAuthUrl\(result\.authUrl\)/);
+assert.doesNotMatch(startSource, /zernio\/i\.test\(result\.authUrl\)/);
+assert.doesNotMatch(read("supabase/functions/_shared/ig-gateway.js"), /console\.log/);
 const redirect = new URL(connectUrl.searchParams.get("redirect_url"));
 assert.equal(redirect.origin + redirect.pathname, CALLBACK_URL);
 assert.equal(verifyState(redirect.searchParams.get("state"), secret, 1_700_000_000_000).businessId, businessId);

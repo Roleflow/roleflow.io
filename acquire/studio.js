@@ -4,6 +4,7 @@ import {
   charCount, collectLeads, emptyBrief, exportCsv, exportJson, filterLeads, formatDelta, paginate, scoreBrief,
   validateAsset, validateLink, validateSchedule, versionDelta
 } from "./studio-model.js";
+import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 export { SETTER_SYNC };
 
@@ -88,8 +89,11 @@ function download(name, text, type) {
 
 export function renderBusiness(ui) {
   const studio = box(ui);
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Business", "The information every agent reads. Saving keeps a version.", "brief", "clipboard"));
+  wrap.append(header(ui, sectionText(lang, "sopsTitle"), sectionText(lang, "sopsBody"), "brief", "clipboard"));
+  const alert = sectionAlert(ui, "sops");
+  if (alert) wrap.append(alert);
   const brief = { ...emptyBrief(), ...((ui.state.brief && ui.state.brief.fields) || {}) };
   const cards = ui.state.agentCards || [];
   const count = charCount(brief, cards);
@@ -290,8 +294,11 @@ function simulator(ui) {
 
 export function renderCrm(ui) {
   const studio = box(ui);
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "CRM", "Open through Postponed for this business. Empty means no lead is stored yet.", "pipeline", "users"));
+  wrap.append(header(ui, sectionText(lang, "opportunitiesTitle"), sectionText(lang, "opportunitiesBody"), "pipeline", "users"));
+  const alert = sectionAlert(ui, "opportunities");
+  if (alert) wrap.append(alert);
   wrap.append(ui.el("p", { class: "mute", text: "Refreshes every 45 seconds. Chat history appears when the full event stream is connected. Status and summary are what sync today." }));
   const leads = collectLeads(ui.state.contacts, ui.state.targets);
   const query = studio.query;
@@ -339,9 +346,9 @@ export function renderCrm(ui) {
   toolbar.append(ui.button("Export CSV", () => download("leads.csv", exportCsv(matched), "text/csv")));
   toolbar.append(ui.button("Export JSON", () => download("leads.json", exportJson(matched), "application/json")));
   wrap.append(toolbar);
-  wrap.append(ui.el("p", { class: "mute", text: page.total ? "Showing " + (page.start + 1) + "–" + (page.start + page.rows.length) + " of " + page.total : "No leads match these filters." }));
+  wrap.append(ui.el("p", { class: "mute", text: page.total ? "Showing " + (page.start + 1) + "–" + (page.start + page.rows.length) + " of " + page.total : sectionText(lang, "opportunitiesNone") }));
 
-  if (!leads.length) wrap.append(ui.el("p", { text: "No leads yet. They appear when a conversation is synced. Nothing here is a sample." }));
+  if (!leads.length && !alert) wrap.append(sectionEmpty(ui, "opportunitiesEmpty"));
   else if (studio.view === "board") wrap.append(board(ui, matched));
   else wrap.append(table(ui, page.rows));
 
@@ -585,10 +592,13 @@ function scheduleBlock(ui, studio) {
 }
 
 export function renderValueContent(ui) {
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Value content", "Files and links an agent can send. Upload limits are 8 MB for images, 20 MB for audio, and 50 MB for video.", "content", "folder"));
+  wrap.append(header(ui, sectionText(lang, "contentTitle"), sectionText(lang, "contentBody"), "content", "folder"));
+  const alert = sectionAlert(ui, "content");
+  if (alert) wrap.append(alert);
   const assets = ui.state.valueAssets || [];
-  if (!assets.length) wrap.append(ui.el("p", { text: "No value content yet." }));
+  if (!assets.length && !alert) wrap.append(sectionEmpty(ui, "contentEmpty"));
   assets.forEach((asset) => {
     const card = ui.el("article", { class: "agent" });
     card.append(ui.el("h3", { text: asset.title || asset.kind }));

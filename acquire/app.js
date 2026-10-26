@@ -7,6 +7,7 @@ import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboa
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { bindAssistant } from "./assistant.js";
+import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
@@ -190,6 +191,11 @@ async function boot() {
   const preview = readPreview();
   if (preview) {
     Object.assign(state, preview, { tab: tabFromHash(), preview: true });
+    const requested = new URLSearchParams(location.search).get("lang");
+    if (requested === "es" || requested === "en") {
+      state.language = requested;
+      writeLanguage(safeStorage(), requested);
+    }
     state.canEdit = preview.canEdit === true;
     state.canManageKeys = state.canEdit === true;
     const seed = await import("./setter-seed.js");
@@ -494,6 +500,14 @@ async function loadAll(id, token) {
   state.invites = invites.error ? [] : invites.data || [];
   state.notifications = notifications.error ? [] : notifications.data || [];
   state.origins = origins.error ? [] : origins.data || [];
+  state.sectionErrors = {
+    performance: Boolean(origins.error),
+    chats: Boolean(contacts.error || targets.error),
+    opportunities: Boolean(contacts.error || targets.error),
+    calendar: Boolean(bookings.error),
+    sops: Boolean(brief.error),
+    content: Boolean(assets.error)
+  };
   const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
   if (!live()) return false;
   state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
@@ -828,13 +842,19 @@ function parkAssistant() {
 }
 
 function dockAssistant(ui) {
+  const lang = language();
   const wrap = ui.el("div", { class: "assistant-dock" });
-  wrap.append(ui.pageHeader(ui, "Roleflow Assistant", "Ask about this business. Answers stay on the numbers and settings stored here.", "assistant", "clipboard"));
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "assistantTitle"), sectionText(lang, "assistantBody"), "assistant", "clipboard"));
   const panel = document.getElementById("assistant-panel");
   const fab = document.getElementById("assistant-open");
   if (panel) {
     panel.hidden = false;
     panel.classList.add("is-docked");
+    const log = panel.querySelector(".assistant-log");
+    if (log && !log.childElementCount) {
+      const note = el("p", { class: "section-empty", role: "status", text: sectionText(lang, "assistantEmpty") });
+      log.append(note);
+    }
     wrap.append(panel);
   }
   if (fab) fab.hidden = true;
@@ -3470,7 +3490,30 @@ function readPreview() {
     isAdmin: false,
     openThread: "th1",
     promptRole: "qualification",
-    ...(params.get("inbox") === "1" ? inboxPreview() : {})
+    ...(params.get("inbox") === "1" ? inboxPreview() : {}),
+    ...(params.get("empty") === "1" ? {
+      targets: [],
+      contacts: [],
+      bookings: [],
+      origins: [],
+      valueAssets: [],
+      brief: null,
+      messageCount: 0,
+      threads: [],
+      messages: [],
+      deals: [],
+      outreach: []
+    } : {}),
+    ...(params.get("fail") === "1" ? {
+      sectionErrors: {
+        performance: true,
+        chats: true,
+        opportunities: true,
+        calendar: true,
+        sops: true,
+        content: true
+      }
+    } : {})
   };
 }
 

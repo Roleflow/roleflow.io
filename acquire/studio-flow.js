@@ -1,6 +1,7 @@
 import { ROLES } from "./model.js";
 import { CRM_STATES, filterLeads } from "./studio-model.js";
-import { chatIntro, exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 function box(ui) {
   if (!ui.state.flow) ui.state.flow = { chat: "", chatQuery: "", chatState: "all", chatTag: "", chatAi: "all", chatUnread: "all", reminderFilter: "open", ctaPreview: "" };
@@ -320,8 +321,11 @@ function stories(ui) {
 
 export function renderChats(ui) {
   const flow = box(ui);
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Chats", chatIntro(ui.state.messageCount), "inbox", "inbox"));
+  wrap.append(header(ui, sectionText(lang, "chatsTitle"), sectionText(lang, "chatsBody"), "inbox", "inbox"));
+  const alert = sectionAlert(ui, "chats");
+  if (alert) wrap.append(alert);
   const leads = ui.collectLeads ? ui.collectLeads(ui.state.contacts, ui.state.targets) : [];
   const tags = [...new Set(leads.flatMap((lead) => lead.tags || []))].sort();
   const filters = ui.el("form", { class: "filters" });
@@ -361,7 +365,7 @@ export function renderChats(ui) {
   });
   const layout = ui.el("div", { class: "chats" });
   const list = ui.el("div", { class: "chat-list" });
-  if (!matched.length) list.append(ui.el("p", { text: "No chats match." }));
+  if (!matched.length && !alert) list.append(leads.length ? sectionEmpty(ui, "chatsNone") : sectionEmpty(ui, "chatsEmpty"));
   matched.forEach((lead) => {
     const title = lead.name || (lead.handle ? "@" + lead.handle : "Unnamed");
     const children = [title];
@@ -382,7 +386,7 @@ export function renderChats(ui) {
 function threadPane(ui, lead) {
   const pane = ui.el("section", { class: "chat-thread" });
   if (!lead) {
-    pane.append(ui.el("p", { text: "Choose a chat." }));
+    pane.append(sectionEmpty(ui, "chatsPick"));
     return pane;
   }
   pane.append(ui.el("h3", { text: lead.name || (lead.handle ? "@" + lead.handle : "Chat") }));

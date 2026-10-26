@@ -5,6 +5,7 @@ import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
 import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prompt-tokens.js";
+import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 const COPY = {
   en: {
@@ -191,12 +192,15 @@ export function renderDashboardHome(ui) {
 
 export function renderCalendar(ui) {
   const copy = text(ui.language());
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Calendar", "Booked calls stored for this business.", "calendar", "clipboard"));
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "calendarTitle"), sectionText(lang, "calendarBody"), "calendar", "clipboard"));
+  const alert = sectionAlert(ui, "calendar");
+  if (alert) wrap.append(alert);
   const google = ui.state.google;
   const account = ui.el("section", { class: "agent" });
   account.append(ui.el("h3", { text: "Google Calendar" }));
-  account.append(ui.el("p", { text: google && google.status === "connected" ? "Connected" + (google.email ? " · " + google.email : "") : "Not connected yet. Connect it from Settings." }));
+  account.append(ui.el("p", { text: google && google.status === "connected" ? sectionText(lang, "calendarOn") + (google.email ? " · " + google.email : "") : sectionText(lang, "calendarOff") }));
   account.append(ui.el("a", { class: "btn ghost sm", href: "#settings" }, ["Open settings"]));
   wrap.append(account);
   if (ui.recordBooking && ui.state.canEdit) {
@@ -213,7 +217,7 @@ export function renderCalendar(ui) {
     wrap.append(form);
   }
   const rows = ui.state.bookings || [];
-  if (!rows.length) wrap.append(ui.el("p", { text: "No bookings yet." }));
+  if (!rows.length && !alert) wrap.append(sectionEmpty(ui, "calendarEmpty"));
   rows.forEach((row) => {
     const target = (ui.state.targets || []).find((item) => item.id === row.target_id);
     const card = ui.el("article", { class: "agent" });
