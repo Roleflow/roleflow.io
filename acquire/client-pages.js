@@ -3,8 +3,6 @@ import { grokLaunchUrl } from "./client-config.js";
 import { beginInstagramConnect } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
 
-export const ZERNIO_DASHBOARD = "https://zernio.com/dashboard";
-
 const COPY = {
   en: {
     off: "Off",
@@ -21,7 +19,7 @@ const COPY = {
     outreach: "Outreacher finds people who fit the offer and starts conversations from your own Grok Bot. Roleflow does not send those first messages from this page.",
     setter: "Agentic Setter replies in Instagram DMs through the Roleflow connection. The system prompt below is what the reply engine uses. A tryout stays inside Roleflow and does not send a message.",
     follow: "Follow Up Boss sends the next message only when the rules below match: quiet time, stage, booking, and the cap. It stays off until you turn it on.",
-    channel: "Instagram is connected through Zernio. Messages are sent only while this agent is Live.",
+    channel: "Instagram messages are sent only while this agent is Live.",
     keyTitle: "Model key",
     keyLink: "Model key",
     keyBody: "The reply engine and the try panel use this business's key first. If none is saved, Roleflow uses its own key. After you save, this page shows only the last 4 characters.",
@@ -38,14 +36,7 @@ const COPY = {
     igOn: "Instagram is connected for this business.",
     igOff: "Instagram is not connected for this business.",
     igBody: "Connect Instagram starts the account login for this business.",
-    igManual: "If Connect Instagram cannot start the login, open the Zernio dashboard and follow these steps.",
-    igDashboard: "Open Zernio dashboard",
-    igSteps: [
-      "Sign in at the Zernio dashboard.",
-      "Create a profile for this business, or open the profile already used for it.",
-      "Connect an Instagram Business or Creator account. A personal account cannot connect.",
-      "Come back here and use Connect Instagram again once the platform key is set, so Roleflow can send and receive DMs."
-    ]
+    igUnavailable: "Instagram connection is not available right now. Contact Roleflow support."
   },
   es: {
     off: "Apagado",
@@ -62,7 +53,7 @@ const COPY = {
     outreach: "Prospección busca gente que encaja con la oferta y abre la conversación desde tu Grok Bot. Roleflow no envía esos primeros mensajes desde aquí.",
     setter: "El setter responde DMs de Instagram con la conexión de Roleflow. El prompt de abajo es el que usa el motor. La prueba se queda en Roleflow y no envía un mensaje.",
     follow: "Seguimiento escribe el siguiente mensaje solo cuando encajan estas reglas. Sigue apagado hasta que lo actives.",
-    channel: "Instagram se conecta por Zernio. Solo envía mensajes cuando este agente está activo.",
+    channel: "Los mensajes de Instagram solo se envían cuando este agente está activo.",
     keyTitle: "Clave del modelo",
     keyLink: "Clave del modelo",
     keyBody: "El motor y la prueba usan primero la clave de este negocio. Si no hay ninguna, Roleflow usa la suya. Después de guardar, esta página solo muestra los últimos 4 caracteres.",
@@ -79,14 +70,7 @@ const COPY = {
     igOn: "Instagram está conectado para este negocio.",
     igOff: "Instagram no está conectado para este negocio.",
     igBody: "Conectar Instagram abre el acceso de la cuenta de este negocio.",
-    igManual: "Si Conectar Instagram no puede abrir el acceso, entra en el panel de Zernio y sigue estos pasos.",
-    igDashboard: "Abrir panel de Zernio",
-    igSteps: [
-      "Entra en el panel de Zernio.",
-      "Crea un perfil para este negocio, o abre el que ya usa.",
-      "Conecta una cuenta de Instagram Business o Creator. Una cuenta personal no se puede conectar.",
-      "Vuelve aquí y usa Conectar Instagram cuando la clave de la plataforma esté puesta, para que Roleflow envíe y reciba DMs."
-    ]
+    igUnavailable: "La conexión de Instagram no está disponible ahora. Contacta con el soporte de Roleflow."
   }
 };
 
@@ -295,7 +279,7 @@ export function renderInstagramConnect(ui) {
   const connected = Boolean(ui.state.ig && ui.state.ig.status === "connected");
   card.append(ui.el("p", { text: connected ? copy.igOn : copy.igOff }));
   card.append(ui.el("p", { text: copy.igBody }));
-  const status = ui.el("p", { class: "mute", "data-connect-status": "1", text: copy.igManual });
+  const status = ui.el("p", { class: "mute", "data-connect-status": "1", role: "status" });
   if (ui.state.canEdit) {
     const control = ui.button("Connect Instagram", async () => {
       control.disabled = true;
@@ -304,23 +288,13 @@ export function renderInstagramConnect(ui) {
         location.assign(result.authUrl);
         return;
       }
-      if (result.mode === "manual") status.textContent = copy.igManual;
-      else if (ui.toast) ui.toast(result.error, "bad");
+      status.textContent = copy.igUnavailable;
+      if (result.mode !== "manual" && result.error && ui.toast) ui.toast(result.error, "bad");
       control.disabled = false;
     });
     card.append(control);
   }
   card.append(status);
-  card.append(ui.el("a", {
-    class: "btn ghost sm",
-    id: "zernio-dashboard-link",
-    href: ZERNIO_DASHBOARD,
-    target: "_blank",
-    rel: "noopener noreferrer"
-  }, [copy.igDashboard]));
-  const steps = ui.el("ol");
-  copy.igSteps.forEach((line) => steps.append(ui.el("li", { text: line })));
-  card.append(steps);
   return card;
 }
 

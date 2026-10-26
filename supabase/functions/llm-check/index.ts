@@ -11,6 +11,7 @@ import {
   redactSecret,
   safeBaseUrl
 } from "../_shared/llm-provider.js";
+import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, cors, json, userClientFrom } from "../_shared/gateway-http.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,9 +62,9 @@ Deno.serve(async (req) => {
       temperature: 0,
       onError: (entry) => logLlmError(admin, { ...entry, businessId, purpose: "test" })
     });
-    const reply = redactSecret(String(result.text || "").trim(), apiKey).slice(0, 80);
+    const reply = clientSafeText(redactSecret(String(result.text || "").trim(), apiKey)).slice(0, 80);
     return json(200, { ok: true, reply: reply || "pong" });
   } catch (error) {
-    return json(200, { ok: false, error: redactSecret(error && error.message, apiKey) || "The connection did not answer." });
+    return json(200, { ok: false, error: clientSafeText(redactSecret(error && error.message, apiKey)) || "The connection did not answer." });
   }
 });

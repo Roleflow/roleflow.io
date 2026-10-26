@@ -15,6 +15,7 @@ import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
 import { agentEnabled, agentKeyForKind, followupDue, followupLead, normalizePolicy, recoveryKey } from "../_shared/agent-control.js";
+import { clientSafeText } from "../_shared/client-safe.js";
 import { replyDelayMs } from "./ig/delay.js";
 import { parseSignedRequest } from "./ig/deletion.js";
 import { routeByIgUser } from "./ig/tenant.js";
@@ -790,7 +791,8 @@ function redirectAccount(businessId, message) {
   const next = new URL("https://www.roleflow.io/account/acquisition/");
   if (businessId) next.searchParams.set("business", businessId);
   next.hash = "integrations";
-  if (message) next.searchParams.set("notice", message.slice(0, 180));
+  const notice = clientSafeText(message).slice(0, 180);
+  if (notice) next.searchParams.set("notice", notice);
   return Response.redirect(next.toString(), 302);
 }
 

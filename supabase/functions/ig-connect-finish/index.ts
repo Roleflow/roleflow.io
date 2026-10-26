@@ -3,6 +3,7 @@
 // GET is the hosted return before the panel page is published. POST is the
 // panel page. Neither response includes a vendor name or a secret.
 
+import { clientSafeText } from "../_shared/client-safe.js";
 import { callbackFailure, verifyState } from "../_shared/ig-gateway.js";
 import { adminClient, cors, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 
@@ -29,7 +30,7 @@ Deno.serve(async (req) => {
   if (req.method === "GET") return redirect(result);
   return json(200, result.ok
     ? { ok: true, business_id: result.businessId, username: result.username }
-    : { ok: false, error: result.error });
+    : { ok: false, error: clientSafeText(result.error) || "Instagram didn't finish connecting. You can try again from the panel." });
 });
 
 async function finish(body: { state?: string; account_id?: string; accountId?: string; username?: string; error?: string; platform_error_reason?: string }) {
@@ -70,7 +71,7 @@ function redirect(result: { ok: boolean; error?: string; businessId?: string }) 
   const url = new URL(PANEL);
   if (result.businessId) url.searchParams.set("business", result.businessId);
   if (result.ok) url.searchParams.set("ig", "connected");
-  else url.searchParams.set("notice", result.error || "Instagram didn't finish connecting. You can try again from the panel.");
+  else url.searchParams.set("notice", clientSafeText(result.error) || "Instagram didn't finish connecting. You can try again from the panel.");
   url.hash = "integrations";
   return Response.redirect(url.toString(), 302);
 }

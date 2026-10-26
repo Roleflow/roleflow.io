@@ -1,6 +1,7 @@
 // Starts an official Instagram Login for a workspace the caller can edit.
 // Returns the hosted consent URL. No vendor name is returned to the browser.
 
+import { clientSafeText } from "../_shared/client-safe.js";
 import { startConnect } from "../_shared/ig-gateway.js";
 import { adminClient, cors, json, loadGatewayConfig, userClientFrom } from "../_shared/gateway-http.js";
 
@@ -48,7 +49,9 @@ Deno.serve(async (req) => {
     const saved = await admin.rpc("acq_gateway_save_profile", { p_business: businessId, p_profile: result.profileId });
     if (saved.error) return json(200, { configured: true, error: "Instagram connect could not start." });
   }
-  if (result.error || !result.authUrl) return json(200, { configured: true, error: result.error || "Instagram connect could not start." });
+  if (result.error || !result.authUrl || /zernio/i.test(result.authUrl)) {
+    return json(200, { configured: true, error: clientSafeText(result.error) || "Instagram connect could not start." });
+  }
   const issued = await admin.rpc("acq_gateway_issue_state", {
     p_business: businessId,
     p_nonce: result.nonce,

@@ -71,7 +71,12 @@ export function profileIdFrom(payload) {
 
 export function connectQuery({ profileId, state }) {
   const redirect = CALLBACK_URL + "?state=" + encodeURIComponent(state);
-  // welcome=false skips the vendor welcome page. logoUrl is rejected unless that page is on.
+  // welcome=false skips the hosted welcome screen. brandName, logoUrl, and
+  // welcomeTheme only apply with welcome=true, and that screen stays
+  // co-branded: it keeps a Zernio mark. Headless mode is for a selection step.
+  // The default Instagram login has none, and Instagram's own consent screen
+  // still names the Zernio app. There is no white-label flag for that screen.
+  // The browser is only given an instagram.com URL.
   return {
     profileId,
     redirect_url: redirect,
