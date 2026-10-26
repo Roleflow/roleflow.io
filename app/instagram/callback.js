@@ -9,7 +9,7 @@ export function callbackFailure(params) {
 }
 
 export function panelReturn(businessId) {
-  return "/account/acquisition/?business=" + encodeURIComponent(businessId) + "&ig=connected#integrations";
+  return "/account/acquisition/?business=" + encodeURIComponent(businessId) + "&ig=connected&connect=1#integrations";
 }
 
 const GENERIC = "Instagram didn't finish connecting. You can try again from the panel.";

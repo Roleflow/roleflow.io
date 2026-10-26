@@ -1,9 +1,11 @@
-import { AGENT_KEYS, DEFAULT_POLICY, dashboardMetrics, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
+import { AGENT_KEYS, dashboardMetrics, DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
 import { grokLaunchUrl } from "./client-config.js";
-import { beginInstagramConnect } from "./connect-instagram.js";
+import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
 import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prompt-tokens.js";
+import { renderRoleflowCalendar } from "./calendar-page.js";
+import { sectionText } from "./section-copy.js";
 
 const COPY = {
   en: {
@@ -39,10 +41,52 @@ const COPY = {
     keyTest: "Test key",
     keyChecking: "Checking…",
     keyLocked: "Only an owner or admin can change this key.",
+    igTitle: "Connect Instagram",
     igOn: "Instagram is connected for this business.",
     igOff: "Instagram is not connected for this business.",
-    igBody: "Connect Instagram starts the account login for this business.",
-    igUnavailable: "Instagram connection is not available right now. Contact Roleflow support."
+    igBody: "Instagram opens in this browser for this business only. Log into the account you want, then allow access.",
+    igReconnectBody: "Reconnect opens Instagram for this business. The account you allow replaces this one. Disconnect frees it for another business.",
+    igUnavailable: "Instagram connect is not available yet.",
+    igConnected: "Connected",
+    igNotConnected: "Not connected",
+    igFailed: "Needs another try",
+    igConnect: "Connect Instagram",
+    igOpening: "Opening Instagram…",
+    igOpeningFor: "Opening Instagram for this business…",
+    igRetry: "Try again",
+    igRetryHint: "Instagram didn't open. You can try again.",
+    igReconnect: "Reconnect",
+    igDisconnect: "Disconnect",
+    igDisconnected: "Instagram disconnected.",
+    dashLede: "One business. Live numbers only.",
+    leads: "Leads",
+    leadsNote: "People stored for this business.",
+    chats: "Chats",
+    chatsNote: "Threads Roleflow can open.",
+    booked: "Booked",
+    bookedNote: "Calendar rows that are not cancelled.",
+    agents: "Agents live",
+    agentsNote: "Each agent stays off until you turn it on.",
+    showLabel: "Show-up",
+    showEmpty: "No show-up data yet",
+    showNote: "Showed calls divided by showed plus no-shows.",
+    shareLabel: "Roleflow share",
+    shareNote: "10% of the growth you record. Nothing is owed if you record nothing.",
+    workspaceOn: "The workspace is on.",
+    workspaceOff: "The workspace is off.",
+    billingLink: "Billing",
+    accounts: "Accounts",
+    manageAccounts: "Manage accounts",
+    alerts: "Alerts",
+    pending: "{n} pending",
+    viewAlerts: "View alerts",
+    promptsBanner: "Business and prompts live with the SOPs. Open them to review the setter.",
+    promptsLink: "Business & prompts",
+    showSave: "Save show-up",
+    bookTitle: "Record a booked call",
+    bookBody: "This stores the call for show-up tracking. It does not message Instagram.",
+    bookHandle: "Instagram handle",
+    bookSave: "Record booking"
   },
   es: {
     off: "Apagado",
@@ -77,11 +121,53 @@ const COPY = {
     keyTest: "Probar clave",
     keyChecking: "Comprobando…",
     keyLocked: "Solo un propietario o un admin puede cambiar esta clave.",
+    igTitle: "Conectar Instagram",
     igOn: "Instagram está conectado para este negocio.",
     igOff: "Instagram no está conectado para este negocio.",
-    igBody: "Conectar Instagram abre el acceso de la cuenta de este negocio.",
-    igUnavailable: "La conexión de Instagram no está disponible ahora. Contacta con el soporte de Roleflow."
-  }
+    igBody: "Instagram se abre en este navegador solo para este negocio. Entra en la cuenta que quieras y permite el acceso.",
+    igReconnectBody: "Reconectar abre Instagram para este negocio. La cuenta que permitas sustituye a esta. Desconectar la deja libre para otro negocio.",
+    igUnavailable: "La conexión de Instagram todavía no está disponible.",
+    igConnected: "Conectado",
+    igNotConnected: "Sin conectar",
+    igFailed: "Hace falta otro intento",
+    igConnect: "Conectar Instagram",
+    igOpening: "Abriendo Instagram…",
+    igOpeningFor: "Abriendo Instagram para este negocio…",
+    igRetry: "Reintentar",
+    igRetryHint: "Instagram no se abrió. Puedes volver a intentarlo.",
+    igReconnect: "Reconectar",
+    igDisconnect: "Desconectar",
+    igDisconnected: "Instagram desconectado.",
+    dashLede: "Un negocio. Solo números reales.",
+    leads: "Leads",
+    leadsNote: "Personas guardadas de este negocio.",
+    chats: "Chats",
+    chatsNote: "Hilos que Roleflow puede abrir.",
+    booked: "Agendadas",
+    bookedNote: "Filas del calendario que no están canceladas.",
+    agents: "Agentes activos",
+    agentsNote: "Cada agente sigue apagado hasta que lo enciendes.",
+    showLabel: "Asistencia",
+    showEmpty: "Todavía no hay datos de asistencia",
+    showNote: "Asistieron, dividido entre asistieron y no asistieron.",
+    shareLabel: "Parte de Roleflow",
+    shareNote: "El 10% del crecimiento que registras. Si no registras nada, no se debe nada.",
+    workspaceOn: "El espacio está encendido.",
+    workspaceOff: "El espacio está apagado.",
+    billingLink: "Facturación",
+    accounts: "Cuentas",
+    manageAccounts: "Gestionar cuentas",
+    alerts: "Avisos",
+    pending: "{n} pendientes",
+    viewAlerts: "Ver avisos",
+    promptsBanner: "El negocio y los prompts están en los SOPs. Ábrelos para revisar el setter.",
+    promptsLink: "Negocio y prompts",
+    showSave: "Guardar asistencia",
+    bookTitle: "Registrar una llamada agendada",
+    bookBody: "Esto guarda la llamada para la asistencia. No escribe por Instagram.",
+    bookHandle: "Usuario de Instagram",
+    bookSave: "Registrar reserva"
+  },
 };
 
 export function text(language) {
@@ -113,24 +199,22 @@ export function renderDashboardHome(ui) {
 }
 
 export function renderCalendar(ui) {
-  const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Calendar", "Booked calls stored for this business.", "calendar", "clipboard"));
-  const google = ui.state.google;
-  const account = ui.el("section", { class: "agent" });
-  account.append(ui.el("h3", { text: "Google Calendar" }));
-  account.append(ui.el("p", { text: google && google.status === "connected" ? "Connected" + (google.email ? " · " + google.email : "") : "Not connected yet. Connect it from Settings." }));
-  account.append(ui.el("a", { class: "btn ghost sm", href: "#settings" }, ["Open settings"]));
-  wrap.append(account);
-  const rows = ui.state.bookings || [];
-  if (!rows.length) wrap.append(ui.el("p", { text: "No bookings yet." }));
-  rows.forEach((row) => {
-    const target = (ui.state.targets || []).find((item) => item.id === row.target_id);
-    const card = ui.el("article", { class: "agent" });
-    card.append(ui.el("h3", { text: target && target.handle ? "@" + target.handle : "Booking" }));
-    card.append(ui.el("p", { text: (row.show_status || "scheduled") + (row.meet_link ? " · " + row.meet_link : "") }));
-    wrap.append(card);
-  });
-  return wrap;
+  const copy = text(ui.language());
+  let recordForm = null;
+  if (ui.recordBooking && ui.state.canEdit) {
+    const form = ui.el("form", { class: "gcal-record", id: "record-booking" });
+    const handle = ui.el("input", { id: "booking-handle", type: "text", maxlength: "30", autocomplete: "off", "aria-label": copy.bookHandle });
+    form.append(ui.el("h3", { text: copy.bookTitle }));
+    form.append(ui.el("p", { class: "mute", text: copy.bookBody }));
+    form.append(ui.el("label", { text: copy.bookHandle }, [handle]));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      ui.recordBooking(handle.value);
+    });
+    form.append(ui.button(copy.bookSave, null, "submit"));
+    recordForm = form;
+  }
+  return renderRoleflowCalendar(ui, { recordForm });
 }
 
 export function renderGrokAgent(ui, kind) {
@@ -157,12 +241,14 @@ export function renderGrokAgent(ui, kind) {
 export function renderSetter(ui) {
   const copy = text(ui.language());
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
-  wrap.append(ui.el("p", { text: copy.channel }));
-  wrap.append(ui.el("p", {}, [
-    ui.el("a", { class: "btn ghost sm", id: "setter-key-link", href: "#settings/model" }, [copy.keyLink])
-  ]));
-  wrap.append(renderInstagramConnect(ui));
+  if (!ui.state.embedSetter) {
+    wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
+    wrap.append(ui.el("p", { text: copy.channel }));
+    wrap.append(ui.el("p", {}, [
+      ui.el("a", { class: "btn ghost sm", id: "setter-key-link", href: "#settings/model" }, [copy.keyLink])
+    ]));
+    wrap.append(renderInstagramConnect(ui));
+  }
   wrap.append(switchCard(ui, "setter", copy));
   const studio = ui.el("div", {
     class: "setter-studio",
@@ -323,7 +409,7 @@ function practiceThread(ui) {
   const simulate = ui.el("input", { id: "practice-delay", type: "checkbox" });
   simulate.checked = ui.state.practiceSimulateDelay === true;
   simulate.addEventListener("change", () => { ui.state.practiceSimulateDelay = simulate.checked; });
-  wrap.append(ui.el("label", { class: "switch" }, [simulate, " Simulate the reply delay. Leave this off to skip the wait. Zero is allowed."]));
+  wrap.append(ui.el("label", { class: "switch" }, [simulate, " Simulate the reply delay. Leave this off to skip the wait. A wait of 0 is allowed."]));
   const log = ui.el("div", { id: "setter-trial-log", class: "dm-thread" });
   (trial.messages || []).forEach((message) => log.append(trialBubble(ui, message)));
   if (!(trial.messages || []).length) log.append(ui.el("p", { class: "mute", text: "The thread is empty. Write as the lead." }));
@@ -372,26 +458,55 @@ function trialBubble(ui, message) {
 
 export function renderCommentVoice(ui) {
   const copy = text(ui.language());
+  const lang = ui.language ? ui.language() : "en";
+  const surface = ui.state.commentSurface === "stories" ? "stories" : "posts";
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Comment voice", copy.commentVoice, "commentvoice", "send"));
-  wrap.append(ui.el("p", { text: copy.channel }));
-  wrap.append(ui.el("p", { text: copy.commentLimit }));
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "commentTitle"), sectionText(lang, "commentBody"), "commentvoice", "send"));
+  const tabs = ui.el("div", { class: "section-tabs", role: "tablist" });
+  [["posts", "postsReels"], ["stories", "stories"]].forEach(([id, key]) => {
+    const tab = ui.el("button", { type: "button", "aria-pressed": surface === id ? "true" : "false" }, [sectionText(lang, key)]);
+    tab.addEventListener("click", () => { ui.state.commentSurface = id; ui.paint(); });
+    tabs.append(tab);
+  });
+  wrap.append(tabs);
+  wrap.append(ui.el("p", { text: surface === "stories" ? copy.commentVoice : copy.commentLimit }));
   wrap.append(switchCard(ui, "comment_voice", copy));
+  const layout = ui.el("div", { class: "voice-layout" });
+  const column = ui.el("div");
+  const prefs = commentPrefs();
   const form = ui.el("form", { class: "agent", id: "comment-voice-rules" });
+  const keywords = ui.el("section", { class: "section-card" });
+  keywords.append(ui.el("div", { class: "card-head" }, [
+    ui.el("h3", { text: lang === "es" ? "Palabras" : "Keywords" }),
+    ui.button("+ " + sectionText(lang, "addKeyword"), () => ui.addCommentRule(), "button")
+  ]));
   const cap = ui.el("input", { type: "number", name: "cap", min: "1", max: "500", value: String(ui.state.commentVoiceCap || 30), "aria-label": "Daily cap" });
-  form.append(ui.el("label", { text: "Daily cap" }, [cap]));
+  keywords.append(ui.el("label", { text: "Daily cap" }, [cap]));
   const rules = ui.state.commentVoiceRules || [];
   const list = ui.el("div", { class: "comment-rules" });
   if (!rules.length) list.append(ui.el("p", { class: "mute", text: copy.commentRulesEmpty }));
-  rules.forEach((rule, index) => list.append(commentRule(ui, rule, index)));
-  form.append(list);
-  form.append(ui.button("Add rule", () => ui.addCommentRule(), "button"));
+  rules.forEach((rule, index) => list.append(commentRule(ui, rule, index, lang)));
+  keywords.append(list);
+  const onComment = ui.el("section", { class: "section-card" });
+  onComment.append(ui.el("h3", { text: sectionText(lang, "onComment") }));
+  const publicReply = ui.el("input", { type: "checkbox", name: "public_reply" });
+  publicReply.checked = prefs.publicReply === true;
+  const dmAnyway = ui.el("input", { type: "checkbox", name: "dm_anyway" });
+  dmAnyway.checked = prefs.dmAnyway === true;
+  onComment.append(
+    ui.el("label", { class: "switch" }, [publicReply, lang === "es" ? " Responder comentarios en público" : " Reply to comments publicly"]),
+    ui.el("label", { class: "switch" }, [dmAnyway, lang === "es" ? " Mensaje directo aunque la palabra no coincida" : " DM even if the keyword does not match"])
+  );
+  onComment.append(ui.button(sectionText(lang, "saveSettings"), null, "submit"));
+  form.append(keywords, onComment);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    try {
+      localStorage.setItem("roleflow.commentprefs", JSON.stringify({ publicReply: publicReply.checked, dmAnyway: dmAnyway.checked }));
+    } catch (_error) { /* private mode */ }
     ui.saveCommentVoice(readCommentRules(form));
   });
-  form.append(ui.button("Save rules", null, "submit"));
-  wrap.append(form);
+  column.append(form);
   const log = ui.el("section", { class: "agent", id: "comment-voice-log" });
   log.append(ui.el("h3", { text: "Decisions" }));
   const rows = ui.state.commentVoiceLog || [];
@@ -403,28 +518,73 @@ export function renderCommentVoice(ui) {
     card.append(ui.el("p", { class: "mute", text: decisionLine(row) }));
     log.append(card);
   });
-  wrap.append(log);
+  column.append(log);
+  layout.append(column, phonePreview(ui, lang, surface, rules[0]));
+  wrap.append(layout);
   return wrap;
 }
 
-function commentRule(ui, rule, index) {
+function commentPrefs() {
+  try { return JSON.parse(localStorage.getItem("roleflow.commentprefs") || "{}") || {}; } catch (_error) { return {}; }
+}
+
+function phonePreview(ui, lang, surface, rule) {
+  const phone = ui.el("aside", { class: "phone" });
+  const keyword = rule && rule.keywords && rule.keywords[0] ? rule.keywords[0] : "KEYWORD";
+  const reply = rule && rule.message ? rule.message : (lang === "es" ? "Gracias por el comentario." : "Thanks for the comment.");
+  phone.append(ui.el("div", { class: "phone-top" }, [ui.el("span", { text: surface === "stories" ? sectionText(lang, "stories") : "Reel" }), ui.el("span", { text: "IG" })]));
+  const toggle = ui.el("div", { class: "phone-toggle" });
+  const comments = ui.el("button", { type: "button", "aria-pressed": "true" }, [sectionText(lang, "comments")]);
+  const messages = ui.el("button", { type: "button", "aria-pressed": "false" }, [sectionText(lang, "messages")]);
+  const sheet = ui.el("div", { class: "phone-sheet" });
+  const comment = ui.el("div", { class: "phone-comment", text: keyword });
+  const dm = ui.el("div", { class: "phone-dm", hidden: true, text: reply });
+  const show = (mode) => {
+    comments.setAttribute("aria-pressed", mode === "comments" ? "true" : "false");
+    messages.setAttribute("aria-pressed", mode === "messages" ? "true" : "false");
+    comment.hidden = mode !== "comments";
+    dm.hidden = mode !== "messages";
+  };
+  comments.addEventListener("click", () => show("comments"));
+  messages.addEventListener("click", () => show("messages"));
+  toggle.append(comments, messages);
+  sheet.append(comment, dm);
+  phone.append(toggle, sheet, ui.el("p", { class: "phone-note", text: sectionText(lang, "previewNote") }));
+  return phone;
+}
+
+function commentRule(ui, rule, index, lang) {
   const card = ui.el("fieldset", { class: "comment-rule" });
-  card.append(ui.el("legend", { text: "Rule " + (index + 1) }));
-  const keywords = ui.el("input", { name: "keywords", value: (rule.keywords || []).join(", "), placeholder: "SYSTEM, SYSTEMS, SISTEM", "aria-label": "Keywords" });
+  card.append(ui.el("legend", { text: (lang === "es" ? "Palabra " : "Keyword ") + (index + 1) }));
+  const keywords = ui.el("input", { name: "keywords", value: (rule.keywords || []).join(", "), placeholder: "SYSTEM, SYSTEMS, SISTEM", "aria-label": "Keyword" });
+  const match = ui.el("select", { name: "match_type", "aria-label": lang === "es" ? "Tipo de coincidencia" : "Match type" });
+  [["exact", lang === "es" ? "Coincidencia exacta" : "Exact match"], ["contains", lang === "es" ? "Contiene" : "Contains"]].forEach(([value, label]) => match.append(ui.el("option", { value, text: label })));
   const intent = ui.el("textarea", { name: "intent", rows: "2", "aria-label": "Intent" });
   intent.value = rule.intent || "";
-  const message = ui.el("input", { name: "message", value: rule.message || "", placeholder: "Thanks for the comment.", "aria-label": "Private reply text" });
+  const message = ui.el("input", { name: "message", value: rule.message || "", placeholder: lang === "es" ? "Texto opcional" : "Optional text", "aria-label": "Private reply text" });
   const clip = ui.el("select", { name: "clip", "aria-label": "Voice note" });
-  clip.append(ui.el("option", { value: "", text: "No mapped voice note" }));
+  clip.append(ui.el("option", { value: "", text: lang === "es" ? "Nota de voz de la biblioteca" : "Voice note from the library" }));
   voiceCatalog(ui.state.voices || []).forEach((note) => {
     clip.append(ui.el("option", { value: note.id, text: note.title, selected: note.id === (rule.clip_id || rule.clipId) ? true : null }));
   });
+  const linkUrl = ui.el("input", { name: "link_url", type: "url", placeholder: "Link", "aria-label": "Link URL" });
+  const linkLabel = ui.el("input", { name: "link_label", maxlength: "20", placeholder: lang === "es" ? "Texto del botón" : "Button label", "aria-label": "Button label" });
+  const counter = ui.el("span", { class: "mute", text: "0/20" });
+  linkLabel.addEventListener("input", () => { counter.textContent = String(linkLabel.value.length) + "/20"; });
+  const agent = ui.el("select", { name: "rule_agent", "aria-label": "AI" });
+  agent.append(ui.el("option", { value: "business", text: lang === "es" ? "IA del negocio" : "Business AI" }));
   card.append(
-    ui.el("label", { text: "Keywords" }, [keywords]),
-    ui.el("label", { text: "Intent" }, [intent]),
-    ui.el("label", { text: "Private reply" }, [message]),
-    ui.el("label", { text: "Voice note" }, [clip])
+    ui.el("label", { text: "Keyword" }, [keywords]),
+    ui.el("label", { text: lang === "es" ? "Tipo de coincidencia" : "Match type" }, [match]),
+    ui.el("label", { text: lang === "es" ? "Respuesta por mensaje directo" : "DM reply" }, [clip, message]),
+    ui.el("label", { text: lang === "es" ? "Botón de enlace" : "Link button" }, [linkUrl, linkLabel, counter]),
+    ui.el("label", { text: "AI" }, [agent]),
+    ui.el("label", { text: "Intent" }, [intent])
   );
+  const row = ui.el("div", { class: "filters" });
+  row.append(ui.button(lang === "es" ? "Cancelar" : "Cancel", () => ui.paint()));
+  row.append(ui.button(sectionText(lang, "saveKeyword"), null, "submit"));
+  card.append(row);
   return card;
 }
 
@@ -477,7 +637,8 @@ export function renderFollowBoss(ui) {
   const copy = text(ui.language());
   const policy = normalizePolicy(ui.state.followupPolicy || DEFAULT_POLICY);
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Follow Up Boss", copy.follow, "followup", "trend"));
+  const lang = ui.language ? ui.language() : "en";
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "followTitle"), sectionText(lang, "followBody"), "followup", "trend"));
   wrap.append(ui.el("p", { text: copy.channel }));
   wrap.append(switchCard(ui, "followup", copy));
   const form = ui.el("form", { class: "agent grid-2", id: "followup-policy" });
@@ -579,24 +740,72 @@ export function renderModelKey(ui) {
 export function renderInstagramConnect(ui) {
   const copy = text(ui.language());
   const card = ui.el("section", { class: "agent", id: "instagram-connect" });
-  card.append(ui.el("h3", { text: "Connect Instagram" }));
-  const connected = Boolean(ui.state.ig && ui.state.ig.status === "connected");
-  card.append(ui.el("p", { text: connected ? copy.igOn : copy.igOff }));
-  card.append(ui.el("p", { text: copy.igBody }));
+  const businessId = ui.state.businessId || "";
+  const ig = ui.state.ig && (!ui.state.ig.business_id || ui.state.ig.business_id === businessId) ? ui.state.ig : null;
+  const connected = Boolean(ig && ig.status === "connected");
+  const failed = Boolean(ig && ig.status === "error");
+  const handle = ig && ig.username ? "@" + String(ig.username).replace(/^@/, "") : "";
+  const lastError = ig && ig.last_error ? scrubChannelCopy(ig.last_error) : "";
+  const pendingNotice = !connected && ui.state.connectError ? scrubChannelCopy(ui.state.connectError) : "";
+  card.dataset.businessId = businessId;
+  card.append(ui.el("h3", { text: copy.igTitle }));
+  card.append(ui.el("p", {
+    class: connected ? "integration-status on" : "integration-status",
+    role: "status",
+    text: connected ? copy.igConnected : failed ? copy.igFailed : copy.igNotConnected
+  }));
+  card.append(ui.el("p", { text: connected ? (handle || copy.igOn) : copy.igOff }));
+  card.append(ui.el("p", { class: "mute", text: connected ? copy.igReconnectBody : copy.igBody }));
   const status = ui.el("p", { class: "mute", "data-connect-status": "1", role: "status" });
+  if (pendingNotice || lastError) status.textContent = pendingNotice || lastError;
   if (ui.state.canEdit) {
-    const control = ui.button("Connect Instagram", async () => {
+    const row = ui.el("div", { class: "filters" });
+    const label = connected ? copy.igReconnect : failed || pendingNotice ? copy.igRetry : copy.igConnect;
+    const control = ui.button(label, async () => {
       control.disabled = true;
-      const result = await beginInstagramConnect({ state: ui.state, toast: ui.toast });
+      control.textContent = copy.igOpening;
+      control.setAttribute("aria-busy", "true");
+      status.textContent = copy.igOpeningFor;
+      if (ui.state.preview) {
+        card.dataset.connectBusiness = businessId;
+        return;
+      }
+      const result = await beginInstagramConnect({ state: ui.state, toast: ui.toast, businessId });
       if (result.mode === "redirect") {
+        status.textContent = copy.igOpening;
         location.assign(result.authUrl);
         return;
       }
-      status.textContent = copy.igUnavailable;
-      if (result.mode !== "manual" && result.error && ui.toast) ui.toast(result.error, "bad");
+      status.textContent = result.mode === "manual" ? copy.igUnavailable : (result.error || copy.igRetryHint);
+      if (result.error && ui.toast) ui.toast(result.mode === "manual" ? copy.igUnavailable : result.error, "bad");
       control.disabled = false;
+      control.textContent = copy.igRetry;
+      control.removeAttribute("aria-busy");
     });
-    card.append(control);
+    control.setAttribute("data-connect-instagram", businessId);
+    row.append(control);
+    if (connected || failed) {
+      const disconnect = ui.button(copy.igDisconnect, async () => {
+        disconnect.disabled = true;
+        if (ui.state.preview) {
+          status.textContent = copy.igDisconnected;
+          card.dataset.disconnectedBusiness = businessId;
+          return;
+        }
+        const result = await disconnectInstagram({ state: ui.state, businessId });
+        if (!result.ok) {
+          status.textContent = result.error || copy.igRetryHint;
+          if (ui.toast) ui.toast(result.error || copy.igRetryHint, "bad");
+          disconnect.disabled = false;
+          return;
+        }
+        if (ui.toast) ui.toast(copy.igDisconnected);
+        if (ui.bootBusiness) await ui.bootBusiness(businessId);
+      });
+      disconnect.classList.add("ghost");
+      row.append(disconnect);
+    }
+    card.append(row);
   }
   card.append(status);
   return card;
@@ -623,11 +832,11 @@ function switchCard(ui, key, copy) {
   return card;
 }
 
-function metricCard(ui, title, value, note) {
-  const card = ui.el("section", { class: "home-card" });
-  card.append(ui.el("h3", { text: title }));
-  card.append(ui.el("p", { class: "metric-value", text: value }));
-  card.append(ui.el("p", { class: "metric-note", text: note }));
+function metricCard(ui, title, value, note, tone) {
+  const card = ui.el("article", { class: "kpi pastel " + (tone || "gray") });
+  card.append(ui.el("span", { class: "watermark", "aria-hidden": "true", text: String(title || "R").slice(0, 1) }));
+  card.append(ui.el("span", { text: title }), ui.el("strong", { text: value }));
+  if (note) card.append(ui.el("em", { text: note }));
   return card;
 }
 

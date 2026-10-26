@@ -43,7 +43,9 @@ assert.match(add, /Objections/);
 assert.match(add, /Exclusions/);
 assert.match(add, /Booking link/);
 assert.match(add, /roleflow-add-business/);
-assert.match(add, /editor=1#inbound/);
+assert.match(add, /connect=1#settings/);
+assert.match(add, /encodeURIComponent\(payload\.business_id\)/);
+assert.doesNotMatch(add, /editor=1#inbound/);
 assert.doesNotMatch(add, /\/pricing/);
 
 const sql = read("supabase/migrations/20261023070000_setter_studio.sql");

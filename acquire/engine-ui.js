@@ -462,17 +462,37 @@ function knowledgeBlock(ctx) {
 }
 
 function paintBilling(host, ctx) {
-  const { state, el, money, shareCents } = ctx;
+  const { state, el, money, shareCents, button } = ctx;
+  const es = state.language === "es";
   const revenue = (state.deals || []).filter((deal) => deal.attributed !== false).reduce((sum, deal) => sum + (Number(deal.amount_cents) || 0), 0);
   const share = shareCents(revenue, state.settings && state.settings.share_bps);
   const kpis = el("div", { class: "kpis" });
-  [["Recorded growth", money(revenue), "Cash you entered on sourced deals"], ["Roleflow share", money(share), "10% · no setup fee · no retainer"]].forEach(([label, value, note]) => {
+  const cards = es
+    ? [["Crecimiento registrado", money(revenue), "Efectivo que registras en tratos originados"], ["Parte de Roleflow", money(share), "10% · sin tarifa de alta · sin mensualidad"]]
+    : [["Recorded growth", money(revenue), "Cash you entered on sourced deals"], ["Roleflow share", money(share), "10% · no setup fee · no retainer"]];
+  cards.forEach(([label, value, note]) => {
     const card = el("article", { class: "kpi" });
     card.append(el("span", { text: label }), el("strong", { text: value }), el("em", { text: note }));
     kpis.append(card);
   });
+  host.append(el("h2", { text: es ? "Facturación" : "Billing" }));
   host.append(kpis);
-  host.append(el("p", { class: "mute", text: "Record a deal from the pipeline when the lead pays. The share follows that amount. Nothing is owed for a deal you do not record." }));
+  host.append(el("p", { class: "mute", text: es
+    ? "Registra el efectivo cuando el lead paga. La parte sigue ese importe. Si no registras nada, no se debe nada. Los resultados varían; no es una garantía."
+    : "Record the cash when the lead pays. The share follows that amount. Nothing is owed for a deal you do not record. Results vary; not a guarantee." }));
+  if (state.canEdit && ctx.recordGrowth) {
+    const form = el("form", { class: "agent", id: "record-growth" });
+    const amount = el("input", { id: "growth-amount", type: "number", min: "0", step: "0.01", "aria-label": es ? "Efectivo cobrado" : "Cash collected" });
+    const note = el("input", { id: "growth-note", type: "text", maxlength: "500", "aria-label": es ? "Nota" : "Note" });
+    form.append(el("label", { text: es ? "Efectivo cobrado" : "Cash collected" }, [amount]));
+    form.append(el("label", { text: es ? "Nota" : "Note" }, [note]));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      ctx.recordGrowth(amount.value, note.value);
+    });
+    form.append(button(es ? "Registrar crecimiento" : "Record growth", null, "submit"));
+    host.append(form);
+  }
   const tableWrap = el("div", { class: "table-wrap" });
   const table = el("table", { class: "leads" });
   table.append(el("thead", {}, [el("tr", {}, [el("th", { text: "When" }), el("th", { text: "Amount" }), el("th", { text: "Share" }), el("th", { text: "Note" })])]));

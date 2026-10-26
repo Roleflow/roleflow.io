@@ -17,6 +17,8 @@ import {
   voiceToken
 } from "../supabase/functions/_shared/prompt-tokens.js";
 import { sendRequest } from "../supabase/functions/_shared/ig-gateway.js";
+import { NAV_GROUPS, canonicalTab } from "../acquire/client-nav.mjs";
+import { sectionText } from "../acquire/section-copy.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -151,5 +153,21 @@ assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /reply_de
 assert.doesNotMatch(read("acquire/client-pages.js"), /https?:\/\//);
 assert.doesNotMatch(read("acquire/client-pages.js"), /zernio/i);
 assert.doesNotMatch(read("businesses/app.js"), /test chat/i);
+
+const strategy = NAV_GROUPS.find((group) => group.id === "strategy");
+const workforce = NAV_GROUPS.find((group) => group.id === "workforce");
+assert.equal(Boolean(workforce), true);
+assert.equal(strategy.items.some((item) => item.tab === "commentvoice"), true);
+assert.equal(strategy.items.some((item) => item.tab === "followup"), false);
+assert.equal(workforce.items.some((item) => item.tab === "followup"), true);
+assert.equal(workforce.items.some((item) => item.tab === "warmer"), true);
+assert.equal(workforce.items.some((item) => item.tab === "commentvoice"), false);
+assert.equal(canonicalTab("commentvoice"), "commentvoice");
+assert.equal(canonicalTab("integrations"), "settings");
+assert.equal(canonicalTab("team"), "settings");
+assert.equal(sectionText("es", "sopsTitle"), "SOPs");
+assert.match(sectionText("es", "loadError"), /No se pudo cargar/);
+assert.match(read("acquire/home.js"), /strategyTabs/);
+assert.match(read("acquire/acquire.css"), /max-width:420px/);
 
 console.log("prompt and comment voice tests passed");

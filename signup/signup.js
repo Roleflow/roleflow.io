@@ -367,6 +367,7 @@ if (!isConfigured()) {
         toast(okEl.textContent, "ok");
       });
 
+      loginForm.dataset.bound = "1";
       loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         loginErrorEl.textContent = "";

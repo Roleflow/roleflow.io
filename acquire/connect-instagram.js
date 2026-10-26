@@ -1,7 +1,25 @@
 const MARK = String.fromCharCode(116, 97, 105, 108, 111, 114, 116, 97, 108, 107);
 const BRAND = new RegExp(MARK.slice(0, 6) + "\\s*" + MARK.slice(6) + "(?:\\.ai)?", "gi");
 export const CONNECT_ERROR = "Instagram didn't open. You can try again from the panel.";
+export const CONNECT_WAIT_MS = 20000;
 const DISCONNECT_ERROR = "Instagram could not be disconnected.";
+
+function promiseTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    Promise.resolve(promise).then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    }, (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+function businessIdFrom(ctx) {
+  return String((ctx && ctx.businessId) || (ctx && ctx.state && ctx.state.businessId) || "");
+}
 
 export function normalizeInstagramHandle(value) {
   const handle = String(value || "").trim().replace(/^@+/, "").toLowerCase();
@@ -42,12 +60,14 @@ export function connectPlan(data) {
 }
 
 export async function beginInstagramConnect(ctx) {
-  if (!ctx.state || !ctx.state.supabase) return { mode: "manual", error: "Instagram connect is not available yet." };
+  const businessId = businessIdFrom(ctx);
+  if (!businessId || !ctx.state || !ctx.state.supabase) return { mode: "manual", error: "Instagram connect is not available yet." };
+  const wait = Number(ctx.timeoutMs) > 0 ? Number(ctx.timeoutMs) : CONNECT_WAIT_MS;
   let invoked;
   try {
-    invoked = await ctx.state.supabase.functions.invoke("ig-connect-start", {
-      body: { business_id: ctx.state.businessId }
-    });
+    invoked = await promiseTimeout(ctx.state.supabase.functions.invoke("ig-connect-start", {
+      body: { business_id: businessId }
+    }), wait);
   } catch (_error) {
     return { mode: "error", error: CONNECT_ERROR };
   }
@@ -55,12 +75,13 @@ export async function beginInstagramConnect(ctx) {
 }
 
 export async function disconnectInstagram(ctx) {
-  if (!ctx.state || !ctx.state.supabase) return { ok: false, error: DISCONNECT_ERROR };
+  const businessId = businessIdFrom(ctx);
+  if (!businessId || !ctx.state || !ctx.state.supabase) return { ok: false, error: DISCONNECT_ERROR };
   let invoked;
   try {
-    invoked = await ctx.state.supabase.functions.invoke("ig-connect-start", {
-      body: { business_id: ctx.state.businessId, action: "disconnect" }
-    });
+    invoked = await promiseTimeout(ctx.state.supabase.functions.invoke("ig-connect-start", {
+      body: { business_id: businessId, action: "disconnect" }
+    }), Number(ctx.timeoutMs) > 0 ? Number(ctx.timeoutMs) : CONNECT_WAIT_MS);
   } catch (_error) {
     return { ok: false, error: DISCONNECT_ERROR };
   }
@@ -74,7 +95,10 @@ function statusPill(el, label, tone) {
 }
 
 async function openInstagram(ctx, control) {
+  const label = control.textContent;
   control.disabled = true;
+  control.textContent = "Opening Instagram…";
+  control.setAttribute("aria-busy", "true");
   const result = await beginInstagramConnect(ctx);
   if (result.mode === "redirect") {
     location.assign(result.authUrl);
@@ -82,14 +106,18 @@ async function openInstagram(ctx, control) {
   }
   ctx.toast(result.error, "bad");
   control.disabled = false;
+  control.textContent = label || "Try again";
+  control.removeAttribute("aria-busy");
 }
 
 export function paintInstagramConnect(host, ctx) {
   const { state, el, button, toast, bootBusiness } = ctx;
+  const businessId = state.businessId;
   const card = el("article", { class: "agent integration-card", id: "connect-instagram" });
+  card.dataset.businessId = businessId || "";
   const head = el("div", { class: "integration-head" });
   head.append(el("h3", { text: "Connect Instagram" }));
-  const ig = state.ig;
+  const ig = state.ig && (!state.ig.business_id || state.ig.business_id === businessId) ? state.ig : null;
   const connected = Boolean(ig && ig.status === "connected");
   if (connected) {
     head.append(statusPill(el, "Connected", "on"));
@@ -102,11 +130,11 @@ export function paintInstagramConnect(host, ctx) {
     }));
     if (state.canEdit) {
       const row = el("div", { class: "filters" });
-      const reconnect = button("Reconnect", () => openInstagram({ ...ctx, toast }, reconnect));
+      const reconnect = button("Reconnect", () => openInstagram({ ...ctx, toast, businessId }, reconnect));
       reconnect.classList.add("connect-native");
       const disconnect = button("Disconnect", async () => {
         disconnect.disabled = true;
-        const result = await disconnectInstagram(ctx);
+        const result = await disconnectInstagram({ ...ctx, businessId });
         if (!result.ok) {
           toast(result.error, "bad");
           disconnect.disabled = false;
@@ -124,17 +152,18 @@ export function paintInstagramConnect(host, ctx) {
   }
   head.append(statusPill(el, "Not connected", "off"));
   card.append(head);
+  const detail = ig && ig.last_error ? scrubChannelCopy(ig.last_error) : "";
   card.append(el("p", {
-    text: ig && ig.status === "error"
-      ? "The last connection did not finish. Connect Instagram to log in and allow access."
-      : "Connect the Instagram account for this business."
+    text: detail || (ig && ig.status === "error"
+      ? "The last connection did not finish. Connect Instagram to try again."
+      : "Connect the Instagram account for this business.")
   }));
   card.append(el("p", {
     class: "mute",
     text: "Instagram opens in this browser. Log into the account you want, then allow access. That account becomes this workspace's connection."
   }));
   if (state.canEdit) {
-    const connect = button("Connect Instagram", () => openInstagram({ ...ctx, toast }, connect));
+    const connect = button(ig && ig.status === "error" ? "Try again" : "Connect Instagram", () => openInstagram({ ...ctx, toast, businessId }, connect));
     connect.classList.add("connect-native");
     card.append(connect);
   }

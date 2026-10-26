@@ -1,12 +1,13 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
-import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
+import { NAV_GROUPS, canonicalTab, navLabel, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { bindAssistant } from "./assistant.js";
+import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
@@ -155,6 +156,7 @@ const state = {
 logoutBtn.addEventListener("click", () => logout());
 if (panelLogout) panelLogout.addEventListener("click", () => logout());
 bindProfile();
+bindShell();
 const sidebar = bindSidebar();
 document.getElementById("nav-toggle").addEventListener("click", () => sidebar.setDrawer(!document.body.classList.contains("panel-open")));
 document.getElementById("how-close").addEventListener("click", () => { document.getElementById("how-modal").hidden = true; });
@@ -168,7 +170,24 @@ document.getElementById("acq-nav").addEventListener("click", (event) => {
 bindAssistant(() => ({
   supabase: state.supabase,
   businessId: state.businessId,
-  applyProposal
+  applyProposal,
+  onOpen() {
+    state.assistantOpen = true;
+    if (state.tab === "assistant" && state.assistantExpanded) return;
+    revealAssistantModal();
+  },
+  onClose() {
+    state.assistantOpen = false;
+    state.assistantExpanded = false;
+    if (state.tab === "assistant") go("dashboard");
+    else parkAssistant();
+  },
+  onExpand() {
+    state.assistantOpen = false;
+    state.assistantExpanded = true;
+    go("assistant");
+  },
+  language
 }));
 bindOps({ state, paint });
 pick.addEventListener("change", () => {
@@ -189,7 +208,12 @@ async function boot() {
   state.language = readLanguage(safeStorage());
   const preview = readPreview();
   if (preview) {
-    Object.assign(state, preview, { tab: tabFromHash() });
+    Object.assign(state, preview, { tab: tabFromHash(), preview: true });
+    const requested = new URLSearchParams(location.search).get("lang");
+    if (requested === "es" || requested === "en") {
+      state.language = requested;
+      writeLanguage(safeStorage(), requested);
+    }
     state.canEdit = preview.canEdit === true;
     state.canManageKeys = state.canEdit === true;
     const seed = await import("./setter-seed.js");
@@ -218,10 +242,16 @@ async function boot() {
       { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "" } }
     ];
     armEditorRequest();
+    fillPicker();
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
+    captureInstagramNotice();
     paint();
-    consumeInstagramNotice();
+    settleInstagramNotice();
+    if (new URLSearchParams(location.search).get("add") === "1") {
+      const adder = await import("./add-business.js");
+      adder.openAddBusiness({ supabase: null, preview: true });
+    }
     return;
   }
   if (!isConfigured()) {
@@ -249,9 +279,7 @@ async function boot() {
       history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
   }
-  const notice = new URLSearchParams(location.search).get("notice");
-  if (notice) toast(notice, "bad");
-  consumeInstagramNotice();
+  captureInstagramNotice();
   if (new URLSearchParams(location.search).get("onboarding") === "1" && !location.hash) {
     history.replaceState(null, "", location.pathname + location.search + "#onboarding");
   }
@@ -283,12 +311,28 @@ async function boot() {
   }
   fillPicker();
   const requested = new URLSearchParams(location.search).get("business");
+  let initial = state.businesses.find((row) => row.id === requested);
+  if (requested && !initial && /^[0-9a-f-]{36}$/i.test(requested)) {
+    const again = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").eq("id", requested).maybeSingle();
+    if (again.data && again.data.id) {
+      state.businesses = state.businesses.concat([{ ...again.data, agent_name: again.data.name || "Acquisition" }]);
+      fillPicker();
+      initial = state.businesses.find((row) => row.id === requested);
+    }
+  }
+  if (requested && !initial) {
+    showMessage("That business is not on this account", "Choose a business from the list. Instagram connect stays on the business you pick.");
+    return;
+  }
   const owned = state.businesses.find((row) => row.owner_id === state.user.id);
-  const initial = state.businesses.find((row) => row.id === requested) || owned || state.businesses[0];
+  initial = initial || owned || state.businesses[0];
   await bootBusiness(initial.id);
 }
 
+let bootToken = 0;
+
 async function bootBusiness(id, options) {
+  const token = ++bootToken;
   const quiet = Boolean(options && options.quiet);
   if (state.businessId && state.businessId !== id) {
     state.studio = null;
@@ -297,6 +341,8 @@ async function bootBusiness(id, options) {
     state.chatDraft = "";
     state.openThread = "";
     state.messages = [];
+    state.ig = null;
+    state.connectError = "";
   }
   state.businessId = id;
   pick.value = id;
@@ -304,23 +350,30 @@ async function bootBusiness(id, options) {
   const members = state.user
     ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at, scopes").eq("business_id", id)
     : { data: [] };
+  if (token !== bootToken) return;
   state.memberRows = members.error ? [] : members.data || [];
   state.members = state.memberRows.filter((row) => row.status === "active");
   const profileIds = state.memberRows.map((row) => row.user_id).filter(Boolean);
   if (profileIds.length) {
     const profiles = await state.supabase.from("profiles").select("id, email, full_name").in("id", profileIds);
+    if (token !== bootToken) return;
     state.memberProfiles = profiles.error ? [] : profiles.data || [];
   } else state.memberProfiles = [];
   const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
   state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
   state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
-  if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
+  state.chatsPending = !quiet && state.tab === "chats";
+  if (!quiet && state.tab === "chats") {
+    app.innerHTML = '<div class="chat-skel" role="status" aria-busy="true"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>';
+  } else if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
   const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
+  if (token !== bootToken) return;
   if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
     showMessage("Pipeline is not ready", missing(ensured.error) ? "Apply the acquisition migrations, then refresh." : ensured.error.message);
     return;
   }
-  const loaded = await loadAll(id);
+  const loaded = await loadAll(id, token);
+  if (token !== bootToken) return;
   if (state.openThread && state.supabase) {
     const messages = await state.supabase.from("ig_messages").select("id, thread_id, direction, body, kind, created_at").eq("thread_id", state.openThread).eq("business_id", id).order("created_at", { ascending: true });
     state.messages = messages.error ? [] : messages.data || [];
@@ -334,7 +387,9 @@ async function bootBusiness(id, options) {
     const adminHome = document.getElementById("nav-admin-home");
     if (adminHome) adminHome.hidden = !state.isAdmin;
     armEditorRequest();
+    state.chatsPending = false;
     paint();
+    settleInstagramNotice();
   }
 }
 
@@ -349,7 +404,8 @@ function armEditorRequest() {
   if (state.tab !== "inbound") state.tab = "inbound";
 }
 
-async function loadAll(id) {
+async function loadAll(id, token) {
+  const live = () => token == null || token === bootToken;
   const q = state.supabase;
   const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, outbox, connectRequests] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
@@ -376,6 +432,7 @@ async function loadAll(id) {
     q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
     q.from("acq_channel_connect_requests").select("id, workspace_id, channel, username, status, notes, requested_by, created_at, updated_at").eq("workspace_id", id).order("created_at", { ascending: false }).limit(10)
   ]);
+  if (!live()) return false;
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
   if (firstError) {
     showMessage("Could not read the pipeline", missing(firstError.error) ? "Apply the acquisition migration, then refresh." : firstError.error.message);
@@ -393,8 +450,10 @@ async function loadAll(id) {
   state.activity = activity.error ? [] : activity.data || [];
   state.voices = voices.data || [];
   const clips = await q.from("acq_owner_clips").select("id, label, when_to_use, kind, mime_type, byte_size, active, storage_path, speech_provider, created_at").eq("business_id", id).order("created_at", { ascending: false });
+  if (!live()) return false;
   state.ownerClips = clips.error ? [] : clips.data || [];
   const hints = await q.rpc("acq_llm_key_hints", { p_business: id });
+  if (!live()) return false;
   state.llmKeys = hints.error || !Array.isArray(hints.data) ? [] : hints.data;
   state.performance = performance.error ? [] : performance.data || [];
   state.stats = null;
@@ -422,6 +481,7 @@ async function loadAll(id) {
     q.from("acq_schedule_endpoints").select("id, provider, name, availability_url, booking_url, condition, has_api_key").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_value_assets").select("id, kind, title, url, label, storage_path, send_instructions, placement, agent_roles").eq("business_id", id).order("created_at", { ascending: false })
   ]);
+  if (!live()) return false;
   state.brief = brief.error ? null : brief.data;
   state.briefVersions = versions.error ? [] : versions.data || [];
   state.agentCards = cards.error ? [] : cards.data || [];
@@ -438,6 +498,7 @@ async function loadAll(id) {
     q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
   ]);
+  if (!live()) return false;
   state.followupSteps = followups.error ? [] : followups.data || [];
   state.welcomeSteps = welcomes.error ? [] : welcomes.data || [];
   state.manualFollowups = manuals.error ? [] : manuals.data || [];
@@ -453,6 +514,7 @@ async function loadAll(id) {
     q.from("acq_notifications").select("id, title, body, created_at, read_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
     q.from("acq_origins").select("id, name, keyword").eq("business_id", id).order("created_at", { ascending: false })
   ]);
+  if (!live()) return false;
   state.stateRules = stateRules.error ? [] : stateRules.data || [];
   state.tagRules = tagRules.error ? [] : tagRules.data || [];
   state.webhooks = webhooks.error ? [] : webhooks.data || [];
@@ -460,7 +522,16 @@ async function loadAll(id) {
   state.invites = invites.error ? [] : invites.data || [];
   state.notifications = notifications.error ? [] : notifications.data || [];
   state.origins = origins.error ? [] : origins.data || [];
+  state.sectionErrors = {
+    performance: Boolean(origins.error),
+    chats: Boolean(contacts.error || targets.error),
+    opportunities: Boolean(contacts.error || targets.error),
+    calendar: Boolean(bookings.error),
+    sops: Boolean(brief.error),
+    content: Boolean(assets.error)
+  };
   const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
+  if (!live()) return false;
   state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
   const [agentPrompts, agentRoutines, agentRuns, agentActions, agentSettings] = await Promise.all([
     q.from("agent_prompts").select("id, agent_role, body, note, char_count, score, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(80),
@@ -469,6 +540,7 @@ async function loadAll(id) {
     q.from("agent_actions").select("id, agent_role, run_id, type, target, status, approved_by, error, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
     q.from("agent_settings").select("agent_role, auto_approve").eq("business_id", id)
   ]);
+  if (!live()) return false;
   state.agentPrompts = agentPrompts.error ? [] : agentPrompts.data || [];
   state.agentRoutines = agentRoutines.error ? [] : agentRoutines.data || [];
   state.agentRuns = agentRuns.error ? [] : agentRuns.data || [];
@@ -480,6 +552,7 @@ async function loadAll(id) {
     q.from("acq_agent_tools").select("id, agent_role, kind, name, config, created_at").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
   ]);
+  if (!live()) return false;
   state.setterPrompts = setterPrompts.error ? [] : setterPrompts.data || [];
   state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
   state.agentTools = agentTools.error ? [] : agentTools.data || [];
@@ -490,6 +563,7 @@ async function loadAll(id) {
     q.from("acq_followup_policy").select("*").eq("business_id", id).maybeSingle(),
     state.user ? q.from("acq_user_prefs").select("language").eq("user_id", state.user.id).maybeSingle() : Promise.resolve({ data: null, error: null })
   ]);
+  if (!live()) return false;
   state.agentSwitches = switches.error ? [] : switches.data || [];
   state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
@@ -500,6 +574,7 @@ async function loadAll(id) {
     q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
     q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
   ]);
+  if (!live()) return false;
   state.promptVersions = promptVersions.error ? (state.promptVersions || []) : promptVersions.data || [];
   state.commentVoiceRules = voiceRules.error ? [] : voiceRules.data || [];
   state.commentVoiceCap = voiceSettings.error || !voiceSettings.data ? 30 : voiceSettings.data.daily_cap;
@@ -511,6 +586,7 @@ async function loadAll(id) {
   const selected = state.flow && state.flow.chat && state.flow.chat.startsWith("contact:") ? state.flow.chat.slice("contact:".length) : "";
   const openConversation = selected ? (state.conversations || []).find((row) => row.contact_id === selected) : null;
   if (openConversation) await loadThread(openConversation.id, "newest");
+  if (!live()) return false;
   return true;
 }
 
@@ -574,9 +650,12 @@ async function loadEarlier() {
 
 function paint() {
   parkAssistant();
+  if (state.tab !== "assistant") state.assistantExpanded = false;
   markTab();
   app.innerHTML = "";
   const root = el("div", { class: "acq" });
+  state.statsEmbedded = false;
+  state.embedSetter = false;
   if (state.settings && state.settings.ig_paused) {
     const banner = el("div", { class: "banner", role: "status" });
     banner.append(el("p", { text: "The outreach worker is paused (" + (state.settings.ig_pause_reason || "warning") + "). Official Instagram DMs keep running. " + (state.settings.ig_pause_notes || "") }));
@@ -586,6 +665,7 @@ function paint() {
   const ui = pageUi();
   if (state.tab === "dashboard") root.append(renderDashboardHome(ui));
   if (state.tab === "performance") {
+    state.statsEmbedded = true;
     root.append(renderPerformance(ui));
     root.append(renderStats(ui));
   }
@@ -593,7 +673,12 @@ function paint() {
   if (state.tab === "chats") root.append(renderChats(ui));
   if (state.tab === "opportunities") root.append(renderCrm(ui));
   if (state.tab === "calendar") root.append(renderCalendar(ui));
-  if (state.tab === "sops") root.append(renderBusiness(ui));
+  if (state.tab === "sops") {
+    state.embedSetter = true;
+    const layout = el("div", { class: "prompt-layout" });
+    layout.append(renderBusiness(ui), renderSetter(ui));
+    root.append(layout);
+  }
   if (state.tab === "content") root.append(renderValueContent(ui));
   if (state.tab === "voice") root.append(voiceLibrary());
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
@@ -608,21 +693,21 @@ function paint() {
     root.append(renderSalesLinks(ui));
     root.append(renderTeam(ui));
   }
-  if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox") {
+  if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox" && state.tab !== "billing") {
     const host = el("div");
     root.append(host);
     renderEngine(state.tab, host, engineCtx());
   }
   app.append(root);
   paintChrome(pageUi());
+  if (state.tab !== "assistant" && state.assistantOpen && !state.assistantExpanded) revealAssistantModal();
   if (state.tab === "settings" && state.settingsFocus === "model") {
     const keyCard = document.getElementById("model-key");
     if (keyCard) keyCard.scrollIntoView({ block: "start" });
   }
-  const connectCard = document.getElementById("connect-instagram");
-  if (connectCard && (state.tab === "integrations" || state.tab === "onboarding" || state.configKey === "connect")) {
-    connectCard.scrollIntoView({ block: "start" });
-  }
+  const connectCard = document.getElementById("instagram-connect") || document.getElementById("connect-instagram");
+  const connectFocus = state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
+  if (connectCard && connectFocus) connectCard.scrollIntoView({ block: "start" });
   armRefresh();
 }
 
@@ -638,7 +723,8 @@ function engineCtx() {
     when,
     money,
     shareCents,
-    uploadVoice: storeVoice
+    uploadVoice: storeVoice,
+    recordGrowth
   };
 }
 
@@ -671,12 +757,16 @@ function pageUi() {
     setterAgentCard,
     voiceLibrary,
     renderEngine: (tab, host) => renderEngine(tab, host, engineCtx()),
+    mountInstagram: () => renderInstagramConnect(pageUi()),
+    mountModelKey: () => renderModelKey(pageUi()),
     roleParams,
     mergeParams,
     enqueueEngine,
     usesEngine,
     patchSettings,
     saveLlm,
+    saveShowStatus,
+    recordBooking,
     testLlm,
     saveOwnerClip,
     deleteOwnerClip,
@@ -773,26 +863,88 @@ function parkAssistant() {
   const fab = document.getElementById("assistant-open");
   if (panel && panel.parentElement !== document.body) document.body.append(panel);
   if (panel) {
-    panel.classList.remove("is-docked");
+    panel.classList.remove("is-docked", "is-modal");
     panel.hidden = true;
   }
-  if (fab) fab.hidden = false;
+  if (fab) {
+    fab.hidden = false;
+    fab.setAttribute("aria-expanded", "false");
+  }
+  document.body.classList.remove("assistant-page", "assistant-modal");
+}
+
+function revealAssistantModal() {
+  const panel = document.getElementById("assistant-panel");
+  const fab = document.getElementById("assistant-open");
+  if (panel && panel.parentElement !== document.body) document.body.append(panel);
+  if (panel) {
+    panel.hidden = false;
+    panel.classList.remove("is-docked");
+    panel.classList.add("is-modal");
+  }
+  if (fab) {
+    fab.hidden = false;
+    fab.setAttribute("aria-expanded", "true");
+  }
   document.body.classList.remove("assistant-page");
+  document.body.classList.add("assistant-modal");
+  paintAssistantFace();
 }
 
 function dockAssistant(ui) {
+  const lang = language();
   const wrap = ui.el("div", { class: "assistant-dock" });
-  wrap.append(ui.pageHeader(ui, "Roleflow Assistant", "Ask about this business. Answers stay on the numbers and settings stored here.", "assistant", "clipboard"));
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "assistantTitle"), sectionText(lang, "assistantBody"), "assistant", "clipboard"));
   const panel = document.getElementById("assistant-panel");
   const fab = document.getElementById("assistant-open");
   if (panel) {
     panel.hidden = false;
+    panel.classList.remove("is-modal");
     panel.classList.add("is-docked");
     wrap.append(panel);
   }
   if (fab) fab.hidden = true;
+  document.body.classList.remove("assistant-modal");
   document.body.classList.add("assistant-page");
+  paintAssistantFace();
   return wrap;
+}
+
+function paintAssistantFace() {
+  const lang = language();
+  const es = lang === "es";
+  const ready = document.getElementById("assistant-ready");
+  const hi = document.getElementById("assistant-hi");
+  const hint = document.getElementById("assistant-hint");
+  const note = document.getElementById("assistant-disclaimer");
+  const guide = document.getElementById("assistant-guide-label");
+  if (ready) ready.textContent = es ? "Listo para ayudar" : "Ready to help";
+  if (hi) hi.textContent = es ? "Hola, ¿qué hacemos hoy?" : "Hi, what are we doing today?";
+  if (hint) hint.textContent = es ? "Enter para enviar" : "Enter to send";
+  if (note) note.textContent = es ? "El asistente de Roleflow puede equivocarse. Revisa un cambio antes de guardarlo." : "Roleflow Assistant can be wrong. Check a change before you save it.";
+  if (guide) guide.textContent = es ? "Guía automática" : "Auto guide";
+  const chips = [
+    ["ask", es ? "Responder preguntas" : "Answer questions"],
+    ["leads", es ? "Gestionar leads" : "Manage leads"],
+    ["ai", es ? "Editar mi IA" : "Edit my AI"],
+    ["report", es ? "Informe" : "Report"]
+  ];
+  chips.forEach(([mode, label]) => {
+    const button = document.querySelector('#assistant-chips button[data-mode="' + mode + '"]');
+    if (button) button.textContent = label;
+  });
+  const prompts = es
+    ? ["¿Cómo conecto Instagram?", "¿Qué leads necesitan seguimiento?", "Ayúdame a ajustar el prompt del setter.", "Resume este negocio esta semana."]
+    : ["How do I connect Instagram?", "Which leads need a follow-up?", "Help me tighten the setter prompt.", "Summarize this business this week."];
+  document.querySelectorAll("#assistant-prompts button").forEach((button, index) => {
+    const text = prompts[index];
+    if (!text) return;
+    button.dataset.fill = text;
+    button.textContent = text + " →";
+  });
+  const empty = document.getElementById("assistant-empty");
+  const log = document.getElementById("assistant-log");
+  if (empty && log) empty.hidden = log.childElementCount > 0;
 }
 
 function bindProfile() {
@@ -819,6 +971,111 @@ function bindProfile() {
     lang.addEventListener("change", () => saveLanguage(lang.value));
   }
   if (signOut) signOut.addEventListener("click", () => logout());
+}
+
+function bindShell() {
+  const theme = document.getElementById("theme-toggle");
+  if (theme) theme.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("roleflow.theme", next); } catch (_error) { /* private mode */ }
+    theme.setAttribute("aria-label", next === "dark" ? "Switch to light" : "Switch to dark");
+  });
+  const launch = document.getElementById("command-launch");
+  if (launch) launch.addEventListener("click", () => {
+    const modal = document.getElementById("command-modal");
+    const input = document.getElementById("command-input");
+    if (!modal || !input) return;
+    modal.hidden = false;
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    input.focus();
+  });
+  const cycle = document.getElementById("lang-cycle");
+  if (cycle) cycle.addEventListener("click", () => saveLanguage(language() === "es" ? "en" : "es"));
+}
+
+function renderPanelHome(ui) {
+  const lang = language();
+  const es = lang === "es";
+  const wrap = el("div", { class: "start-home" });
+  wrap.append(el("h2", { class: "start-title", text: es ? "Configura tu setter de IA para vender por ti 24/7 en menos de 30 minutos" : "Set up your AI setter to sell for you 24/7 in under 30 minutes" }));
+  wrap.append(el("p", { class: "start-sub", text: es ? "Conecta Instagram, revisa el negocio y prueba el chat. Los resultados varían." : "Connect Instagram, review the business, and test the chat. Results vary." }));
+  const split = el("div", { class: "start-split" });
+  const player = el("div", { class: "start-video" });
+  const frame = document.createElement("iframe");
+  frame.src = "https://share.descript.com/embed/XJIQMjM0Q1N";
+  frame.title = es ? "Recorrido de Roleflow" : "Roleflow walkthrough";
+  frame.loading = "lazy";
+  frame.allow = "fullscreen; picture-in-picture";
+  frame.setAttribute("allowfullscreen", "");
+  frame.referrerPolicy = "strict-origin-when-cross-origin";
+  player.append(frame);
+  const fallback = el("p", { class: "mute" });
+  fallback.append(el("a", { href: "https://share.descript.com/view/XJIQMjM0Q1N", target: "_blank", rel: "noopener" }, [es ? "Abrir el vídeo" : "Open the video"]));
+  player.append(fallback);
+  split.append(player, firstSteps(lang));
+  wrap.append(split);
+  return wrap;
+}
+
+function firstSteps(lang) {
+  const es = lang === "es";
+  const ig = state.ig;
+  const igDone = Boolean(ig && ig.status === "connected" && (!ig.business_id || ig.business_id === state.businessId));
+  const reviewed = Boolean(state.settings && state.settings.onboarding_step === "live");
+  const promptDone = Boolean(String(state.setterPrompt || "").trim());
+  const tested = Boolean(state.setterTestedAt);
+  const steps = [
+    { id: "instagram", done: igDone, title: es ? "Conectar Instagram" : "Connect Instagram", action: es ? "Conectar" : "Connect", go: "instagram" },
+    { id: "review", done: reviewed, title: es ? "Revisar tu negocio" : "Review your business", action: es ? "Revisar" : "Review", go: "sops" },
+    { id: "prompt", done: promptDone, title: es ? "Configurar prompt y SOP" : "Set up prompt/SOP", action: es ? "Abrir" : "Open", go: "sops" },
+    { id: "test", done: tested, title: es ? "Probar el chat" : "Test chat", action: es ? "Probar" : "Test", go: "sops" }
+  ];
+  const doneCount = steps.filter((step) => step.done).length;
+  const active = steps.find((step) => !step.done) || null;
+  const card = el("section", { class: "steps-card" });
+  card.append(el("h3", { text: es ? "Primeros pasos" : "First steps" }));
+  const bar = el("div", { class: "steps-bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(steps.length), "aria-valuenow": String(doneCount) });
+  const fill = el("span");
+  fill.style.width = Math.round((doneCount / steps.length) * 100) + "%";
+  bar.append(fill);
+  card.append(bar);
+  steps.forEach((step, index) => {
+    const row = el("div", { class: "step" + (step.done ? " done" : "") + (active && active.id === step.id ? " active" : "") });
+    row.append(el("span", { class: "step-mark", text: step.done ? "✓" : String(index + 1) }));
+    const copy = el("div", { class: "step-copy" });
+    copy.append(el("strong", { text: step.title }));
+    if (active && active.id === step.id) copy.append(button(step.action, () => go(step.go)));
+    row.append(copy);
+    card.append(row);
+  });
+  return card;
+}
+
+function nextStepCard() {
+  try { if (localStorage.getItem("roleflow.nextstep") === "hide") return null; } catch (_error) { /* private mode */ }
+  const lang = language();
+  const ig = state.ig;
+  const connected = Boolean(ig && ig.status === "connected" && (!ig.business_id || ig.business_id === state.businessId));
+  const step = state.settings && state.settings.onboarding_step;
+  const needsBrief = Boolean(step && step !== "live");
+  if (connected && !needsBrief) return null;
+  const card = el("aside", { class: "next-card", id: "next-card" });
+  const copy = el("div");
+  copy.append(
+    el("strong", { text: sectionText(lang, connected ? "nextBriefTitle" : "nextIgTitle") }),
+    el("p", { text: sectionText(lang, connected ? "nextBriefBody" : "nextIgBody") })
+  );
+  const goNext = button(sectionText(lang, connected ? "nextBriefCta" : "nextIgCta"), () => go(connected ? "sops" : "instagram"));
+  const hide = button(sectionText(lang, "nextHide"), () => {
+    try { localStorage.setItem("roleflow.nextstep", "hide"); } catch (_error) { /* private mode */ }
+    const node = document.getElementById("next-card");
+    if (node) node.remove();
+  });
+  hide.classList.add("ghost");
+  card.append(copy, el("div", { class: "filters" }, [goNext, hide]));
+  return card;
 }
 
 function paintProfile() {
@@ -1217,15 +1474,15 @@ function armRefresh() {
     clearInterval(state.refreshTimer);
     state.refreshTimer = 0;
   }
-  if (state.tab !== "pipeline" || !state.supabase || !state.businessId || state.businessId === "preview") return;
+  if (state.tab !== "opportunities" || !state.supabase || !state.businessId || state.businessId === "preview") return;
   state.refreshTimer = setInterval(() => {
-    if (document.hidden || state.tab !== "pipeline") return;
+    if (document.hidden || state.tab !== "opportunities") return;
     if (document.querySelector(".crm-filters[data-dirty='1']")) return;
     if (state.studio && state.studio.open) return;
     const active = document.activeElement;
     if (active && active.closest && active.closest("#app input, #app textarea, #app select")) return;
     bootBusiness(state.businessId, { quiet: true });
-  }, 45000);
+  }, 22000);
 }
 
 function readyToSave() {
@@ -2965,6 +3222,44 @@ async function saveQualification(event, id, fields) {
   }
 }
 
+function bookingHandle(value) {
+  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
+}
+
+async function recordBooking(handle) {
+  if (!state.canEdit) return toast("You can't edit this business.", "bad");
+  if (!state.supabase) return toast("This preview does not save.", "bad");
+  const name = bookingHandle(handle);
+  if (!/^[a-z0-9._]{1,30}$/.test(name)) return toast("Use an Instagram handle: letters, numbers, dots, or underscores.", "bad");
+  const existing = (state.targets || []).find((row) => row.handle === name);
+  let targetId = existing && existing.id;
+  if (!targetId) {
+    const inserted = await state.supabase.from("acq_targets").insert({
+      agent_id: state.businessId,
+      handle: name,
+      source: "manual",
+      stage: "booked",
+      peak_stage: "booked",
+      lead_status: "hot"
+    }).select("id").single();
+    if (inserted.error) return toast(inserted.error.message, "bad");
+    targetId = inserted.data.id;
+  }
+  const already = (state.bookings || []).find((row) => row.target_id === targetId);
+  if (!already) {
+    const saved = await state.supabase.from("acq_bookings").insert({
+      agent_id: state.businessId,
+      target_id: targetId,
+      show_status: "scheduled",
+      source: "manual",
+      scheduled_at: new Date().toISOString()
+    });
+    if (saved.error) return toast(saved.error.message, "bad");
+  }
+  toast("Booking recorded.");
+  await bootBusiness(state.businessId);
+}
+
 async function saveShowStatus(target, booking, showStatus) {
   const saved = booking
     ? await state.supabase.from("acq_bookings").update({ show_status: showStatus }).eq("id", booking.id)
@@ -2982,6 +3277,24 @@ async function saveShowStatus(target, booking, showStatus) {
     }
     await bootBusiness(state.businessId);
   }
+}
+
+async function recordGrowth(dollars, note) {
+  if (!state.canEdit) return toast("You can't edit this business.", "bad");
+  if (!state.supabase) return toast("This preview does not save.", "bad");
+  const amount = Number(dollars);
+  if (!Number.isFinite(amount) || amount < 0) return toast("Enter the cash collected.", "bad");
+  const saved = await state.supabase.from("acq_deals").insert({
+    agent_id: state.businessId,
+    amount_cents: Math.round(amount * 100),
+    currency: "USD",
+    notes: String(note || "").trim().slice(0, 500),
+    attributed: true,
+    entered_by: state.user && state.user.id
+  });
+  if (saved.error) return toast(saved.error.message, "bad");
+  toast("Revenue recorded. The 10% share updates with it.");
+  await bootBusiness(state.businessId);
 }
 
 async function saveDeal(event, targetId, amount, note) {
@@ -3138,7 +3451,9 @@ function setPanel(open) {
 
 function go(tab) {
   closeOffice();
+  const raw = String(tab || "").split("/")[0];
   const next = canonicalTab(tab);
+  if (next === "settings" && (raw === "integrations" || raw === "instagram" || raw === "billing" || String(tab).includes("/connect"))) state.configKey = "connect";
   const url = new URL(location.href);
   url.hash = next;
   history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -3152,42 +3467,51 @@ function markTab() {
   mountNav(pageUi());
   paintProfile();
   const title = document.getElementById("page-title");
-  const names = {
-    dashboard: "Dashboard",
-    performance: "Performance",
-    assistant: "Roleflow Assistant",
-    chats: "Chats",
-    opportunities: "Opportunities",
-    calendar: "Calendar",
-    sops: "SOPs",
-    content: "Content",
-    voice: "Voice Gen",
-    warmer: "Lead Warmer",
-    outreacher: "Outreacher",
-    setter: "Agentic Setter",
-    commentvoice: "Comment voice",
-    followup: "Follow Up Boss",
-    settings: "Settings"
-  };
-  if (title) title.textContent = names[state.tab] || "Dashboard";
+  const item = NAV_GROUPS.flatMap((group) => group.items).find((row) => row.tab === state.tab);
+  const label = state.tab === "onboarding"
+    ? (language() === "es" ? "Configuración" : "Setup")
+    : (item ? navLabel(item, language()) : "Dashboard");
+  if (title) title.textContent = label;
+  const product = sectionText(language(), "productName");
+  const footerName = document.getElementById("panel-footer-name");
+  if (footerName) footerName.textContent = product;
   const business = state.businesses.find((row) => row.id === state.businessId);
   const name = business && business.agent_name ? business.agent_name : "This business";
   if (sub) sub.textContent = name;
   const avatar = document.getElementById("biz-avatar");
   if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "R";
-  document.title = (names[state.tab] || "Dashboard") + " · Roleflow";
+  document.title = label + " · " + product;
 }
 
 function tabGroup(tab) {
   return canonicalTab(tab);
 }
 
-function consumeInstagramNotice() {
+function captureInstagramNotice() {
   const url = new URL(location.href);
-  if (url.searchParams.get("ig") !== "connected") return;
-  toast("Instagram connected.");
+  const flag = url.searchParams.get("ig");
+  const notice = url.searchParams.get("notice");
+  if (flag !== "connected" && !notice) return;
+  if (flag === "connected") state.connectFlag = "connected";
+  if (notice) state.connectError = notice;
   url.searchParams.delete("ig");
+  url.searchParams.delete("notice");
   history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+
+function settleInstagramNotice() {
+  if (state.connectFlag === "connected") {
+    const ig = state.ig;
+    const mine = Boolean(ig && ig.status === "connected" && (!ig.business_id || ig.business_id === state.businessId));
+    if (mine) {
+      state.connectError = "";
+      toast("Instagram connected.");
+    } else {
+      state.connectError = "Instagram didn't finish connecting for this business. You can try again.";
+      toast(state.connectError, "bad");
+    }
+  } else if (state.connectError) toast(state.connectError, "bad");
+  state.connectFlag = "";
 }
 
 function tabFromHash() {
@@ -3195,7 +3519,8 @@ function tabFromHash() {
   const raw = parts[0];
   const tab = canonicalTab(raw);
   state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
-  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "billing")) state.configKey = "connect";
+  const connectQuery = new URLSearchParams(location.search).get("connect") === "1";
+  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "instagram" || raw === "billing" || connectQuery)) state.configKey = "connect";
   else if (tab === "settings" && (raw === "configuration" || raw === "settings" || raw === "controls")) state.configKey = state.configKey || "reply";
   return tab;
 }
@@ -3290,6 +3615,12 @@ function showMessage(title, text) {
   app.append(box);
 }
 
+function previewCallAt() {
+  const date = new Date();
+  date.setHours(15, 0, 0, 0);
+  return date.toISOString();
+}
+
 function readPreview() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return null;
@@ -3297,9 +3628,22 @@ function readPreview() {
   if (params.get("preview") !== "1") return null;
   const pending = params.get("pending") === "1";
   const connect = params.get("connect") === "1" || pending;
+  const many = params.get("many") === "1";
+  const selected = many && params.get("business") === "second" ? "second" : "preview";
+  const igStatus = params.get("igstatus") || "";
+  const ig = igStatus === "error"
+    ? { business_id: selected, status: "error", username: "", last_error: "Instagram didn't finish connecting. You can try again." }
+    : igStatus === "connected"
+      ? { business_id: selected, status: "connected", username: params.get("handle") || "northstudio" }
+      : connect
+        ? { business_id: selected, status: "disconnected" }
+        : { business_id: selected, status: "connected", username: "previewcoach" };
   return {
-    businessId: "preview",
-    businesses: [{ id: "preview", agent_name: "Preview coaching" }],
+    preview: true,
+    businessId: selected,
+    businesses: many
+      ? [{ id: "preview", agent_name: "First business", owner_id: "owner" }, { id: "second", agent_name: "North studio", owner_id: "owner" }]
+      : [{ id: "preview", agent_name: "Preview coaching" }],
     canEdit: params.get("edit") === "1",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
@@ -3313,18 +3657,27 @@ function readPreview() {
     ],
     outreach: [{ id: "o1", target_id: "t1", decision: "send", opener: "Hey northstar — saw the CTA.", sent_result: null }],
     steps: [],
-    bookings: [{ id: "b1", target_id: "t2", show_status: "scheduled" }],
+    bookings: [{ id: "b1", target_id: "t2", show_status: "scheduled", scheduled_at: previewCallAt() }],
     deals: [{ id: "d1", target_id: "t2", amount_cents: 1000000, currency: "USD", attributed: true }],
     reports: [{ id: "r1", kind: "daily", period_start: "2026-10-21", summary: "Cap 30. New targets today: 12.", body: { cap: 30 } }],
     exceptions: [{ id: "e1", message: "4 leads stuck in warmup for more than 3 days." }],
     activity: [{ id: "a1", target_id: "t1", action: "voice.sent", result: "sent", actor: "bot", notes: "Opener", created_at: "2026-10-21T09:05:00Z" }],
     voices: [{ id: "v1", slot: "outreach_opener", title: "Opener — coaching", niche: "coaching", variant: null, active: true, script_hint: "Hey, I listened to the reel.", storage_path: "", updated_at: "2026-10-21" }],
+    contacts: [
+      { id: "c-ada", name: "Ada North", ig_handle: "adanorth", crm_state: "discovering", ai_enabled: true, automated: true, is_verified: true, tags: ["warm"], unread_count: 1, message_count: 2, follower_count: 1200, they_follow: true, we_follow: false, last_message_at: "2026-10-25T18:00:00Z", attributes: { summary: "Asked how the offer works." } },
+      { id: "c-sam", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "lost", ai_enabled: false, automated: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z", attributes: { summary: "Went quiet after the first reply." } }
+    ],
+    conversations: [{ id: "cv-ada", contact_id: "c-ada" }, { id: "cv-sam", contact_id: "c-sam" }],
+    engineMessages: [
+      { id: "m-ada-1", conversation_id: "cv-ada", role: "user", sender: "adanorth", body: "How does the offer work?", sent_at: "2026-10-25T18:00:00Z" },
+      { id: "m-ada-2", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Happy to walk you through it on a call.", sent_at: "2026-10-25T18:04:00Z" }
+    ],
     performance: [{ id: "v1", sends: 8, replies: 3, bookings: 1 }],
     stats: null,
     leads: [],
     threads: [{ id: "th1", igsid: "1", username: "northstar", state: "qualification", lead_status: "warm", human_locked: false, followup_count: 0, meet_link: "", updated_at: "2026-10-21T09:10:00Z" }],
     messages: [{ id: "m1", thread_id: "th1", direction: "in", body: "Are you a bot?", kind: "text", created_at: "2026-10-21T09:10:00Z" }],
-    ig: connect ? { status: "disconnected" } : { status: "connected", username: "previewcoach" },
+    ig,
     connectRequests: pending ? [{ id: "preview-request", workspace_id: "preview", channel: "instagram", username: "previewcoach", status: "pending", notes: "Business account" }] : [],
     google: { status: "disconnected" },
     agentSwitches: [],
@@ -3347,7 +3700,30 @@ function readPreview() {
     isAdmin: false,
     openThread: "th1",
     promptRole: "qualification",
-    ...(params.get("inbox") === "1" ? inboxPreview() : {})
+    ...(params.get("inbox") === "1" ? inboxPreview() : {}),
+    ...(params.get("empty") === "1" ? {
+      targets: [],
+      contacts: [],
+      bookings: [],
+      origins: [],
+      valueAssets: [],
+      brief: null,
+      messageCount: 0,
+      threads: [],
+      messages: [],
+      deals: [],
+      outreach: []
+    } : {}),
+    ...(params.get("fail") === "1" ? {
+      sectionErrors: {
+        performance: true,
+        chats: true,
+        opportunities: true,
+        calendar: true,
+        sops: true,
+        content: true
+      }
+    } : {})
   };
 }
 

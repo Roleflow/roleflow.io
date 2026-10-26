@@ -48,7 +48,9 @@ assert.equal(/zernio/i.test(clientSafeText("Instagram is connected through Zerni
 assert.equal(clientSafeText("Instagram connection is not available right now."), "Instagram connection is not available right now.");
 
 const pages = read("acquire/client-pages.js");
-assert.match(pages, /Instagram connection is not available right now\. Contact Roleflow support\./);
+assert.match(pages, /Instagram connect is not available yet\./);
+assert.match(pages, /Try again/);
+assert.match(pages, /Disconnect/);
 assert.doesNotMatch(pages, /https?:\/\//);
 assert.match(read("supabase/functions/ig-connect-start/index.ts"), /clientSafeText/);
 assert.match(read("supabase/functions/llm-check/index.ts"), /clientSafeText/);

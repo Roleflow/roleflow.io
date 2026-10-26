@@ -126,20 +126,30 @@ export function openAddBusiness({ supabase, preview }) {
         return;
       }
       next.disabled = true;
-      note.textContent = "Writing the setter prompt…";
+      note.textContent = "Creating this business…";
       if (preview || !supabase) {
-        note.textContent = "This preview stays here. A live submit opens the prompt editor for review.";
+        note.textContent = "This preview stays here. A live submit opens Connect Instagram for the new business.";
         next.disabled = false;
         return;
       }
-      const created = await supabase.functions.invoke("roleflow-add-business", { body: answers });
+      let created;
+      try {
+        created = await Promise.race([
+          supabase.functions.invoke("roleflow-add-business", { body: answers }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 45000))
+        ]);
+      } catch (_error) {
+        note.textContent = "This is taking too long. Nothing was connected. Try again.";
+        next.disabled = false;
+        return;
+      }
       const payload = created.data || {};
       if (created.error || payload.ok === false || !payload.business_id) {
         note.textContent = (payload && payload.error) || (created.error && created.error.message) || "The business was not created.";
         next.disabled = false;
         return;
       }
-      window.location.href = "/account/acquisition/?business=" + encodeURIComponent(payload.business_id) + "&editor=1#inbound";
+      window.location.href = "/account/acquisition/?business=" + encodeURIComponent(payload.business_id) + "&connect=1#settings";
     });
     sheet.append(form);
   };

@@ -1,16 +1,16 @@
 // Client-side view of a business model key. The full key is never kept.
 
 export const CLIENT_PROVIDERS = [
+  { id: "gemini", label: "Gemini 3 Flash", model: "gemini-3-flash-preview" },
   { id: "xai", label: "xAI", model: "grok-4.3" },
-  { id: "openai", label: "OpenAI", model: "gpt-4.1-mini" },
-  { id: "gemini", label: "Gemini 3 Flash", model: "gemini-3-flash-preview" }
+  { id: "openai", label: "OpenAI", model: "gpt-4.1-mini" }
 ];
 
 const PROVIDER_ID = /^[a-z0-9_-]{2,40}$/;
 
 export function defaultModel(provider) {
   const found = CLIENT_PROVIDERS.find((item) => item.id === provider);
-  return found ? found.model : "grok-4.3";
+  return found ? found.model : "gemini-3-flash-preview";
 }
 
 export function keyHint(hints, provider) {

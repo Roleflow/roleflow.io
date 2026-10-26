@@ -55,8 +55,32 @@ export function verifyState(token, secret, now) {
   const businessId = String(payload.b || "");
   const nonce = String(payload.n || "");
   const exp = Number(payload.e);
-  if (!/^[0-9a-f-]{36}$/i.test(businessId) || !nonce || !Number.isFinite(exp) || exp < now) return { ok: false };
+  if (!/^[0-9a-f-]{36}$/i.test(businessId) || !nonce || !Number.isFinite(exp)) return { ok: false };
+  if (exp < now) return { ok: false, businessId };
   return { ok: true, businessId, nonce };
+}
+
+async function listedProfileId(fetchImpl, apiKey, businessId) {
+  const listed = await fetchImpl(API_BASE + "/profiles?externalId=" + encodeURIComponent(businessId), {
+    headers: authHeaders(apiKey)
+  });
+  const list = await listed.json().catch(() => ({}));
+  const profiles = Array.isArray(list.profiles) ? list.profiles : [];
+  const found = profiles.find((profile) => profile && String(profile.externalId || "") === String(businessId));
+  return found ? profileIdFrom(found) : "";
+}
+
+async function ownedProfileId(fetchImpl, apiKey, profileId, businessId) {
+  const id = String(profileId || "");
+  if (!id) return "";
+  const response = await fetchImpl(API_BASE + "/profiles/" + encodeURIComponent(id), {
+    headers: authHeaders(apiKey)
+  });
+  if (!response.ok) return "";
+  const payload = await response.json().catch(() => ({}));
+  const profile = payload && payload.profile ? payload.profile : payload;
+  if (!profile || String(profile.externalId || "") !== String(businessId)) return "";
+  return profileIdFrom(profile) || id;
 }
 
 export function profileBody(business) {
@@ -97,6 +121,51 @@ export function instagramAuthUrl(value) {
   return url.toString();
 }
 
+const AUTH_FIELDS = ["authUrl", "auth_url", "url", "redirectUrl", "redirect_url", "authorizationUrl", "authorization_url"];
+
+export function authCandidates(payload) {
+  const bodies = [];
+  if (payload && typeof payload === "object") {
+    bodies.push(payload);
+    if (payload.data && typeof payload.data === "object") bodies.push(payload.data);
+    if (payload.result && typeof payload.result === "object") bodies.push(payload.result);
+  }
+  const found = [];
+  bodies.forEach((body) => {
+    AUTH_FIELDS.forEach((field) => {
+      const value = body[field];
+      if (typeof value === "string" && value) found.push(value);
+    });
+  });
+  return found;
+}
+
+export async function resolveInstagramAuth(fetchImpl, value) {
+  let current = String(value || "");
+  for (let hop = 0; hop < 4; hop += 1) {
+    const direct = instagramAuthUrl(current);
+    if (direct) return direct;
+    let url;
+    try { url = new URL(current); } catch (_error) { return ""; }
+    if (url.protocol !== "https:") return "";
+    const response = await fetchImpl(current, { method: "GET", redirect: "manual" });
+    const headers = response && response.headers;
+    const location = headers && (typeof headers.get === "function" ? headers.get("location") : headers.location);
+    if (!location) return "";
+    current = new URL(location, current).toString();
+  }
+  return instagramAuthUrl(current);
+}
+
+export function connectFailure(status, payload) {
+  const body = payload && typeof payload === "object" ? payload : {};
+  const text = [body.code, body.error, body.message, body.detail].filter((item) => typeof item === "string").join(" ").toLowerCase();
+  if (status === 402 || /payment|billing/.test(text)) return "Instagram connect needs a billing update before it can continue.";
+  if (status === 401 || status === 403) return "Instagram connect is not available yet.";
+  if (/redirect|callback|whitelist|not allowed|uri/.test(text)) return "Instagram connect needs its return address allowed before it can open. Try again after that is saved.";
+  return "Instagram connect could not start.";
+}
+
 export function callbackFailure(params) {
   const error = String(params.get("error") || "");
   if (!error) return "";
@@ -113,16 +182,14 @@ export async function startConnect(input) {
   const secret = String(input.webhookSecret || apiKey);
   const now = input.now || Date.now();
   const nonce = input.nonce || randomBytes(16).toString("hex");
-  let profileId = String(input.existingProfileId || "");
   const fetchImpl = input.fetchImpl;
-  if (!profileId) {
-    const listed = await fetchImpl(API_BASE + "/profiles?externalId=" + encodeURIComponent(input.business.id), {
-      headers: authHeaders(apiKey)
-    });
-    const list = await listed.json().catch(() => ({}));
-    const profiles = Array.isArray(list.profiles) ? list.profiles : [];
-    const found = profiles.find((profile) => String(profile.externalId || "") === String(input.business.id));
-    profileId = found ? profileIdFrom(found) : "";
+  const businessId = String(input.business && input.business.id || "");
+  // A stored id or a 409 id is used only when that profile's external id is
+  // this business. Another business's profile, including the first workspace,
+  // is never attached here.
+  let profileId = await listedProfileId(fetchImpl, apiKey, businessId);
+  if (!profileId && input.existingProfileId) {
+    profileId = await ownedProfileId(fetchImpl, apiKey, input.existingProfileId, businessId);
   }
   if (!profileId) {
     const created = await fetchImpl(API_BASE + "/profiles", {
@@ -131,11 +198,22 @@ export async function startConnect(input) {
       body: JSON.stringify(profileBody(input.business))
     });
     const payload = await created.json().catch(() => ({}));
-    const existing = String((payload.details && payload.details.existingProfileId) || "");
-    if (created.status === 409 && existing) profileId = existing;
-    else if (!created.ok) return { configured: true, error: "Instagram connect could not start." };
-    else profileId = profileIdFrom(payload);
-    if (!profileId) return { configured: true, error: "Instagram connect could not start." };
+    if (created.status === 409) {
+      profileId = await listedProfileId(fetchImpl, apiKey, businessId);
+      if (!profileId) {
+        profileId = await ownedProfileId(
+          fetchImpl,
+          apiKey,
+          payload.details && payload.details.existingProfileId,
+          businessId
+        );
+      }
+      if (!profileId) return { configured: true, error: "Instagram connect could not start." };
+    } else if (!created.ok) return { configured: true, error: "Instagram connect could not start." };
+    else {
+      profileId = profileIdFrom(payload);
+      if (!profileId) return { configured: true, error: "Instagram connect could not start." };
+    }
   }
   const state = signState({ b: input.business.id, e: now + STATE_MS, n: nonce }, secret);
   const query = connectQuery({ profileId, state, logoUrl: input.logoUrl });
@@ -143,11 +221,12 @@ export async function startConnect(input) {
     headers: authHeaders(apiKey)
   });
   const payload = await response.json().catch(() => ({}));
-  if (response.status === 402) {
-    return { configured: true, profileId, error: "Instagram connect needs a billing update before it can continue." };
+  if (!response.ok) return { configured: true, profileId, error: connectFailure(response.status, payload) };
+  let authUrl = "";
+  for (const candidate of authCandidates(payload)) {
+    authUrl = await resolveInstagramAuth(fetchImpl, candidate);
+    if (authUrl) break;
   }
-  if (!response.ok) return { configured: true, profileId, error: "Instagram connect could not start." };
-  const authUrl = instagramAuthUrl(payload.authUrl);
   if (!authUrl) return { configured: true, profileId, error: "Instagram connect could not start." };
   return { configured: true, authUrl, profileId, state, nonce, expiresAt: new Date(now + STATE_MS).toISOString() };
 }

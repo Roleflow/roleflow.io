@@ -57,6 +57,11 @@ const fetchImpl = async (url, init) => {
   if (href.endsWith("/profiles")) {
     return { ok: true, status: 201, json: async () => ({ profile: { _id: "profile-1" } }) };
   }
+  const profileRead = href.match(/\/profiles\/([^/?&#]+)$/);
+  if (profileRead) {
+    const id = decodeURIComponent(profileRead[1]);
+    return { ok: true, status: 200, json: async () => ({ profile: { _id: id, externalId: businessId } }) };
+  }
   if (href.includes("billing=1")) {
     return { ok: false, status: 402, json: async () => ({ code: "PAYMENT_REQUIRED", dashboard_url: "https://billing.example/pay" }) };
   }
@@ -92,6 +97,15 @@ assert.equal(connectUrl.searchParams.get("logoUrl"), null);
 assert.equal(connectUrl.searchParams.get("username"), null);
 assert.equal(connectUrl.searchParams.get("handle"), null);
 assert.equal(instagramAuthUrl(started.authUrl).startsWith("https://www.instagram.com/"), true);
+assert.equal(
+  instagramAuthUrl("https://www.instagram.com/oauth/authorize?redirect_uri=https%3A%2F%2Fzernio.com%2Fapi%2Fv1%2Fconnect%2Finstagram%2Fcallback").startsWith("https://www.instagram.com/oauth/authorize"),
+  true
+);
+assert.equal(instagramAuthUrl("https://zernio.com/connect/welcome?ticket=1"), "");
+const startSource = read("supabase/functions/ig-connect-start/index.ts");
+assert.match(startSource, /instagramAuthUrl\(result\.authUrl\)/);
+assert.doesNotMatch(startSource, /zernio\/i\.test\(result\.authUrl\)/);
+assert.doesNotMatch(read("supabase/functions/_shared/ig-gateway.js"), /console\.log/);
 const redirect = new URL(connectUrl.searchParams.get("redirect_url"));
 assert.equal(redirect.origin + redirect.pathname, CALLBACK_URL);
 assert.equal(verifyState(redirect.searchParams.get("state"), secret, 1_700_000_000_000).businessId, businessId);
@@ -107,14 +121,19 @@ const again = await startConnect({
   nonce: "abc123"
 });
 assert.equal(again.profileId, "profile-1");
-assert.equal(calls.length, 1);
-assert.match(calls[0].url, /\/v1\/connect\/instagram/);
+assert.equal(calls.length, 3);
+assert.match(calls[2].url, /\/v1\/connect\/instagram/);
+assert.equal(new URL(calls[2].url).searchParams.get("profileId"), "profile-1");
 
 const billed = await startConnect({
   apiKey,
   existingProfileId: "profile-1",
   business: { id: businessId },
-  fetchImpl: async (url) => fetchImpl(String(url) + "&billing=1"),
+  fetchImpl: async (url, init) => {
+    const href = String(url);
+    if (href.includes("/connect/instagram")) return fetchImpl(href + "&billing=1", init);
+    return fetchImpl(url, init);
+  },
   nonce: "abc123"
 });
 assert.equal(billed.error, "Instagram connect needs a billing update before it can continue.");
@@ -126,7 +145,12 @@ const insecure = await startConnect({
   apiKey,
   existingProfileId: "profile-1",
   business: { id: businessId },
-  fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ authUrl: "http://instagram.example/allow" }) }),
+  fetchImpl: async (url) => {
+    const href = String(url);
+    if (href.includes("/profiles?externalId=")) return { ok: true, status: 200, json: async () => ({ profiles: [] }) };
+    if (href.includes("/profiles/")) return { ok: true, status: 200, json: async () => ({ profile: { _id: "profile-1", externalId: businessId } }) };
+    return { ok: true, status: 200, json: async () => ({ authUrl: "http://instagram.example/allow" }) };
+  },
   nonce: "abc123"
 });
 assert.equal(insecure.error, "Instagram connect could not start.");
@@ -155,11 +179,88 @@ assert.equal(other.profileId, "profile-1");
 assert.equal(JSON.parse(otherCalls[1].init.body).externalId, otherBusiness);
 assert.equal(other.authUrl.startsWith("https://www.instagram.com/"), true);
 
+const kept = [];
+const isolated = await startConnect({
+  apiKey,
+  webhookSecret: secret,
+  existingProfileId: "roleflow-profile",
+  business: { id: otherBusiness, name: "North studio" },
+  fetchImpl: async (url, init) => {
+    const href = String(url);
+    kept.push(href);
+    if (href.includes("/profiles?externalId=")) {
+      return { ok: true, status: 200, json: async () => ({ profiles: [{ _id: "profile-north", externalId: otherBusiness }, { _id: "roleflow-profile", externalId: businessId }] }) };
+    }
+    if (href.includes("/connect/instagram")) {
+      return { ok: true, status: 200, json: async () => ({ authUrl: "https://www.instagram.com/oauth/authorize?client_id=north" }) };
+    }
+    if (init && init.method === "POST") throw new Error("should not create when this business already has a profile");
+    throw new Error("should not read the other business profile");
+  },
+  now: 1_700_000_000_000,
+  nonce: "north-nonce"
+});
+assert.equal(isolated.profileId, "profile-north");
+assert.equal(isolated.authUrl.startsWith("https://www.instagram.com/"), true);
+assert.equal(kept.some((href) => href.includes("roleflow-profile")), false);
+const isolatedState = verifyState(new URL(new URL(kept.find((href) => href.includes("/connect/instagram"))).searchParams.get("redirect_url")).searchParams.get("state"), secret, 1_700_000_000_000);
+assert.equal(isolatedState.businessId, otherBusiness);
+
+const foreignStored = await startConnect({
+  apiKey,
+  webhookSecret: secret,
+  existingProfileId: "roleflow-profile",
+  business: { id: otherBusiness, name: "North studio" },
+  fetchImpl: async (url, init) => {
+    const href = String(url);
+    if (href.includes("/profiles?externalId=")) return { ok: true, status: 200, json: async () => ({ profiles: [] }) };
+    if (href.includes("/profiles/roleflow-profile")) {
+      return { ok: true, status: 200, json: async () => ({ profile: { _id: "roleflow-profile", externalId: businessId } }) };
+    }
+    if (href.endsWith("/profiles") && init && init.method === "POST") {
+      assert.equal(JSON.parse(init.body).externalId, otherBusiness);
+      return { ok: true, status: 201, json: async () => ({ profile: { _id: "profile-second", externalId: otherBusiness } }) };
+    }
+    if (href.includes("/connect/instagram")) {
+      assert.equal(new URL(href).searchParams.get("profileId"), "profile-second");
+      return { ok: true, status: 200, json: async () => ({ authUrl: "https://www.instagram.com/oauth/authorize?client_id=second" }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  },
+  nonce: "second-nonce"
+});
+assert.equal(foreignStored.profileId, "profile-second");
+assert.notEqual(foreignStored.profileId, "roleflow-profile");
+
+const foreignConflict = await startConnect({
+  apiKey,
+  business: { id: otherBusiness, name: "North studio" },
+  fetchImpl: async (url, init) => {
+    const href = String(url);
+    if (href.includes("/profiles?externalId=")) return { ok: true, status: 200, json: async () => ({ profiles: [] }) };
+    if (init && init.method === "POST") {
+      return { ok: false, status: 409, json: async () => ({ code: "profile_external_id_conflict", details: { existingProfileId: "roleflow-profile" } }) };
+    }
+    if (href.includes("/profiles/roleflow-profile")) {
+      return { ok: true, status: 200, json: async () => ({ profile: { _id: "roleflow-profile", externalId: businessId } }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  },
+  nonce: "conflict-nonce"
+});
+assert.equal(foreignConflict.profileId, undefined);
+assert.equal(foreignConflict.authUrl, undefined);
+assert.equal(foreignConflict.error, "Instagram connect could not start.");
+
 const vendorPage = await startConnect({
   apiKey,
   existingProfileId: "profile-1",
   business: { id: otherBusiness, name: "Value Add Marketing" },
-  fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ authUrl: "https://vendor.example/connect/welcome" }) }),
+  fetchImpl: async (url) => {
+    const href = String(url);
+    if (href.includes("/profiles?externalId=")) return { ok: true, status: 200, json: async () => ({ profiles: [{ _id: "profile-1", externalId: otherBusiness }] }) };
+    return { ok: true, status: 200, json: async () => ({ authUrl: "https://vendor.example/connect/welcome" }) };
+  },
   nonce: "other-nonce"
 });
 assert.equal(vendorPage.error, "Instagram connect could not start.");
@@ -288,13 +389,14 @@ const state = signState({ b: businessId, e: Date.now() + 1000, n: "nonce-1" }, s
 assert.equal(verifyState(state, secret, Date.now()).ok, true);
 assert.equal(verifyState(state, "other", Date.now()).ok, false);
 assert.equal(verifyState(state, secret, Date.now() + 5000).ok, false);
+assert.equal(verifyState(state, secret, Date.now() + 5000).businessId, businessId);
 
 const params = new URLSearchParams("error=oauth_denied&platform_error_reason=user_denied&error_message=denied%20by%20gateway");
 assert.equal(callbackFailure(params), pageFailure(params));
 assert.match(callbackFailure(params), /didn't allow the connection/);
 assert.doesNotMatch(callbackFailure(params), /gateway|zernio/i);
 assert.equal(callbackFailure(new URLSearchParams("error=connection_failed")), pageFailure(new URLSearchParams("error=connection_failed")));
-assert.equal(panelReturn(businessId), "/account/acquisition/?business=" + businessId + "&ig=connected#integrations");
+assert.equal(panelReturn(businessId), "/account/acquisition/?business=" + businessId + "&ig=connected&connect=1#integrations");
 
 const finished = await finishConnect({
   params: new URLSearchParams("state=signed&accountId=acct-1&username=roleflow.io"),
@@ -321,13 +423,27 @@ assert.equal(connectOutcome({ configured: true, authUrl: "https://www.instagram.
 assert.equal(connectOutcome({ configured: true, authUrl: "https://vendor.example/connect/welcome" }).mode, "error");
 assert.equal(connectOutcome({ configured: true, error: "Instagram connect could not start." }).mode, "error");
 const began = await beginInstagramConnect({
+  businessId: otherBusiness,
   state: {
     businessId,
-    supabase: { functions: { invoke: async () => ({ data: { configured: true, authUrl: "https://www.instagram.com/oauth/authorize?client_id=1" } }) } }
+    supabase: { functions: { invoke: async (_name, init) => {
+      assert.equal(init.body.business_id, otherBusiness);
+      return { data: { configured: true, authUrl: "https://www.instagram.com/oauth/authorize?client_id=1" } };
+    } } }
   }
 });
 assert.equal(began.mode, "redirect");
 assert.equal(began.authUrl.startsWith("https://www.instagram.com/"), true);
+const slow = await beginInstagramConnect({
+  businessId,
+  timeoutMs: 20,
+  state: {
+    businessId,
+    supabase: { functions: { invoke: () => new Promise(() => {}) } }
+  }
+});
+assert.equal(slow.mode, "error");
+assert.match(slow.error, /try again/i);
 const unavailable = await beginInstagramConnect({
   state: {
     businessId,
@@ -400,6 +516,14 @@ assert.match(openSql, /when unique_violation/);
 assert.match(openSql, /'taken'/);
 assert.doesNotMatch(openSql, /roleflow\.io|requested_handle/);
 assert.match(read("supabase/functions/ig-connect-finish/index.ts"), /taken/);
+assert.match(read("supabase/functions/ig-connect-finish/index.ts"), /connect", "1"/);
+assert.match(read("acquire/client-pages.js"), /data-connect-instagram/);
+assert.match(read("acquire/client-pages.js"), /Disconnect/);
+assert.match(read("acquire/client-pages.js"), /Opening Instagram/);
+assert.match(read("acquire/app.js"), /instagram-connect/);
+assert.match(read("acquire/app.js"), /bootToken/);
+assert.match(read("acquire/add-business.js"), /connect=1#settings/);
+assert.doesNotMatch(read("acquire/client-pages.js") + read("acquire/connect-instagram.js") + read("acquire/add-business.js") + read("app/instagram/callback.js"), /zernio/i);
 assert.match(read("acquire/app.js"), /Instagram: not connected/);
 assert.doesNotMatch(read("acquire/app.js"), /we'll finish this for you/);
 assert.match(read("vercel.json"), /account\|admin\|reset\|acquire\|app/);

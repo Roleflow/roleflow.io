@@ -1,4 +1,5 @@
 import { navLabel, NAV_GROUPS } from "./client-nav.mjs";
+import { sectionText } from "./section-copy.js";
 import { renderOffice } from "./office.js";
 import { persistCollapsedGroups, readCollapsedGroups } from "./sidebar-state.js";
 import { renderConfiguration as opsConfig, renderPerformance as opsPerformance, renderStats as opsStats, renderTeam as opsTeam } from "./studio-ops.js";
@@ -191,11 +192,40 @@ export function renderConfiguration(ui) {
   return opsConfig(ui);
 }
 
+const STRATEGY_TABS = [
+  { tab: "sops", en: "SOPs", es: "SOPs" },
+  { tab: "content", en: "Content", es: "Contenido" },
+  { tab: "commentvoice", en: "Comment voice", es: "Voz en comentarios" },
+  { tab: "voice", en: "Voice Gen", es: "Voz" }
+];
+
+export function strategyTabs(ui) {
+  const current = ui.state && ui.state.tab;
+  if (!STRATEGY_TABS.some((item) => item.tab === current)) return null;
+  const language = ui.language ? ui.language() : "en";
+  const nav = ui.el("nav", { class: "section-tabs", "aria-label": language === "es" ? "Estrategia" : "Strategy" });
+  STRATEGY_TABS.forEach((item) => {
+    const link = ui.el("a", {
+      href: "#" + item.tab,
+      text: language === "es" ? item.es : item.en
+    });
+    if (item.tab === current) link.setAttribute("aria-current", "page");
+    link.addEventListener("click", (event) => {
+      if (!ui.go) return;
+      event.preventDefault();
+      ui.go(item.tab);
+    });
+    nav.append(link);
+  });
+  return nav;
+}
+
 export function pageHeader(ui, title, text, how, iconName) {
   const card = ui.el("section", { class: "page-card" });
   const copy = ui.el("div", { class: "page-copy" });
   copy.append(iconTile(iconName || "grid", "t1"), ui.el("div", {}, [ui.el("h2", { text: title }), ui.el("p", { text })]));
-  const button = ui.button("How it works", () => openHow(title, HOW[how] || text));
+  const lang = ui.language ? ui.language() : "en";
+  const button = ui.button(sectionText(lang, "howWorks"), () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
   const actions = ui.el("div", { class: "page-actions" });
   const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup"]);
@@ -205,7 +235,11 @@ export function pageHeader(ui, title, text, how, iconName) {
   }
   actions.append(button);
   card.append(copy, actions, ui.el("span", { class: "page-rule" }));
-  return card;
+  const tabs = strategyTabs(ui);
+  if (!tabs) return card;
+  const stack = ui.el("div", { class: "page-stack" });
+  stack.append(card, tabs);
+  return stack;
 }
 
 function openHow(title, text) {
@@ -232,7 +266,7 @@ function openAccounts(ui) {
 
 function navLink(ui, item) {
   const label = typeof item.label === "string" ? item.label : navLabel(item, ui.language ? ui.language() : "en");
-  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": label });
+  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": label, "data-tone": item.tone || "t1" });
   link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: label }));
   link.addEventListener("click", (event) => {
     event.preventDefault();

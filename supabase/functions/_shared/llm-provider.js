@@ -149,7 +149,7 @@ export function runtimeFromEnv(source) {
 export function resolveRuntime({ purpose, settings, secret, env }) {
   const prefs = settings || {};
   const prompt = purpose === "prompt";
-  const provider = normalizeProvider(prompt ? prefs.llm_prompt_provider : prefs.llm_setter_provider) || "xai";
+  const provider = normalizeProvider(prompt ? prefs.llm_prompt_provider : prefs.llm_setter_provider) || "gemini";
   const named = prompt ? prefs.llm_prompt_model : prefs.setter_model;
   const model = modelForProvider(provider, named);
   const baseUrl = safeBaseUrl(prompt ? prefs.llm_prompt_base_url : prefs.llm_setter_base_url);
@@ -235,7 +235,7 @@ export async function loadBusinessRuntime(admin, businessId, purpose, env) {
   if (!row || row.error || !row.data) return { runtime: runtimeFromEnv(env) || platform, fallback: null };
   const settings = row.data;
   const prompt = purpose === "prompt";
-  const provider = normalizeProvider(prompt ? settings.llm_prompt_provider : settings.llm_setter_provider) || "xai";
+  const provider = normalizeProvider(prompt ? settings.llm_prompt_provider : settings.llm_setter_provider) || "gemini";
   let secret = null;
   const loaded = await admin.rpc("acq_llm_read_key", { p_business: businessId, p_provider: provider });
   const data = loaded && !loaded.error ? loaded.data : null;

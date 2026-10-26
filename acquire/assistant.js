@@ -17,21 +17,61 @@ export function bindAssistant(getContext) {
     push("ask", text);
   });
 
+  function syncEmpty() {
+    const empty = document.getElementById("assistant-empty");
+    if (empty) empty.hidden = log.childElementCount > 0;
+  }
+
   function setOpen(open) {
-    panel.hidden = !open;
+    const ctx = getContext() || {};
     openBtn.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) openBtn.classList.remove("has-notice");
-    if (open && !log.childElementCount) {
-      const ctx = getContext();
-      push("ask", ctx && ctx.businessId
-        ? "Ask how a page works, what a number means, or where to change a setting. Answers use this business only."
-        : "Open a business to ask about its numbers and settings.");
-    }
-    if (open) input.focus();
+    if (open && ctx.onOpen) ctx.onOpen();
+    else if (!open && ctx.onClose) ctx.onClose();
+    else panel.hidden = !open;
+    syncEmpty();
+    if (open && input) input.focus();
   }
 
   openBtn.addEventListener("click", () => setOpen(panel.hidden));
-  closeBtn.addEventListener("click", () => setOpen(false));
+  if (closeBtn) closeBtn.addEventListener("click", () => setOpen(false));
+  const expand = document.getElementById("assistant-expand");
+  if (expand) expand.addEventListener("click", () => {
+    const ctx = getContext() || {};
+    if (ctx.onExpand) ctx.onExpand();
+  });
+  const fresh = document.getElementById("assistant-new");
+  if (fresh) fresh.addEventListener("click", () => { log.replaceChildren(); syncEmpty(); });
+  const history = document.getElementById("assistant-history");
+  if (history) history.addEventListener("click", () => { log.scrollTop = 0; });
+  const download = document.getElementById("assistant-download");
+  if (download) download.addEventListener("click", () => {
+    const file = new Blob([log.innerText || ""], { type: "text/plain" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "roleflow-assistant.txt";
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+  document.querySelectorAll("#assistant-chips button").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (mode) mode.value = button.dataset.mode || "ask";
+      document.querySelectorAll("#assistant-chips button").forEach((item) => item.setAttribute("aria-pressed", item === button ? "true" : "false"));
+    });
+  });
+  document.querySelectorAll("#assistant-prompts button").forEach((button) => {
+    button.addEventListener("click", () => {
+      input.value = button.dataset.fill || button.textContent.replace(/\s*→\s*$/, "");
+      input.focus();
+    });
+  });
+  const attach = document.getElementById("assistant-attach");
+  const file = document.getElementById("assistant-file");
+  if (attach && file) attach.addEventListener("click", () => file.click());
+  if (file) file.addEventListener("change", () => { file.value = ""; });
+  const mic = document.getElementById("assistant-mic");
+  if (mic) mic.addEventListener("click", () => { mic.setAttribute("aria-pressed", "false"); });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -104,6 +144,8 @@ export function bindAssistant(getContext) {
     node.textContent = text;
     log.append(node);
     log.scrollTop = log.scrollHeight;
+    const empty = document.getElementById("assistant-empty");
+    if (empty) empty.hidden = true;
     return node;
   }
 }

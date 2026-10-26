@@ -4,6 +4,7 @@ import {
   charCount, collectLeads, emptyBrief, exportCsv, exportJson, filterLeads, formatDelta, paginate, scoreBrief,
   validateAsset, validateLink, validateSchedule, versionDelta
 } from "./studio-model.js";
+import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 export { SETTER_SYNC };
 
@@ -88,8 +89,11 @@ function download(name, text, type) {
 
 export function renderBusiness(ui) {
   const studio = box(ui);
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Business", "The information every agent reads. Saving keeps a version.", "brief", "clipboard"));
+  wrap.append(header(ui, sectionText(lang, "sopsTitle"), sectionText(lang, "sopsBody"), "brief", "clipboard"));
+  const alert = sectionAlert(ui, "sops");
+  if (alert) wrap.append(alert);
   const brief = { ...emptyBrief(), ...((ui.state.brief && ui.state.brief.fields) || {}) };
   const cards = ui.state.agentCards || [];
   const count = charCount(brief, cards);
@@ -290,9 +294,12 @@ function simulator(ui) {
 
 export function renderCrm(ui) {
   const studio = box(ui);
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "CRM", "Open through Postponed for this business. Empty means no lead is stored yet.", "pipeline", "users"));
-  wrap.append(ui.el("p", { class: "mute", text: "Refreshes every 45 seconds. Chat history appears when the full event stream is connected. Status and summary are what sync today." }));
+  wrap.append(header(ui, sectionText(lang, "opportunitiesTitle"), sectionText(lang, "opportunitiesBody"), "pipeline", "users"));
+  const alert = sectionAlert(ui, "opportunities");
+  if (alert) wrap.append(alert);
+  wrap.append(ui.el("p", { class: "mute", text: lang === "es" ? "La actualización automática es cada 22 segundos. El historial aparece cuando el flujo de eventos está conectado." : "Auto refresh in 22s. Chat history appears when the event stream is connected." }));
   const leads = collectLeads(ui.state.contacts, ui.state.targets);
   const query = studio.query;
   const filters = ui.el("form", { class: "crm-filters" });
@@ -326,58 +333,127 @@ export function renderCrm(ui) {
     studio.page = 1;
     ui.paint();
   }));
-  wrap.append(filters);
-
   const matched = filterLeads(leads, studio.query);
-  const page = paginate(matched, studio.page, PAGE_SIZE);
-  const toolbar = ui.el("div", { class: "filters" });
-  [["list", "List"], ["board", "Board"]].forEach(([id, label]) => {
-    const button = ui.el("button", { type: "button", "aria-pressed": studio.view === id ? "true" : "false" }, [label]);
+  const page = paginate(matched, studio.page, Math.max(PAGE_SIZE, 100));
+  const pages = ui.el("div", { class: "filters" });
+  if (page.pages > 1) {
+    pages.append(ui.button(lang === "es" ? "Anterior" : "Previous", () => { studio.page = Math.max(1, page.page - 1); ui.paint(); }));
+    pages.append(ui.el("span", { text: page.page + " / " + page.pages }));
+    pages.append(ui.button(lang === "es" ? "Siguiente" : "Next", () => { studio.page = Math.min(page.pages, page.page + 1); ui.paint(); }));
+  }
+  wrap.append(pages);
+  const toolbar = ui.el("div", { class: "filters crm-toolbar" });
+  const filterHost = ui.el("details", { class: "filters-menu" });
+  filterHost.append(ui.el("summary", { text: lang === "es" ? "Filtros" : "Filters" }));
+  filterHost.append(filters);
+  const notes = ui.button(lang === "es" ? "Notas" : "Notes", () => jumpLead(ui, page.rows[0], "notes"));
+  const message = ui.button(lang === "es" ? "Mensaje" : "Message", () => jumpLead(ui, page.rows[0], "message"));
+  notes.classList.add("ghost");
+  message.classList.add("ghost");
+  const views = ui.el("div", { class: "filters" });
+  [[ "list", lang === "es" ? "Lista" : "List" ], [ "board", lang === "es" ? "Tablero" : "Kanban" ]].forEach(([id, label]) => {
+    const button = ui.el("button", { type: "button", "aria-pressed": (studio.view || "list") === id ? "true" : "false" }, [label]);
     button.addEventListener("click", () => { studio.view = id; ui.paint(); });
-    toolbar.append(button);
+    views.append(button);
   });
+  const count = ui.el("span", { text: page.total ? (lang === "es" ? "Mostrando " + page.rows.length + " de " + page.total + " personas" : "Showing " + page.rows.length + " of " + page.total + " people") : sectionText(lang, "opportunitiesNone") });
+  const refresh = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Actualizar" : "Refresh" }, ["↻"]);
+  refresh.addEventListener("click", () => { if (ui.bootBusiness && ui.state.businessId) ui.bootBusiness(ui.state.businessId); });
+  toolbar.append(filterHost, notes, message, views, count, ui.el("span", { class: "range-label", text: lang === "es" ? "Actualización automática en 22 s" : "Auto refresh in 22s" }), refresh);
   toolbar.append(ui.button("Export CSV", () => download("leads.csv", exportCsv(matched), "text/csv")));
   toolbar.append(ui.button("Export JSON", () => download("leads.json", exportJson(matched), "application/json")));
   wrap.append(toolbar);
-  wrap.append(ui.el("p", { class: "mute", text: page.total ? "Showing " + (page.start + 1) + "–" + (page.start + page.rows.length) + " of " + page.total : "No leads match these filters." }));
 
-  if (!leads.length) wrap.append(ui.el("p", { text: "No leads yet. They appear when a conversation is synced. Nothing here is a sample." }));
+  if (!leads.length && !alert) wrap.append(sectionEmpty(ui, "opportunitiesEmpty"));
   else if (studio.view === "board") wrap.append(board(ui, matched));
-  else wrap.append(table(ui, page.rows));
-
-  if (page.pages > 1 && studio.view === "list") {
-    const nav = ui.el("div", { class: "filters" });
-    nav.append(ui.button("Previous", () => { studio.page = Math.max(1, page.page - 1); ui.paint(); }));
-    nav.append(ui.el("span", { text: "Page " + page.page + " of " + page.pages }));
-    nav.append(ui.button("Next", () => { studio.page = Math.min(page.pages, page.page + 1); ui.paint(); }));
-    wrap.append(nav);
-  }
+  else wrap.append(table(ui, page.rows, lang));
   const open = matched.find((lead) => lead.kind + ":" + lead.id === studio.open) || leads.find((lead) => lead.kind + ":" + lead.id === studio.open);
   if (open) wrap.append(drawer(ui, open));
   return wrap;
 }
 
-function table(ui, rows) {
+function table(ui, rows, lang) {
   const tableNode = ui.el("table", { class: "leads" });
   const head = ui.el("tr");
-  ["Name", "State", "Agent", "AI", "Follow-ups", "Messages"].forEach((label) => head.append(ui.el("th", { text: label })));
+  ["Status", "Info", lang === "es" ? "Último mensaje" : "Last message", lang === "es" ? "Seguimiento" : "Follow-up", lang === "es" ? "Agente" : "AI agent", lang === "es" ? "Etiquetas" : "Tags", sectionTextSafe(lang, "automated"), ""].forEach((label) => head.append(ui.el("th", { text: label })));
   tableNode.append(ui.el("thead", {}, [head]));
   const body = ui.el("tbody");
-  rows.forEach((lead) => {
-    const row = ui.el("tr");
-    row.append(
-      ui.el("td", { text: lead.name || (lead.handle ? "@" + lead.handle : "Unnamed") }),
-      ui.el("td", { text: stateLabel(lead.state) }),
-      ui.el("td", { text: roleName(lead.agent) || "—" }),
-      ui.el("td", { text: lead.ai ? "On" : "Off" }),
-      ui.el("td", { text: String(lead.followups) }),
-      ui.el("td", { text: String(lead.messages) })
-    );
-    row.addEventListener("click", () => openLead(ui, lead));
-    body.append(row);
-  });
+  rows.forEach((lead) => body.append(leadRow(ui, lead, lang)));
   tableNode.append(body);
+  tableNode.classList.add("compact");
   return ui.el("div", { class: "table-wrap" }, [tableNode]);
+}
+
+function sectionTextSafe(lang, key) {
+  return key === "automated" ? (lang === "es" ? "Automático" : "Automated") : key;
+}
+
+function leadRow(ui, lead, lang) {
+  const row = ui.el("tr", { class: "lead-row" });
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button, select, input, a, label")) return;
+    openLead(ui, lead);
+  });
+  const statusCell = ui.el("td");
+  const status = ui.el("select", { class: "status-pill " + (lead.state || "open"), "aria-label": "Status" });
+  CRM_STATES.forEach(([value, label]) => status.append(ui.el("option", { value, text: label })));
+  status.value = CRM_STATES.some(([value]) => value === lead.state) ? lead.state : "open";
+  status.addEventListener("change", (event) => {
+    event.stopPropagation();
+    if (ui.saveLead) ui.saveLead(lead, { crm_state: status.value, assigned_agent: lead.agent, ai_enabled: lead.ai, tags: lead.tags || [] });
+  });
+  statusCell.append(status);
+  const info = ui.el("td");
+  const person = ui.el("div", { class: "person" });
+  const title = lead.name || (lead.handle ? "@" + lead.handle : "Unnamed");
+  person.append(ui.el("span", { class: "biz-avatar", text: title.trim().charAt(0).toUpperCase() || "R" }));
+  const copy = ui.el("div");
+  copy.append(ui.el("strong", { text: title + (lead.verified ? " ✓" : "") }));
+  if (lead.handle) copy.append(ui.el("small", { text: "@" + lead.handle }));
+  person.append(copy);
+  info.append(person);
+  const toggleCell = ui.el("td");
+  const toggle = ui.el("input", { type: "checkbox", "aria-label": sectionTextSafe(lang, "automated") });
+  toggle.checked = lead.automated !== false && lead.ai !== false;
+  toggle.addEventListener("click", (event) => event.stopPropagation());
+  toggle.addEventListener("change", () => {
+    if (ui.saveLead) ui.saveLead(lead, { crm_state: lead.state, assigned_agent: lead.agent, ai_enabled: toggle.checked, tags: lead.tags || [] });
+  });
+  toggleCell.append(toggle);
+  const actions = ui.el("td");
+  const chat = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Chat" }, ["✎"]);
+  chat.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (ui.go) ui.go("chats");
+    if (ui.openChat) ui.openChat(lead);
+  });
+  const remove = ui.el("button", { type: "button", class: "icon-danger", "aria-label": lang === "es" ? "Quitar" : "Remove" }, ["×"]);
+  remove.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const ok = window.confirm(lang === "es" ? "¿Quitar a esta persona de la lista? Sigue en el negocio." : "Remove this person from the list? They stay on the business.");
+    if (!ok) return;
+    ui.toast(lang === "es" ? "Las personas se quedan en el negocio." : "People stay on this business.");
+  });
+  actions.append(chat, remove);
+  row.append(
+    statusCell,
+    info,
+    ui.el("td", { text: lead.report || (lead.lastMessageAt && ui.when ? ui.when(lead.lastMessageAt) : "—") }),
+    ui.el("td", { text: String(lead.followups || 0) + "/2" }),
+    ui.el("td", { text: roleName(lead.agent) || "—" }),
+    ui.el("td", { text: (lead.tags || []).join(", ") || "—" }),
+    toggleCell,
+    actions
+  );
+  return row;
+}
+
+function jumpLead(ui, lead, focus) {
+  if (!lead) return ui.toast("Choose a person first.", "bad");
+  const studio = box(ui);
+  studio.open = lead.kind + ":" + lead.id;
+  studio.focus = focus;
+  ui.paint();
 }
 
 function board(ui, rows) {
@@ -399,8 +475,17 @@ function board(ui, rows) {
 
 function drawer(ui, lead) {
   const studio = box(ui);
-  const card = ui.el("section", { class: "detail" });
+  const lang = ui.language ? ui.language() : "en";
+  const shell = ui.el("div", { class: "lead-drawer" });
+  const backdrop = ui.el("button", { type: "button", class: "lead-drawer-backdrop", "aria-label": lang === "es" ? "Cerrar" : "Close" });
+  backdrop.addEventListener("click", () => { studio.open = ""; ui.paint(); });
+  const card = ui.el("aside", { class: "lead-sheet", role: "dialog", "aria-modal": "true" });
   card.append(ui.el("h2", { text: lead.name || (lead.handle ? "@" + lead.handle : "Lead") }));
+  const openChat = ui.button(lang === "es" ? "Abrir chat" : "Open chat", () => {
+    if (ui.go) ui.go("chats");
+    if (ui.openChat) ui.openChat(lead);
+  });
+  card.append(openChat);
   card.append(ui.el("p", { text: [lead.handle ? "@" + lead.handle : "", lead.contact].filter(Boolean).join(" · ") || "No contact details stored." }));
   const state = ui.el("select", { "aria-label": "Lead state" });
   CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
@@ -457,7 +542,8 @@ function drawer(ui, lead) {
     }
   }
   card.append(ui.button("Close", () => { studio.open = ""; ui.paint(); }));
-  return card;
+  shell.append(backdrop, card);
+  return shell;
 }
 
 export function renderSalesLinks(ui) {
@@ -585,21 +671,67 @@ function scheduleBlock(ui, studio) {
 }
 
 export function renderValueContent(ui) {
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Value content", "Files and links an agent can send. Upload limits are 8 MB for images, 20 MB for audio, and 50 MB for video.", "content", "folder"));
-  const assets = ui.state.valueAssets || [];
-  if (!assets.length) wrap.append(ui.el("p", { text: "No value content yet." }));
-  assets.forEach((asset) => {
-    const card = ui.el("article", { class: "agent" });
-    card.append(ui.el("h3", { text: asset.title || asset.kind }));
-    card.append(ui.el("p", { text: asset.kind + " · " + placementLabel(asset.placement) }));
-    if (asset.url) card.append(ui.el("p", { text: asset.url }));
-    if (asset.send_instructions) card.append(ui.el("p", { text: asset.send_instructions }));
-    if ((asset.agent_roles || []).length) card.append(ui.el("p", { text: "Agents: " + asset.agent_roles.map(roleName).join(", ") }));
-    if (ui.state.canEdit) card.append(ui.button("Remove", () => ui.deleteRow("acq_value_assets", asset.id)));
-    wrap.append(card);
+  wrap.append(header(ui, sectionText(lang, "contentTitle"), sectionText(lang, "contentBody"), "content", "folder"));
+  const alert = sectionAlert(ui, "content");
+  if (alert) wrap.append(alert);
+  const banner = ui.el("section", { class: "voice-banner" });
+  banner.append(ui.el("div", {}, [
+    ui.el("h3", { text: sectionText(lang, "contentBanner") }),
+    ui.el("p", { text: sectionText(lang, "contentBannerBody") })
+  ]));
+  banner.append(ui.el("a", { class: "btn sm", href: "#voice" }, [lang === "es" ? "Abrir notas de voz" : "Open voice notes"]));
+  wrap.append(banner);
+  const studio = box(ui);
+  const place = studio.contentPlace || "all";
+  const bar = ui.el("div", { class: "filters" });
+  const location = ui.el("select", { "aria-label": sectionText(lang, "contentLocation") });
+  [["all", sectionText(lang, "contentLocation")], ["before", "Before"], ["after", "After"], ["ai", "AI"]].forEach(([value, label]) => location.append(ui.el("option", { value, text: label })));
+  location.value = place;
+  location.addEventListener("change", () => { studio.contentPlace = location.value; ui.paint(); });
+  const add = ui.button("+ " + sectionText(lang, "contentAdd"), () => {
+    studio.contentOpen = true;
+    ui.paint();
+    const form = document.getElementById("content-add");
+    if (form) form.scrollIntoView({ block: "nearest" });
   });
-  if (ui.state.canEdit) wrap.append(assetForm(ui));
+  bar.append(location, add);
+  wrap.append(bar);
+  const assets = (ui.state.valueAssets || []).filter((asset) => place === "all" || asset.placement === place);
+  const tableNode = ui.el("table", { class: "leads" });
+  const head = ui.el("tr");
+  [lang === "es" ? "Nombre" : "Name", lang === "es" ? "Agentes" : "AI agents", lang === "es" ? "Acciones" : "Actions"].forEach((label) => head.append(ui.el("th", { text: label })));
+  tableNode.append(ui.el("thead", {}, [head]));
+  const body = ui.el("tbody");
+  if (!assets.length && !alert) {
+    const empty = ui.el("td", { colspan: "3" });
+    empty.append(ui.el("div", { class: "content-empty" }, [ui.el("strong", { text: sectionText(lang, "contentEmptyTitle") })]));
+    body.append(ui.el("tr", {}, [empty]));
+  }
+  assets.forEach((asset) => {
+    const row = ui.el("tr");
+    const actions = ui.el("td");
+    if (ui.state.canEdit) actions.append(ui.button("Remove", () => ui.deleteRow("acq_value_assets", asset.id)));
+    row.append(
+      ui.el("td", { text: asset.title || asset.kind }),
+      ui.el("td", { text: (asset.agent_roles || []).map(roleName).join(", ") || "—" }),
+      actions
+    );
+    body.append(row);
+  });
+  tableNode.append(body);
+  wrap.append(ui.el("section", { class: "section-card" }, [ui.el("div", { class: "table-wrap" }, [tableNode])]));
+  if (ui.state.canEdit && studio.contentOpen) {
+    const form = assetForm(ui);
+    form.id = "content-add";
+    wrap.append(form);
+  } else if (ui.state.canEdit) {
+    const form = assetForm(ui);
+    form.id = "content-add";
+    form.hidden = true;
+    wrap.append(form);
+  }
   wrap.append(ownerClips(ui));
   if (ui.voiceLibrary) wrap.append(ui.voiceLibrary());
   return wrap;

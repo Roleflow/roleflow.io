@@ -2,7 +2,7 @@
 // Returns the hosted consent URL. No vendor name is returned to the browser.
 
 import { clientSafeText } from "../_shared/client-safe.js";
-import { startConnect } from "../_shared/ig-gateway.js";
+import { instagramAuthUrl, startConnect } from "../_shared/ig-gateway.js";
 import { adminClient, cors, json, loadGatewayConfig, userClientFrom } from "../_shared/gateway-http.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,7 +49,10 @@ Deno.serve(async (req) => {
     const saved = await admin.rpc("acq_gateway_save_profile", { p_business: businessId, p_profile: result.profileId });
     if (saved.error) return json(200, { configured: true, error: "Instagram connect could not start." });
   }
-  if (result.error || !result.authUrl || /zernio/i.test(result.authUrl)) {
+  // The consent URL is Instagram's. Its query names the app that receives the
+  // callback, so a substring check would throw away a real login link.
+  const authUrl = instagramAuthUrl(result.authUrl);
+  if (result.error || !authUrl) {
     return json(200, { configured: true, error: clientSafeText(result.error) || "Instagram connect could not start." });
   }
   const issued = await admin.rpc("acq_gateway_issue_state", {
@@ -58,5 +61,5 @@ Deno.serve(async (req) => {
     p_expires: result.expiresAt
   });
   if (issued.error) return json(200, { configured: true, error: "Instagram connect could not start." });
-  return json(200, { configured: true, authUrl: result.authUrl });
+  return json(200, { configured: true, authUrl });
 });

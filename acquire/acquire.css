@@ -540,6 +540,27 @@ body.platform .next-step{left:calc(264px + 16px);transition:left 280ms ease-in-o
   body.platform .nav-toggle{display:inline-flex}
   body.platform .next-step,html.side-collapsed body.platform .next-step{left:16px;width:min(280px,calc(100vw - 32px))}
 }
+.page-stack{display:grid;gap:12px;min-width:0}
+.section-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.section-tabs a{display:inline-flex;align-items:center;min-height:36px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);color:var(--ink);text-decoration:none;font:600 .85rem var(--b);background:#101A33}
+.section-tabs a[aria-current=page]{background:var(--grad);color:#fff;border-color:transparent}
+.section-empty,.section-error{margin:0;padding:14px 16px;border-radius:16px;border:1px solid var(--line);background:#101A33;color:var(--ink)}
+.section-error{border-color:#C0409A;display:grid;gap:10px}
+@media(max-width:420px){
+  body.platform main.wrap{width:min(1040px,calc(100% - 20px));padding-top:20px;padding-bottom:48px}
+  body.platform .page-card,body.platform .agent,body.platform .home-card{padding:14px;min-width:0}
+  body.platform .page-card{flex-direction:column}
+  body.platform .page-card h2{font-size:1.2rem;overflow-wrap:anywhere}
+  body.platform .page-actions,.filters,.studio .actions,.edit-bar{width:100%;max-width:100%}
+  table.leads th,table.leads td{white-space:normal;overflow-wrap:anywhere}
+  .table-wrap,.chats,.inbox,.config-layout,.home-grid,.brief-grid,.crm-filters,.snap,.chat-list,.chat-thread,.chat-lead,.platform-home,.studio,.acq,.page-stack{max-width:100%;min-width:0}
+  .chats,.inbox,.config-layout,.home-grid,.brief-grid,.crm-filters,.snap{grid-template-columns:1fr}
+  .bubble{max-width:100%}
+  img,video,audio,svg,table,pre,iframe{max-width:100%}
+  .assistant-fab{right:10px;bottom:10px}
+  .assistant-panel{right:10px;left:10px;width:auto}
+  .assistant-dock .assistant-panel.is-docked{position:static;left:auto;right:auto;width:100%;max-width:none}
+}
 @media(prefers-reduced-motion:reduce){
   body.platform .app-shell,body.platform .platform-side,body.platform .side-toggle,body.platform .side-brand,body.platform .pinned-biz,body.platform .nav-label,body.platform .nav-group-toggle,body.platform .nav-group-items,body.platform .nav-chevron,body.platform .next-step{animation:none !important;transition:none !important}
 }

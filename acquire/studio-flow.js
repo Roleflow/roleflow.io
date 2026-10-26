@@ -1,6 +1,7 @@
 import { ROLES } from "./model.js";
 import { CRM_STATES, filterLeads } from "./studio-model.js";
-import { chatIntro, exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 function box(ui) {
   if (!ui.state.flow) ui.state.flow = { chat: "", chatQuery: "", chatState: "all", chatTag: "", chatAi: "all", chatUnread: "all", reminderFilter: "open", ctaPreview: "" };
@@ -320,12 +321,28 @@ function stories(ui) {
 
 export function renderChats(ui) {
   const flow = box(ui);
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Chats", chatIntro(ui.state.messageCount), "inbox", "inbox"));
+  wrap.append(header(ui, sectionText(lang, "chatsTitle"), sectionText(lang, "chatsBody"), "inbox", "inbox"));
+  const alert = sectionAlert(ui, "chats");
+  if (alert) wrap.append(alert);
   const leads = ui.collectLeads ? ui.collectLeads(ui.state.contacts, ui.state.targets) : [];
   const tags = [...new Set(leads.flatMap((lead) => lead.tags || []))].sort();
-  const filters = ui.el("form", { class: "filters" });
-  const query = ui.field("Search", flow.chatQuery || "");
+  const matched = filterLeads(leads, {
+    q: flow.chatQuery || "",
+    state: flow.chatState || "all",
+    tag: flow.chatTag || "",
+    ai: flow.chatAi || "all",
+    unread: flow.chatUnread || "all"
+  });
+  if (!flow.chat && matched[0]) flow.chat = matched[0].kind + ":" + matched[0].id;
+  const layout = ui.el("div", { class: "chats" + (flow.analysisShut ? " analysis-shut" : "") });
+  const list = ui.el("div", { class: "chat-list" });
+  const filters = ui.el("form", { class: "chat-search" });
+  const query = ui.el("input", { id: "chat-search", type: "search", value: flow.chatQuery || "", placeholder: lang === "es" ? "Buscar" : "Search", "aria-label": "Search" });
+  const filterBtn = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Filtros" : "Filters", "aria-expanded": flow.chatFilters ? "true" : "false" }, ["▾"]);
+  filters.append(query, filterBtn);
+  const more = ui.el("div", { class: "filters-pop", hidden: flow.chatFilters ? null : true });
   const state = ui.el("select", { "aria-label": "Chat state" });
   state.append(ui.el("option", { value: "all", text: "Any state" }));
   CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
@@ -340,120 +357,219 @@ export function renderChats(ui) {
   const unread = ui.el("select", { "aria-label": "Unread" });
   [["all", "Read and unread"], ["yes", "Unread"], ["no", "Read"]].forEach(([value, label]) => unread.append(ui.el("option", { value, text: label })));
   unread.value = flow.chatUnread || "all";
-  filters.append(query.label, state, tag, ai, unread);
-  filters.append(ui.button("Search", (event) => {
+  more.append(state, tag, ai, unread);
+  filterBtn.addEventListener("click", () => { flow.chatFilters = !flow.chatFilters; ui.paint(); });
+  filters.addEventListener("submit", (event) => {
     event.preventDefault();
-    flow.chatQuery = query.input.value.trim().toLowerCase().replace(/^@/, "");
+    flow.chatQuery = query.value.trim().toLowerCase().replace(/^@/, "");
     flow.chatState = state.value;
     flow.chatTag = tag.value;
     flow.chatAi = ai.value;
     flow.chatUnread = unread.value;
     ui.paint();
-  }));
-  filters.addEventListener("submit", (event) => event.preventDefault());
-  wrap.append(filters);
-  const matched = filterLeads(leads, {
-    q: flow.chatQuery || "",
-    state: flow.chatState || "all",
-    tag: flow.chatTag || "",
-    ai: flow.chatAi || "all",
-    unread: flow.chatUnread || "all"
   });
-  const layout = ui.el("div", { class: "chats" });
-  const list = ui.el("div", { class: "chat-list" });
-  if (!matched.length) list.append(ui.el("p", { text: "No chats match." }));
-  matched.forEach((lead) => {
-    const title = lead.name || (lead.handle ? "@" + lead.handle : "Unnamed");
-    const children = [title];
-    if (Number(lead.unread) > 0) children.push(ui.el("span", { class: "unread", text: String(lead.unread) }));
-    const button = ui.el("button", { type: "button", "aria-pressed": flow.chat === lead.kind + ":" + lead.id ? "true" : "false" }, children);
-    button.addEventListener("click", () => {
-      if (ui.openChat) ui.openChat(lead);
-      else { flow.chat = lead.kind + ":" + lead.id; ui.paint(); }
-    });
-    list.append(button);
-  });
+  state.addEventListener("change", () => filters.requestSubmit());
+  list.append(filters, more);
+  if (ui.state.chatsPending) {
+    const skel = ui.el("div", { class: "chat-skel", role: "status", "aria-busy": "true" });
+    for (let index = 0; index < 6; index += 1) skel.append(ui.el("span", { class: "skel" }));
+    list.append(skel);
+  } else {
+    if (!matched.length && !alert) list.append(leads.length ? sectionEmpty(ui, "chatsNone") : sectionEmpty(ui, "chatsEmpty"));
+    matched.forEach((lead) => list.append(chatRow(ui, flow, lead)));
+  }
   const open = matched.find((lead) => lead.kind + ":" + lead.id === flow.chat) || null;
   layout.append(list, threadPane(ui, open), leadPane(ui, open));
   wrap.append(layout);
   return wrap;
 }
 
+function chatRow(ui, flow, lead) {
+  const title = lead.name || (lead.handle ? "@" + lead.handle : "Unnamed");
+  const button = ui.el("button", {
+    type: "button",
+    class: "chat-row",
+    "aria-pressed": flow.chat === lead.kind + ":" + lead.id ? "true" : "false"
+  });
+  button.append(ui.el("span", { class: "biz-avatar", text: title.trim().charAt(0).toUpperCase() || "R" }));
+  const copy = ui.el("span", { class: "chat-copy" });
+  const line = ui.el("span", { class: "chat-line" });
+  line.append(ui.el("strong", { text: title }));
+  line.append(ui.el("span", { class: "when", text: ui.when ? ui.when(lead.lastMessageAt) : "" }));
+  copy.append(line);
+  copy.append(ui.el("span", { class: "preview", text: lead.report || (lead.handle ? "@" + lead.handle : "") }));
+  const meta = ui.el("span", { class: "chat-meta" });
+  meta.append(ui.el("span", { class: "status-pill " + pillTone(lead.state), text: stateName(lead.state) }));
+  if (lead.ai) meta.append(ui.el("span", { class: "ai-badge", text: "AI" }));
+  if (Number(lead.unread) > 0) meta.append(ui.el("span", { class: "unread-dot", "aria-label": String(lead.unread) }));
+  button.append(copy, meta);
+  button.addEventListener("click", () => {
+    if (ui.openChat) ui.openChat(lead);
+    else { flow.chat = lead.kind + ":" + lead.id; ui.paint(); }
+  });
+  return button;
+}
+
+function pillTone(state) {
+  if (state === "discovering") return "discovering";
+  if (state === "lost" || state === "unqualified") return "lost";
+  if (state === "booked" || state === "proposal") return "booked";
+  if (state === "paid") return "paid";
+  return "open";
+}
+
 function threadPane(ui, lead) {
   const pane = ui.el("section", { class: "chat-thread" });
+  const lang = ui.language ? ui.language() : "en";
+  const flow = box(ui);
   if (!lead) {
-    pane.append(ui.el("p", { text: "Choose a chat." }));
+    pane.append(sectionEmpty(ui, "chatsPick"));
     return pane;
   }
-  pane.append(ui.el("h3", { text: lead.name || (lead.handle ? "@" + lead.handle : "Chat") }));
+  const name = lead.name || (lead.handle ? "@" + lead.handle : "Chat");
+  const head = ui.el("div", { class: "thread-head" });
+  head.append(ui.el("span", { class: "biz-avatar", text: name.trim().charAt(0).toUpperCase() || "R" }));
+  const who = ui.el("div");
+  who.append(ui.el("strong", { text: name }));
+  if (lead.handle) who.append(ui.el("small", { text: "@" + lead.handle }));
+  const status = ui.el("select", { class: "status-pill " + pillTone(lead.state), "aria-label": "Status" });
+  CRM_STATES.forEach(([value, label]) => status.append(ui.el("option", { value, text: label })));
+  status.value = CRM_STATES.some(([value]) => value === lead.state) ? lead.state : "open";
+  status.addEventListener("change", () => {
+    if (ui.saveLead && ui.state.canEdit) ui.saveLead(lead, { crm_state: status.value, assigned_agent: lead.agent, ai_enabled: lead.ai, tags: lead.tags || [] });
+  });
+  const tools = ui.el("div", { class: "composer-tools" });
+  const find = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Search" }, ["⌕"]);
+  find.addEventListener("click", () => { const boxNode = document.getElementById("chat-search"); if (boxNode) boxNode.focus(); });
+  const bell = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Notifications" }, ["!"]);
+  bell.addEventListener("click", () => { const panel = document.getElementById("notify-panel"); if (panel) panel.hidden = !panel.hidden; });
+  const refresh = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Refresh" }, ["↻"]);
+  refresh.addEventListener("click", () => { if (ui.bootBusiness && ui.state.businessId) ui.bootBusiness(ui.state.businessId); });
+  const toggle = ui.el("button", { type: "button", class: "icon-btn", "aria-label": sectionText(lang, "analysis") }, ["☰"]);
+  toggle.addEventListener("click", () => { flow.analysisShut = !flow.analysisShut; ui.paint(); });
+  tools.append(find, bell, refresh, toggle);
+  head.append(who, status, tools);
+  pane.append(head);
   const messages = threadMessages(ui, lead);
-  if (!messages.length) pane.append(ui.el("p", { text: "No chat history yet. Status and a summary sync today." }));
+  const log = ui.el("div", { class: "bubbles" });
+  if (!messages.length) log.append(ui.el("p", { text: "No chat history yet. Status and a summary sync today." }));
+  let day = "";
   messages.forEach((message) => {
-    const line = ui.el("div", { class: "bubble-line" });
+    const stamp = message.at ? String(message.at).slice(0, 10) : "";
+    if (stamp && stamp !== day) {
+      day = stamp;
+      log.append(ui.el("p", { class: "day-sep", text: stamp }));
+    }
+    const line = ui.el("div", { class: "bubble " + (message.role === "assistant" ? "out" : "in") });
     const text = message.body ? senderLabel(message) + ": " + message.body : senderLabel(message);
     line.append(ui.el("p", { text }));
     if (message.playbackUrl) line.append(ui.el("audio", { controls: true, preload: "none", src: message.playbackUrl }));
-    pane.append(line);
+    log.append(line);
   });
+  pane.append(log);
   if (ui.state.threadMore && ui.loadEarlier) pane.append(ui.button("Load earlier", () => ui.loadEarlier()));
-  const row = ui.el("div", { class: "filters" });
-  row.append(ui.button("Export CSV", () => download("chat.csv", exportThread(messages, "csv"), "text/csv")));
-  row.append(ui.button("Export JSON", () => download("chat.json", exportThread(messages, "json"), "application/json")));
-  row.append(ui.button("Export TXT", () => download("chat.txt", exportThread(messages, "txt"), "text/plain")));
-  pane.append(row);
-  if (ui.state.canEdit && lead.kind === "contact") {
-    const composer = ui.el("form", { class: "chat-composer" });
-    const reply = ui.el("textarea", { rows: "3", "aria-label": "Reply" });
-    reply.value = ui.state.chatDraft || "";
-    composer.append(reply);
-    const actions = ui.el("div", { class: "filters" });
-    actions.append(ui.button("Send reply", (event) => {
-      event.preventDefault();
-      if (ui.sendInboxReply) ui.sendInboxReply(lead, reply.value);
-    }));
-    actions.append(ui.button("Draft a reply", (event) => {
-      event.preventDefault();
-      ui.draftReply(lead, messages);
-    }));
-    composer.append(actions);
-    composer.addEventListener("submit", (event) => event.preventDefault());
-    pane.append(composer);
-    if (!lead.ai) pane.append(ui.el("p", { class: "mute", text: "AI is paused on this chat. A reply you send still goes out." }));
-  } else if (ui.state.canEdit) {
-    pane.append(ui.button("Draft a reply", () => ui.draftReply(lead, messages)));
-  }
+  if (ui.state.canEdit && lead.kind === "contact") pane.append(composer(ui, lead, messages, lang));
+  else if (ui.state.canEdit) pane.append(ui.button("Draft a reply", () => ui.draftReply(lead, messages)));
   return pane;
 }
 
+function composer(ui, lead, messages, lang) {
+  const flow = box(ui);
+  const composerNode = ui.el("form", { class: "chat-composer composer" });
+  const reply = ui.el("textarea", { rows: "3", "aria-label": "Reply" });
+  reply.value = ui.state.chatDraft || "";
+  reply.addEventListener("input", () => { ui.state.chatDraft = reply.value; });
+  const tools = ui.el("div", { class: "composer-tools" });
+  const emoji = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Emoji" }, ["☺"]);
+  const emojiRow = ui.el("div", { class: "composer-tools", hidden: true });
+  ["👍", "🙌", "✨"].forEach((mark) => {
+    const pick = ui.el("button", { type: "button" }, [mark]);
+    pick.addEventListener("click", () => { reply.value += mark; ui.state.chatDraft = reply.value; reply.focus(); });
+    emojiRow.append(pick);
+  });
+  emoji.addEventListener("click", () => { emojiRow.hidden = !emojiRow.hidden; });
+  const file = ui.el("input", { type: "file", hidden: true, "aria-label": "Attach" });
+  const attach = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Attach" }, ["＋"]);
+  attach.addEventListener("click", () => file.click());
+  file.addEventListener("change", () => {
+    file.value = "";
+    ui.toast(lang === "es" ? "El archivo se queda en este panel. No se envía." : "The file stays in this panel. Nothing is sent.");
+  });
+  const follow = ui.el("select", { "aria-label": sectionText(lang, "followSelect") });
+  [["4", sectionText(lang, "followSelect")], ["1", "1h"], ["12", "12h"], ["23", "23h"]].forEach(([value, label]) => follow.append(ui.el("option", { value, text: label })));
+  follow.value = flow.followHours || "4";
+  follow.addEventListener("change", () => { flow.followHours = follow.value; });
+  const voice = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Nota de voz" : "Voice note" }, ["♫"]);
+  voice.addEventListener("click", () => ui.toast(lang === "es" ? "Las notas de voz se eligen en Contenido. Desde aquí no se graba nada." : "Voice notes are chosen in Content. Nothing is recorded here."));
+  const text = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Texto" : "Text" }, ["T"]);
+  text.addEventListener("click", () => reply.focus());
+  const assign = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Asignar" : "Assign" }, ["@" ]);
+  assign.addEventListener("click", () => ui.toast(lang === "es" ? "La asignación se queda en este panel. No se envía nada." : "Assignment stays in this panel. Nothing is sent."));
+  const ai = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "AI" }, ["AI"]);
+  ai.addEventListener("click", () => ui.toast(lang === "es" ? "La IA no se enciende desde aquí. No se envía nada." : "AI is not switched on from here. Nothing is sent."));
+  const schedule = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Programar" : "Schedule" }, ["◷"]);
+  schedule.addEventListener("click", () => ui.toast(lang === "es" ? "Nada se programa ni se envía desde aquí." : "Nothing is scheduled or sent from here."));
+  tools.append(emoji, text, attach, file, follow, assign, ai, schedule, voice);
+  const actions = ui.el("div", { class: "filters" });
+  actions.append(ui.button("Send reply", (event) => {
+    event.preventDefault();
+    if (ui.sendInboxReply) ui.sendInboxReply(lead, reply.value);
+  }));
+  actions.append(ui.button("Draft a reply", (event) => {
+    event.preventDefault();
+    ui.draftReply(lead, messages);
+  }));
+  composerNode.append(tools, emojiRow, reply, actions);
+  composerNode.addEventListener("submit", (event) => event.preventDefault());
+  if (!lead.ai) composerNode.append(ui.el("p", { class: "mute", text: "AI is paused on this chat. A reply you send still goes out." }));
+  return composerNode;
+}
+
 function leadPane(ui, lead) {
-  const pane = ui.el("aside", { class: "chat-lead" });
+  const pane = ui.el("aside", { class: "chat-lead analysis" });
+  const lang = ui.language ? ui.language() : "en";
+  pane.append(ui.el("h3", { text: sectionText(lang, "analysis") }));
   if (!lead) {
     pane.append(ui.el("p", { text: "Lead details appear here." }));
     return pane;
   }
-  const state = ui.el("select", { "aria-label": "Chat lead state" });
-  CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
-  state.value = lead.state;
+  const messages = threadMessages(ui, lead);
+  const name = lead.name || (lead.handle ? "@" + lead.handle : "Lead");
+  const info = ui.el("details", { open: true });
+  info.append(ui.el("summary", { text: sectionText(lang, "clientInfo") }));
+  const person = ui.el("div", { class: "person" });
+  person.append(ui.el("span", { class: "biz-avatar", text: name.trim().charAt(0).toUpperCase() || "R" }), ui.el("strong", { text: name }));
+  const automated = check(ui, sectionText(lang, "automated"), lead.ai);
+  const channel = ui.el("div", { class: "info-tile" });
+  channel.append(ui.el("span", { text: "Instagram" }), ui.el("strong", { text: lead.handle ? "@" + lead.handle : "—" }));
+  const followers = ui.el("div", { class: "info-tile" });
+  const followBits = [
+    lead.followers == null ? "" : String(lead.followers),
+    lead.theyFollow ? (lang === "es" ? "te sigue" : "follows you") : "",
+    lead.weFollow ? (lang === "es" ? "lo sigues" : "you follow") : ""
+  ].filter(Boolean).join(" · ");
+  followers.append(ui.el("span", { text: lang === "es" ? "Seguidores" : "Followers" }), ui.el("strong", { text: followBits || "—" }));
+  info.append(person, automated.label, channel, followers, ui.el("p", { text: (lang === "es" ? "IA asignada: " : "Assigned AI: ") + (roleName(lead.agent) || "—") }));
   const tags = ui.field("Tags", (lead.tags || []).join(", "));
-  const ai = check(ui, "AI replies", lead.ai);
-  pane.append(state, tags.label, ai.label);
+  info.append(tags.label);
   if (ui.state.canEdit) {
-    pane.append(ui.button("Save chat lead", () => ui.saveLead(lead, {
-      crm_state: state.value,
+    info.append(ui.button("Save chat lead", () => ui.saveLead(lead, {
+      crm_state: lead.state,
       assigned_agent: lead.agent,
-      ai_enabled: ai.input.checked,
+      ai_enabled: automated.input.checked,
       tags: tags.input.value.split(",").map((tag) => tag.trim()).filter(Boolean)
     })));
   }
+  const notes = ui.el("details");
+  notes.append(ui.el("summary", { text: sectionText(lang, "notes") }));
   const reminders = (ui.state.reminders || []).filter((reminder) => reminder.status !== "done" && (lead.kind === "contact" ? reminder.contact_id === lead.id : reminder.target_id === lead.id));
-  pane.append(ui.el("h3", { text: "Reminders" }));
-  if (!reminders.length) pane.append(ui.el("p", { text: "No open reminders." }));
-  reminders.forEach((reminder) => pane.append(ui.el("p", { text: reminder.title })));
+  if (!reminders.length) notes.append(ui.el("p", { text: "No open reminders." }));
+  reminders.forEach((reminder) => notes.append(ui.el("p", { text: reminder.title })));
   const title = ui.field("Reminder", "");
   const due = ui.field("Due", "", "datetime-local");
-  pane.append(title.label, due.label);
+  notes.append(title.label, due.label);
   if (ui.state.canEdit) {
-    pane.append(ui.button("Save reminder", () => {
+    notes.append(ui.button("Save reminder", () => {
       if (!title.input.value.trim() || !due.input.value) return ui.toast("Add a title and a time.", "bad");
       ui.saveReminder({
         contact_id: lead.kind === "contact" ? lead.id : null,
@@ -465,7 +581,29 @@ function leadPane(ui, lead) {
       });
     }));
   }
+  const report = ui.el("details");
+  report.append(ui.el("summary", { text: lang === "es" ? "Informe" : "Report" }));
+  const reportBody = ui.el("p", { text: lead.report || (lang === "es" ? "Todavía no hay informe." : "No report yet.") });
+  const getReport = ui.button(sectionText(lang, "getReport"), () => {
+    if (lead.report) reportBody.textContent = lead.report;
+    else window.dispatchEvent(new CustomEvent("roleflow-ask", { detail: { message: "Summarize this conversation.", mode: "report" } }));
+  });
+  report.append(reportBody, getReport);
+  const exp = ui.el("details");
+  exp.append(ui.el("summary", { text: sectionText(lang, "exportChat") }));
+  const row = ui.el("div", { class: "filters" });
+  row.append(ui.button("CSV", () => download("chat.csv", exportThread(messages, "csv"), "text/csv")));
+  row.append(ui.button("JSON", () => download("chat.json", exportThread(messages, "json"), "application/json")));
+  row.append(ui.button("TXT", () => download("chat.txt", exportThread(messages, "txt"), "text/plain")));
+  row.append(ui.button("XML", () => download("chat.xml", exportXml(messages), "application/xml")));
+  exp.append(row);
+  pane.append(info, notes, report, exp);
   return pane;
+}
+
+function exportXml(messages) {
+  const body = (messages || []).map((message) => "<message role=\"" + (message.role || "") + "\"><body>" + String(message.body || "").replace(/[<>&]/g, "") + "</body></message>").join("");
+  return "<?xml version=\"1.0\"?><conversation>" + body + "</conversation>";
 }
 
 function threadMessages(ui, lead) {

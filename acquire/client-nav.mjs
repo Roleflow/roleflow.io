@@ -12,13 +12,13 @@ export const NAV_GROUPS = [
   { id: "strategy", label: { en: "Strategy", es: "Estrategia" }, items: [
     { tab: "sops", icon: "clipboard", tone: "t1", label: { en: "SOPs", es: "SOPs" } },
     { tab: "content", icon: "folder", tone: "t3", label: { en: "Content", es: "Contenido" } },
+    { tab: "commentvoice", icon: "send", tone: "t5", label: { en: "Comment voice", es: "Voz en comentarios" } },
     { tab: "voice", icon: "send", tone: "t5", label: { en: "Voice Gen", es: "Voz" } }
   ] },
   { id: "workforce", label: { en: "Agent Workforce", es: "Equipo de agentes" }, items: [
     { tab: "warmer", icon: "users", tone: "t4", label: { en: "Lead Warmer", es: "Calentador" } },
     { tab: "outreacher", icon: "send", tone: "t5", label: { en: "Outreacher", es: "Prospección" } },
     { tab: "setter", icon: "inbox", tone: "t2", label: { en: "Agentic Setter", es: "Setter" } },
-    { tab: "commentvoice", icon: "send", tone: "t5", label: { en: "Comment voice", es: "Voz en comentarios" } },
     { tab: "followup", icon: "trend", tone: "t3", label: { en: "Follow Up Boss", es: "Seguimiento" } }
   ] },
   { id: "account", label: { en: "Account", es: "Cuenta" }, items: [
@@ -45,9 +45,11 @@ const ALIASES = {
   team: "settings",
   configuration: "settings",
   integrations: "settings",
+  instagram: "settings",
   billing: "settings",
   controls: "settings",
-  settings: "settings"
+  settings: "settings",
+  commentvoice: "commentvoice"
 };
 
 export function canonicalTab(raw) {
