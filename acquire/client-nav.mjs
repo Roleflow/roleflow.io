@@ -22,6 +22,7 @@ export const NAV_GROUPS = [
     { tab: "followup", icon: "trend", tone: "t3", label: { en: "Follow Up Boss", es: "Seguimiento" } }
   ] },
   { id: "account", label: { en: "Account", es: "Cuenta" }, items: [
+    { tab: "billing", icon: "trend", tone: "t3", label: { en: "Billing", es: "Facturación" } },
     { tab: "settings", icon: "settings", tone: "t1", label: { en: "Settings", es: "Ajustes" } }
   ] }
 ];
@@ -30,7 +31,6 @@ const ALIASES = {
   inbox: "chats",
   pipeline: "opportunities",
   brief: "sops",
-  onboarding: "sops",
   prompts: "setter",
   inbound: "setter",
   outbound: "outreacher",
@@ -45,7 +45,7 @@ const ALIASES = {
   team: "settings",
   configuration: "settings",
   integrations: "settings",
-  billing: "settings",
+  billing: "billing",
   controls: "settings",
   settings: "settings"
 };
@@ -53,6 +53,7 @@ const ALIASES = {
 export function canonicalTab(raw) {
   const name = String(raw || "").split("/")[0];
   if (!name) return "dashboard";
+  if (name === "onboarding") return "onboarding";
   if (ALIASES[name]) return ALIASES[name];
   const known = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.tab)).concat(["settings"]);
   return known.includes(name) ? name : "dashboard";

@@ -1,6 +1,6 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
-import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
+import { NAV_GROUPS, canonicalTab, navLabel, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
@@ -601,6 +601,11 @@ function paint() {
   if (state.tab === "setter") root.append(renderSetter(ui));
   if (state.tab === "commentvoice") root.append(renderCommentVoice(ui));
   if (state.tab === "followup") root.append(renderFollowBoss(ui));
+  if (state.tab === "billing") {
+    const host = el("div", { id: "billing" });
+    root.append(host);
+    renderEngine("billing", host, engineCtx());
+  }
   if (state.tab === "settings") {
     root.append(renderModelKey(ui));
     root.append(renderInstagramConnect(ui));
@@ -608,7 +613,7 @@ function paint() {
     root.append(renderSalesLinks(ui));
     root.append(renderTeam(ui));
   }
-  if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox") {
+  if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox" && state.tab !== "billing") {
     const host = el("div");
     root.append(host);
     renderEngine(state.tab, host, engineCtx());
@@ -638,7 +643,8 @@ function engineCtx() {
     when,
     money,
     shareCents,
-    uploadVoice: storeVoice
+    uploadVoice: storeVoice,
+    recordGrowth
   };
 }
 
@@ -677,6 +683,8 @@ function pageUi() {
     usesEngine,
     patchSettings,
     saveLlm,
+    saveShowStatus,
+    recordBooking,
     testLlm,
     saveOwnerClip,
     deleteOwnerClip,
@@ -2965,6 +2973,44 @@ async function saveQualification(event, id, fields) {
   }
 }
 
+function bookingHandle(value) {
+  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
+}
+
+async function recordBooking(handle) {
+  if (!state.canEdit) return toast("You can't edit this business.", "bad");
+  if (!state.supabase) return toast("This preview does not save.", "bad");
+  const name = bookingHandle(handle);
+  if (!/^[a-z0-9._]{1,30}$/.test(name)) return toast("Use an Instagram handle: letters, numbers, dots, or underscores.", "bad");
+  const existing = (state.targets || []).find((row) => row.handle === name);
+  let targetId = existing && existing.id;
+  if (!targetId) {
+    const inserted = await state.supabase.from("acq_targets").insert({
+      agent_id: state.businessId,
+      handle: name,
+      source: "manual",
+      stage: "booked",
+      peak_stage: "booked",
+      lead_status: "hot"
+    }).select("id").single();
+    if (inserted.error) return toast(inserted.error.message, "bad");
+    targetId = inserted.data.id;
+  }
+  const already = (state.bookings || []).find((row) => row.target_id === targetId);
+  if (!already) {
+    const saved = await state.supabase.from("acq_bookings").insert({
+      agent_id: state.businessId,
+      target_id: targetId,
+      show_status: "scheduled",
+      source: "manual",
+      scheduled_at: new Date().toISOString()
+    });
+    if (saved.error) return toast(saved.error.message, "bad");
+  }
+  toast("Booking recorded.");
+  await bootBusiness(state.businessId);
+}
+
 async function saveShowStatus(target, booking, showStatus) {
   const saved = booking
     ? await state.supabase.from("acq_bookings").update({ show_status: showStatus }).eq("id", booking.id)
@@ -2982,6 +3028,24 @@ async function saveShowStatus(target, booking, showStatus) {
     }
     await bootBusiness(state.businessId);
   }
+}
+
+async function recordGrowth(dollars, note) {
+  if (!state.canEdit) return toast("You can't edit this business.", "bad");
+  if (!state.supabase) return toast("This preview does not save.", "bad");
+  const amount = Number(dollars);
+  if (!Number.isFinite(amount) || amount < 0) return toast("Enter the cash collected.", "bad");
+  const saved = await state.supabase.from("acq_deals").insert({
+    agent_id: state.businessId,
+    amount_cents: Math.round(amount * 100),
+    currency: "USD",
+    notes: String(note || "").trim().slice(0, 500),
+    attributed: true,
+    entered_by: state.user && state.user.id
+  });
+  if (saved.error) return toast(saved.error.message, "bad");
+  toast("Revenue recorded. The 10% share updates with it.");
+  await bootBusiness(state.businessId);
 }
 
 async function saveDeal(event, targetId, amount, note) {
@@ -3152,30 +3216,17 @@ function markTab() {
   mountNav(pageUi());
   paintProfile();
   const title = document.getElementById("page-title");
-  const names = {
-    dashboard: "Dashboard",
-    performance: "Performance",
-    assistant: "Roleflow Assistant",
-    chats: "Chats",
-    opportunities: "Opportunities",
-    calendar: "Calendar",
-    sops: "SOPs",
-    content: "Content",
-    voice: "Voice Gen",
-    warmer: "Lead Warmer",
-    outreacher: "Outreacher",
-    setter: "Agentic Setter",
-    commentvoice: "Comment voice",
-    followup: "Follow Up Boss",
-    settings: "Settings"
-  };
-  if (title) title.textContent = names[state.tab] || "Dashboard";
+  const item = NAV_GROUPS.flatMap((group) => group.items).find((row) => row.tab === state.tab);
+  const label = state.tab === "onboarding"
+    ? (language() === "es" ? "Configuración" : "Setup")
+    : (item ? navLabel(item, language()) : "Dashboard");
+  if (title) title.textContent = label;
   const business = state.businesses.find((row) => row.id === state.businessId);
   const name = business && business.agent_name ? business.agent_name : "This business";
   if (sub) sub.textContent = name;
   const avatar = document.getElementById("biz-avatar");
   if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "R";
-  document.title = (names[state.tab] || "Dashboard") + " · Roleflow";
+  document.title = label + " · Roleflow";
 }
 
 function tabGroup(tab) {
@@ -3195,7 +3246,7 @@ function tabFromHash() {
   const raw = parts[0];
   const tab = canonicalTab(raw);
   state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
-  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "billing")) state.configKey = "connect";
+  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations")) state.configKey = "connect";
   else if (tab === "settings" && (raw === "configuration" || raw === "settings" || raw === "controls")) state.configKey = state.configKey || "reply";
   return tab;
 }

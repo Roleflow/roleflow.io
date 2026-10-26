@@ -132,6 +132,28 @@ assert.equal(JSON.stringify(leaked).includes(businessKey), false);
 assert.equal(previewKeySave([], { provider: "openai", apiKey: "short" }).ok, false);
 assert.equal(modelPatch("gemini", false).llm_setter_own_key, true);
 assert.equal(modelPatch("gemini", false).setter_model, "gemini-3-flash-preview");
+
+const unset = resolveRuntime({
+  purpose: "setter",
+  settings: {},
+  secret: null,
+  env: { GEMINI_API_KEY: "gem-platform", XAI_API_KEY: "xai-platform" }
+});
+assert.equal(unset.provider, "gemini");
+assert.equal(unset.model, "gemini-3-flash-preview");
+assert.equal(unset.apiKey, "gem-platform");
+assert.equal(read("acquire/model-key.js").includes('id: "gemini"'), true);
+assert.match(read("supabase/migrations/20261026220000_gemini_default.sql"), /set default 'gemini'/);
+assert.match(read("supabase/migrations/20261026230000_target_stage_rank.sql"), /grant execute on function public\.acq_stage_rank\(text\) to authenticated/);
+assert.match(read("supabase/functions/roleflow-assistant/index.ts"), /#calendar/);
+assert.match(read("supabase/functions/roleflow-assistant/index.ts"), /show_status/);
+assert.match(read("acquire/app.js"), /state\.tab === "billing"/);
+assert.match(read("acquire/app.js"), /state\.tab !== "billing"/);
+assert.match(read("acquire/engine-ui.js"), /id: "record-growth"/);
+assert.match(read("acquire/client-nav.mjs"), /tab: "billing"/);
+assert.match(read("acquire/client-nav.mjs"), /name === "onboarding"/);
+assert.match(read("acquire/app.js"), /async function recordBooking/);
+assert.match(read("acquire/client-pages.js"), /id: "record-booking"/);
 assert.equal(modelPatch("xai", true).llm_setter_own_key, false);
 assert.equal(Object.hasOwn(modelPatch("openai", false), "apiKey"), false);
 

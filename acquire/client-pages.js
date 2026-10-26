@@ -1,4 +1,5 @@
 import { AGENT_KEYS, DEFAULT_POLICY, dashboardMetrics, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
+import { shareCents, showUpRate } from "./model.js";
 import { grokLaunchUrl } from "./client-config.js";
 import { beginInstagramConnect } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
@@ -42,7 +43,29 @@ const COPY = {
     igOn: "Instagram is connected for this business.",
     igOff: "Instagram is not connected for this business.",
     igBody: "Connect Instagram starts the account login for this business.",
-    igUnavailable: "Instagram connection is not available right now. Contact Roleflow support."
+    igUnavailable: "Instagram connection is not available right now. Contact Roleflow support.",
+    dashLede: "One business. Live numbers only.",
+    leads: "Leads",
+    leadsNote: "People stored for this business.",
+    chats: "Chats",
+    chatsNote: "Threads Roleflow can open.",
+    booked: "Booked",
+    bookedNote: "Calendar rows that are not cancelled.",
+    agents: "Agents live",
+    agentsNote: "Each agent stays off until you turn it on.",
+    showLabel: "Show-up",
+    showEmpty: "No show-up data yet",
+    showNote: "Showed calls divided by showed plus no-shows.",
+    shareLabel: "Roleflow share",
+    shareNote: "10% of the growth you record. Nothing is owed if you record nothing.",
+    workspaceOn: "The workspace is on.",
+    workspaceOff: "The workspace is off.",
+    billingLink: "Billing",
+    showSave: "Save show-up",
+    bookTitle: "Record a booked call",
+    bookBody: "This stores the call for show-up tracking. It does not message Instagram.",
+    bookHandle: "Instagram handle",
+    bookSave: "Record booking"
   },
   es: {
     off: "Apagado",
@@ -80,8 +103,30 @@ const COPY = {
     igOn: "Instagram está conectado para este negocio.",
     igOff: "Instagram no está conectado para este negocio.",
     igBody: "Conectar Instagram abre el acceso de la cuenta de este negocio.",
-    igUnavailable: "La conexión de Instagram no está disponible ahora. Contacta con el soporte de Roleflow."
-  }
+    igUnavailable: "La conexión de Instagram no está disponible ahora. Contacta con el soporte de Roleflow.",
+    dashLede: "Un negocio. Solo números reales.",
+    leads: "Leads",
+    leadsNote: "Personas guardadas de este negocio.",
+    chats: "Chats",
+    chatsNote: "Hilos que Roleflow puede abrir.",
+    booked: "Agendadas",
+    bookedNote: "Filas del calendario que no están canceladas.",
+    agents: "Agentes activos",
+    agentsNote: "Cada agente sigue apagado hasta que lo enciendes.",
+    showLabel: "Asistencia",
+    showEmpty: "Todavía no hay datos de asistencia",
+    showNote: "Asistieron, dividido entre asistieron y no asistieron.",
+    shareLabel: "Parte de Roleflow",
+    shareNote: "El 10% del crecimiento que registras. Si no registras nada, no se debe nada.",
+    workspaceOn: "El espacio está encendido.",
+    workspaceOff: "El espacio está apagado.",
+    billingLink: "Facturación",
+    showSave: "Guardar asistencia",
+    bookTitle: "Registrar una llamada agendada",
+    bookBody: "Esto guarda la llamada para la asistencia. No escribe por Instagram.",
+    bookHandle: "Usuario de Instagram",
+    bookSave: "Registrar reserva"
+  },
 };
 
 export function text(language) {
@@ -97,22 +142,29 @@ export function renderDashboardHome(ui) {
     switches: ui.state.agentSwitches
   });
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Dashboard", "One business. Live numbers only.", "dashboard", "grid"));
+  wrap.append(ui.pageHeader(ui, "Dashboard", copy.dashLede, "dashboard", "grid"));
   const grid = ui.el("div", { class: "home-grid" });
-  grid.append(metricCard(ui, "Leads", String(metrics.leads), "People stored for this business."));
-  grid.append(metricCard(ui, "Chats", String(metrics.chats), "Threads Roleflow can open."));
-  grid.append(metricCard(ui, "Booked", String(metrics.booked), "Calendar rows that are not cancelled."));
-  grid.append(metricCard(ui, "Agents live", String(metrics.liveAgents) + " / " + AGENT_KEYS.length, "Each agent stays off until you turn it on."));
+  const show = showUpRate(ui.state.bookings);
+  const recorded = (ui.state.deals || []).filter((deal) => deal.attributed !== false).reduce((sum, deal) => sum + (Number(deal.amount_cents) || 0), 0);
+  const share = ui.money ? ui.money(shareCents(recorded, ui.state.settings && ui.state.settings.share_bps)) : String(shareCents(recorded, ui.state.settings && ui.state.settings.share_bps));
+  grid.append(metricCard(ui, copy.leads, String(metrics.leads), copy.leadsNote));
+  grid.append(metricCard(ui, copy.chats, String(metrics.chats), copy.chatsNote));
+  grid.append(metricCard(ui, copy.booked, String(metrics.booked), copy.bookedNote));
+  grid.append(metricCard(ui, copy.agents, String(metrics.liveAgents) + " / " + AGENT_KEYS.length, copy.agentsNote));
+  grid.append(metricCard(ui, copy.showLabel, show.rate == null ? copy.showEmpty : (ui.percent ? ui.percent(show.rate) : String(show.rate)), copy.showNote));
+  grid.append(metricCard(ui, copy.shareLabel, share, copy.shareNote));
   wrap.append(grid);
+  wrap.append(ui.el("p", {}, [ui.el("a", { class: "btn ghost sm", href: "#billing" }, [copy.billingLink])]));
   const banner = ui.el("div", { class: "info-banner", role: "status" });
   const on = ui.state.settings && ui.state.settings.system_enabled;
-  banner.append(ui.el("p", { text: (on ? "The workspace is on." : "The workspace is off.") + " " + ui.instagramLine() }));
+  banner.append(ui.el("p", { text: (on ? copy.workspaceOn : copy.workspaceOff) + " " + ui.instagramLine() }));
   wrap.append(banner);
   wrap.append(ui.el("p", { class: "hq-note", text: copy.channel }));
   return wrap;
 }
 
 export function renderCalendar(ui) {
+  const copy = text(ui.language());
   const wrap = ui.el("div", { class: "platform-home" });
   wrap.append(ui.pageHeader(ui, "Calendar", "Booked calls stored for this business.", "calendar", "clipboard"));
   const google = ui.state.google;
@@ -121,6 +173,19 @@ export function renderCalendar(ui) {
   account.append(ui.el("p", { text: google && google.status === "connected" ? "Connected" + (google.email ? " · " + google.email : "") : "Not connected yet. Connect it from Settings." }));
   account.append(ui.el("a", { class: "btn ghost sm", href: "#settings" }, ["Open settings"]));
   wrap.append(account);
+  if (ui.recordBooking && ui.state.canEdit) {
+    const form = ui.el("form", { class: "agent", id: "record-booking" });
+    const handle = ui.el("input", { id: "booking-handle", type: "text", maxlength: "30", autocomplete: "off", "aria-label": copy.bookHandle });
+    form.append(ui.el("h3", { text: copy.bookTitle }));
+    form.append(ui.el("p", { class: "mute", text: copy.bookBody }));
+    form.append(ui.el("label", { text: copy.bookHandle }, [handle]));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      ui.recordBooking(handle.value);
+    });
+    form.append(ui.button(copy.bookSave, null, "submit"));
+    wrap.append(form);
+  }
   const rows = ui.state.bookings || [];
   if (!rows.length) wrap.append(ui.el("p", { text: "No bookings yet." }));
   rows.forEach((row) => {
@@ -128,6 +193,14 @@ export function renderCalendar(ui) {
     const card = ui.el("article", { class: "agent" });
     card.append(ui.el("h3", { text: target && target.handle ? "@" + target.handle : "Booking" }));
     card.append(ui.el("p", { text: (row.show_status || "scheduled") + (row.meet_link ? " · " + row.meet_link : "") }));
+    if (ui.saveShowStatus && ui.state.canEdit) {
+      const select = ui.el("select", { "aria-label": copy.showLabel });
+      [["scheduled", "Scheduled"], ["showed", "Showed"], ["no_show", "No-show"], ["cancelled", "Cancelled"]].forEach(([value, label]) => {
+        select.append(ui.el("option", { value, text: label }));
+      });
+      select.value = row.show_status || "scheduled";
+      card.append(select, ui.button(copy.showSave, () => ui.saveShowStatus(target || { id: row.target_id }, row, select.value)));
+    }
     wrap.append(card);
   });
   return wrap;

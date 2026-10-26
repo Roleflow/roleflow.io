@@ -15,18 +15,21 @@ const cors = {
 };
 
 const MAP = [
-  "Dashboard (#dashboard): accounts, alerts, and whether the system is on.",
-  "Onboarding (#onboarding): the questions that build the setter. Saving them updates the business. The prompt preview is #prompts.",
-  "Business (#brief): the shared brief, per-agent instructions, version history, a quality score, and a conversation simulator. Live setter sync is off, so a save stays in the panel.",
-  "Sales links (#links): named links with text, URL, coupon, average ticket, sending instructions, and an optional button. Scheduling endpoints are Calendly, GoHighLevel, or a custom URL.",
-  "Value content (#content): image, audio, video, link, or button, plus voice-note recordings.",
-  "Outbound Manager (#outbound): ICP Target Acquisition, Engagement Warm-Up, and Personalised Outreach. Daily cap is 20–30.",
-  "Inbound Manager (#inbound): the Roleflow Setter Engine. Comment-to-DM, story DMs, qualification, follow-ups, and booking.",
-  "CRM (#pipeline): Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board, filters, notes, and a message queue that does not send while live sync is off.",
-  "Stats (#stats): leads, agents, tags, links, funnel, follow-ups, reply time, and heatmaps. Each chart has Explain with assistant.",
+  "Dashboard (#dashboard): leads, chats, booked calls, agents that are live, the show-up rate, and the Roleflow share. Show-up is showed calls divided by showed plus no-shows.",
+  "Setup (#onboarding): business, offer, Instagram, worker, voice notes, then go live. Go live turns agents on.",
+  "SOPs (#sops): the shared brief, per-agent instructions, version history, a quality score, and a conversation simulator. Live setter sync is off, so a save stays in the panel.",
+  "Calendar (#calendar): record a booked call by Instagram handle, then set show-up to scheduled, showed, no-show, or cancelled. Connecting Google Calendar is separate and lives in Settings.",
+  "Billing (#billing): record cash collected on a deal this system sourced. The share is 10% of that amount. Nothing is owed for a deal that is not recorded.",
+  "Chats (#chats): threads stored for this business. Full history appears when the event stream is connected.",
+  "Opportunities (#opportunities): the lead list, from Open through Postponed. Filters, notes, and a message queue that does not send while live sync is off.",
   "Performance (#performance): origins such as story, post, reel, ad, or a keyword, plus a 12-month projection from numbers the user types.",
-  "Configuration (#configuration): eight questions for hours, who is answered, when it stops, writing, filing, notifications, webhooks, and cloning. A save stays in the panel.",
-  "Team (#team): email invites with Conversations, Configuration, or Analysis, plus a join link that can be regenerated.",
+  "Content (#content): files and links an agent can send, plus recordings.",
+  "Voice Gen (#voice): the owner's own voice notes by slot. A cloned voice is not used.",
+  "Lead Warmer (#warmer) and Outreacher (#outreacher): each stays off until it is turned on. The external sign-in button stays disabled until a real https address is configured.",
+  "Agentic Setter (#setter): the system prompt, version restore, reply delay, booking link, and a practice thread. Practice uses the selected model and does not send an Instagram message.",
+  "Comment voice (#commentvoice): keyword or intent rules that queue one private reply. It stays off until it is turned on. The reply is text.",
+  "Follow Up Boss (#followup): quiet hours, stage, booking, and a cap. It stays off until it is turned on.",
+  "Settings (#settings): the model key, Instagram connect, the eight configuration questions, sales links, and team invites.",
   "Admin roster (/admin/): one card per business. Open enters that business."
 ].join("\n");
 
@@ -86,18 +89,26 @@ Deno.serve(async (req) => {
   const [settings, targets, bookings, deals, contacts] = await Promise.all([
     userClient.from("acq_settings").select("system_enabled, daily_cap, onboarding_step, timezone, setter_provider").eq("agent_id", businessId).maybeSingle(),
     userClient.from("acq_targets").select("lead_status, stage").eq("agent_id", businessId).limit(500),
-    userClient.from("acq_bookings").select("id").eq("agent_id", businessId).limit(500),
+    userClient.from("acq_bookings").select("show_status").eq("agent_id", businessId).limit(500),
     userClient.from("acq_deals").select("amount_cents, attributed").eq("agent_id", businessId).limit(200),
     userClient.from("acq_contacts").select("lead_status, is_converted").eq("business_id", businessId).limit(500)
   ]);
 
+  const bookingRows = bookings.error ? [] : (bookings.data || []);
+  const showed = bookingRows.filter((row) => row.show_status === "showed").length;
+  const noShow = bookingRows.filter((row) => row.show_status === "no_show").length;
+  const attributedCents = deals.error ? null : (deals.data || []).reduce((sum, row) => row.attributed === false ? sum : sum + (Number(row.amount_cents) || 0), 0);
   const snapshot = {
     business: workspace.data.name,
     settings: settings.data || null,
     targets_loaded: targets.error ? null : (targets.data || []).length,
-    bookings_loaded: bookings.error ? null : (bookings.data || []).length,
+    bookings_loaded: bookings.error ? null : bookingRows.length,
+    showed: bookings.error ? null : showed,
+    no_show: bookings.error ? null : noShow,
+    show_up_rate: bookings.error || showed + noShow === 0 ? null : showed / (showed + noShow),
     contacts_loaded: contacts.error ? null : (contacts.data || []).length,
-    attributed_cents: deals.error ? null : (deals.data || []).reduce((sum, row) => row.attributed === false ? sum : sum + (Number(row.amount_cents) || 0), 0)
+    attributed_cents: attributedCents,
+    share_cents: attributedCents == null ? null : Math.round(attributedCents * 0.1)
   };
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });

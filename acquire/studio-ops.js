@@ -102,10 +102,10 @@ function replyBody(ui) {
 }
 
 const LLM_CHOICES = [
+  ["gemini", "Gemini 3 Flash", ["gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.0-flash"]],
   ["xai", "xAI", ["grok-4.3", "grok-4.7"]],
   ["openai", "OpenAI", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o"]],
   ["anthropic", "Anthropic", ["claude-sonnet-4-5", "claude-3-5-haiku-latest"]],
-  ["gemini", "Gemini 3 Flash", ["gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.0-flash"]],
   ["openrouter", "OpenRouter", ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-3-flash-preview", "google/gemini-2.5-flash", "x-ai/grok-4"]],
   ["custom", "Custom OpenAI-compatible", []]
 ];
@@ -114,16 +114,16 @@ function modelCard(ui) {
   const settings = ui.state.settings || {};
   const card = ui.el("form", { class: "agent", "data-command": "cfg-model" });
   card.append(ui.el("h3", { text: "Which model answers?" }));
-  card.append(ui.el("p", { class: "mute", text: "Roleflow's key is used until you save your own. A saved key is encrypted and is not shown again. When live replies use grok-4.3, booking and objections still use grok-4.7." }));
+  card.append(ui.el("p", { class: "mute", text: "Roleflow's key is used until you save your own. A saved key is encrypted and is not shown again. Live replies default to Gemini 3 Flash." }));
   const live = providerGroup(ui, "Live replies", {
-    provider: settings.llm_setter_provider || "xai",
-    model: settings.setter_model || "",
+    provider: settings.llm_setter_provider || "gemini",
+    model: settings.setter_model || "gemini-3-flash-preview",
     own: settings.llm_setter_own_key === true,
     base: settings.llm_setter_base_url || ""
   }, "setter");
   const prompt = providerGroup(ui, "Prompt writing", {
-    provider: settings.llm_prompt_provider || "xai",
-    model: settings.llm_prompt_model || ((settings.llm_prompt_provider && settings.llm_prompt_provider !== "xai") ? "" : "grok-4.7"),
+    provider: settings.llm_prompt_provider || "gemini",
+    model: settings.llm_prompt_model || ((settings.llm_prompt_provider && settings.llm_prompt_provider !== "gemini") ? "" : "gemini-3-flash-preview"),
     own: settings.llm_prompt_own_key === true,
     base: settings.llm_prompt_base_url || ""
   }, "prompt");
