@@ -131,8 +131,8 @@ function showTab(mode) {
         ? "This link joins a business. Log in or create an account and we'll add you."
         : login
           ? "Open your account to continue onboarding, or email yourself a sign-in link."
-          : "This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
-  document.title = login ? "Log in · Roleflow" : "Create your account · Roleflow";
+          : "AI Client Acquisition Engine for coaches and info businesses. This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
+  document.title = login ? "Log in · AI Client Acquisition Engine · Roleflow" : "Create your account · AI Client Acquisition Engine · Roleflow";
   document.getElementById("skip-link").setAttribute("href", login ? "#login-form" : "#signup-form");
   markNav();
 }

@@ -186,7 +186,7 @@ assert.match(homepage, /src="supabase\/config\.js"/);
 assert.match(homepage, /Book a demo/);
 assert.doesNotMatch(homepage, /Book your call|Book a call|book a call/i);
 assert.match(homepage, /https:\/\/calendar\.app\.google\/R4wpQ4b8F5J7xnD39/);
-assert.match(homepage, /Client Acquisition System/);
+assert.match(homepage, /AI Client Acquisition Engine/);
 assert.match(homepage, /id="start"/);
 assert.doesNotMatch(homepage, /id="qz"/);
 assert.doesNotMatch(homepage, /See if you qualify/);
