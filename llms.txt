@@ -1,8 +1,8 @@
 # Roleflow
 
-> Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls.
+> Roleflow is a Client Acquisition System. We build and run your Instagram DM system: every lead answered in seconds, voice notes in your own voice (cloned from a short recording), follow-ups sent automatically and only within 24 hours, and qualified leads booked on your calendar.
 
-Roleflow (en español: setter con IA para DMs de Instagram, hecho para ti) is built for high-ticket coaches, consultants, course creators and agency owners whose personal brand drives sales on Instagram.
+Roleflow is a Client Acquisition System for high-ticket coaches, consultants, course creators and agency owners whose personal brand drives sales on Instagram. En español: sistema de adquisición de clientes.
 
 Who it fits: businesses with 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+/month cash collected.
 Who it does not fit: businesses selling mainly through WhatsApp, email or phone (Instagram DMs only), low-ticket offers, or very low DM volume.
@@ -11,9 +11,6 @@ Who it does not fit: businesses selling mainly through WhatsApp, email or phone 
 - Instagram: https://www.instagram.com/roleflow.io
 - TikTok: https://www.tiktok.com/@roleflow.io
 - YouTube: https://www.youtube.com/@roleflow
-- LinkedIn: https://www.linkedin.com/company/[CONFIRM]
-- X: https://x.com/[CONFIRM]
-- Crunchbase: https://www.crunchbase.com/organization/[CONFIRM]
 
 ## Key pages
 - [Home](https://www.roleflow.io/)
