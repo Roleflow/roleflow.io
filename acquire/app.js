@@ -700,7 +700,7 @@ function paint() {
   }
   app.append(root);
   paintChrome(pageUi());
-  if ((state.tab === "assistant" || state.assistantOpen) && !state.assistantExpanded) revealAssistantModal();
+  if (state.tab !== "assistant" && state.assistantOpen && !state.assistantExpanded) revealAssistantModal();
   if (state.tab === "settings" && state.settingsFocus === "model") {
     const keyCard = document.getElementById("model-key");
     if (keyCard) keyCard.scrollIntoView({ block: "start" });
