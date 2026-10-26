@@ -351,7 +351,7 @@ export function renderCrm(ui) {
   notes.classList.add("ghost");
   message.classList.add("ghost");
   const views = ui.el("div", { class: "filters" });
-  [[ "list", lang === "es" ? "Lista" : "List" ], [ "board", lang === "es" ? "Cuadrícula" : "Grid" ]].forEach(([id, label]) => {
+  [[ "list", lang === "es" ? "Lista" : "List" ], [ "board", lang === "es" ? "Tablero" : "Kanban" ]].forEach(([id, label]) => {
     const button = ui.el("button", { type: "button", "aria-pressed": (studio.view || "list") === id ? "true" : "false" }, [label]);
     button.addEventListener("click", () => { studio.view = id; ui.paint(); });
     views.append(button);
@@ -380,6 +380,7 @@ function table(ui, rows, lang) {
   const body = ui.el("tbody");
   rows.forEach((lead) => body.append(leadRow(ui, lead, lang)));
   tableNode.append(body);
+  tableNode.classList.add("compact");
   return ui.el("div", { class: "table-wrap" }, [tableNode]);
 }
 
@@ -388,7 +389,11 @@ function sectionTextSafe(lang, key) {
 }
 
 function leadRow(ui, lead, lang) {
-  const row = ui.el("tr");
+  const row = ui.el("tr", { class: "lead-row" });
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button, select, input, a, label")) return;
+    openLead(ui, lead);
+  });
   const statusCell = ui.el("td");
   const status = ui.el("select", { class: "status-pill " + (lead.state || "open"), "aria-label": "Status" });
   CRM_STATES.forEach(([value, label]) => status.append(ui.el("option", { value, text: label })));
@@ -470,8 +475,17 @@ function board(ui, rows) {
 
 function drawer(ui, lead) {
   const studio = box(ui);
-  const card = ui.el("section", { class: "detail" });
+  const lang = ui.language ? ui.language() : "en";
+  const shell = ui.el("div", { class: "lead-drawer" });
+  const backdrop = ui.el("button", { type: "button", class: "lead-drawer-backdrop", "aria-label": lang === "es" ? "Cerrar" : "Close" });
+  backdrop.addEventListener("click", () => { studio.open = ""; ui.paint(); });
+  const card = ui.el("aside", { class: "lead-sheet", role: "dialog", "aria-modal": "true" });
   card.append(ui.el("h2", { text: lead.name || (lead.handle ? "@" + lead.handle : "Lead") }));
+  const openChat = ui.button(lang === "es" ? "Abrir chat" : "Open chat", () => {
+    if (ui.go) ui.go("chats");
+    if (ui.openChat) ui.openChat(lead);
+  });
+  card.append(openChat);
   card.append(ui.el("p", { text: [lead.handle ? "@" + lead.handle : "", lead.contact].filter(Boolean).join(" · ") || "No contact details stored." }));
   const state = ui.el("select", { "aria-label": "Lead state" });
   CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
@@ -528,7 +542,8 @@ function drawer(ui, lead) {
     }
   }
   card.append(ui.button("Close", () => { studio.open = ""; ui.paint(); }));
-  return card;
+  shell.append(backdrop, card);
+  return shell;
 }
 
 export function renderSalesLinks(ui) {

@@ -159,12 +159,15 @@ function sparkline(days) {
     const y = 34 - (day.count / max) * 30;
     return x.toFixed(1) + "," + y.toFixed(1);
   }).join(" ");
+  const area = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  area.setAttribute("points", "0,34 " + points + " 120,34");
+  area.setAttribute("fill", "rgba(123,77,255,.18)");
   const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   line.setAttribute("points", points);
   line.setAttribute("fill", "none");
-  line.setAttribute("stroke", "#E8B04A");
+  line.setAttribute("stroke", "#7B4DFF");
   line.setAttribute("stroke-width", "2");
-  svg.append(line);
+  svg.append(area, line);
   return svg;
 }
 
@@ -285,6 +288,8 @@ if (preview) {
     el("a", { href: "#workforce", "aria-current": "page" }, ["Workforce"])
   ]));
   await mountWorkforce(fixtureClient(preview), preview.agent, app, false, null);
+} else if (listPreviewRequested()) {
+  paintListPreview();
 } else if (arriving.type === "recovery") {
   window.location.replace("/reset/" + window.location.hash);
 } else if (!isConfigured()) {
@@ -389,6 +394,7 @@ async function boot(supabase, user) {
       go("#" + route.id + "/leads");
       return;
     }
+    document.body.classList.toggle("biz-list", route.kind === "grid");
     if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds);
     else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles);
     paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin, roles);
@@ -474,7 +480,33 @@ function paintSide(user, agents, route, isAdmin, roles) {
   else nav.prepend(block);
 }
 
+function listPreviewRequested() {
+  const host = location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return false;
+  return new URLSearchParams(location.search).get("preview") === "1" && !window.__BIZ_FIXTURE;
+}
+
+function paintListPreview() {
+  const user = { id: "owner-preview" };
+  const now = new Date();
+  const days = [];
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset));
+    days.push({ day: day.toISOString().slice(0, 10), count: [1, 0, 2, 1, 4, 3, 2][6 - offset] });
+  }
+  const agents = [
+    { id: "north", agent_name: "North studio", status: "active", client_id: user.id, created_at: new Date(now.getTime() - 86400000 * 12).toISOString() },
+    { id: "shared", agent_name: "Shared studio", status: "active", client_id: "other-owner", created_at: new Date(now.getTime() - 3600 * 5 * 1000).toISOString() }
+  ];
+  const stats = new Map([
+    ["north", { leads_per_day: days, total_leads: 40 }],
+    ["shared", { leads_per_day: days.map((day) => ({ day: day.day, count: day.count ? 1 : 0 })) }]
+  ]);
+  paintGrid(null, user, agents, stats, new Map(), false, "", new Set());
+}
+
 function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds) {
+  document.body.classList.add("biz-list");
   heading.innerHTML = isAdmin ? 'Businesses' : 'Your <span class="g">businesses</span>';
   document.title = isAdmin ? "Businesses · Roleflow" : "Your businesses · Roleflow";
   const owned = agents.some((agent) => agent.client_id === user.id);
@@ -499,7 +531,6 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
     const stats = statsById.get(agent.id) || {};
     const week = last7(asSeries(stats.leads_per_day));
     const total = Number(stats.total_leads);
-    const shown = Number.isFinite(total) ? total : week.total;
     const active = agent.status !== "paused";
     const card = el("a", { class: "biz-card", href: "#" + agent.id + "/leads" });
     card.addEventListener("click", (event) => {
@@ -510,6 +541,7 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
       el("i", { class: active ? "dot on" : "dot" }),
       active ? "AI active" : "Paused"
     ]);
+    const shared = Boolean(agent.client_id && user && agent.client_id !== user.id);
     const open = el("span", { class: "ext", "aria-hidden": "true" });
     open.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" d="M14 5h5v5M19 5l-9 9"/><path fill="none" stroke="currentColor" stroke-width="2" d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5"/></svg>';
     const bits = [
@@ -518,12 +550,14 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
       el("h2", { text: agent.agent_name || "AI Setter" }),
       el("p", { class: "card-client", text: clientLine(agent, peopleById) })
     ];
+    if (shared) bits.push(el("span", { class: "shared-chip", text: "Shared" }));
     if (isAdmin && pendingIds.has(agent.id)) bits.push(el("p", { class: "pending-flag", text: "Pending publish" }));
     bits.push(
       el("p", { class: "mute", text: createdAgo(agent.created_at) }),
       sparkline(week.days),
-      el("p", { class: "lead-count", text: String(shown) }),
-      el("p", { class: "mute", text: Number.isFinite(total) ? "Conversations in the sync" : "Leads in the last 7 days" })
+      el("p", { class: "lead-count", text: String(week.total) }),
+      el("p", { class: "mute", text: "Leads · last 7 days" }),
+      el("p", { class: "sr", text: Number.isFinite(total) ? "Conversations in the sync" : "Leads in the last 7 days" })
     );
     card.append(...bits);
     grid.append(card);
@@ -567,9 +601,9 @@ function scrollRow(row, direction) {
 function addCard(supabase, user, owned) {
   const card = el("button", { type: "button", class: "biz-card add add-business", id: "add-business" });
   card.append(el("span", { class: "add-plus", text: "+" }));
-  card.append(el("h2", { text: "Add business" }));
-  card.append(el("p", { text: owned ? "Add another business and review its setter prompt." : "Name, offer, and who the setter should book." }));
-  card.addEventListener("click", () => openAddBusiness({ supabase, preview: false }));
+  card.append(el("h2", { text: "+ Add business" }));
+  card.append(el("p", { text: owned ? "Creates the business and opens Connect Instagram." : "Name, offer, and who the setter should book. Then connect Instagram." }));
+  card.addEventListener("click", () => openAddBusiness({ supabase, preview: !supabase }));
   void user;
   void linkByName;
   return card;
@@ -580,6 +614,7 @@ async function linkByName(supabase, name) {
 }
 
 async function paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles) {
+  document.body.classList.remove("biz-list");
   const agent = agents.find((item) => item.id === route.id);
   if (!agent) {
     heading.textContent = "Business";

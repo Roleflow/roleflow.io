@@ -150,23 +150,61 @@ try {
   <img src="/assets/logo.jpg" alt="" width="34" height="34">
 </button>
 <section class="assistant-panel" id="assistant-panel" hidden aria-label="Roleflow Assistant">
-  <header>
-    <span class="assistant-brand"><img src="/assets/logo.jpg" alt="" width="22" height="22"><strong>Roleflow Assistant</strong></span>
-    <button type="button" class="btn ghost sm" id="assistant-close">Close</button>
+  <header class="assistant-head">
+    <span class="assistant-brand">
+      <img src="/assets/logo.jpg" alt="" width="36" height="36">
+      <span>
+        <strong>Roleflow Assistant</strong>
+        <span class="assistant-ready"><i aria-hidden="true"></i><span id="assistant-ready">Ready to help</span></span>
+      </span>
+    </span>
+    <span class="assistant-tools">
+      <button type="button" class="icon-btn" id="assistant-history" aria-label="History">⌘</button>
+      <button type="button" class="icon-btn" id="assistant-new" aria-label="New chat">＋</button>
+      <button type="button" class="icon-btn" id="assistant-download" aria-label="Download">↓</button>
+      <button type="button" class="icon-btn" id="assistant-expand" aria-label="Expand">⛶</button>
+      <button type="button" class="icon-btn" id="assistant-close" aria-label="Close">×</button>
+    </span>
   </header>
-  <div class="assistant-log" id="assistant-log"></div>
+  <div class="assistant-body">
+    <div class="assistant-empty" id="assistant-empty">
+      <img src="/assets/logo.jpg" alt="" width="64" height="64">
+      <h2 id="assistant-hi">Hi, what are we doing today?</h2>
+    </div>
+    <div class="assistant-log" id="assistant-log"></div>
+  </div>
+  <div class="assistant-chips" id="assistant-chips">
+    <button type="button" data-mode="ask" aria-pressed="true">Answer questions</button>
+    <button type="button" data-mode="leads" aria-pressed="false">Manage leads</button>
+    <button type="button" data-mode="ai" aria-pressed="false">Edit my AI</button>
+    <button type="button" data-mode="report" aria-pressed="false">Report</button>
+  </div>
+  <div class="assistant-prompts" id="assistant-prompts">
+    <button type="button" data-fill="How do I connect Instagram?">How do I connect Instagram? →</button>
+    <button type="button" data-fill="Which leads need a follow-up?">Which leads need a follow-up? →</button>
+    <button type="button" data-fill="Help me tighten the setter prompt.">Help me tighten the setter prompt. →</button>
+    <button type="button" data-fill="Summarize this business this week.">Summarize this business this week. →</button>
+  </div>
   <form id="assistant-form">
     <label class="sr" for="assistant-mode">Assistant mode</label>
-    <select id="assistant-mode" aria-label="Assistant mode">
+    <select id="assistant-mode" class="sr" aria-label="Assistant mode">
       <option value="ask">Answer questions</option>
       <option value="leads">Manage leads</option>
       <option value="ai">Change my AI</option>
       <option value="report">Report</option>
     </select>
-    <label class="sr" for="assistant-input">Ask how something works</label>
-    <input id="assistant-input" name="message" type="text" maxlength="800" placeholder="How do I connect Instagram?" autocomplete="off">
-    <button class="btn sm" type="submit">Send</button>
+    <div class="assistant-compose">
+      <button type="button" class="icon-btn" id="assistant-attach" aria-label="Attach">＋</button>
+      <input id="assistant-file" type="file" hidden>
+      <button type="button" class="icon-btn" id="assistant-mic" aria-label="Microphone">🎤</button>
+      <label class="sr" for="assistant-input">Ask how something works</label>
+      <input id="assistant-input" name="message" type="text" maxlength="800" placeholder="How do I connect Instagram?" autocomplete="off">
+      <label class="switch"><input id="assistant-guide" type="checkbox"> <span id="assistant-guide-label">Auto guide</span></label>
+      <button class="assistant-send" type="submit" aria-label="Send">↑</button>
+    </div>
+    <p class="mute" id="assistant-hint">Enter to send</p>
   </form>
+  <p class="assistant-note" id="assistant-disclaimer">Roleflow Assistant can be wrong. Check a change before you save it.</p>
 </section>
 <div id="agent-drawer" class="desk-modal" hidden>
   <button type="button" class="desk-modal-backdrop" data-close-drawer aria-label="Close"></button>

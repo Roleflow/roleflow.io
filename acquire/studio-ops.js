@@ -9,13 +9,37 @@ import { sectionAlert, sectionText } from "./section-copy.js";
 
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const FACES = {
+  reply: { en: ["When does the AI reply?", "Activation, hours, time zone, and the wait before a reply."], es: ["¿Cuándo responde la IA?", "Activación, horario, zona horaria y la espera antes de responder."] },
+  who: { en: ["Who does it reply to?", "Who gets a reply, and who is skipped."], es: ["¿A quién responde?", "Quién recibe respuesta y quién no."] },
+  stop: { en: ["When does it stop replying?", "The moment the AI steps back."], es: ["¿Cuándo deja de responder?", "El momento en que la IA se aparta."] },
+  write: { en: ["How does it write?", "Tone, length, and the words it uses."], es: ["¿Cómo escribe?", "Tono, longitud y las palabras que usa."] },
+  file: { en: ["How is the lead classified?", "How a person moves through the stages."], es: ["¿Cómo se clasifica el lead?", "Cómo avanza una persona por las etapas."] },
+  notify: { en: ["Who do we notify?", "Who hears when a lead moves."], es: ["¿A quién avisamos?", "Quién se entera cuando un lead avanza."] },
+  connect: { en: ["Which tools does it connect to?", "Instagram and the other tools for this business."], es: ["¿Qué herramientas conecta?", "Instagram y el resto de herramientas de este negocio."] },
+  business: { en: ["Business & team", "Name, offer, and who can edit."], es: ["Negocio y equipo", "Nombre, oferta y quién puede editar."] }
+};
+
+function face(ui, id) {
+  const lang = ui.language ? ui.language() : "en";
+  const row = FACES[id];
+  const pack = row ? (row[lang] || row.en) : ["", ""];
+  return { title: pack[0], hint: pack[1] };
+}
+
 export function renderConfiguration(ui) {
+  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Configuration", "Eight questions. Saving stays in this panel. Live setter sync is off.", "configuration", "settings"));
+  const top = ui.el("div", { class: "settings-top" });
+  const watch = ui.el("button", { type: "button", class: "btn ghost sm" }, [lang === "es" ? "Ver tutorial" : "Watch tutorial"]);
+  watch.addEventListener("click", () => openTutorial(lang));
+  top.append(watch);
+  wrap.append(top);
+  wrap.append(ui.pageHeader(ui, lang === "es" ? "Ajustes" : "Settings", "Eight questions. Saving stays in this panel. Live setter sync is off.", "configuration", "settings"));
   const layout = ui.el("div", { class: "config-layout" });
   const list = ui.el("div", { class: "config-list" });
-  const search = ui.el("input", { type: "search", placeholder: "Search settings", "aria-label": "Search settings" });
-  const questions = ui.el("div");
+  const search = ui.el("input", { class: "cfg-search", type: "search", placeholder: lang === "es" ? "Buscar un ajuste…" : "Search a setting…", "aria-label": lang === "es" ? "Buscar un ajuste" : "Search a setting" });
+  const questions = ui.el("div", { class: "cfg-menu" });
   list.append(search, questions);
   const panel = ui.el("div", { id: "config-panel" });
   layout.append(list, panel);
@@ -23,20 +47,45 @@ export function renderConfiguration(ui) {
   const draw = () => {
     const query = search.value.trim().toLowerCase();
     questions.replaceChildren();
-    QUESTIONS.filter((item) => !query || item.q.toLowerCase().includes(query)).forEach((item) => {
-      const button = ui.el("button", { type: "button", "data-command": "cfg-" + item.id, "aria-pressed": ui.state.configKey === item.id ? "true" : "false" }, [item.q]);
+    QUESTIONS.filter((item) => {
+      const shown = face(ui, item.id);
+      const hay = (item.q + " " + shown.title + " " + shown.hint).toLowerCase();
+      return !query || hay.includes(query);
+    }).forEach((item) => {
+      const shown = face(ui, item.id);
+      const button = ui.el("button", { type: "button", class: "cfg-item", "data-command": "cfg-" + item.id, "aria-pressed": ui.state.configKey === item.id ? "true" : "false" });
+      button.append(ui.el("span", { class: "cfg-ico", "aria-hidden": "true", text: shown.title.slice(0, 1) }));
+      const copy = ui.el("span");
+      copy.append(ui.el("strong", { text: shown.title }), ui.el("small", { text: shown.hint }));
+      button.append(copy, ui.el("span", { class: "cfg-chevron", "aria-hidden": "true", text: "›" }));
       button.addEventListener("click", () => {
         ui.state.configKey = item.id;
         ui.paint();
       });
       questions.append(button);
     });
-    if (!questions.childElementCount) questions.append(ui.el("p", { text: "No matching question." }));
+    if (!questions.childElementCount) questions.append(ui.el("p", { text: lang === "es" ? "Ningún ajuste coincide." : "No matching question." }));
     panel.replaceChildren(configBody(ui, ui.state.configKey));
   };
   search.addEventListener("input", draw);
   draw();
   return wrap;
+}
+
+function openTutorial(lang) {
+  const modal = document.getElementById("how-modal");
+  const body = document.getElementById("how-body");
+  const title = document.getElementById("how-title");
+  if (!modal || !body) return;
+  if (title) title.textContent = lang === "es" ? "Tutorial" : "Tutorial";
+  body.replaceChildren();
+  const frame = document.createElement("iframe");
+  frame.className = "tutorial-frame";
+  frame.src = "https://share.descript.com/embed/XJIQMjM0Q1N";
+  frame.title = lang === "es" ? "Recorrido de Roleflow" : "Roleflow walkthrough";
+  frame.setAttribute("allowfullscreen", "");
+  body.append(frame);
+  modal.hidden = false;
 }
 
 function configBody(ui, key) {
@@ -53,20 +102,31 @@ function configBody(ui, key) {
 function replyBody(ui) {
   const settings = ui.state.settings || {};
   const card = ui.el("form", { class: "agent", "data-command": "cfg-reply" });
-  card.append(ui.el("h3", { text: "When does the AI answer?" }));
+  card.append(ui.el("h3", { text: face(ui, "reply").title }));
   const enabled = switchLabel(ui, "AI answers messages", settings.system_enabled === true);
-  const mode = ui.el("select", { "aria-label": "Office hours" });
-  [["always", "24 hours"], ["same", "Same hours every day"], ["per_day", "Different hours each day"]].forEach(([value, label]) => {
+  const mode = ui.el("select", { class: "sr", "aria-label": "Office hours" });
+  const choices = [["always", "24 hours"], ["same", "Same every day"], ["per_day", "Per day"]];
+  choices.forEach(([value, label]) => {
     const option = ui.el("option", { value, text: label });
     if ((settings.office_mode || "same") === value) option.selected = true;
     mode.append(option);
   });
+  mode.value = settings.office_mode || "same";
+  const seg = ui.el("div", { class: "seg", role: "group", "aria-label": "Office hours" });
+  choices.forEach(([value, label]) => {
+    const pick = ui.el("button", { type: "button", "aria-pressed": mode.value === value ? "true" : "false" }, [label]);
+    pick.addEventListener("click", () => {
+      mode.value = value;
+      seg.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", button === pick ? "true" : "false"));
+    });
+    seg.append(pick);
+  });
   const tz = ui.field("Timezone", settings.timezone || "Europe/Madrid");
   const start = ui.field("Opens", ui.shortTime(settings.office_start, "09:00"), "time");
   const end = ui.field("Closes", ui.shortTime(settings.office_end, "18:00"), "time");
-  const min = ui.field("Reply delay from (seconds)", settings.reply_delay_seconds == null ? 30 : settings.reply_delay_seconds, "number");
-  const max = ui.field("Reply delay to (seconds)", settings.reply_delay_max_seconds == null ? 120 : settings.reply_delay_max_seconds, "number");
-  card.append(enabled.label, ui.el("label", { text: "Hours" }, [mode]), tz.label, start.label, end.label);
+  const min = ui.field("Minimum wait before replying (seconds)", settings.reply_delay_seconds == null ? 30 : settings.reply_delay_seconds, "number");
+  const max = ui.field("Maximum wait before replying (seconds)", settings.reply_delay_max_seconds == null ? 120 : settings.reply_delay_max_seconds, "number");
+  card.append(enabled.label, seg, mode, tz.label, start.label, end.label);
   const days = ui.el("div", { class: "day-hours" });
   const dayInputs = {};
   const stored = settings.hours_by_day || {};
@@ -99,6 +159,7 @@ function replyBody(ui) {
   card.addEventListener("submit", (event) => event.preventDefault());
   const wrap = ui.el("div", { class: "model-stack" });
   wrap.append(card, modelCard(ui));
+  if (ui.mountModelKey) wrap.append(ui.mountModelKey());
   return wrap;
 }
 
@@ -392,6 +453,7 @@ function notifyBody(ui) {
 function connectBody(ui) {
   const settings = ui.state.settings || {};
   const wrap = ui.el("div", { "data-command": "cfg-connect" });
+  if (ui.mountInstagram) wrap.append(ui.mountInstagram());
   const host = ui.el("div");
   if (ui.renderEngine) ui.renderEngine("integrations", host);
   wrap.append(host);
@@ -477,7 +539,10 @@ function connectBody(ui) {
 
 function businessBody(ui) {
   const card = ui.el("form", { class: "agent", "data-command": "cfg-business" });
-  card.append(ui.el("h3", { text: "Business" }));
+  card.append(ui.el("h3", { text: face(ui, "business").title }));
+  const team = ui.button("Business & team", () => { if (ui.go) ui.go("team"); });
+  team.classList.add("ghost");
+  card.append(team);
   const current = (ui.state.businesses || []).find((row) => row.id === ui.state.businessId);
   card.append(ui.el("p", { text: current ? current.name : "This business" }));
   card.append(ui.el("p", { text: "Clone copies the brief, agent instructions, links, content titles, follow-ups, and these settings. Leads, uploaded files, and keys stay with the original. The new business starts with the AI off." }));

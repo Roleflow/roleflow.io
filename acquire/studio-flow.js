@@ -370,8 +370,14 @@ export function renderChats(ui) {
   });
   state.addEventListener("change", () => filters.requestSubmit());
   list.append(filters, more);
-  if (!matched.length && !alert) list.append(leads.length ? sectionEmpty(ui, "chatsNone") : sectionEmpty(ui, "chatsEmpty"));
-  matched.forEach((lead) => list.append(chatRow(ui, flow, lead)));
+  if (ui.state.chatsPending) {
+    const skel = ui.el("div", { class: "chat-skel", role: "status", "aria-busy": "true" });
+    for (let index = 0; index < 6; index += 1) skel.append(ui.el("span", { class: "skel" }));
+    list.append(skel);
+  } else {
+    if (!matched.length && !alert) list.append(leads.length ? sectionEmpty(ui, "chatsNone") : sectionEmpty(ui, "chatsEmpty"));
+    matched.forEach((lead) => list.append(chatRow(ui, flow, lead)));
+  }
   const open = matched.find((lead) => lead.kind + ":" + lead.id === flow.chat) || null;
   layout.append(list, threadPane(ui, open), leadPane(ui, open));
   wrap.append(layout);
@@ -495,7 +501,15 @@ function composer(ui, lead, messages, lang) {
   follow.addEventListener("change", () => { flow.followHours = follow.value; });
   const voice = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Nota de voz" : "Voice note" }, ["♫"]);
   voice.addEventListener("click", () => ui.toast(lang === "es" ? "Las notas de voz se eligen en Contenido. Desde aquí no se graba nada." : "Voice notes are chosen in Content. Nothing is recorded here."));
-  tools.append(emoji, attach, file, follow, voice);
+  const text = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Texto" : "Text" }, ["T"]);
+  text.addEventListener("click", () => reply.focus());
+  const assign = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Asignar" : "Assign" }, ["@" ]);
+  assign.addEventListener("click", () => ui.toast(lang === "es" ? "La asignación se queda en este panel. No se envía nada." : "Assignment stays in this panel. Nothing is sent."));
+  const ai = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "AI" }, ["AI"]);
+  ai.addEventListener("click", () => ui.toast(lang === "es" ? "La IA no se enciende desde aquí. No se envía nada." : "AI is not switched on from here. Nothing is sent."));
+  const schedule = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Programar" : "Schedule" }, ["◷"]);
+  schedule.addEventListener("click", () => ui.toast(lang === "es" ? "Nada se programa ni se envía desde aquí." : "Nothing is scheduled or sent from here."));
+  tools.append(emoji, text, attach, file, follow, assign, ai, schedule, voice);
   const actions = ui.el("div", { class: "filters" });
   actions.append(ui.button("Send reply", (event) => {
     event.preventDefault();

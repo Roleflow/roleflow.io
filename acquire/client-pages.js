@@ -1,5 +1,4 @@
-import { AGENT_KEYS, DEFAULT_POLICY, dashboardMetrics, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
-import { shareCents, showUpRate } from "./model.js";
+import { DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
 import { grokLaunchUrl } from "./client-config.js";
 import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
@@ -76,6 +75,13 @@ const COPY = {
     workspaceOn: "The workspace is on.",
     workspaceOff: "The workspace is off.",
     billingLink: "Billing",
+    accounts: "Accounts",
+    manageAccounts: "Manage accounts",
+    alerts: "Alerts",
+    pending: "{n} pending",
+    viewAlerts: "View alerts",
+    promptsBanner: "Business and prompts live with the SOPs. Open them to review the setter.",
+    promptsLink: "Business & prompts",
     showSave: "Save show-up",
     bookTitle: "Record a booked call",
     bookBody: "This stores the call for show-up tracking. It does not message Instagram.",
@@ -149,6 +155,13 @@ const COPY = {
     workspaceOn: "El espacio está encendido.",
     workspaceOff: "El espacio está apagado.",
     billingLink: "Facturación",
+    accounts: "Cuentas",
+    manageAccounts: "Gestionar cuentas",
+    alerts: "Avisos",
+    pending: "{n} pendientes",
+    viewAlerts: "Ver avisos",
+    promptsBanner: "El negocio y los prompts están en los SOPs. Ábrelos para revisar el setter.",
+    promptsLink: "Negocio y prompts",
     showSave: "Guardar asistencia",
     bookTitle: "Registrar una llamada agendada",
     bookBody: "Esto guarda la llamada para la asistencia. No escribe por Instagram.",
@@ -163,31 +176,51 @@ export function text(language) {
 
 export function renderDashboardHome(ui) {
   const copy = text(ui.language());
-  const metrics = dashboardMetrics({
-    targets: ui.state.targets,
-    threads: ui.state.threads,
-    bookings: ui.state.bookings,
-    switches: ui.state.agentSwitches
+  const wrap = ui.el("div", { class: "platform-home dash-home" });
+  const grid = ui.el("div", { class: "dash-grid" });
+  const ig = ui.state.ig && (!ui.state.ig.business_id || ui.state.ig.business_id === ui.state.businessId) ? ui.state.ig : null;
+  const connected = Boolean(ig && ig.status === "connected");
+  const handle = ig && ig.username ? "@" + String(ig.username).replace(/^@/, "") : "";
+  const accounts = ui.el("article", { class: "dash-card accounts" });
+  accounts.append(ui.el("div", { class: "dash-kicker" }, [
+    ui.el("span", { class: "dash-ico", "aria-hidden": "true", text: "IG" }),
+    ui.el("h2", { text: copy.accounts })
+  ]));
+  const row = ui.el("p", { class: "acct-row" });
+  row.append(ui.el("i", { class: connected ? "dot-on" : "dot-off", "aria-hidden": "true" }));
+  row.append(document.createTextNode("Instagram "));
+  row.append(ui.el("strong", { text: connected ? (handle || copy.igConnected) : copy.igNotConnected }));
+  accounts.append(row);
+  accounts.append(ui.button(copy.manageAccounts, () => { if (ui.go) ui.go("instagram"); }));
+  const pending = (ui.state.exceptions || []).length + (ui.state.notifications || []).filter((item) => !item.read_at).length;
+  const alerts = ui.el("article", { class: "dash-card alerts" });
+  alerts.append(ui.el("div", { class: "dash-kicker" }, [
+    ui.el("span", { class: "dash-ico", "aria-hidden": "true", text: "!" }),
+    ui.el("h2", { text: copy.alerts })
+  ]));
+  alerts.append(ui.el("p", { class: "dash-pending", text: copy.pending.replace("{n}", String(pending)) }));
+  const view = ui.button(copy.viewAlerts, () => {
+    const panel = document.getElementById("notify-panel");
+    if (panel) {
+      panel.hidden = false;
+      (ui.state.exceptions || []).forEach((item) => {
+        if (item.message) panel.append(ui.el("p", { text: item.message }));
+      });
+    }
   });
-  const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Dashboard", copy.dashLede, "dashboard", "grid"));
-  const grid = ui.el("div", { class: "kpi-row" });
-  const show = showUpRate(ui.state.bookings);
-  const recorded = (ui.state.deals || []).filter((deal) => deal.attributed !== false).reduce((sum, deal) => sum + (Number(deal.amount_cents) || 0), 0);
-  const share = ui.money ? ui.money(shareCents(recorded, ui.state.settings && ui.state.settings.share_bps)) : String(shareCents(recorded, ui.state.settings && ui.state.settings.share_bps));
-  grid.append(metricCard(ui, copy.leads, String(metrics.leads), copy.leadsNote, "gray"));
-  grid.append(metricCard(ui, copy.chats, String(metrics.chats), copy.chatsNote, "mint"));
-  grid.append(metricCard(ui, copy.booked, String(metrics.booked), copy.bookedNote, "lavender"));
-  grid.append(metricCard(ui, copy.agents, String(metrics.liveAgents) + " / " + AGENT_KEYS.length, copy.agentsNote, "blue"));
-  grid.append(metricCard(ui, copy.showLabel, show.rate == null ? copy.showEmpty : (ui.percent ? ui.percent(show.rate) : String(show.rate)), copy.showNote, "peach"));
-  grid.append(metricCard(ui, copy.shareLabel, share, copy.shareNote, "gray"));
+  view.classList.add("ghost");
+  alerts.append(view);
+  grid.append(accounts, alerts);
   wrap.append(grid);
-  wrap.append(ui.el("p", {}, [ui.el("a", { class: "btn ghost sm", href: "#billing" }, [copy.billingLink])]));
-  const banner = ui.el("div", { class: "info-banner", role: "status" });
-  const on = ui.state.settings && ui.state.settings.system_enabled;
-  banner.append(ui.el("p", { text: (on ? copy.workspaceOn : copy.workspaceOff) + " " + ui.instagramLine() }));
+  const banner = ui.el("a", { class: "info-banner", href: "#sops" });
+  banner.append(ui.el("strong", { text: copy.promptsLink }));
+  banner.append(ui.el("p", { text: copy.promptsBanner }));
+  banner.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (ui.go) ui.go("sops");
+  });
   wrap.append(banner);
-  wrap.append(ui.el("p", { class: "hq-note", text: copy.channel }));
+  wrap.append(ui.el("p", {}, [ui.el("a", { class: "btn ghost sm", href: "#billing" }, [copy.billingLink])]));
   return wrap;
 }
 

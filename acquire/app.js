@@ -170,7 +170,24 @@ document.getElementById("acq-nav").addEventListener("click", (event) => {
 bindAssistant(() => ({
   supabase: state.supabase,
   businessId: state.businessId,
-  applyProposal
+  applyProposal,
+  onOpen() {
+    state.assistantOpen = true;
+    if (state.tab === "assistant" && state.assistantExpanded) return;
+    revealAssistantModal();
+  },
+  onClose() {
+    state.assistantOpen = false;
+    state.assistantExpanded = false;
+    if (state.tab === "assistant") go("home");
+    else parkAssistant();
+  },
+  onExpand() {
+    state.assistantOpen = false;
+    state.assistantExpanded = true;
+    go("assistant");
+  },
+  language
 }));
 bindOps({ state, paint });
 pick.addEventListener("change", () => {
@@ -345,7 +362,10 @@ async function bootBusiness(id, options) {
   const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
   state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
   state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
-  if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
+  state.chatsPending = !quiet && state.tab === "chats";
+  if (!quiet && state.tab === "chats") {
+    app.innerHTML = '<div class="chat-skel" role="status" aria-busy="true"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>';
+  } else if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
   const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
   if (token !== bootToken) return;
   if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
@@ -367,6 +387,7 @@ async function bootBusiness(id, options) {
     const adminHome = document.getElementById("nav-admin-home");
     if (adminHome) adminHome.hidden = !state.isAdmin;
     armEditorRequest();
+    state.chatsPending = false;
     paint();
     settleInstagramNotice();
   }
@@ -629,6 +650,7 @@ async function loadEarlier() {
 
 function paint() {
   parkAssistant();
+  if (state.tab !== "assistant") state.assistantExpanded = false;
   markTab();
   app.innerHTML = "";
   const root = el("div", { class: "acq" });
@@ -641,16 +663,16 @@ function paint() {
     root.append(banner);
   }
   const step = nextStepCard();
-  if (step && state.tab !== "assistant") root.append(step);
+  if (step && state.tab !== "assistant" && state.tab !== "home") root.append(step);
   const ui = pageUi();
-  if (state.tab === "home") root.append(renderPanelHome(ui));
+  if (state.tab === "home" || (state.tab === "assistant" && !state.assistantExpanded)) root.append(renderPanelHome(ui));
   if (state.tab === "dashboard") root.append(renderDashboardHome(ui));
   if (state.tab === "performance") {
     state.statsEmbedded = true;
     root.append(renderPerformance(ui));
     root.append(renderStats(ui));
   }
-  if (state.tab === "assistant") root.append(dockAssistant(ui));
+  if (state.tab === "assistant" && state.assistantExpanded) root.append(dockAssistant(ui));
   if (state.tab === "chats") root.append(renderChats(ui));
   if (state.tab === "opportunities") root.append(renderCrm(ui));
   if (state.tab === "calendar") root.append(renderCalendar(ui));
@@ -680,8 +702,7 @@ function paint() {
     root.append(wrap);
   }
   if (state.tab === "settings") {
-    root.append(renderModelKey(ui));
-    root.append(renderInstagramConnect(ui));
+    if (state.settingsFocus === "model") state.configKey = "reply";
     root.append(renderConfiguration(ui));
     root.append(renderSalesLinks(ui));
   }
@@ -692,6 +713,7 @@ function paint() {
   }
   app.append(root);
   paintChrome(pageUi());
+  if ((state.tab === "assistant" || state.assistantOpen) && !state.assistantExpanded) revealAssistantModal();
   if (state.tab === "settings" && state.settingsFocus === "model") {
     const keyCard = document.getElementById("model-key");
     if (keyCard) keyCard.scrollIntoView({ block: "start" });
@@ -748,6 +770,8 @@ function pageUi() {
     setterAgentCard,
     voiceLibrary,
     renderEngine: (tab, host) => renderEngine(tab, host, engineCtx()),
+    mountInstagram: () => renderInstagramConnect(pageUi()),
+    mountModelKey: () => renderModelKey(pageUi()),
     roleParams,
     mergeParams,
     enqueueEngine,
@@ -852,11 +876,32 @@ function parkAssistant() {
   const fab = document.getElementById("assistant-open");
   if (panel && panel.parentElement !== document.body) document.body.append(panel);
   if (panel) {
-    panel.classList.remove("is-docked");
+    panel.classList.remove("is-docked", "is-modal");
     panel.hidden = true;
   }
-  if (fab) fab.hidden = false;
+  if (fab) {
+    fab.hidden = false;
+    fab.setAttribute("aria-expanded", "false");
+  }
+  document.body.classList.remove("assistant-page", "assistant-modal");
+}
+
+function revealAssistantModal() {
+  const panel = document.getElementById("assistant-panel");
+  const fab = document.getElementById("assistant-open");
+  if (panel && panel.parentElement !== document.body) document.body.append(panel);
+  if (panel) {
+    panel.hidden = false;
+    panel.classList.remove("is-docked");
+    panel.classList.add("is-modal");
+  }
+  if (fab) {
+    fab.hidden = false;
+    fab.setAttribute("aria-expanded", "true");
+  }
   document.body.classList.remove("assistant-page");
+  document.body.classList.add("assistant-modal");
+  paintAssistantFace();
 }
 
 function dockAssistant(ui) {
@@ -867,17 +912,52 @@ function dockAssistant(ui) {
   const fab = document.getElementById("assistant-open");
   if (panel) {
     panel.hidden = false;
+    panel.classList.remove("is-modal");
     panel.classList.add("is-docked");
-    const log = panel.querySelector(".assistant-log");
-    if (log && !log.childElementCount) {
-      const note = el("p", { class: "section-empty", role: "status", text: sectionText(lang, "assistantEmpty") });
-      log.append(note);
-    }
     wrap.append(panel);
   }
   if (fab) fab.hidden = true;
+  document.body.classList.remove("assistant-modal");
   document.body.classList.add("assistant-page");
+  paintAssistantFace();
   return wrap;
+}
+
+function paintAssistantFace() {
+  const lang = language();
+  const es = lang === "es";
+  const ready = document.getElementById("assistant-ready");
+  const hi = document.getElementById("assistant-hi");
+  const hint = document.getElementById("assistant-hint");
+  const note = document.getElementById("assistant-disclaimer");
+  const guide = document.getElementById("assistant-guide-label");
+  if (ready) ready.textContent = es ? "Listo para ayudar" : "Ready to help";
+  if (hi) hi.textContent = es ? "Hola, ¿qué hacemos hoy?" : "Hi, what are we doing today?";
+  if (hint) hint.textContent = es ? "Enter para enviar" : "Enter to send";
+  if (note) note.textContent = es ? "El asistente de Roleflow puede equivocarse. Revisa un cambio antes de guardarlo." : "Roleflow Assistant can be wrong. Check a change before you save it.";
+  if (guide) guide.textContent = es ? "Guía automática" : "Auto guide";
+  const chips = [
+    ["ask", es ? "Responder preguntas" : "Answer questions"],
+    ["leads", es ? "Gestionar leads" : "Manage leads"],
+    ["ai", es ? "Editar mi IA" : "Edit my AI"],
+    ["report", es ? "Informe" : "Report"]
+  ];
+  chips.forEach(([mode, label]) => {
+    const button = document.querySelector('#assistant-chips button[data-mode="' + mode + '"]');
+    if (button) button.textContent = label;
+  });
+  const prompts = es
+    ? ["¿Cómo conecto Instagram?", "¿Qué leads necesitan seguimiento?", "Ayúdame a ajustar el prompt del setter.", "Resume este negocio esta semana."]
+    : ["How do I connect Instagram?", "Which leads need a follow-up?", "Help me tighten the setter prompt.", "Summarize this business this week."];
+  document.querySelectorAll("#assistant-prompts button").forEach((button, index) => {
+    const text = prompts[index];
+    if (!text) return;
+    button.dataset.fill = text;
+    button.textContent = text + " →";
+  });
+  const empty = document.getElementById("assistant-empty");
+  const log = document.getElementById("assistant-log");
+  if (empty && log) empty.hidden = log.childElementCount > 0;
 }
 
 function bindProfile() {
@@ -930,23 +1010,60 @@ function bindShell() {
 
 function renderPanelHome(ui) {
   const lang = language();
-  const wrap = el("div", { class: "platform-home" });
-  wrap.append(pageHeader(ui, lang === "es" ? "Inicio" : "Home", lang === "es" ? "El negocio abierto y el siguiente paso." : "The open business and the next step.", "dashboard", "grid"));
-  const show = showUpRate(state.bookings);
-  const tiles = el("div", { class: "kpi-row" });
-  [
-    ["gray", sectionText(lang, "people"), String((state.targets || []).length + (state.contacts || []).length)],
-    ["mint", lang === "es" ? "Chats" : "Chats", String((state.threads || []).length + (state.contacts || []).length)],
-    ["lavender", sectionText(lang, "booked"), String((state.bookings || []).length)],
-    ["peach", sectionText(lang, "showUp"), show.rate == null ? "—" : percent(show.rate)]
-  ].forEach(([tone, label, value]) => {
-    const card = el("article", { class: "kpi pastel " + tone });
-    card.append(el("span", { class: "watermark", "aria-hidden": "true", text: label.slice(0, 1) }));
-    card.append(el("span", { text: label }), el("strong", { text: value }));
-    tiles.append(card);
-  });
-  wrap.append(tiles);
+  const es = lang === "es";
+  const wrap = el("div", { class: "start-home" });
+  wrap.append(el("h2", { class: "start-title", text: es ? "Configura tu setter de IA para vender por ti 24/7 en menos de 30 minutos" : "Set up your AI setter to sell for you 24/7 in under 30 minutes" }));
+  wrap.append(el("p", { class: "start-sub", text: es ? "Conecta Instagram, revisa el negocio y prueba el chat. Los resultados varían." : "Connect Instagram, review the business, and test the chat. Results vary." }));
+  const split = el("div", { class: "start-split" });
+  const player = el("div", { class: "start-video" });
+  const frame = document.createElement("iframe");
+  frame.src = "https://share.descript.com/embed/XJIQMjM0Q1N";
+  frame.title = es ? "Recorrido de Roleflow" : "Roleflow walkthrough";
+  frame.loading = "lazy";
+  frame.allow = "fullscreen; picture-in-picture";
+  frame.setAttribute("allowfullscreen", "");
+  frame.referrerPolicy = "strict-origin-when-cross-origin";
+  player.append(frame);
+  const fallback = el("p", { class: "mute" });
+  fallback.append(el("a", { href: "https://share.descript.com/view/XJIQMjM0Q1N", target: "_blank", rel: "noopener" }, [es ? "Abrir el vídeo" : "Open the video"]));
+  player.append(fallback);
+  split.append(player, firstSteps(lang));
+  wrap.append(split);
   return wrap;
+}
+
+function firstSteps(lang) {
+  const es = lang === "es";
+  const ig = state.ig;
+  const igDone = Boolean(ig && ig.status === "connected" && (!ig.business_id || ig.business_id === state.businessId));
+  const reviewed = Boolean(state.settings && state.settings.onboarding_step === "live");
+  const promptDone = Boolean(String(state.setterPrompt || "").trim());
+  const tested = Boolean(state.setterTestedAt);
+  const steps = [
+    { id: "instagram", done: igDone, title: es ? "Conectar Instagram" : "Connect Instagram", action: es ? "Conectar" : "Connect", go: "instagram" },
+    { id: "review", done: reviewed, title: es ? "Revisar tu negocio" : "Review your business", action: es ? "Revisar" : "Review", go: "sops" },
+    { id: "prompt", done: promptDone, title: es ? "Configurar prompt y SOP" : "Set up prompt/SOP", action: es ? "Abrir" : "Open", go: "sops" },
+    { id: "test", done: tested, title: es ? "Probar el chat" : "Test chat", action: es ? "Probar" : "Test", go: "sops" }
+  ];
+  const doneCount = steps.filter((step) => step.done).length;
+  const active = steps.find((step) => !step.done) || null;
+  const card = el("section", { class: "steps-card" });
+  card.append(el("h3", { text: es ? "Primeros pasos" : "First steps" }));
+  const bar = el("div", { class: "steps-bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(steps.length), "aria-valuenow": String(doneCount) });
+  const fill = el("span");
+  fill.style.width = Math.round((doneCount / steps.length) * 100) + "%";
+  bar.append(fill);
+  card.append(bar);
+  steps.forEach((step, index) => {
+    const row = el("div", { class: "step" + (step.done ? " done" : "") + (active && active.id === step.id ? " active" : "") });
+    row.append(el("span", { class: "step-mark", text: step.done ? "✓" : String(index + 1) }));
+    const copy = el("div", { class: "step-copy" });
+    copy.append(el("strong", { text: step.title }));
+    if (active && active.id === step.id) copy.append(button(step.action, () => go(step.go)));
+    row.append(copy);
+    card.append(row);
+  });
+  return card;
 }
 
 function nextStepCard() {
