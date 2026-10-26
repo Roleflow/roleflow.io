@@ -15,7 +15,8 @@ const pending = {
   attempts: 0,
   run_at: "2026-10-23T10:59:48.611Z",
   idempotency_key: "gw:8f8fcc5f-819f-490c-8a82-c5a7d9e0e3f0",
-  payload: { text: "What does your AI agency specialize in?", conversationId: "2108532849767337", accountId: "acct" }
+  payload: { text: "What does your AI agency specialize in?", conversationId: "2108532849767337", accountId: "acct" },
+  agent_enabled: true
 };
 
 assert.equal(INLINE_WAIT_SECONDS, 25);

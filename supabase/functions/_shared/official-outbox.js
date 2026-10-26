@@ -1,5 +1,6 @@
 import { API_BASE, interpretSend, sendRequest } from "./ig-gateway.js";
 import { withAttachment } from "./clip-send.js";
+import { sendBlocked } from "./agent-control.js";
 
 // The webhook waits at most this long inside the request. A longer configured
 // delay is stored on the outbox row and sent by the one-minute tick.
@@ -39,6 +40,7 @@ export function claimOfficial(rows, now, limit) {
 }
 
 export async function postOfficial(row, apiKey, fetchImpl, extras) {
+  if (sendBlocked(row)) return { ok: false, status: "blocked", error: "The agent is off." };
   const payload = row && row.payload ? row.payload : {};
   const hasText = Boolean(String(payload.text || "").trim());
   const hasClip = Boolean(payload.clip && payload.clip.path);

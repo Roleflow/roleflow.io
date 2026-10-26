@@ -14,7 +14,7 @@ import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
-import { recoveryDue } from "./ig/recovery.js";
+import { agentEnabled, agentKeyForKind, followupDue, followupLead, normalizePolicy, recoveryKey } from "../_shared/agent-control.js";
 import { replyDelayMs } from "./ig/delay.js";
 import { parseSignedRequest } from "./ig/deletion.js";
 import { routeByIgUser } from "./ig/tenant.js";
@@ -182,6 +182,7 @@ async function acceptInbound(db, businessId, event) {
   if (event.kind === "reaction" || event.kind === "mention" || event.kind === "postback") return;
   if (thread.human_locked) return;
   if (!settings?.system_enabled) return;
+  if (!await agentEnabled(db, businessId, "setter")) return;
   const delay = replyDelayMs(settings.reply_delay_seconds ?? 60, 0.2, Math.random);
   await db.from("ig_outbox").insert({
     business_id: businessId,
@@ -216,9 +217,11 @@ async function runOutbox(db, row) {
   const finish = (status, last_error = null) => db.from("ig_outbox").update({ status, last_error }).eq("id", row.id).eq("business_id", businessId);
   if (!thread || !settings) return finish("failed", "missing thread");
   if (!settings.system_enabled && row.kind !== "human") return finish("blocked", "system_off");
+  const agentKey = agentKeyForKind(row.kind);
+  if (agentKey !== "human" && !await agentEnabled(db, businessId, agentKey)) return finish("blocked", "agent_off");
   const role = row.kind === "recovery" ? "conversation_recovery" : row.kind === "comment_private" ? "comment_to_dm" : "qualification";
-  const roleOn = await db.rpc("acq_role_on", { p_agent: businessId, p_role: role });
-  if (row.kind !== "human" && roleOn.data !== true) return finish("blocked", "agent_off");
+  const savedPrompt = agentKey === "human" ? "" : await setterPromptBody(db, businessId);
+  if (agentKey === "setter" && !savedPrompt) return finish("blocked", "prompt_missing");
   const quiet = await db.rpc("acq_in_quiet_hours", {
     p_tz: settings.timezone,
     p_start: settings.quiet_start,
@@ -261,7 +264,7 @@ async function runOutbox(db, row) {
         fallback: loaded.fallback,
         onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
         tools: [bookingTool()],
-        system: systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }, booking) + clipInstructions(clips),
+        system: (savedPrompt ? savedPrompt + "\n\n" : "") + systemPrompt({ ...prompts, notes: prompts.notes + knowledgeBlock(settings) }, booking) + clipInstructions(clips),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -437,24 +440,30 @@ async function maybeBook(db, businessId, thread, settings, plan, booking) {
   return bubbles.slice(-2);
 }
 
+async function setterPromptBody(db, businessId) {
+  const row = await db.from("acq_agent_prompts").select("body").eq("business_id", businessId).maybeSingle();
+  if (!row || row.error || !row.data) return "";
+  return String(row.data.body || "").trim();
+}
+
 async function queueRecovery(db) {
-  const { data: businesses } = await db.from("acq_settings").select("agent_id, followup_hours, followup_count, system_enabled, timezone").eq("system_enabled", true);
+  const { data: businesses } = await db.from("acq_settings").select("agent_id, system_enabled, timezone").eq("system_enabled", true);
   for (const settings of businesses || []) {
     const businessId = settings.agent_id;
-    const on = await db.rpc("acq_role_on", { p_agent: businessId, p_role: "conversation_recovery" });
-    if (on.data !== true) continue;
+    if (!await agentEnabled(db, businessId, "followup")) continue;
+    const policyRow = await db.from("acq_followup_policy").select("*").eq("business_id", businessId).maybeSingle();
+    const policy = normalizePolicy(policyRow && policyRow.data);
     const { data: threads } = await db.from("ig_threads").select("*").eq("business_id", businessId).eq("human_locked", false).limit(100);
     for (const thread of threads || []) {
-      if (!recoveryDue({
-        lastUserMessageAt: thread.last_user_message_at,
-        followupCount: thread.followup_count,
+      const decision = followupDue({
+        enabled: true,
+        policy,
+        lead: followupLead(thread),
         now: Date.now(),
-        periodHours: settings.followup_hours,
-        max: settings.followup_count,
-        humanLocked: thread.human_locked,
-        state: thread.state
-      })) continue;
-      const key = `recovery:${thread.id}:${thread.followup_count}`;
+        timeZone: settings.timezone
+      });
+      if (!decision.due) continue;
+      const key = recoveryKey(thread.id, thread.followup_count);
       const inserted = await db.from("ig_outbox").insert({
         business_id: businessId,
         thread_id: thread.id,

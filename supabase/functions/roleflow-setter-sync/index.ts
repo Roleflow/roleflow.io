@@ -36,7 +36,9 @@ Deno.serve(async (req) => {
   const action = String(body.action || "");
   const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
 
+  const retired = Deno.env.get("TAILORTALK_SYNC_ENABLED") !== "1";
   if (action === "tick") {
+    if (retired) return json(410, { error: "TailorTalk sync is retired. Instagram messages run on Roleflow." });
     if (!(await cronOk(service, bearer))) return json(401, { error: "Unauthorized." });
     const enabled = await service.from("acq_settings").select("agent_id").eq("studio_setter_sync", true);
     const ids = (enabled.data || []).map((row) => row.agent_id);
@@ -55,6 +57,9 @@ Deno.serve(async (req) => {
   const allowed = await service.rpc("acq_user_can_edit", { p_business: businessId, p_user: user.data.user.id });
   if (allowed.error || allowed.data !== true) return json(403, { error: "You can't edit this business." });
 
+  if (retired && (action === "push" || action === "pull" || action === "deliver")) {
+    return json(410, { error: "TailorTalk sync is retired. Instagram messages run on Roleflow." });
+  }
   if (action === "push") return json(200, await pushBusiness(service, businessId));
   if (action === "pull") return json(200, await pullBusiness(service, businessId));
   if (action === "import_dnc") return json(200, await importDnc(service, businessId));

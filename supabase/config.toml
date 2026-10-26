@@ -414,6 +414,14 @@ verify_jwt = false
 [functions.inbox-reply]
 verify_jwt = true
 
+# client-dashboard checks the signed-in editor. The browser sends the user JWT.
+[functions.client-dashboard]
+verify_jwt = true
+
+# followup-boss checks the acquisition cron secret. pg_cron cannot send a user JWT.
+[functions.followup-boss]
+verify_jwt = false
+
 # llm-check runs a tiny completion with the caller's JWT. Keys are not returned.
 [functions.llm-check]
 verify_jwt = true

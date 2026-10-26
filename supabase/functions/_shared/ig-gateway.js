@@ -312,6 +312,7 @@ export function replyText(plan) {
 }
 
 export function outboxWriteStatus(result) {
+  if (result && result.status === "blocked") return { status: "blocked", last_error: result.error || "The agent is off." };
   if (result && result.status === "sent") return { status: "done", last_error: null };
   if (result && result.status === "not_thread_owner") {
     return { status: "not_thread_owner", last_error: result.error || "Another app owns this Instagram thread." };

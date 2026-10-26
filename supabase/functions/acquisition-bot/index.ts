@@ -11,6 +11,7 @@
 // reports voice_send after it actually sends the file.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+import { agentEnabled } from "../_shared/agent-control.js";
 import { completeChat, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 
 const cors = {
@@ -96,7 +97,13 @@ Deno.serve(async (req) => {
   if (action === "ingest") {
     const targets = Array.isArray(body.targets) ? body.targets : null;
     if (!targets) return json(400, { error: "targets must be an array." });
+    if (!await agentEnabled(service, agentId, "outreacher")) return json(200, { ok: true, skipped: "agent_off", accepted: [] });
     return ingestScored(service, agentId, targets);
+  }
+  if (action === "queue" || action === "report" || action === "voice_pick") {
+    const warmerOn = await agentEnabled(service, agentId, "warmer");
+    const outreachOn = await agentEnabled(service, agentId, "outreacher");
+    if (!warmerOn && !outreachOn) return json(200, { ok: true, skipped: "agent_off" });
   }
   if (action === "queue") {
     const limit = body.limit == null ? 30 : Number(body.limit);

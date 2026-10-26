@@ -1,34 +1,7 @@
+import { navLabel, NAV_GROUPS } from "./client-nav.mjs";
 import { renderOffice } from "./office.js";
 import { persistCollapsedGroups, readCollapsedGroups } from "./sidebar-state.js";
 import { renderConfiguration as opsConfig, renderPerformance as opsPerformance, renderStats as opsStats, renderTeam as opsTeam } from "./studio-ops.js";
-
-const GROUPS = [
-  { id: "onboarding", label: "Onboarding", items: [
-    { tab: "brief", label: "Business", icon: "clipboard", tone: "t1" },
-    { tab: "onboarding", label: "Setter questions", icon: "clipboard", tone: "t2" }
-  ] },
-  { id: "strategy", label: "Strategy", items: [
-    { tab: "links", label: "Sales links", icon: "link", tone: "t2" },
-    { tab: "content", label: "Value content", icon: "folder", tone: "t3" }
-  ] },
-  { id: "workforce", label: "AI Workforce", items: [
-    { tab: "outbound", label: "Outbound Manager", icon: "send", tone: "t4" },
-    { tab: "inbound", label: "Inbound Manager", icon: "inbox", tone: "t5" },
-    { tab: "pipeline", label: "CRM", icon: "users", tone: "t1" },
-    { tab: "inbox", label: "Chats", icon: "inbox", tone: "t2" },
-    { tab: "followups", label: "Follow-ups", icon: "send", tone: "t3" },
-    { tab: "reminders", label: "Reminders", icon: "clipboard", tone: "t4" },
-    { tab: "ctas", label: "Calls to action", icon: "link", tone: "t5" }
-  ] },
-  { id: "analysis", label: "Analysis", items: [
-    { tab: "stats", label: "Stats", icon: "chart", tone: "t2" },
-    { tab: "performance", label: "Performance", icon: "trend", tone: "t3" }
-  ] },
-  { id: "settings", label: "Settings", items: [
-    { tab: "configuration", label: "Configuration", icon: "settings", tone: "t4" },
-    { tab: "team", label: "Team", icon: "userplus", tone: "t5" }
-  ] }
-];
 
 const ICONS = {
   grid: ["M3 3h7v7H3z", "M14 3h7v7h-7z", "M14 14h7v7h-7z", "M3 14h7v7H3z"],
@@ -85,9 +58,9 @@ export function mountNav(ui) {
   if (name) name.textContent = business && business.agent_name ? business.agent_name : "This business";
   paintGlyph("logout-ico", "logout");
   const closed = new Set(readCollapsedGroups(groupStorage()));
+  const language = ui.language ? ui.language() : "en";
   slide.replaceChildren();
-  slide.append(navLink(ui, { tab: "dashboard", label: "Dashboard", icon: "grid", tone: "t1" }));
-  GROUPS.forEach((group) => {
+  NAV_GROUPS.forEach((group) => {
     const shut = closed.has(group.id);
     const block = ui.el("div", { class: shut ? "nav-group is-collapsed" : "nav-group" });
     const items = ui.el("div", { class: "nav-group-items", id: "nav-group-" + group.id });
@@ -102,7 +75,7 @@ export function mountNav(ui) {
     });
     const chevron = ui.el("span", { class: "nav-chevron", "aria-hidden": "true" });
     chevron.append(glyph("chevron"));
-    head.append(ui.el("span", { class: "nav-group-label", text: group.label }), chevron);
+    head.append(ui.el("span", { class: "nav-group-label", text: navLabel(group, language) }), chevron);
     head.addEventListener("click", () => {
       const next = block.classList.toggle("is-collapsed");
       head.setAttribute("aria-expanded", next ? "false" : "true");
@@ -225,7 +198,8 @@ export function pageHeader(ui, title, text, how, iconName) {
   const button = ui.button("How it works", () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
   const actions = ui.el("div", { class: "page-actions" });
-  if (ui.businessSync) {
+  const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup"]);
+  if (ui.businessSync && !(ui.state && quietSync.has(ui.state.tab))) {
     const sync = ui.businessSync();
     actions.append(ui.el("span", { id: "sync-state", class: "integration-status " + sync.tone, "data-sync": sync.key, text: sync.label }));
   }
@@ -257,8 +231,9 @@ function openAccounts(ui) {
 }
 
 function navLink(ui, item) {
-  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": item.label });
-  link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: item.label }));
+  const label = typeof item.label === "string" ? item.label : navLabel(item, ui.language ? ui.language() : "en");
+  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": label });
+  link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: label }));
   link.addEventListener("click", (event) => {
     event.preventDefault();
     ui.go(item.tab);

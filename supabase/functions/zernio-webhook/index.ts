@@ -23,6 +23,7 @@ import {
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
+import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 
 Deno.serve(async (req) => {
@@ -163,6 +164,17 @@ async function planJob(admin, job) {
     GEMINI_MODEL: Deno.env.get("GEMINI_MODEL") || ""
   };
   const role = job.event.kind === "comment" ? "comment_to_dm" : "qualification";
+  const setterOn = await agentEnabled(admin, job.account.businessId, "setter");
+  if (!setterOn) {
+    await admin.from("ig_outbox").update({ status: "blocked", last_error: "The agent is off." }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
+  const savedPrompt = await admin.from("acq_agent_prompts").select("body").eq("business_id", job.account.businessId).maybeSingle();
+  const setterPrompt = savedPrompt.error || !savedPrompt.data ? "" : String(savedPrompt.data.body || "").trim();
+  if (!setterPrompt) {
+    await admin.from("ig_outbox").update({ status: "blocked", last_error: "Save a system prompt before the setter can reply." }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
   const gate = await admin.from("acq_settings").select("office_mode, timezone, office_start, office_end, hours_by_day, reply_delay_seconds, reply_delay_max_seconds, setter_model, booking_fallback_url").eq("agent_id", job.account.businessId).maybeSingle();
   if (gate.error) {
     await admin.from("ig_outbox").update({ status: "failed", last_error: "The reply was not prepared." }).eq("id", job.id).eq("status", "pending");
@@ -210,7 +222,7 @@ async function planJob(admin, job) {
     const clips = clipRows.error ? [] : (clipRows.data || []);
     const sentRows = await admin.from("acq_clip_sends").select("clip_id").eq("business_id", job.account.businessId).eq("conversation_key", String(job.threadId || ""));
     const alreadySent = sentRows.error ? [] : (sentRows.data || []).map((item) => item.clip_id);
-    const promptBody = systemPrompt(sections, booking) + knowledge + clipInstructions(clips);
+    const promptBody = setterPrompt + "\n\n" + systemPrompt(sections, booking) + knowledge + clipInstructions(clips);
     plan = await planGatewayReply({
       thread,
       eventKind: job.event.kind,
@@ -316,6 +328,11 @@ async function sendPending(admin, apiKey, businessId) {
 }
 
 async function sendOne(admin, apiKey, row) {
+  const stamped = await stampAgentEnabled(admin, row);
+  if (sendBlocked(stamped)) {
+    await admin.from("ig_outbox").update({ status: "blocked", last_error: "The agent is off." }).eq("id", row.id).eq("status", "pending");
+    return;
+  }
   const locked = await admin.from("ig_outbox").update({ status: "running", attempts: (row.attempts || 0) + 1 }).eq("id", row.id).eq("status", "pending").select("id");
   if (!locked.data || !locked.data.length) return;
   let prepared = row;

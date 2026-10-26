@@ -254,19 +254,19 @@ export function nextStep(items) {
 export function commandItems() {
   const screens = [
     ["Dashboard", "dashboard"],
-    ["Business", "brief"],
-    ["Sales links", "links"],
-    ["Value content", "content"],
-    ["Outbound Manager", "outbound"],
-    ["Inbound Manager", "inbound"],
-    ["CRM", "pipeline"],
-    ["Follow-ups", "followups"],
-    ["Reminders", "reminders"],
-    ["Calls to action", "ctas"],
-    ["Chats", "chats"],
-    ["Stats", "stats"],
     ["Performance", "performance"],
-    ["Team", "team"]
+    ["Roleflow Assistant", "assistant"],
+    ["Chats", "chats"],
+    ["Opportunities", "opportunities"],
+    ["Calendar", "calendar"],
+    ["SOPs", "sops"],
+    ["Content", "content"],
+    ["Voice Gen", "voice"],
+    ["Lead Warmer", "warmer"],
+    ["Outreacher", "outreacher"],
+    ["Agentic Setter", "setter"],
+    ["Follow Up Boss", "followup"],
+    ["Settings", "settings"]
   ].map(([label, tab]) => ({ label, tab, hint: "Screen" }));
   const settings = QUESTIONS.map((item) => ({
     label: item.q,
