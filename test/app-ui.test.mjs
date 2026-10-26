@@ -202,7 +202,7 @@ assert.match(homepage, /id="menu-toggle" href="\/signup\/">Access/);
 assert.match(homepage, /An AI team that brings you/);
 assert.match(homepage, /Outbound Manager/);
 assert.match(homepage, /Inbound Manager/);
-assert.match(homepage, /10% of the growth/);
+assert.match(homepage, /AI client acquisition/);
 assert.doesNotMatch(homepage, /class="vsl"/);
 assert.doesNotMatch(homepage, /share\.descript\.com/);
 assert.doesNotMatch(homepage, /slow replies/);

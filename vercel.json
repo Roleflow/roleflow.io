@@ -31,6 +31,36 @@
       "statusCode": 301
     },
     {
+      "source": "/pricing",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/pricing/",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/pricing/index.html",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/precios",
+      "destination": "/es/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/precios/",
+      "destination": "/es/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/precios/index.html",
+      "destination": "/es/",
+      "statusCode": 301
+    },
+    {
       "source": "/:path*",
       "has": [
         {

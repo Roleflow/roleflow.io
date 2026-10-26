@@ -10,7 +10,7 @@ from pages_data import PAGES
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://www.roleflow.io"
 BOOK = "https://calendar.app.google/8i1gomkozavqYU5b8"
-ONE = "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates."
+ONE = "Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls."
 IG = "https://www.instagram.com/roleflow.io"
 TT = "https://www.tiktok.com/@roleflow.io"
 YT = "https://www.youtube.com/@roleflow"
@@ -23,14 +23,12 @@ UPDATED_ES = "Actualizado: 14 de octubre de 2026"
 
 NAV_EN = [
     ("/what-is-an-ai-dm-setter/", "AI DM Setter"),
-    ("/pricing/", "Pricing"),
     ("/faq/", "FAQ"),
     ("/best-ai-dm-setters/", "Compare"),
     ("/signup/", "Sign up"),
 ]
 NAV_ES = [
     ("/es/que-es-un-setter-con-ia/", "Setter con IA"),
-    ("/es/precios/", "Precios"),
     ("/es/preguntas-frecuentes/", "Preguntas"),
     ("/es/mejores-setters-con-ia/", "Comparar"),
     ("/signup/", "Crear cuenta"),
@@ -66,7 +64,7 @@ def footer():
 <div><h2>Español</h2><ul>{lis(es_links)}</ul></div>
 </div>
 <p class="social">{social_html}</p>
-<p class="fine">© Roleflow. Instagram DM sales systems, paid on commission. <a href="mailto:diego@roleflow.io">diego@roleflow.io</a></p>
+<p class="fine">© Roleflow. Instagram DM sales systems. <a href="mailto:diego@roleflow.io">diego@roleflow.io</a></p>
 </div></footer>
 <script src="/assets/site-config.js"></script>'''
 
@@ -129,8 +127,8 @@ def head(page, lang):
 
 def org_node(lang):
     desc = page_desc = {
-        "en": "Done-for-you AI DM setter for Instagram: instant replies, personal voice notes you record, follow-ups and booked calls. $0 setup, paid on results.",
-        "es": "Setter con IA para DMs de Instagram, hecho para ti: respuestas al instante, notas de voz personales que grabas, seguimientos y llamadas agendadas. $0 de setup, cobrado sobre resultados.",
+        "en": "Done-for-you AI DM setter for Instagram: instant replies, personal voice notes you record, follow-ups and booked calls.",
+        "es": "Setter con IA para DMs de Instagram, hecho para ti: respuestas al instante, notas de voz personales que grabas, seguimientos y llamadas agendadas.",
     }[lang]
     return {
         "@type": "Organization",
@@ -148,7 +146,6 @@ def org_node(lang):
 
 def app_node(lang):
     if lang == "en":
-        desc = "$0 setup and $0 retainer; 10% of revenue generated"
         features = [
             "Replies to Instagram DMs in seconds, 24/7",
             "Personal voice notes you record",
@@ -158,7 +155,6 @@ def app_node(lang):
             "Done-for-you setup and management",
         ]
     else:
-        desc = "$0 de setup y $0 de cuota mensual; el 10 % de los ingresos generados"
         features = [
             "Responde DMs de Instagram en segundos, 24/7",
             "Notas de voz con grabaciones personales del dueño",
@@ -177,7 +173,6 @@ def app_node(lang):
         "inLanguage": ["en", "es"],
         "publisher": {"@id": ORIGIN + "/#org"},
         "featureList": features,
-        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": desc},
     }
 
 
@@ -398,6 +393,12 @@ def vercel():
             {"source": "/admin/office", "destination": "/admin/hq/", "statusCode": 301},
             {"source": "/admin/office/", "destination": "/admin/hq/", "statusCode": 301},
             {"source": "/admin/office/index.html", "destination": "/admin/hq/", "statusCode": 301},
+            {"source": "/pricing", "destination": "/", "statusCode": 301},
+            {"source": "/pricing/", "destination": "/", "statusCode": 301},
+            {"source": "/pricing/index.html", "destination": "/", "statusCode": 301},
+            {"source": "/es/precios", "destination": "/es/", "statusCode": 301},
+            {"source": "/es/precios/", "destination": "/es/", "statusCode": 301},
+            {"source": "/es/precios/index.html", "destination": "/es/", "statusCode": 301},
             {
                 "source": "/:path*",
                 "has": [{"type": "host", "value": "roleflow.io"}],
@@ -432,7 +433,7 @@ def images():
     draw.text((72, 150), "Roleflow", font=bold, fill="#EEF1FA")
     draw.text((72, 250), "Done-for-you AI DM setter", font=regular, fill="#E8B04A")
     draw.text((72, 300), "for Instagram.", font=regular, fill="#E8B04A")
-    blurb = "Replies in seconds. Personal voice notes you record.\n$0 setup, paid as a % of revenue it generates."
+    blurb = "Replies in seconds. Personal voice notes you record.\nFollow-ups and booked calls."
     draw.multiline_text((72, 400), blurb, font=regular, fill="#EEF1FA", spacing=10)
     im.save(ROOT / "og-image.png")
 
@@ -501,8 +502,8 @@ def home_jsonld():
 def patch_home():
     path = ROOT / "index.html"
     text = path.read_text(encoding="utf-8")
-    title = "Roleflow: Done-for-You AI DM Setter for Instagram | $0 Setup, Pay on Results"
-    desc = "Done-for-you AI DM setter for Instagram: replies in seconds, personal voice notes you record, follow-ups and booked calls. $0 setup, pay 10% of revenue."
+    title = "Roleflow: Done-for-You AI DM Setter for Instagram"
+    desc = "Done-for-you AI DM setter for Instagram: replies in seconds, personal voice notes you record, follow-ups, and booked calls. We build it and we run it."
     if len(desc) < 150 or len(desc) > 160:
         raise SystemExit(len(desc))
     head_extra = f'''<title>{title}</title>
@@ -536,7 +537,7 @@ def patch_home():
 '''
     if "z-index:6" not in text:
         text = text.replace("</style>", css + "</style>", 1)
-    links = '''<nav class="geo-links" aria-label="Primary"><a href="/what-is-an-ai-dm-setter/">AI DM Setter</a><a href="/pricing/">Pricing</a><a href="/faq/">FAQ</a><a href="/best-ai-dm-setters/">Compare</a><span class="geo-lang"><a href="/" hreflang="en" lang="en" aria-current="page">EN</a> | <a href="/es/" hreflang="es" lang="es">ES</a></span></nav>'''
+    links = '''<nav class="geo-links" aria-label="Primary"><a href="/what-is-an-ai-dm-setter/">AI DM Setter</a><a href="/faq/">FAQ</a><a href="/best-ai-dm-setters/">Compare</a><span class="geo-lang"><a href="/" hreflang="en" lang="en" aria-current="page">EN</a> | <a href="/es/" hreflang="es" lang="es">ES</a></span></nav>'''
     text = text.replace(
         'Roleflow</div><button type="button" class="navlink menu-toggle"',
         'Roleflow</div>' + links + '<button type="button" class="navlink menu-toggle"',
@@ -544,7 +545,7 @@ def patch_home():
     )
     text = text.replace(
         '<p class="sub">We build and run your Instagram DM system. It answers every lead in seconds and sends voice notes in your own voice. You pay 10% of what it earns. Answer 4 questions to see if you qualify.</p>',
-        '<p class="sub">Roleflow is a done-for-you AI DM setter for Instagram. It answers every lead in seconds and sends voice notes in your own voice. You pay 10% of what it earns. Answer 4 questions to see if you qualify.</p>',
+        '<p class="sub">Roleflow is a done-for-you AI DM setter for Instagram. It answers every lead in seconds and sends voice notes in your own voice. Answer 4 questions to see if you qualify.</p>',
         1,
     )
     text = text.replace(
@@ -552,7 +553,7 @@ def patch_home():
         '<div id="quiz"><div class="panel" id="start"><div id="qz" tabindex="-1" style="outline:0" aria-live="polite"></div></div></div>',
         1,
     )
-    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends personal voice notes you record, follows up, and books qualified calls. Setup is $0 and the retainer is $0. Roleflow is paid 10% of the revenue the system generates. The rate is set on the demo call."
+    answer = "Roleflow is a done-for-you AI DM setter for Instagram. It replies to every inbound DM in seconds, sends personal voice notes you record, follows up, and books qualified calls. We build the system and we run it. Your closers take the calls that land on the calendar."
     if not 40 <= words(answer) <= 60:
         raise SystemExit(f"home answer {words(answer)}")
     home = next(p for p in PAGES if p.get("home"))
@@ -564,12 +565,8 @@ def patch_home():
 <article><h3>Replies in seconds, 24/7</h3><p>Every Instagram DM gets an answer, including nights and weekends.</p></article>
 <article><h3>Voice notes in your own voice</h3><p>Leads hear a personal voice note you recorded, not a generic template.</p></article>
 <article><h3>Follow-ups and booked calls</h3><p>Quiet leads get follow-ups. Qualified leads land on your calendar.</p></article>
-<article><h3>$0 upfront, pay on results</h3><p>$0 setup and $0 retainer. Roleflow is paid 10% of the revenue it generates, and the team builds and runs the system.</p></article>
+<article><h3>Built and run for you</h3><p>We set up the Instagram DM system and we keep it running. Your closers take the calls that land on the calendar.</p></article>
 </div>
-</div></section>
-<section class="geo-block" id="pricing-summary"><div class="wrap">
-<h2>Pricing: $0 setup, $0 retainer, 10% of revenue</h2>
-<p class="sub" style="margin-top:14px">No setup fee. No monthly retainer. If the system generates nothing, you owe nothing. The rate is set on the demo call. <a href="/pricing/">Read the pricing page</a>. [CONFIRM whether 10% is the final published range.]</p>
 </div></section>
 <section class="geo-block"><div class="wrap">
 <h2>Who it is for, and who it is not for</h2>
