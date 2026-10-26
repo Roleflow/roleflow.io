@@ -156,6 +156,7 @@ const state = {
 logoutBtn.addEventListener("click", () => logout());
 if (panelLogout) panelLogout.addEventListener("click", () => logout());
 bindProfile();
+bindShell();
 const sidebar = bindSidebar();
 document.getElementById("nav-toggle").addEventListener("click", () => sidebar.setDrawer(!document.body.classList.contains("panel-open")));
 document.getElementById("how-close").addEventListener("click", () => { document.getElementById("how-modal").hidden = true; });
@@ -631,15 +632,21 @@ function paint() {
   markTab();
   app.innerHTML = "";
   const root = el("div", { class: "acq" });
+  state.statsEmbedded = false;
+  state.embedSetter = false;
   if (state.settings && state.settings.ig_paused) {
     const banner = el("div", { class: "banner", role: "status" });
     banner.append(el("p", { text: "The outreach worker is paused (" + (state.settings.ig_pause_reason || "warning") + "). Official Instagram DMs keep running. " + (state.settings.ig_pause_notes || "") }));
     if (state.canEdit) banner.append(button("Resume", resumeInstagram));
     root.append(banner);
   }
+  const step = nextStepCard();
+  if (step && state.tab !== "assistant") root.append(step);
   const ui = pageUi();
+  if (state.tab === "home") root.append(renderPanelHome(ui));
   if (state.tab === "dashboard") root.append(renderDashboardHome(ui));
   if (state.tab === "performance") {
+    state.statsEmbedded = true;
     root.append(renderPerformance(ui));
     root.append(renderStats(ui));
   }
@@ -647,7 +654,12 @@ function paint() {
   if (state.tab === "chats") root.append(renderChats(ui));
   if (state.tab === "opportunities") root.append(renderCrm(ui));
   if (state.tab === "calendar") root.append(renderCalendar(ui));
-  if (state.tab === "sops") root.append(renderBusiness(ui));
+  if (state.tab === "sops") {
+    state.embedSetter = true;
+    const layout = el("div", { class: "prompt-layout" });
+    layout.append(renderBusiness(ui), renderSetter(ui));
+    root.append(layout);
+  }
   if (state.tab === "content") root.append(renderValueContent(ui));
   if (state.tab === "voice") root.append(voiceLibrary());
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
@@ -660,12 +672,18 @@ function paint() {
     root.append(host);
     renderEngine("billing", host, engineCtx());
   }
+  if (state.tab === "team") root.append(renderTeam(ui));
+  if (state.tab === "instagram") {
+    const wrap = el("div", { class: "platform-home" });
+    wrap.append(pageHeader(ui, sectionText(language(), "igTitle"), sectionText(language(), "igBody"), "configuration", "link"));
+    wrap.append(renderInstagramConnect(ui));
+    root.append(wrap);
+  }
   if (state.tab === "settings") {
     root.append(renderModelKey(ui));
     root.append(renderInstagramConnect(ui));
     root.append(renderConfiguration(ui));
     root.append(renderSalesLinks(ui));
-    root.append(renderTeam(ui));
   }
   if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox" && state.tab !== "billing") {
     const host = el("div");
@@ -679,7 +697,7 @@ function paint() {
     if (keyCard) keyCard.scrollIntoView({ block: "start" });
   }
   const connectCard = document.getElementById("instagram-connect") || document.getElementById("connect-instagram");
-  const connectFocus = state.tab === "integrations" || state.tab === "onboarding" || state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
+  const connectFocus = state.tab === "instagram" || state.tab === "onboarding" || state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
   if (connectCard && connectFocus) connectCard.scrollIntoView({ block: "start" });
   armRefresh();
 }
@@ -886,6 +904,74 @@ function bindProfile() {
     lang.addEventListener("change", () => saveLanguage(lang.value));
   }
   if (signOut) signOut.addEventListener("click", () => logout());
+}
+
+function bindShell() {
+  const theme = document.getElementById("theme-toggle");
+  if (theme) theme.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("roleflow.theme", next); } catch (_error) { /* private mode */ }
+    theme.setAttribute("aria-label", next === "dark" ? "Switch to light" : "Switch to dark");
+  });
+  const launch = document.getElementById("command-launch");
+  if (launch) launch.addEventListener("click", () => {
+    const modal = document.getElementById("command-modal");
+    const input = document.getElementById("command-input");
+    if (!modal || !input) return;
+    modal.hidden = false;
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    input.focus();
+  });
+  const cycle = document.getElementById("lang-cycle");
+  if (cycle) cycle.addEventListener("click", () => saveLanguage(language() === "es" ? "en" : "es"));
+}
+
+function renderPanelHome(ui) {
+  const lang = language();
+  const wrap = el("div", { class: "platform-home" });
+  wrap.append(pageHeader(ui, lang === "es" ? "Inicio" : "Home", lang === "es" ? "El negocio abierto y el siguiente paso." : "The open business and the next step.", "dashboard", "grid"));
+  const show = showUpRate(state.bookings);
+  const tiles = el("div", { class: "kpi-row" });
+  [
+    ["gray", sectionText(lang, "people"), String((state.targets || []).length + (state.contacts || []).length)],
+    ["mint", lang === "es" ? "Chats" : "Chats", String((state.threads || []).length + (state.contacts || []).length)],
+    ["lavender", sectionText(lang, "booked"), String((state.bookings || []).length)],
+    ["peach", sectionText(lang, "showUp"), show.rate == null ? "—" : percent(show.rate)]
+  ].forEach(([tone, label, value]) => {
+    const card = el("article", { class: "kpi pastel " + tone });
+    card.append(el("span", { class: "watermark", "aria-hidden": "true", text: label.slice(0, 1) }));
+    card.append(el("span", { text: label }), el("strong", { text: value }));
+    tiles.append(card);
+  });
+  wrap.append(tiles);
+  return wrap;
+}
+
+function nextStepCard() {
+  try { if (localStorage.getItem("roleflow.nextstep") === "hide") return null; } catch (_error) { /* private mode */ }
+  const lang = language();
+  const ig = state.ig;
+  const connected = Boolean(ig && ig.status === "connected" && (!ig.business_id || ig.business_id === state.businessId));
+  const step = state.settings && state.settings.onboarding_step;
+  const needsBrief = Boolean(step && step !== "live");
+  if (connected && !needsBrief) return null;
+  const card = el("aside", { class: "next-card", id: "next-card" });
+  const copy = el("div");
+  copy.append(
+    el("strong", { text: sectionText(lang, connected ? "nextBriefTitle" : "nextIgTitle") }),
+    el("p", { text: sectionText(lang, connected ? "nextBriefBody" : "nextIgBody") })
+  );
+  const goNext = button(sectionText(lang, connected ? "nextBriefCta" : "nextIgCta"), () => go(connected ? "sops" : "instagram"));
+  const hide = button(sectionText(lang, "nextHide"), () => {
+    try { localStorage.setItem("roleflow.nextstep", "hide"); } catch (_error) { /* private mode */ }
+    const node = document.getElementById("next-card");
+    if (node) node.remove();
+  });
+  hide.classList.add("ghost");
+  card.append(copy, el("div", { class: "filters" }, [goNext, hide]));
+  return card;
 }
 
 function paintProfile() {
@@ -1284,15 +1370,15 @@ function armRefresh() {
     clearInterval(state.refreshTimer);
     state.refreshTimer = 0;
   }
-  if (state.tab !== "pipeline" || !state.supabase || !state.businessId || state.businessId === "preview") return;
+  if (state.tab !== "opportunities" || !state.supabase || !state.businessId || state.businessId === "preview") return;
   state.refreshTimer = setInterval(() => {
-    if (document.hidden || state.tab !== "pipeline") return;
+    if (document.hidden || state.tab !== "opportunities") return;
     if (document.querySelector(".crm-filters[data-dirty='1']")) return;
     if (state.studio && state.studio.open) return;
     const active = document.activeElement;
     if (active && active.closest && active.closest("#app input, #app textarea, #app select")) return;
     bootBusiness(state.businessId, { quiet: true });
-  }, 45000);
+  }, 22000);
 }
 
 function readyToSave() {
@@ -3280,6 +3366,10 @@ function markTab() {
     ? (language() === "es" ? "Configuración" : "Setup")
     : (item ? navLabel(item, language()) : "Dashboard");
   if (title) title.textContent = label;
+  const command = document.getElementById("command-label");
+  if (command) command.textContent = sectionText(language(), "command");
+  const cycle = document.getElementById("lang-cycle");
+  if (cycle) cycle.textContent = language() === "es" ? "ES" : "EN";
   const business = state.businesses.find((row) => row.id === state.businessId);
   const name = business && business.agent_name ? business.agent_name : "This business";
   if (sub) sub.textContent = name;
@@ -3462,6 +3552,15 @@ function readPreview() {
     exceptions: [{ id: "e1", message: "4 leads stuck in warmup for more than 3 days." }],
     activity: [{ id: "a1", target_id: "t1", action: "voice.sent", result: "sent", actor: "bot", notes: "Opener", created_at: "2026-10-21T09:05:00Z" }],
     voices: [{ id: "v1", slot: "outreach_opener", title: "Opener — coaching", niche: "coaching", variant: null, active: true, script_hint: "Hey, I listened to the reel.", storage_path: "", updated_at: "2026-10-21" }],
+    contacts: [
+      { id: "c-ada", name: "Ada North", ig_handle: "adanorth", crm_state: "discovering", ai_enabled: true, automated: true, is_verified: true, tags: ["warm"], unread_count: 1, message_count: 2, follower_count: 1200, they_follow: true, we_follow: false, last_message_at: "2026-10-25T18:00:00Z", attributes: { summary: "Asked how the offer works." } },
+      { id: "c-sam", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "lost", ai_enabled: false, automated: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z", attributes: { summary: "Went quiet after the first reply." } }
+    ],
+    conversations: [{ id: "cv-ada", contact_id: "c-ada" }, { id: "cv-sam", contact_id: "c-sam" }],
+    engineMessages: [
+      { id: "m-ada-1", conversation_id: "cv-ada", role: "user", sender: "adanorth", body: "How does the offer work?", sent_at: "2026-10-25T18:00:00Z" },
+      { id: "m-ada-2", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Happy to walk you through it on a call.", sent_at: "2026-10-25T18:04:00Z" }
+    ],
     performance: [{ id: "v1", sends: 8, replies: 3, bookings: 1 }],
     stats: null,
     leads: [],

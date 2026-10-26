@@ -2,7 +2,7 @@ import {
   QUESTIONS, CRM_STATES, DAYS, WEBHOOK_EVENTS, SCOPES, REPLY_BUCKETS,
   officeError, delayError, webhookError, tagError, scopeError, llmChoiceError,
   inRange, conversationsPerDay, agentPerformance, tagConversion, linkConversions,
-  funnel, followupRate, replyBuckets, heatmaps, originBreakdown, topOrigins,
+  funnel, followupRate, replyBuckets, heatmaps, originBreakdown, originOf, topOrigins,
   projectRevenue, commandItems, filterCommands, snippet, originCsv
 } from "./studio-ops-model.js";
 import { sectionAlert, sectionText } from "./section-copy.js";
@@ -491,35 +491,186 @@ function businessBody(ui) {
   return card;
 }
 
-export function renderStats(ui) {
-  const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Stats", "Counts for the range you pick. A chart with no rows says so.", "stats", "chart"));
-  const filters = ui.el("div", { class: "filters", role: "toolbar", "aria-label": "Date range" });
-  [7, 30, 90, 365].forEach((days) => {
-    const chip = ui.el("button", { type: "button", "aria-pressed": ui.state.rangeDays === days ? "true" : "false" }, [days === 365 ? "Last 12 months" : "Last " + days + " days"]);
-    chip.addEventListener("click", () => { ui.state.rangeDays = days; ui.paint(); });
-    filters.append(chip);
+function pastelKpi(ui, tone, label, value, note) {
+  const card = ui.el("article", { class: "kpi pastel " + tone });
+  card.append(ui.el("span", { class: "watermark", "aria-hidden": "true", text: String(label || "").slice(0, 1) }));
+  card.append(ui.el("span", { text: label }), ui.el("strong", { text: value }));
+  if (note) card.append(ui.el("em", { text: note }));
+  return card;
+}
+
+function showUpText(bookings) {
+  const rows = bookings || [];
+  const showed = rows.filter((row) => row.show_status === "showed").length;
+  const missed = rows.filter((row) => row.show_status === "no_show").length;
+  const denom = showed + missed;
+  return denom ? Math.round((100 * showed) / denom) + "%" : "—";
+}
+
+function laneOf(row) {
+  const text = [row.source, row.source_detail, row.stage].filter(Boolean).join(" ").toLowerCase();
+  return /outbound|competitor|keyword/.test(text) ? "outbound" : "inbound";
+}
+
+function flagsOf(row) {
+  const state = String(row.crm_state || row.lead_status || row.stage || "").toLowerCase();
+  return {
+    replied: ["discovering", "qualifying", "proposal", "booked", "paid", "warm", "hot", "reply", "qualified"].includes(state) || Number(row.message_count) > 0,
+    proposal: state === "proposal",
+    booked: state === "booked" || state === "paid" || state === "showed",
+    paid: state === "paid" || state === "converted" || row.lead_status === "converted" || row.is_converted === true
+  };
+}
+
+function tally(rows) {
+  return (rows || []).reduce((sum, row) => {
+    const flags = flagsOf(row);
+    sum.total += 1;
+    if (flags.replied) sum.replied += 1;
+    if (flags.proposal) sum.proposal += 1;
+    if (flags.booked) sum.booked += 1;
+    if (flags.paid) sum.paid += 1;
+    return sum;
+  }, { total: 0, replied: 0, proposal: 0, booked: 0, paid: 0 });
+}
+
+function groupOrigins(leads, customs) {
+  const map = new Map();
+  (leads || []).forEach((row) => {
+    const name = originOf(row, customs) || "Unassigned";
+    const bucket = map.get(name) || [];
+    bucket.push(row);
+    map.set(name, bucket);
   });
-  wrap.append(filters);
+  return [...map.entries()].map(([origin, rows]) => ({ origin, ...tally(rows) })).sort((a, b) => b.total - a.total);
+}
+
+function countCell(ui, count, total) {
+  const cell = ui.el("td");
+  const pct = total ? Math.round((100 * count) / total) : 0;
+  cell.append(ui.el("strong", { text: String(count) }));
+  cell.append(ui.el("span", { class: "sub", text: pct + "%" }));
+  return cell;
+}
+
+function metricRow(ui, label, stats) {
+  const row = ui.el("tr");
+  row.append(ui.el("td", { text: label }));
+  ["total", "replied", "proposal", "booked", "paid"].forEach((key) => row.append(countCell(ui, stats[key], stats.total)));
+  return row;
+}
+
+function metricTable(ui, lang) {
+  const table = ui.el("table", { class: "leads" });
+  const head = ui.el("tr");
+  ["source", "total", "replied", "proposal", "booked", "paid"].forEach((key) => head.append(ui.el("th", { text: sectionText(lang, key) })));
+  table.append(ui.el("thead", {}, [head]));
+  return table;
+}
+
+function rangeLabel(ui, lang) {
+  const days = ui.state.rangeDays || 30;
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86400000);
+  const fmt = (date) => date.toISOString().slice(0, 10);
+  const name = days === 365
+    ? (lang === "es" ? "Últimos 12 meses" : "Last 12 months")
+    : (lang === "es" ? "Últimos " + days + " días" : "Last " + days + " days");
+  return name + " · " + fmt(start) + " – " + fmt(end);
+}
+
+function rangeControl(ui, lang) {
+  const select = ui.el("select", { class: "range-label", "aria-label": rangeLabel(ui, lang) });
+  [7, 30, 90, 365].forEach((days) => {
+    const label = days === 365
+      ? (lang === "es" ? "Últimos 12 meses" : "Last 12 months")
+      : (lang === "es" ? "Últimos " + days + " días" : "Last " + days + " days");
+    select.append(ui.el("option", { value: String(days), text: label, selected: (ui.state.rangeDays || 30) === days ? true : null }));
+  });
+  select.addEventListener("change", () => { ui.state.rangeDays = Number(select.value); ui.paint(); });
+  return select;
+}
+
+function compareCard(ui, lang, leads, grouped) {
+  const card = ui.el("section", { class: "section-card" });
+  const head = ui.el("div", { class: "card-head" });
+  head.append(ui.el("div", {}, [
+    ui.el("h3", { text: sectionText(lang, "compareTitle") }),
+    ui.el("p", { text: sectionText(lang, "performanceBody") })
+  ]));
+  head.append(rangeControl(ui, lang));
+  const chips = ui.el("div", { class: "chip-row" });
+  const mode = ui.state.compareMode || "all";
+  [[ "all", "allLeads" ], [ "status", "byStatus" ]].forEach(([id, key]) => {
+    const chip = ui.el("button", { type: "button", class: "chip", "aria-pressed": mode === id ? "true" : "false" }, [sectionText(lang, key)]);
+    chip.addEventListener("click", () => { ui.state.compareMode = id; ui.paint(); });
+    chips.append(chip);
+  });
+  chips.append(explainButton(ui, "Explain performance by origin."));
+  card.append(head, chips);
+  const pool = mode === "status"
+    ? (leads || []).filter((row) => !["", "open"].includes(String(row.crm_state || row.lead_status || row.stage || "").toLowerCase()))
+    : (leads || []);
+  if (!pool.length) card.append(ui.el("p", { text: sectionText(lang, "performanceEmpty") }));
+  const table = metricTable(ui, lang);
+  const body = ui.el("tbody");
+  ["inbound", "outbound"].forEach((lane) => body.append(metricRow(ui, sectionText(lang, lane), tally(pool.filter((row) => laneOf(row) === lane)))));
+  table.append(body);
+  const foot = ui.el("tfoot");
+  foot.append(metricRow(ui, sectionText(lang, "totalRow"), tally(pool)));
+  table.append(foot);
+  card.append(ui.el("div", { class: "table-wrap" }, [table]));
+  void grouped;
+  return card;
+}
+
+function topCard(ui, lang, grouped) {
+  const card = ui.el("section", { class: "section-card" });
+  const sort = ui.state.originSort || "total";
+  card.append(ui.el("div", { class: "card-head" }, [
+    ui.el("h3", { text: sectionText(lang, "topTitle") }),
+    rangeControl(ui, lang)
+  ]));
+  const chips = ui.el("div", { class: "chip-row" });
+  [["total", "total"], ["paid", "paid"], ["booked", "booked"]].forEach(([id, key]) => {
+    const chip = ui.el("button", { type: "button", class: "chip", "aria-pressed": sort === id ? "true" : "false" }, [sectionText(lang, key)]);
+    chip.addEventListener("click", () => { ui.state.originSort = id; ui.paint(); });
+    chips.append(chip);
+  });
+  card.append(chips);
+  const sorted = grouped.slice().sort((a, b) => (b[sort] || 0) - (a[sort] || 0));
+  const rows = topOrigins(sorted.map((row) => ({ ...row, leads: row.total })), 10);
+  const table = metricTable(ui, lang);
+  const body = ui.el("tbody");
+  if (!rows.length) body.append(ui.el("tr", {}, [ui.el("td", { colspan: "6", text: sectionText(lang, "performanceEmpty") })]));
+  rows.forEach((row) => body.append(metricRow(ui, row.origin, row)));
+  table.append(body);
+  card.append(ui.el("div", { class: "table-wrap" }, [table]));
+  return card;
+}
+
+export function renderStats(ui) {
+  const lang = ui.language ? ui.language() : "en";
+  const wrap = ui.el("div", { class: "platform-home" });
+  if (!ui.state.statsEmbedded) wrap.append(ui.pageHeader(ui, "Stats", "Counts for the range you pick. A chart with no rows says so.", "stats", "chart"));
   const days = ui.state.rangeDays || 30;
   const leads = inRange(snapshotLeads(ui), days, "updated");
   const targets = inRange(ui.state.targets, days);
   const paid = leads.filter((row) => String(row.crm_state).toLowerCase() === "paid" || row.lead_status === "converted").length;
-  const booked = leads.filter((row) => ["booked", "paid"].includes(String(row.crm_state).toLowerCase()) || row.lead_status === "converted").length;
-  const kpis = ui.el("div", { class: "kpis" });
+  const booked = leads.filter((row) => ["booked", "paid"].includes(String(row.crm_state).toLowerCase()) || row.lead_status === "converted" || String(row.stage || "").toLowerCase() === "booked").length;
+  const kpis = ui.el("div", { class: "kpis kpi-row" });
+  const show = showUpText(ui.state.bookings);
+  const note = sectionText(lang, "inRange");
   [
-    ["Leads", String(leads.length), leads.length ? "In this range" : "No leads in this range"],
-    ["Booked or paid", String(booked), booked ? "Booked and paid" : "None in this range"],
-    ["Paid", String(paid), paid ? "Paid leads" : "No paid leads in this range"],
-    ["Follow-up response", rateText(ui, followupRate(targets)), "Among targets with a follow-up"]
-  ].forEach(([label, value, note]) => {
-    const card = ui.el("article", { class: "kpi" });
-    card.append(ui.el("span", { text: label }), ui.el("strong", { text: value }), ui.el("em", { text: note }));
-    kpis.append(card);
-  });
+    ["gray", sectionText(lang, "sinceStart"), String(leads.length), leads.length ? note : sectionText(lang, "performanceEmpty")],
+    ["mint", sectionText(lang, "proposal"), String(leads.filter((row) => String(row.crm_state || "").toLowerCase() === "proposal").length), note],
+    ["lavender", sectionText(lang, "booked"), String(booked), note],
+    ["blue", sectionText(lang, "paid"), String(paid), note],
+    ["peach", sectionText(lang, "showUp"), show, note]
+  ].forEach(([tone, label, value, extra]) => kpis.append(pastelKpi(ui, tone, label, value, extra)));
   wrap.append(kpis);
   const stamps = leads.map((row) => ({ at: row.updated || row.created_at }));
-  wrap.append(chartBlock(ui, "Conversations per day", conversationsPerDay(stamps, Math.min(days, 31)).map((row) => ({ label: row.day.slice(5), value: row.count })), "How many conversations happened each day in this range?"));
+  wrap.append(dayCard(ui, lang, conversationsPerDay(stamps, Math.min(days, 31)).map((row) => ({ label: row.day.slice(5), value: row.count }))));
   wrap.append(tableBlock(ui, "Per agent", ["Agent", "Leads", "Paid"], agentPerformance(leads).map((row) => [row.agent, String(row.leads), String(row.paid)]), "No assigned agents in this range.", "How are agents performing in this range?"));
   const tags = tagConversion(leads);
   wrap.append(tableBlock(ui, "Tag conversion", ["Tag", "Leads", "Paid", "Rate"], tags.map((row) => [row.tag, String(row.leads), String(row.paid), rateText(ui, row.rate)]), "No tags in this range.", "Which tags convert?"));
@@ -564,17 +715,21 @@ export function renderPerformance(ui) {
   const days = ui.state.rangeDays || 30;
   const leads = inRange(snapshotLeads(ui), days, "updated");
   const rows = originBreakdown(leads, ui.state.origins || []);
-  const top = topOrigins(rows, 10);
-  wrap.append(chartBlock(ui, "Top origins", top.map((row) => ({ label: row.origin, value: row.leads })), "Which origins bring leads?"));
-  const table = ui.el("table", { class: "leads" });
-  const head = ui.el("tr");
-  ["Origin", "Leads", "Paid"].forEach((label) => head.append(ui.el("th", { text: label })));
-  table.append(ui.el("thead", {}, [head]));
-  const body = ui.el("tbody");
-  if (!rows.length) body.append(ui.el("tr", {}, [ui.el("td", { colspan: "3", text: sectionText(lang, "performanceEmpty") })]));
-  rows.forEach((row) => body.append(ui.el("tr", {}, [ui.el("td", { text: row.origin }), ui.el("td", { text: String(row.leads) }), ui.el("td", { text: String(row.paid) })])));
-  table.append(body);
-  wrap.append(ui.el("div", { class: "table-wrap" }, [table]));
+  const grouped = groupOrigins(leads, ui.state.origins || []);
+  const people = leads.length;
+  const paidCount = grouped.reduce((sum, row) => sum + row.paid, 0);
+  const rate = people ? Math.round((100 * paidCount) / people) + "%" : "—";
+  const tiles = ui.el("div", { class: "kpi-row" });
+  [
+    ["gray", sectionText(lang, "people"), String(people)],
+    ["mint", sectionText(lang, "conversions"), String(paidCount)],
+    ["lavender", sectionText(lang, "conversionRate"), rate],
+    ["blue", sectionText(lang, "uniqueSources"), String(grouped.length)],
+    ["peach", sectionText(lang, "showUp"), showUpText(ui.state.bookings)]
+  ].forEach(([tone, label, value]) => tiles.append(pastelKpi(ui, tone, label, value, "")));
+  wrap.append(tiles);
+  wrap.append(compareCard(ui, lang, leads, grouped));
+  wrap.append(topCard(ui, lang, grouped));
   const actions = ui.el("div", { class: "filters" });
   const csv = ui.button("Download CSV", () => download("origins.csv", originCsv(rows)));
   csv.classList.add("ghost");
@@ -721,7 +876,7 @@ export function paintChrome(ui) {
   if (panel) {
     const rows = ui.state.notifications || [];
     const unread = rows.filter((row) => !row.read_at).length;
-    if (bell) bell.textContent = unread ? "Notifications (" + unread + ")" : "Notifications";
+    if (bell) bell.setAttribute("aria-label", unread ? "Notifications (" + unread + ")" : "Notifications");
     panel.replaceChildren();
     if (!rows.length) panel.append(ui.el("p", { text: "No notifications yet." }));
     rows.slice(0, 12).forEach((row) => {
@@ -746,6 +901,32 @@ function switchLabel(ui, text, checked) {
 
 function rateText(ui, rate) {
   return rate == null ? "—" : ui.percent(rate);
+}
+
+function dayCard(ui, lang, rows) {
+  const card = ui.el("section", { class: "section-card" });
+  card.append(ui.el("div", { class: "card-head" }, [
+    ui.el("h3", { text: sectionText(lang, "perDay") }),
+    rangeControl(ui, lang)
+  ]));
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  const peak = rows.reduce((best, row) => row.value > best.value ? row : best, { value: 0, label: "—" });
+  const minis = ui.el("div", { class: "mini-kpis" });
+  [
+    ["#7B4DFF", sectionText(lang, "total"), String(total)],
+    ["#1F9D6A", lang === "es" ? "Pico" : "Peak", peak.value ? peak.label : "—"],
+    ["#2F6FED", lang === "es" ? "Días" : "Days", String(rows.length)]
+  ].forEach(([color, label, value]) => {
+    const tile = ui.el("article", { class: "mini-kpi" });
+    tile.style.borderTopColor = color;
+    tile.append(ui.el("span", { text: label }), ui.el("strong", { text: value }));
+    minis.append(tile);
+  });
+  card.append(minis);
+  if (!rows.length || rows.every((row) => !row.value)) card.append(ui.el("p", { text: sectionText(lang, "performanceEmpty") }));
+  else card.append(bars(ui, rows));
+  card.append(explainButton(ui, "How many conversations happened each day in this range?"));
+  return card;
 }
 
 function explainButton(ui, prompt) {

@@ -155,10 +155,12 @@ assert.doesNotMatch(read("acquire/client-pages.js"), /zernio/i);
 assert.doesNotMatch(read("businesses/app.js"), /test chat/i);
 
 const strategy = NAV_GROUPS.find((group) => group.id === "strategy");
-const workforce = NAV_GROUPS.find((group) => group.id === "workforce");
+assert.equal(NAV_GROUPS.some((group) => group.id === "workforce"), false);
 assert.equal(strategy.items.some((item) => item.tab === "commentvoice"), true);
-assert.equal(workforce.items.some((item) => item.tab === "commentvoice"), false);
+assert.equal(strategy.items.some((item) => item.tab === "followup"), true);
 assert.equal(canonicalTab("commentvoice"), "commentvoice");
+assert.equal(canonicalTab("integrations"), "instagram");
+assert.equal(canonicalTab("team"), "team");
 assert.equal(sectionText("es", "sopsTitle"), "SOPs");
 assert.match(sectionText("es", "loadError"), /No se pudo cargar/);
 assert.match(read("acquire/home.js"), /strategyTabs/);

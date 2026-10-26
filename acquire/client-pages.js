@@ -170,16 +170,16 @@ export function renderDashboardHome(ui) {
   });
   const wrap = ui.el("div", { class: "platform-home" });
   wrap.append(ui.pageHeader(ui, "Dashboard", copy.dashLede, "dashboard", "grid"));
-  const grid = ui.el("div", { class: "home-grid" });
+  const grid = ui.el("div", { class: "kpi-row" });
   const show = showUpRate(ui.state.bookings);
   const recorded = (ui.state.deals || []).filter((deal) => deal.attributed !== false).reduce((sum, deal) => sum + (Number(deal.amount_cents) || 0), 0);
   const share = ui.money ? ui.money(shareCents(recorded, ui.state.settings && ui.state.settings.share_bps)) : String(shareCents(recorded, ui.state.settings && ui.state.settings.share_bps));
-  grid.append(metricCard(ui, copy.leads, String(metrics.leads), copy.leadsNote));
-  grid.append(metricCard(ui, copy.chats, String(metrics.chats), copy.chatsNote));
-  grid.append(metricCard(ui, copy.booked, String(metrics.booked), copy.bookedNote));
-  grid.append(metricCard(ui, copy.agents, String(metrics.liveAgents) + " / " + AGENT_KEYS.length, copy.agentsNote));
-  grid.append(metricCard(ui, copy.showLabel, show.rate == null ? copy.showEmpty : (ui.percent ? ui.percent(show.rate) : String(show.rate)), copy.showNote));
-  grid.append(metricCard(ui, copy.shareLabel, share, copy.shareNote));
+  grid.append(metricCard(ui, copy.leads, String(metrics.leads), copy.leadsNote, "gray"));
+  grid.append(metricCard(ui, copy.chats, String(metrics.chats), copy.chatsNote, "mint"));
+  grid.append(metricCard(ui, copy.booked, String(metrics.booked), copy.bookedNote, "lavender"));
+  grid.append(metricCard(ui, copy.agents, String(metrics.liveAgents) + " / " + AGENT_KEYS.length, copy.agentsNote, "blue"));
+  grid.append(metricCard(ui, copy.showLabel, show.rate == null ? copy.showEmpty : (ui.percent ? ui.percent(show.rate) : String(show.rate)), copy.showNote, "peach"));
+  grid.append(metricCard(ui, copy.shareLabel, share, copy.shareNote, "gray"));
   wrap.append(grid);
   wrap.append(ui.el("p", {}, [ui.el("a", { class: "btn ghost sm", href: "#billing" }, [copy.billingLink])]));
   const banner = ui.el("div", { class: "info-banner", role: "status" });
@@ -197,6 +197,36 @@ export function renderCalendar(ui) {
   wrap.append(ui.pageHeader(ui, sectionText(lang, "calendarTitle"), sectionText(lang, "calendarBody"), "calendar", "clipboard"));
   const alert = sectionAlert(ui, "calendar");
   if (alert) wrap.append(alert);
+  const rows = ui.state.bookings || [];
+  const show = showUpRate(rows);
+  const showed = rows.filter((row) => row.show_status === "showed").length;
+  const missed = rows.filter((row) => row.show_status === "no_show").length;
+  const tiles = ui.el("div", { class: "kpi-row" });
+  [
+    ["gray", sectionText(lang, "booked"), String(rows.length)],
+    ["mint", sectionText(lang, "showed"), String(showed)],
+    ["lavender", sectionText(lang, "noShow"), String(missed)],
+    ["peach", sectionText(lang, "showUp"), show.rate == null ? "—" : Math.round(show.rate * 100) + "%"]
+  ].forEach(([tone, label, value]) => {
+    const card = ui.el("article", { class: "kpi pastel " + tone });
+    card.append(ui.el("span", { class: "watermark", "aria-hidden": "true", text: label.slice(0, 1) }));
+    card.append(ui.el("span", { text: label }), ui.el("strong", { text: value }));
+    tiles.append(card);
+  });
+  wrap.append(tiles);
+  const linkCard = ui.el("section", { class: "section-card" });
+  linkCard.append(ui.el("h3", { text: lang === "es" ? "Enlace de reserva" : "Booking link" }));
+  const booking = ui.el("input", {
+    id: "calendar-booking-link",
+    type: "url",
+    value: (ui.state.settings && ui.state.settings.booking_fallback_url) || ui.state.bookingLink || "",
+    placeholder: "Booking link",
+    "aria-label": lang === "es" ? "Enlace de reserva" : "Booking link"
+  });
+  linkCard.append(booking);
+  if (ui.saveBookingLink && ui.state.canEdit) linkCard.append(ui.button(lang === "es" ? "Guardar enlace" : "Save link", () => ui.saveBookingLink(booking.value)));
+  else linkCard.append(ui.el("p", { class: "mute", text: booking.value || (lang === "es" ? "Todavía no hay enlace." : "No link yet.") }));
+  wrap.append(linkCard);
   const google = ui.state.google;
   const account = ui.el("section", { class: "agent" });
   account.append(ui.el("h3", { text: "Google Calendar" }));
@@ -216,23 +246,41 @@ export function renderCalendar(ui) {
     form.append(ui.button(copy.bookSave, null, "submit"));
     wrap.append(form);
   }
-  const rows = ui.state.bookings || [];
-  if (!rows.length && !alert) wrap.append(sectionEmpty(ui, "calendarEmpty"));
-  rows.forEach((row) => {
-    const target = (ui.state.targets || []).find((item) => item.id === row.target_id);
-    const card = ui.el("article", { class: "agent" });
-    card.append(ui.el("h3", { text: target && target.handle ? "@" + target.handle : "Booking" }));
-    card.append(ui.el("p", { text: (row.show_status || "scheduled") + (row.meet_link ? " · " + row.meet_link : "") }));
-    if (ui.saveShowStatus && ui.state.canEdit) {
-      const select = ui.el("select", { "aria-label": copy.showLabel });
-      [["scheduled", "Scheduled"], ["showed", "Showed"], ["no_show", "No-show"], ["cancelled", "Cancelled"]].forEach(([value, label]) => {
-        select.append(ui.el("option", { value, text: label }));
-      });
-      select.value = row.show_status || "scheduled";
-      card.append(select, ui.button(copy.showSave, () => ui.saveShowStatus(target || { id: row.target_id }, row, select.value)));
-    }
-    wrap.append(card);
-  });
+  const tableCard = ui.el("section", { class: "section-card" });
+  tableCard.append(ui.el("h3", { text: lang === "es" ? "Llamadas" : "Calls" }));
+  if (!rows.length && !alert) tableCard.append(sectionEmpty(ui, "calendarEmpty"));
+  if (rows.length) {
+    const tableNode = ui.el("table", { class: "leads" });
+    const head = ui.el("tr");
+    [lang === "es" ? "Persona" : "Person", lang === "es" ? "Estado" : "Status", lang === "es" ? "Enlace" : "Link", ""].forEach((label) => head.append(ui.el("th", { text: label })));
+    tableNode.append(ui.el("thead", {}, [head]));
+    const body = ui.el("tbody");
+    const now = Date.now();
+    rows.forEach((row) => {
+      const target = (ui.state.targets || []).find((item) => item.id === row.target_id);
+      const when = row.created_at || row.updated_at || "";
+      const upcoming = !when || new Date(when).getTime() >= now - 86400000;
+      const line = ui.el("tr");
+      const statusCell = ui.el("td");
+      const tone = row.show_status === "showed" ? "booked" : row.show_status === "no_show" ? "lost" : row.show_status === "cancelled" ? "open" : "discovering";
+      if (ui.saveShowStatus && ui.state.canEdit) {
+        const select = ui.el("select", { class: "status-pill " + tone, "aria-label": copy.showLabel });
+        [["scheduled", "Scheduled"], ["showed", "Showed"], ["no_show", "No-show"], ["cancelled", "Cancelled"]].forEach(([value, label]) => select.append(ui.el("option", { value, text: label })));
+        select.value = row.show_status || "scheduled";
+        statusCell.append(select, ui.button(copy.showSave, () => ui.saveShowStatus(target || { id: row.target_id }, row, select.value)));
+      } else statusCell.append(ui.el("span", { class: "status-pill " + tone, text: row.show_status || "scheduled" }));
+      line.append(
+        ui.el("td", { text: (target && target.handle ? "@" + target.handle : "Booking") + " · " + (upcoming ? (lang === "es" ? "Próxima" : "Upcoming") : (lang === "es" ? "Pasada" : "Past")) }),
+        statusCell,
+        ui.el("td", { text: row.meet_link || "—" }),
+        ui.el("td", { text: "" })
+      );
+      body.append(line);
+    });
+    tableNode.append(body);
+    tableCard.append(ui.el("div", { class: "table-wrap" }, [tableNode]));
+  }
+  wrap.append(tableCard);
   return wrap;
 }
 
@@ -260,12 +308,14 @@ export function renderGrokAgent(ui, kind) {
 export function renderSetter(ui) {
   const copy = text(ui.language());
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
-  wrap.append(ui.el("p", { text: copy.channel }));
-  wrap.append(ui.el("p", {}, [
-    ui.el("a", { class: "btn ghost sm", id: "setter-key-link", href: "#settings/model" }, [copy.keyLink])
-  ]));
-  wrap.append(renderInstagramConnect(ui));
+  if (!ui.state.embedSetter) {
+    wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
+    wrap.append(ui.el("p", { text: copy.channel }));
+    wrap.append(ui.el("p", {}, [
+      ui.el("a", { class: "btn ghost sm", id: "setter-key-link", href: "#settings/model" }, [copy.keyLink])
+    ]));
+    wrap.append(renderInstagramConnect(ui));
+  }
   wrap.append(switchCard(ui, "setter", copy));
   const studio = ui.el("div", {
     class: "setter-studio",
@@ -426,7 +476,7 @@ function practiceThread(ui) {
   const simulate = ui.el("input", { id: "practice-delay", type: "checkbox" });
   simulate.checked = ui.state.practiceSimulateDelay === true;
   simulate.addEventListener("change", () => { ui.state.practiceSimulateDelay = simulate.checked; });
-  wrap.append(ui.el("label", { class: "switch" }, [simulate, " Simulate the reply delay. Leave this off to skip the wait. Zero is allowed."]));
+  wrap.append(ui.el("label", { class: "switch" }, [simulate, " Simulate the reply delay. Leave this off to skip the wait. A wait of 0 is allowed."]));
   const log = ui.el("div", { id: "setter-trial-log", class: "dm-thread" });
   (trial.messages || []).forEach((message) => log.append(trialBubble(ui, message)));
   if (!(trial.messages || []).length) log.append(ui.el("p", { class: "mute", text: "The thread is empty. Write as the lead." }));
@@ -475,26 +525,55 @@ function trialBubble(ui, message) {
 
 export function renderCommentVoice(ui) {
   const copy = text(ui.language());
+  const lang = ui.language ? ui.language() : "en";
+  const surface = ui.state.commentSurface === "stories" ? "stories" : "posts";
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Comment voice", copy.commentVoice, "commentvoice", "send"));
-  wrap.append(ui.el("p", { text: copy.channel }));
-  wrap.append(ui.el("p", { text: copy.commentLimit }));
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "commentTitle"), sectionText(lang, "commentBody"), "commentvoice", "send"));
+  const tabs = ui.el("div", { class: "section-tabs", role: "tablist" });
+  [["posts", "postsReels"], ["stories", "stories"]].forEach(([id, key]) => {
+    const tab = ui.el("button", { type: "button", "aria-pressed": surface === id ? "true" : "false" }, [sectionText(lang, key)]);
+    tab.addEventListener("click", () => { ui.state.commentSurface = id; ui.paint(); });
+    tabs.append(tab);
+  });
+  wrap.append(tabs);
+  wrap.append(ui.el("p", { text: surface === "stories" ? copy.commentVoice : copy.commentLimit }));
   wrap.append(switchCard(ui, "comment_voice", copy));
+  const layout = ui.el("div", { class: "voice-layout" });
+  const column = ui.el("div");
+  const prefs = commentPrefs();
   const form = ui.el("form", { class: "agent", id: "comment-voice-rules" });
+  const keywords = ui.el("section", { class: "section-card" });
+  keywords.append(ui.el("div", { class: "card-head" }, [
+    ui.el("h3", { text: lang === "es" ? "Palabras" : "Keywords" }),
+    ui.button("+ " + sectionText(lang, "addKeyword"), () => ui.addCommentRule(), "button")
+  ]));
   const cap = ui.el("input", { type: "number", name: "cap", min: "1", max: "500", value: String(ui.state.commentVoiceCap || 30), "aria-label": "Daily cap" });
-  form.append(ui.el("label", { text: "Daily cap" }, [cap]));
+  keywords.append(ui.el("label", { text: "Daily cap" }, [cap]));
   const rules = ui.state.commentVoiceRules || [];
   const list = ui.el("div", { class: "comment-rules" });
   if (!rules.length) list.append(ui.el("p", { class: "mute", text: copy.commentRulesEmpty }));
-  rules.forEach((rule, index) => list.append(commentRule(ui, rule, index)));
-  form.append(list);
-  form.append(ui.button("Add rule", () => ui.addCommentRule(), "button"));
+  rules.forEach((rule, index) => list.append(commentRule(ui, rule, index, lang)));
+  keywords.append(list);
+  const onComment = ui.el("section", { class: "section-card" });
+  onComment.append(ui.el("h3", { text: sectionText(lang, "onComment") }));
+  const publicReply = ui.el("input", { type: "checkbox", name: "public_reply" });
+  publicReply.checked = prefs.publicReply === true;
+  const dmAnyway = ui.el("input", { type: "checkbox", name: "dm_anyway" });
+  dmAnyway.checked = prefs.dmAnyway === true;
+  onComment.append(
+    ui.el("label", { class: "switch" }, [publicReply, lang === "es" ? " Responder comentarios en público" : " Reply to comments publicly"]),
+    ui.el("label", { class: "switch" }, [dmAnyway, lang === "es" ? " Mensaje directo aunque la palabra no coincida" : " DM even if the keyword does not match"])
+  );
+  onComment.append(ui.button(sectionText(lang, "saveSettings"), null, "submit"));
+  form.append(keywords, onComment);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    try {
+      localStorage.setItem("roleflow.commentprefs", JSON.stringify({ publicReply: publicReply.checked, dmAnyway: dmAnyway.checked }));
+    } catch (_error) { /* private mode */ }
     ui.saveCommentVoice(readCommentRules(form));
   });
-  form.append(ui.button("Save rules", null, "submit"));
-  wrap.append(form);
+  column.append(form);
   const log = ui.el("section", { class: "agent", id: "comment-voice-log" });
   log.append(ui.el("h3", { text: "Decisions" }));
   const rows = ui.state.commentVoiceLog || [];
@@ -506,28 +585,73 @@ export function renderCommentVoice(ui) {
     card.append(ui.el("p", { class: "mute", text: decisionLine(row) }));
     log.append(card);
   });
-  wrap.append(log);
+  column.append(log);
+  layout.append(column, phonePreview(ui, lang, surface, rules[0]));
+  wrap.append(layout);
   return wrap;
 }
 
-function commentRule(ui, rule, index) {
+function commentPrefs() {
+  try { return JSON.parse(localStorage.getItem("roleflow.commentprefs") || "{}") || {}; } catch (_error) { return {}; }
+}
+
+function phonePreview(ui, lang, surface, rule) {
+  const phone = ui.el("aside", { class: "phone" });
+  const keyword = rule && rule.keywords && rule.keywords[0] ? rule.keywords[0] : "KEYWORD";
+  const reply = rule && rule.message ? rule.message : (lang === "es" ? "Gracias por el comentario." : "Thanks for the comment.");
+  phone.append(ui.el("div", { class: "phone-top" }, [ui.el("span", { text: surface === "stories" ? sectionText(lang, "stories") : "Reel" }), ui.el("span", { text: "IG" })]));
+  const toggle = ui.el("div", { class: "phone-toggle" });
+  const comments = ui.el("button", { type: "button", "aria-pressed": "true" }, [sectionText(lang, "comments")]);
+  const messages = ui.el("button", { type: "button", "aria-pressed": "false" }, [sectionText(lang, "messages")]);
+  const sheet = ui.el("div", { class: "phone-sheet" });
+  const comment = ui.el("div", { class: "phone-comment", text: keyword });
+  const dm = ui.el("div", { class: "phone-dm", hidden: true, text: reply });
+  const show = (mode) => {
+    comments.setAttribute("aria-pressed", mode === "comments" ? "true" : "false");
+    messages.setAttribute("aria-pressed", mode === "messages" ? "true" : "false");
+    comment.hidden = mode !== "comments";
+    dm.hidden = mode !== "messages";
+  };
+  comments.addEventListener("click", () => show("comments"));
+  messages.addEventListener("click", () => show("messages"));
+  toggle.append(comments, messages);
+  sheet.append(comment, dm);
+  phone.append(toggle, sheet, ui.el("p", { class: "phone-note", text: sectionText(lang, "previewNote") }));
+  return phone;
+}
+
+function commentRule(ui, rule, index, lang) {
   const card = ui.el("fieldset", { class: "comment-rule" });
-  card.append(ui.el("legend", { text: "Rule " + (index + 1) }));
-  const keywords = ui.el("input", { name: "keywords", value: (rule.keywords || []).join(", "), placeholder: "SYSTEM, SYSTEMS, SISTEM", "aria-label": "Keywords" });
+  card.append(ui.el("legend", { text: (lang === "es" ? "Palabra " : "Keyword ") + (index + 1) }));
+  const keywords = ui.el("input", { name: "keywords", value: (rule.keywords || []).join(", "), placeholder: "SYSTEM, SYSTEMS, SISTEM", "aria-label": "Keyword" });
+  const match = ui.el("select", { name: "match_type", "aria-label": lang === "es" ? "Tipo de coincidencia" : "Match type" });
+  [["exact", lang === "es" ? "Coincidencia exacta" : "Exact match"], ["contains", lang === "es" ? "Contiene" : "Contains"]].forEach(([value, label]) => match.append(ui.el("option", { value, text: label })));
   const intent = ui.el("textarea", { name: "intent", rows: "2", "aria-label": "Intent" });
   intent.value = rule.intent || "";
-  const message = ui.el("input", { name: "message", value: rule.message || "", placeholder: "Thanks for the comment.", "aria-label": "Private reply text" });
+  const message = ui.el("input", { name: "message", value: rule.message || "", placeholder: lang === "es" ? "Texto opcional" : "Optional text", "aria-label": "Private reply text" });
   const clip = ui.el("select", { name: "clip", "aria-label": "Voice note" });
-  clip.append(ui.el("option", { value: "", text: "No mapped voice note" }));
+  clip.append(ui.el("option", { value: "", text: lang === "es" ? "Nota de voz de la biblioteca" : "Voice note from the library" }));
   voiceCatalog(ui.state.voices || []).forEach((note) => {
     clip.append(ui.el("option", { value: note.id, text: note.title, selected: note.id === (rule.clip_id || rule.clipId) ? true : null }));
   });
+  const linkUrl = ui.el("input", { name: "link_url", type: "url", placeholder: "Link", "aria-label": "Link URL" });
+  const linkLabel = ui.el("input", { name: "link_label", maxlength: "20", placeholder: lang === "es" ? "Texto del botón" : "Button label", "aria-label": "Button label" });
+  const counter = ui.el("span", { class: "mute", text: "0/20" });
+  linkLabel.addEventListener("input", () => { counter.textContent = String(linkLabel.value.length) + "/20"; });
+  const agent = ui.el("select", { name: "rule_agent", "aria-label": "AI" });
+  agent.append(ui.el("option", { value: "business", text: lang === "es" ? "IA del negocio" : "Business AI" }));
   card.append(
-    ui.el("label", { text: "Keywords" }, [keywords]),
-    ui.el("label", { text: "Intent" }, [intent]),
-    ui.el("label", { text: "Private reply" }, [message]),
-    ui.el("label", { text: "Voice note" }, [clip])
+    ui.el("label", { text: "Keyword" }, [keywords]),
+    ui.el("label", { text: lang === "es" ? "Tipo de coincidencia" : "Match type" }, [match]),
+    ui.el("label", { text: lang === "es" ? "Respuesta por mensaje directo" : "DM reply" }, [clip, message]),
+    ui.el("label", { text: lang === "es" ? "Botón de enlace" : "Link button" }, [linkUrl, linkLabel, counter]),
+    ui.el("label", { text: "AI" }, [agent]),
+    ui.el("label", { text: "Intent" }, [intent])
   );
+  const row = ui.el("div", { class: "filters" });
+  row.append(ui.button(lang === "es" ? "Cancelar" : "Cancel", () => ui.paint()));
+  row.append(ui.button(sectionText(lang, "saveKeyword"), null, "submit"));
+  card.append(row);
   return card;
 }
 
@@ -580,7 +704,8 @@ export function renderFollowBoss(ui) {
   const copy = text(ui.language());
   const policy = normalizePolicy(ui.state.followupPolicy || DEFAULT_POLICY);
   const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Follow Up Boss", copy.follow, "followup", "trend"));
+  const lang = ui.language ? ui.language() : "en";
+  wrap.append(ui.pageHeader(ui, sectionText(lang, "followTitle"), sectionText(lang, "followBody"), "followup", "trend"));
   wrap.append(ui.el("p", { text: copy.channel }));
   wrap.append(switchCard(ui, "followup", copy));
   const form = ui.el("form", { class: "agent grid-2", id: "followup-policy" });
@@ -774,11 +899,11 @@ function switchCard(ui, key, copy) {
   return card;
 }
 
-function metricCard(ui, title, value, note) {
-  const card = ui.el("section", { class: "home-card" });
-  card.append(ui.el("h3", { text: title }));
-  card.append(ui.el("p", { class: "metric-value", text: value }));
-  card.append(ui.el("p", { class: "metric-note", text: note }));
+function metricCard(ui, title, value, note, tone) {
+  const card = ui.el("article", { class: "kpi pastel " + (tone || "gray") });
+  card.append(ui.el("span", { class: "watermark", "aria-hidden": "true", text: String(title || "R").slice(0, 1) }));
+  card.append(ui.el("span", { text: title }), ui.el("strong", { text: value }));
+  if (note) card.append(ui.el("em", { text: note }));
   return card;
 }
 

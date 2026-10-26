@@ -1,4 +1,5 @@
 import { navLabel, NAV_GROUPS } from "./client-nav.mjs";
+import { sectionText } from "./section-copy.js";
 import { renderOffice } from "./office.js";
 import { persistCollapsedGroups, readCollapsedGroups } from "./sidebar-state.js";
 import { renderConfiguration as opsConfig, renderPerformance as opsPerformance, renderStats as opsStats, renderTeam as opsTeam } from "./studio-ops.js";
@@ -194,8 +195,8 @@ export function renderConfiguration(ui) {
 const STRATEGY_TABS = [
   { tab: "sops", en: "SOPs", es: "SOPs" },
   { tab: "content", en: "Content", es: "Contenido" },
-  { tab: "voice", en: "Voice Gen", es: "Voz" },
-  { tab: "commentvoice", en: "Comment voice", es: "Voz en comentarios" }
+  { tab: "commentvoice", en: "Comment voice", es: "Voz en comentarios" },
+  { tab: "followup", en: "Follow-ups", es: "Seguimientos" }
 ];
 
 export function strategyTabs(ui) {
@@ -220,10 +221,11 @@ export function strategyTabs(ui) {
 }
 
 export function pageHeader(ui, title, text, how, iconName) {
-  const card = ui.el("section", { class: "page-card" });
+  const card = ui.el("section", { class: "page-card hero-card" });
   const copy = ui.el("div", { class: "page-copy" });
   copy.append(iconTile(iconName || "grid", "t1"), ui.el("div", {}, [ui.el("h2", { text: title }), ui.el("p", { text })]));
-  const button = ui.button("How it works", () => openHow(title, HOW[how] || text));
+  const lang = ui.language ? ui.language() : "en";
+  const button = ui.button(sectionText(lang, "howWorks"), () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
   const actions = ui.el("div", { class: "page-actions" });
   const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup"]);
@@ -264,7 +266,7 @@ function openAccounts(ui) {
 
 function navLink(ui, item) {
   const label = typeof item.label === "string" ? item.label : navLabel(item, ui.language ? ui.language() : "en");
-  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": label });
+  const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": label, "data-tone": item.tone || "t1" });
   link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: label }));
   link.addEventListener("click", (event) => {
     event.preventDefault();
