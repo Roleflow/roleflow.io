@@ -17,7 +17,7 @@ export const FIELDS = [
   ["ig", "What is your Instagram handle?", "text", "off", "@yourbusiness"]
 ];
 
-export const ANALYZE = ["Checking your offer", "Matching deal value to volume", "Reviewing commission fit"];
+export const ANALYZE = ["Checking your offer", "Matching deal value to volume", "Checking the fit"];
 
 export function stepCount() {
   return QUESTIONS.length + FIELDS.length;
@@ -61,8 +61,8 @@ export function resultHtml(answers) {
   const ok = missing.length === 0;
   const name = esc(String(answers.n || "").split(" ")[0]);
   if (!ok) {
-    return `<div class="result"><h2>Not a fit yet, ${name}.</h2><p>Because we're paid from the revenue your DMs generate, we can't take on your business right now. To work with us you need over 20 DMs a day, an offer above $1k, a closing rate above 20% and over $30k a month in cash collected. Right now you're missing: ${missing.map((item) => item.n).join(", ")}.</p><button class="btn ghost" type="button" id="again">Retake the quiz</button></div>`;
+    return `<div class="result"><h2>Not a fit yet, ${name}.</h2><p>We can't take on your business right now. To work with us you need over 20 DMs a day, an offer above $1k, a closing rate above 20% and over $30k a month in cash collected. Right now you're missing: ${missing.map((item) => item.n).join(", ")}.</p><button class="btn ghost" type="button" id="again">Retake the quiz</button></div>`;
   }
   const recap = `<ul class="recap">${QUESTIONS.map((q) => `<li>${esc(answers[q.k][1])}</li>`).join("")}</ul>`;
-  return `<div class="result"><div class="tick" aria-hidden="true">&#10003;</div><h2>You qualify, ${name}.</h2><p>Your business is a strong fit for a commission-based DM system that replies in your own voice. Book your call, or create your account to start onboarding.</p>${recap}<div class="endbtns"><a class="btn" id="bookbtn" href="${BOOKING_URL}" target="_blank" rel="noopener">Book your call</a><a class="btn ghost" id="signupbtn" href="${signupHref(answers)}">Create your account</a></div></div>`;
+  return `<div class="result"><div class="tick" aria-hidden="true">&#10003;</div><h2>You qualify, ${name}.</h2><p>Your business is a strong fit for a DM system that replies in your own voice. Book your call, or create your account to start onboarding.</p>${recap}<div class="endbtns"><a class="btn" id="bookbtn" href="${BOOKING_URL}" target="_blank" rel="noopener">Book your call</a><a class="btn ghost" id="signupbtn" href="${signupHref(answers)}">Create your account</a></div></div>`;
 }

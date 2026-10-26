@@ -82,7 +82,7 @@ assert.match(read("signup/index.html"), /href="\/terms\/"/);
 const privacy = read("privacy/index.html");
 assert.match(privacy, /does not ask for or store Instagram passwords/);
 assert.match(privacy, /roleflow-acquisition\/deletion/);
-assert.match(privacy, /10% share of growth/);
+assert.match(privacy, /show that customer their pipeline and reports/);
 assert.doesNotMatch(privacy, /Diego to review/);
 const terms = read("terms/index.html");
 assert.match(terms, /Draft for review/);

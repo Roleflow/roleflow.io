@@ -1,6 +1,6 @@
 # Roleflow
 
-> Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls. $0 setup, paid as a % of revenue it generates.
+> Roleflow is a done-for-you AI DM setter for Instagram that replies in seconds, sends personal voice notes you record, follows up, and books qualified calls.
 
 Roleflow (en español: setter con IA para DMs de Instagram, hecho para ti) is built for high-ticket coaches, consultants, course creators and agency owners whose personal brand drives sales on Instagram.
 
@@ -18,7 +18,6 @@ Who it does not fit: businesses selling mainly through WhatsApp, email or phone 
 ## Key pages
 - [Home](https://www.roleflow.io/)
 - [What is an AI DM setter](https://www.roleflow.io/what-is-an-ai-dm-setter/)
-- [Pricing](https://www.roleflow.io/pricing/)
 - [FAQ](https://www.roleflow.io/faq/)
 - [Best AI DM setters](https://www.roleflow.io/best-ai-dm-setters/)
 - [Resources](https://www.roleflow.io/resources/)
@@ -36,7 +35,6 @@ Who it does not fit: businesses selling mainly through WhatsApp, email or phone 
 ## Español
 - [Inicio](https://www.roleflow.io/es/)
 - [Qué es un setter con IA](https://www.roleflow.io/es/que-es-un-setter-con-ia/)
-- [Precios](https://www.roleflow.io/es/precios/)
 - [Preguntas frecuentes](https://www.roleflow.io/es/preguntas-frecuentes/)
 - [Mejores setters con IA](https://www.roleflow.io/es/mejores-setters-con-ia/)
 - [Recursos](https://www.roleflow.io/es/recursos/)
