@@ -307,8 +307,9 @@ function renderTimeGrid(ui, lang, days, now, events) {
     placeEvents(eventsOnDay(events, day)).forEach((event) => {
       const button = eventButton(ui, lang, event, "gcal-event " + toneOf(event));
       const box = blockGeometry(event, day);
+      const height = Math.max((box.height / 100) * (24 * 48), 36);
       button.style.top = box.top + "%";
-      button.style.height = box.height + "%";
+      button.style.height = height + "px";
       button.style.left = "calc(" + (event.col / event.cols) * 100 + "% + 2px)";
       button.style.width = "calc(" + (100 / event.cols) + "% - 4px)";
       button.append(ui.el("small", { text: formatClock(event.start, lang) }));
@@ -461,14 +462,15 @@ function placePopover(wrap) {
   const anchor = wrap.querySelector("[data-open-event]");
   const pop = wrap.querySelector(".gcal-pop");
   if (!pop) return;
-  const host = wrap.getBoundingClientRect();
-  const box = anchor ? anchor.getBoundingClientRect() : host;
-  let left = (anchor ? box.left : host.left + 16) - host.left;
-  let top = (anchor ? box.bottom : host.top + 48) - host.top + 8;
+  const box = anchor ? anchor.getBoundingClientRect() : { left: 24, right: 24, top: 72, bottom: 120, width: 0 };
   const width = pop.offsetWidth || 280;
-  const height = pop.offsetHeight || 180;
-  if (left + width > host.width - 8) left = Math.max(8, host.width - width - 8);
-  if (top + height > host.height - 8) top = Math.max(8, (anchor ? box.top - host.top : 8) - height - 8);
+  const height = pop.offsetHeight || 220;
+  let left = box.left;
+  let top = box.bottom + 8;
+  if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+  if (top + height > window.innerHeight - 8) top = Math.max(8, box.top - height - 8);
+  if (top < 8) top = 8;
+  pop.style.position = "fixed";
   pop.style.left = Math.max(8, left) + "px";
-  pop.style.top = Math.max(8, top) + "px";
+  pop.style.top = top + "px";
 }
