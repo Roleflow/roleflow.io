@@ -232,9 +232,17 @@ assert.equal(comment.commentId, "comment-9");
 assert.equal(comment.externalId, "comment:comment-9");
 assert.equal(shouldEnqueue(comment, { systemEnabled: true, commentToDm: false }), false);
 assert.equal(shouldEnqueue(comment, { systemEnabled: true, commentToDm: true }), true);
+assert.equal(shouldEnqueue(comment, { systemEnabled: true, commentToDm: false, commentVoice: true }), true);
 const commentSend = sendRequest({ kind: "comment_private", payload: planPayload(comment, "row-1") });
 assert.equal(commentSend.path, "/inbox/comments/post-3/comment-9/private-reply");
 assert.deepEqual(commentSend.body, { accountId: "acct-1", message: "" });
+const voiceSend = sendRequest({
+  kind: "comment_voice",
+  payload: { ...planPayload(comment, "row-1"), text: "Thanks for the comment.", attachmentUrl: "https://cdn.example/voice.m4a", attachmentType: "audio" }
+});
+assert.equal(voiceSend.path, "/inbox/comments/post-3/comment-9/private-reply");
+assert.deepEqual(voiceSend.body, { accountId: "acct-1", message: "Thanks for the comment." });
+assert.equal("attachmentUrl" in voiceSend.body, false);
 const replySend = sendRequest({ kind: "reply", payload: enqueueBody(message, "Thanks", "row-1") });
 assert.equal(replySend.path, "/inbox/conversations/conv-1/messages");
 assert.deepEqual(replySend.body, { accountId: "acct-1", message: "Thanks" });

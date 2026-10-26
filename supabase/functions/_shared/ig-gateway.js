@@ -210,6 +210,7 @@ export function normalizeEvent(payload, headerEventId) {
       username: String(author.username || ""),
       externalId: "comment:" + String(comment.id || comment.commentId || id),
       conversationId: "",
+      commentedAt: String(comment.createdAt || comment.created_at || comment.timestamp || body.timestamp || ""),
       standby: false,
       kind: "comment"
     };
@@ -220,20 +221,30 @@ export function normalizeEvent(payload, headerEventId) {
 export function shouldEnqueue(event, flags) {
   if (!event || event.ignored || event.standby || event.kind === "sent") return false;
   if (!flags || flags.systemEnabled !== true) return false;
-  if (event.event === "comment.received") return flags.commentToDm === true && Boolean(event.commentId && event.postId && event.senderId);
+  if (event.event === "comment.received") {
+    const allowed = flags.commentToDm === true || flags.commentVoice === true;
+    return allowed && Boolean(event.commentId && event.postId && event.senderId);
+  }
   if (event.event === "message.received") return Boolean(event.senderId && event.conversationId);
   return false;
 }
 
-export function outboxKind(event) {
-  return event && event.event === "comment.received" ? "comment_private" : "reply";
+export function privateReplyKind(kind) {
+  return kind === "comment_private" || kind === "comment_voice";
+}
+
+export function outboxKind(event, flags) {
+  if (event && event.event === "comment.received") {
+    return flags && flags.commentVoice === true ? "comment_voice" : "comment_private";
+  }
+  return "reply";
 }
 
 export function sendRequest(row) {
   const payload = row.payload || {};
   const text = String(payload.text || "");
   const accountId = String(payload.accountId || "");
-  if (row.kind === "comment_private") {
+  if (privateReplyKind(row.kind)) {
     return {
       path: "/inbox/comments/" + encodeURIComponent(payload.postId || "") + "/" + encodeURIComponent(payload.commentId || "") + "/private-reply",
       body: { accountId, message: text }
@@ -299,7 +310,8 @@ export function enqueueBody(event, text, conversationRowId) {
     conversationRowId: String(conversationRowId || ""),
     postId: String((event && event.postId) || ""),
     commentId: String((event && event.commentId) || ""),
-    eventKind: String((event && event.kind) || "message")
+    eventKind: String((event && event.kind) || "message"),
+    ...(event && event.commentedAt ? { commentedAt: String(event.commentedAt) } : {})
   };
 }
 
@@ -363,7 +375,7 @@ export async function handleWebhook(input) {
   if (await input.seen(event.id)) return { status: 200, body: { ok: true, duplicate: true } };
   const queued = shouldEnqueue(event, account);
   try {
-    await input.ingest({ event, account, queued, kind: queued ? outboxKind(event) : "" });
+    await input.ingest({ event, account, queued, kind: queued ? outboxKind(event, account) : "" });
   } catch (error) {
     if (input.forget) await input.forget(event.id);
     throw error;

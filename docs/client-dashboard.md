@@ -1,9 +1,10 @@
 # Client dashboard setup
 
-Two migrations in this area are **NOT APPLIED**. Apply them yourself when you are ready.
+Three migrations in this area are **NOT APPLIED**. Apply them yourself when you are ready.
 
 - `supabase/migrations/20261026120000_client_dashboard_agents.sql` adds row-level security and does not delete TailorTalk rows. Until it is applied, every agent switch reads as off and no agent send leaves Roleflow.
 - `supabase/migrations/20261026140000_business_model_keys.sql` limits who can save or remove a model key. It does not recreate `private.business_llm_secrets` and does not delete a key. Until it is applied, the older save function still allows an editor to set a key.
+- `supabase/migrations/20261026160000_prompt_versions_and_comment_voice.sql` adds prompt version history, the comment-voice switch (default off), rule and decision tables, and copies a linked agent's deployed section instructions into `acq_agent_prompts` only when that body is empty. The instruction text is not rewritten. It does not drop tables. Until it is applied, version history and comment voice cannot be saved.
 
 ## What you set
 
@@ -59,3 +60,17 @@ Every agent defaults to off, including when the switch row is missing. Off is en
 - A reply typed in Chats is a human message and still sends while the agents are off.
 
 Language is stored per user in `acq_user_prefs` (`en` or `es`) and also in the browser under `roleflow.lang`.
+
+## Setter prompt
+
+The live setter prompt is `acq_agent_prompts.body`. Saving writes a row in `acq_agent_prompt_versions` (who, when, version) and clears `tested_at` when the text changes. Restoring an older version writes a new version with that same text. Neither save nor restore changes `acq_agent_switches`. The reply engine uses that saved body. Studio section text is not mixed in once a saved body exists. The output contract the engine needs is still appended.
+
+`{{voice:name}}` inserts a Voice Gen note. The name is the note title, lowercased, with spaces turned into underscores. When a live setter reply contains that token, the engine attaches that recording on a normal DM. A comment private reply stays text-only, so the token is removed there and the note is not attached. `{{booking_link}}` expands to the business booking link. An empty link uses `https://calendar.app.google/R4wpQ4b8F5J7xnD39`. The practice thread on Agentic Setter is a simulated DM. It uses the draft in the editor, which starts as the saved prompt, and the business model key when one is saved. Voice tokens render as audio. A connected business plays the stored Voice Gen file. The local preview has no stored file, so the player uses a short tone. Restart clears the thread. Scenarios are new follower, comment trigger, and cold reply. Each run shows the prompt version and the full prompt text. A practice run never calls Instagram.
+
+## Comment voice
+
+Comment voice is its own Agent Workforce switch. It defaults to off. A missing row is off. The webhook only queues it when that switch is on. A comment (`comment.received`) is classified against the business rules: keywords such as SYSTEM, SYSTEMS, and SISTEM, with Spanish and English folding and a small edit distance, plus a free-text intent. If a model key exists and the keywords do not match, the model may pick one of those intents. Every decision is stored in `acq_comment_voice_log`, matched or not, with the reason.
+
+The daily cap defaults to 30 in Europe/Madrid. The same commenter is not queued twice. The same comment is not reviewed twice.
+
+Zernio can send a private reply to a comment: `POST /v1/inbox/comments/{postId}/{commentId}/private-reply` with `accountId` and `message`. Instagram and Facebook only. One reply per comment. It must be within 7 days. The documented body has no audio field. A normal conversation message can carry `attachmentType: audio`, but that is not a comment private reply. Instagram can refuse attachments to someone who does not follow the account, and a refused private reply still consumes the comment's only reply. This agent therefore sends text only on the private-reply path, records the mapped voice note on the decision, and does not attach it. It does not message anyone who did not comment. ManyChat is not used.

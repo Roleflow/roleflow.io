@@ -16,6 +16,7 @@ import {
   planGatewayReply,
   planPayload,
   readWebhookHeaders,
+  privateReplyKind,
   replyText,
   safeWebhookError,
   sendRequest
@@ -25,6 +26,8 @@ import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
+import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
+import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST." });
@@ -127,11 +130,13 @@ async function lookupAccount(admin, accountId) {
   if (row.error || !row.data) return null;
   const settings = await admin.from("acq_settings").select("system_enabled").eq("agent_id", row.data.business_id).maybeSingle();
   const role = await admin.rpc("acq_role_on", { p_agent: row.data.business_id, p_role: "comment_to_dm" });
+  const commentVoice = await agentEnabled(admin, row.data.business_id, "comment_voice");
   return {
     businessId: row.data.business_id,
     accountId: row.data.account_id,
     systemEnabled: Boolean(settings.data && settings.data.system_enabled),
-    commentToDm: role.data === true
+    commentToDm: role.data === true,
+    commentVoice
   };
 }
 
@@ -142,8 +147,12 @@ async function settle(admin, apiKey, jobs) {
 }
 
 async function planJob(admin, job) {
-  const current = await admin.from("ig_outbox").select("id, status, payload").eq("id", job.id).maybeSingle();
+  const current = await admin.from("ig_outbox").select("id, status, payload, kind").eq("id", job.id).maybeSingle();
   if (!current.data || current.data.status !== "pending" || !current.data.payload || current.data.payload.needsPlan !== true) return;
+  if (current.data.kind === "comment_voice") {
+    await planCommentVoice(admin, job, current.data);
+    return;
+  }
   const threadRes = await admin.from("ig_threads").select("state, human_locked, attributes, score, last_user_message_at").eq("id", job.threadId).eq("business_id", job.account.businessId).maybeSingle();
   const row = threadRes.data || {};
   const thread = {
@@ -222,7 +231,10 @@ async function planJob(admin, job) {
     const clips = clipRows.error ? [] : (clipRows.data || []);
     const sentRows = await admin.from("acq_clip_sends").select("clip_id").eq("business_id", job.account.businessId).eq("conversation_key", String(job.threadId || ""));
     const alreadySent = sentRows.error ? [] : (sentRows.data || []).map((item) => item.clip_id);
-    const promptBody = setterPrompt + "\n\n" + systemPrompt(sections, booking) + knowledge + clipInstructions(clips);
+    const bookingLink = bookingLinkFor(prefs.booking_fallback_url || "");
+    const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", job.account.businessId).eq("active", true);
+    const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
+    const promptBody = expandPrompt(setterPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n" + systemPrompt({}, booking) + knowledge + clipInstructions(clips);
     plan = await planGatewayReply({
       thread,
       eventKind: job.event.kind,
@@ -245,6 +257,8 @@ async function planJob(admin, job) {
       alreadySent,
       promptText: promptBody
     });
+    plan.voiceCatalog = catalog;
+    plan.bookingLink = bookingLink;
   } catch (error) {
     const unconfigured = Boolean(error && typeof error === "object" && "code" in error && error.code === "llm_unconfigured");
     await admin.from("ig_outbox").update({
@@ -275,9 +289,11 @@ async function planJob(admin, job) {
       await admin.from("acq_contacts").update({ attributes: next.attributes, tags: next.tags, updated_at: new Date().toISOString() }).eq("id", contact.data.id).eq("business_id", job.account.businessId);
     }
   }
-  const text = replyText(plan);
-  let chosen = plan.clipChoice || null;
-  if (chosen) {
+  const spoken = resolveOutgoing(replyText(plan), { voices: plan.voiceCatalog || [], bookingLink: plan.bookingLink });
+  const text = spoken.text;
+  const tokenVoice = spoken.voices[0] && job.event.kind !== "comment" ? voiceClipPayload(spoken.voices[0]) : null;
+  let chosen = tokenVoice || plan.clipChoice || null;
+  if (chosen && !tokenVoice) {
     const recorded = await admin.from("acq_clip_sends").insert({
       business_id: job.account.businessId,
       clip_id: chosen.id,
@@ -298,7 +314,8 @@ async function planJob(admin, job) {
       mime: chosen.delivery_mime || chosen.mime_type,
       kind: chosen.kind || "audio",
       label: chosen.label || "Voice note",
-      filename: clipFileName(chosen)
+      filename: chosen.filename || clipFileName(chosen),
+      bucket: chosen.bucket || "owner-clips"
     };
   }
   if (wait > 25) {
@@ -332,6 +349,11 @@ async function sendOne(admin, apiKey, row) {
   if (sendBlocked(stamped)) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "The agent is off." }).eq("id", row.id).eq("status", "pending");
     return;
+  }
+  if (privateReplyKind(row.kind) && row.payload) {
+    delete row.payload.clip;
+    delete row.payload.attachmentUrl;
+    delete row.payload.attachmentType;
   }
   const locked = await admin.from("ig_outbox").update({ status: "running", attempts: (row.attempts || 0) + 1 }).eq("id", row.id).eq("status", "pending").select("id");
   if (!locked.data || !locked.data.length) return;
@@ -382,8 +404,96 @@ async function sendOne(admin, apiKey, row) {
   }
 }
 
+async function planCommentVoice(admin, job, row) {
+  const businessId = job.account.businessId;
+  const enabled = await agentEnabled(admin, businessId, "comment_voice");
+  const rulesRes = await admin.from("acq_comment_voice_rules").select("id, keywords, intent, message, clip_id, position").eq("business_id", businessId).order("position", { ascending: true });
+  const capRes = await admin.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", businessId).maybeSingle();
+  if (rulesRes.error || capRes.error) {
+    await admin.from("ig_outbox").update({ status: "blocked", last_error: "Comment voice is not ready." }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
+  const rules = rulesRes.data || [];
+  const commentId = String(job.event.commentId || "");
+  const commenterId = String(job.event.senderId || "");
+  const priorComment = commentId
+    ? await admin.from("acq_comment_voice_log").select("id").eq("business_id", businessId).eq("comment_id", commentId).limit(1)
+    : { data: [] };
+  const priorPerson = commenterId
+    ? await admin.from("acq_comment_voice_log").select("id").eq("business_id", businessId).eq("commenter_id", commenterId).eq("queued", true).limit(1)
+    : { data: [] };
+  const today = await admin.from("acq_comment_voice_log").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("queued", true).gte("created_at", madridDayStartIso(Date.now()));
+  let model = null;
+  if (enabled && rules.some((rule) => String(rule.intent || "").trim())) {
+    const quick = classifyComment({ text: job.event.text, rules });
+    if (!quick.matched) model = await classifyWithModel(admin, businessId, job.event.text, rules);
+  }
+  const plan = commentVoicePlan({
+    enabled,
+    text: job.event.text,
+    rules,
+    model,
+    commentId,
+    commenterId,
+    commentAt: job.event.commentedAt || (row.payload && row.payload.commentedAt) || new Date().toISOString(),
+    now: Date.now(),
+    dailyCap: capRes.data && capRes.data.daily_cap,
+    seenComment: Boolean(priorComment.data && priorComment.data.length),
+    seenCommenter: Boolean(priorPerson.data && priorPerson.data.length),
+    sentToday: today.count || 0
+  });
+  const logged = await admin.from("acq_comment_voice_log").insert({
+    business_id: businessId,
+    comment_id: commentId,
+    commenter_id: commenterId,
+    commenter_username: String(job.event.username || "").slice(0, 80),
+    comment_text: String(job.event.text || "").slice(0, 1000),
+    matched: plan.log.matched,
+    queued: false,
+    reason: plan.log.reason,
+    rule_id: plan.log.rule_id,
+    clip_id: plan.log.clip_id
+  });
+  if (logged.error || !plan.send) {
+    await admin.from("ig_outbox").update({
+      status: enabled ? "done" : "blocked",
+      last_error: enabled ? null : "The agent is off.",
+      payload: { ...(row.payload || {}), needsPlan: false, decision: plan.log.reason }
+    }).eq("id", job.id).eq("status", "pending");
+    return;
+  }
+  const payload = enqueueBody(job.event, plan.send.text, row.payload && row.payload.conversationRowId);
+  payload.needsPlan = false;
+  payload.intendedClipId = plan.send.intendedClipId || "";
+  const marked = await admin.from("acq_comment_voice_log").update({ queued: true }).eq("business_id", businessId).eq("comment_id", commentId);
+  if (marked.error) payload.intendedClipId = payload.intendedClipId || "";
+  await admin.from("ig_outbox").update({ payload }).eq("id", job.id).eq("status", "pending");
+}
+
+async function classifyWithModel(admin, businessId, text, rules) {
+  const env = Deno.env.toObject();
+  try {
+    const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
+    if (!loaded.runtime && !loaded.fallback) return null;
+    const raw = await completeJson({
+      env,
+      runtime: loaded.runtime,
+      fallback: loaded.fallback,
+      onError: (info) => logLlmError(admin, { businessId, purpose: "comment_voice", ...info }),
+      system: classifierSystem(rules),
+      messages: [{ role: "user", content: String(text || "").slice(0, 2000) }],
+      responseFormat: { type: "text" },
+      maxTokens: 200,
+      temperature: 0
+    });
+    return parseClassifier(typeof raw === "string" ? raw : "", rules);
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function downloadOwnerClip(admin, clip) {
-  const file = await admin.storage.from("owner-clips").download(clip.path);
+  const file = await admin.storage.from(clip.bucket || "owner-clips").download(clip.path);
   if (file.error || !file.data) throw new Error("The voice note could not be read.");
   const bytes = new Uint8Array(await file.data.arrayBuffer());
   return { bytes, mime: clip.mime || "audio/wav", filename: clip.filename || "clip.wav" };

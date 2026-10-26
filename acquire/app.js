@@ -1,7 +1,8 @@
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
-import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
+import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
+import { bookingLinkFor, localTrialText, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { bindAssistant } from "./assistant.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
@@ -490,6 +491,17 @@ async function loadAll(id) {
   state.agentSwitches = switches.error ? [] : switches.data || [];
   state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
+  state.bookingLink = bookingLinkFor(state.settings && state.settings.booking_fallback_url);
+  const [promptVersions, voiceRules, voiceSettings, voiceLog] = await Promise.all([
+    q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", id).order("version", { ascending: false }).limit(30),
+    q.from("acq_comment_voice_rules").select("id, keywords, intent, message, clip_id, position").eq("business_id", id).order("position", { ascending: true }),
+    q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
+    q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
+  ]);
+  state.promptVersions = promptVersions.error ? (state.promptVersions || []) : promptVersions.data || [];
+  state.commentVoiceRules = voiceRules.error ? [] : voiceRules.data || [];
+  state.commentVoiceCap = voiceSettings.error || !voiceSettings.data ? 30 : voiceSettings.data.daily_cap;
+  state.commentVoiceLog = voiceLog.error ? [] : voiceLog.data || [];
   state.followupPolicy = followPolicy.error ? null : followPolicy.data;
   if (!prefs.error && prefs.data && (prefs.data.language === "en" || prefs.data.language === "es")) {
     state.language = writeLanguage(safeStorage(), prefs.data.language);
@@ -585,6 +597,7 @@ function paint() {
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
   if (state.tab === "outreacher") root.append(renderGrokAgent(ui, "outreacher"));
   if (state.tab === "setter") root.append(renderSetter(ui));
+  if (state.tab === "commentvoice") root.append(renderCommentVoice(ui));
   if (state.tab === "followup") root.append(renderFollowBoss(ui));
   if (state.tab === "settings") {
     root.append(renderModelKey(ui));
@@ -732,6 +745,13 @@ function pageUi() {
     language,
     setAgent,
     saveSetterPrompt,
+    restoreSetterPrompt,
+    saveBookingLink,
+    sendTrial,
+    startTrial,
+    restartTrial,
+    addCommentRule,
+    saveCommentVoice,
     trySetter,
     saveFollowupPolicy
   };
@@ -863,21 +883,212 @@ async function setAgent(key, enabled) {
   }
 }
 
+function rememberPrompt(body, version, testedAt) {
+  state.setterPrompt = body;
+  if (testedAt !== undefined) state.setterTestedAt = testedAt;
+  if (version) {
+    state.promptVersions = [version].concat((state.promptVersions || []).filter((row) => row.id !== version.id && Number(row.version) !== Number(version.version)));
+  }
+}
+
 async function saveSetterPrompt(value) {
   if (!state.canEdit) {
     toast("You can't edit this business.", "bad");
     return;
   }
   const body = String(value || "").trim();
-  state.setterPrompt = body;
-  state.setterTestedAt = null;
+  if (!state.supabase) {
+    const versions = state.promptVersions || [];
+    const latest = versions.reduce((max, row) => Math.max(max, Number(row.version) || 0), 0);
+    const current = versions.find((row) => Number(row.version) === latest);
+    if (!current || current.body !== body) {
+      const version = { id: "local-" + (latest + 1), version: latest + 1, body, created_at: new Date().toISOString(), created_by: state.user && state.user.id };
+      state.promptVersions = [version].concat(versions);
+      state.setterTestedAt = null;
+    }
+    state.setterPrompt = body;
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "save_prompt", prompt: body });
+    rememberPrompt(saved.prompt || body, saved.version, saved.tested_at);
+    toast(agentText(language()).saved);
+    paint();
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+async function restoreSetterPrompt(version) {
+  if (!state.canEdit || !version) return;
+  if (!state.supabase) {
+    await saveSetterPrompt(version.body);
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "restore_prompt", version_id: version.id });
+    rememberPrompt(saved.prompt || version.body, saved.version, saved.tested_at);
+    toast(agentText(language()).saved);
+    paint();
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+async function saveBookingLink(value) {
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  const link = String(value || "").trim();
+  state.bookingLink = bookingLinkFor(link);
+  if (state.settings) state.settings.booking_fallback_url = link;
   if (!state.supabase) {
     toast(agentText(language()).saved);
     return;
   }
   try {
-    await dashboardCall({ action: "save_prompt", prompt: body });
+    const saved = await dashboardCall({ action: "save_booking_link", booking_link: link });
+    state.bookingLink = saved.booking_link || state.bookingLink;
+    if (state.settings) state.settings.booking_fallback_url = link;
     toast(agentText(language()).saved);
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+function previewToneUrl() {
+  const rate = 8000;
+  const count = 3200;
+  const bytes = new Uint8Array(44 + count);
+  const view = new DataView(bytes.buffer);
+  bytes.set([82, 73, 70, 70], 0);
+  view.setUint32(4, 36 + count, true);
+  bytes.set([87, 65, 86, 69, 102, 109, 116, 32], 8);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  bytes.set([100, 97, 116, 97], 36);
+  view.setUint32(40, count, true);
+  for (let i = 0; i < count; i += 1) bytes[44 + i] = 128 + Math.round(28 * Math.sin((2 * Math.PI * 440 * i) / rate));
+  return URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+}
+
+function ensureTrial() {
+  if (!state.setterTrial) state.setterTrial = { scenario: "follower", messages: [] };
+  return state.setterTrial;
+}
+
+function startTrial(scenario) {
+  state.setterTrial = { scenario: scenario || "follower", messages: [] };
+  paint();
+}
+
+function restartTrial() {
+  const trial = ensureTrial();
+  state.setterTrial = { scenario: trial.scenario || "follower", messages: [] };
+  paint();
+}
+
+async function sendTrial(prompt, message) {
+  const sample = String(message || "").trim();
+  const body = String(prompt || "");
+  if (!sample) return;
+  const trial = ensureTrial();
+  const history = (trial.messages || []).filter((item) => item.role === "user" || item.role === "assistant").map((item) => ({
+    role: item.role,
+    content: item.text || ""
+  }));
+  trial.messages = (trial.messages || []).concat([{ role: "user", text: sample }]);
+  let result;
+  if (!state.supabase) {
+    const catalog = voiceCatalog(state.voices || []);
+    const raw = localTrialText({ prompt: body, inbound: sample, scenario: trial.scenario, voices: catalog });
+    const resolved = resolveOutgoing(raw, { voices: catalog, bookingLink: state.bookingLink });
+    result = {
+      ok: Boolean(raw),
+      error: raw ? "" : "Save a system prompt first.",
+      reply: resolved.text,
+      voices: resolved.voices,
+      version: promptVersionLabel(state.promptVersions, body),
+      prompt: body,
+      sent: false,
+      tested_at: body === state.setterPrompt ? new Date().toISOString() : state.setterTestedAt
+    };
+  } else {
+    try {
+      result = await dashboardCall({
+        action: "preview_setter",
+        prompt: body,
+        message: sample,
+        messages: history,
+        scenario: trial.scenario
+      });
+    } catch (error) {
+      result = { ok: false, error: error.message };
+    }
+  }
+  if (!result.ok) {
+    toast(result.error || "The practice thread did not run.", "bad");
+    paint();
+    return;
+  }
+  if (result.tested_at && body.trim() === String(state.setterPrompt || "").trim()) state.setterTestedAt = result.tested_at;
+  const voices = [];
+  for (const note of result.voices || []) {
+    let playbackUrl = "";
+    if (state.supabase && note.path) {
+      const signed = await state.supabase.storage.from("acq-voice").createSignedUrl(note.path, 3600);
+      playbackUrl = signed.data && signed.data.signedUrl ? signed.data.signedUrl : "";
+    } else if (!state.supabase) {
+      playbackUrl = previewToneUrl();
+    }
+    voices.push({ ...note, playbackUrl });
+  }
+  const label = result.version && result.version.draft
+    ? "Unsaved draft" + (result.version.version ? ", after version " + result.version.version : "")
+    : "Version " + ((result.version && result.version.version) || 1);
+  trial.messages = trial.messages.concat([{
+    role: "assistant",
+    text: result.reply || "",
+    voices,
+    versionLabel: label,
+    prompt: result.prompt || body
+  }]);
+  paint();
+}
+
+function addCommentRule() {
+  state.commentVoiceRules = (state.commentVoiceRules || []).concat([{ id: "new-" + Date.now(), keywords: [], intent: "", message: "", clip_id: "" }]);
+  paint();
+}
+
+async function saveCommentVoice(input) {
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  const dailyCap = Number(input && input.dailyCap) || 30;
+  const rules = input && input.rules || [];
+  if (!state.supabase) {
+    state.commentVoiceCap = dailyCap;
+    state.commentVoiceRules = rules;
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "save_comment_voice", daily_cap: dailyCap, rules });
+    state.commentVoiceCap = saved.daily_cap || dailyCap;
+    state.commentVoiceRules = saved.rules || [];
+    toast(agentText(language()).saved);
+    paint();
   } catch (error) {
     toast(error.message, "bad");
   }
@@ -3016,7 +3227,7 @@ function readPreview() {
     canEdit: params.get("edit") === "1",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
-    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false },
+    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "" },
     setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : null,
     outbox: [],
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
@@ -3041,8 +3252,17 @@ function readPreview() {
     connectRequests: pending ? [{ id: "preview-request", workspace_id: "preview", channel: "instagram", username: "previewcoach", status: "pending", notes: "Business account" }] : [],
     google: { status: "disconnected" },
     agentSwitches: [],
-    setterPrompt: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.",
+    setterPrompt: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}.",
     setterTestedAt: null,
+    bookingLink: bookingLinkFor(""),
+    promptVersions: [
+      { id: "preview-prompt-1", version: 1, body: "You are the setter for this business. Ask one question at a time.", created_at: "2026-10-23T06:00:00Z", created_by: null },
+      { id: "preview-prompt-2", version: 2, body: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}.", created_at: "2026-10-26T08:00:00Z", created_by: null }
+    ],
+    setterTrial: { scenario: "comment", messages: [] },
+    commentVoiceCap: 30,
+    commentVoiceRules: [{ id: "rule-1", keywords: ["SYSTEM", "SYSTEMS", "SISTEM"], intent: "Someone asking how the system works", message: "Thanks for the comment.", clip_id: "v1" }],
+    commentVoiceLog: [{ id: "log-1", matched: false, queued: false, reason: "no_match", comment_text: "Nice post", commenter_username: "ada", created_at: "2026-10-26T09:00:00Z" }],
     followupPolicy: null,
     workers: [{ id: "w1", label: "Outreach worker", key_prefix: "rfw_preview", enabled: true, status: "offline", last_heartbeat_at: null, pause_reason: null }],
     dnc: [{ handle: "donotcontact", reason: "asked to stop" }],
