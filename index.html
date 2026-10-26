@@ -78,6 +78,14 @@
             "@type": "Answer",
             "text": "Yes. The practice chat in the panel runs a full conversation on the saved or draft prompt. Practice never sends a message to Instagram. The setter stays off until you turn it on."
           }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the setter reply the instant a message arrives?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "You choose a minimum and a maximum in seconds. The live reply waits a random time between them. Zero is allowed. Practice can skip the wait."
+          }
         }
       ]
     }
@@ -92,7 +100,9 @@
     <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#flow">How it works</a>
-      <a href="#workforce">Panel</a>
+      <a href="#showcase">Product</a>
+      <a href="#compare">Compare</a>
+      <a href="#faq">FAQ</a>
       <a href="/es/" hreflang="es" lang="es">Español</a>
     </nav>
     <a class="navlink menu-toggle" id="menu-toggle" href="/signup/">Access</a>
@@ -149,34 +159,100 @@
 
 <main id="main">
   <section class="hero">
+    <div class="mesh" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="wrap hero-grid">
-      <div>
+      <div class="hero-copy">
         <p class="kicker">For coaches and info businesses</p>
-        <h1>A Client Acquisition System for <span class="g">Instagram DMs</span>.</h1>
-        <p class="lede">Roleflow is the system in your panel. The AI DM setter runs from the prompt you write and edit. It sends your recorded voice notes and books calls on your calendar.</p>
+        <h1>
+          <span class="line"><span>A Client Acquisition System</span></span>
+          <span class="line"><span class="g">for Instagram DMs.</span></span>
+        </h1>
+        <p class="lede">The AI DM setter runs from the prompt you write in the panel. It sends your recorded voice notes, waits the time you set, and sends your booking link.</p>
         <div class="actions">
           <a class="btn" href="https://calendar.app.google/R4wpQ4b8F5J7xnD39" target="_blank" rel="noopener">Book a demo</a>
         </div>
       </div>
       <figure class="vsl">
-        <div class="vsl-frame">
-          <iframe src="https://share.descript.com/embed/XJIQMjM0Q1N" title="Roleflow walkthrough" loading="lazy" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        <div class="vsl-float" data-parallax>
+          <div class="browser vsl-device">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>share.descript.com</span></div>
+            <div class="vsl-frame">
+              <iframe src="https://share.descript.com/embed/XJIQMjM0Q1N" title="Roleflow walkthrough" loading="lazy" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            </div>
+          </div>
         </div>
         <figcaption><a href="https://share.descript.com/view/XJIQMjM0Q1N" target="_blank" rel="noopener">Watch the walkthrough</a> if the player does not load.</figcaption>
       </figure>
     </div>
   </section>
 
+  <div class="marquee" aria-label="What is in the panel">
+    <div class="marquee-track">
+      <p>AI DM setter</p><p>Recorded voice notes</p><p>Booking link</p><p>Comment voice</p><p>Practice chat</p><p>Reply delay</p><p>Follow-up</p><p>Lead warmer</p><p>Outreacher</p><p>Prompt versions</p><p>English and Spanish</p>
+      <p aria-hidden="true">AI DM setter</p><p aria-hidden="true">Recorded voice notes</p><p aria-hidden="true">Booking link</p><p aria-hidden="true">Comment voice</p><p aria-hidden="true">Practice chat</p><p aria-hidden="true">Reply delay</p><p aria-hidden="true">Follow-up</p><p aria-hidden="true">Lead warmer</p><p aria-hidden="true">Outreacher</p><p aria-hidden="true">Prompt versions</p><p aria-hidden="true">English and Spanish</p>
+    </div>
+  </div>
+
   <section id="flow">
     <div class="wrap">
-      <p class="kicker">How it works</p>
-      <h2>Write it. Practice it. Turn it on.</h2>
-      <div class="steps">
-        <article class="step"><i>01</i><div><h3>Write the setter prompt</h3><p>The AI DM setter uses the system prompt saved in the panel. You edit it there, and each save keeps a version.</p></div></article>
-        <article class="step"><i>02</i><div><h3>Add your voice notes and calendar</h3><p>Record the notes in the panel. Name one in the prompt and the setter sends that file on a normal DM. The booking link in the panel is what gets sent to book the call.</p></div></article>
-        <article class="step"><i>03</i><div><h3>Practice the full conversation</h3><p>The practice chat runs the thread on your prompt before anything is live. Practice never sends a message to Instagram.</p></div></article>
-        <article class="step"><i>04</i><div><h3>Turn on only the agents you want</h3><p>Lead finding, warm-up, the setter, follow-up, and comment voice each have an on/off switch. An agent with no saved switch stays off.</p></div></article>
-        <article class="step"><i>05</i><div><h3>Reply when someone comments</h3><p>Comment voice reads the comment. If it matches a keyword or an intent you wrote, it queues one private text reply. No ManyChat needed. The voice note mapped to that rule is logged and is not attached.</p></div></article>
+      <p class="kicker">How a lead moves</p>
+      <h2>From a comment to a booking link.</h2>
+      <p class="lede">A live sketch of the path. Scroll the steps, or let it play. A comment reply is text. The voice note is a recording on the DM.</p>
+      <div class="flow-grid">
+        <ol class="flow-steps">
+          <li data-step="1"><i>01</i><div><h3>A comment arrives</h3><p>Someone writes on a post. Comment voice has the keywords and the intent you saved, in English or Spanish.</p></div></li>
+          <li data-step="2"><i>02</i><div><h3>It reads the comment</h3><p>If the comment matches, one private text reply is queued. No ManyChat. The setter itself stays off until you turn it on.</p></div></li>
+          <li data-step="3"><i>03</i><div><h3>A voice note on the DM</h3><p>On a normal DM, the setter sends the recording the prompt names. A note mapped to a comment is logged and is not attached.</p></div></li>
+          <li data-step="4"><i>04</i><div><h3>Your booking link goes out</h3><p>When the prompt asks for it, the setter sends the calendar link saved for that business. The reply waits a random time between the minimum and maximum you set.</p></div></li>
+        </ol>
+        <div class="demo-sticky">
+          <div class="phone" data-demo aria-hidden="true">
+            <div class="phone-top"><span></span> Direct</div>
+            <div class="piece comment" data-piece="1"><b>Comment</b><p>@ada · How does the system work?</p></div>
+            <div class="piece typing" data-piece="2"><span></span><span></span><span></span></div>
+            <div class="piece reply" data-piece="3"><b>Private reply</b><p>Thanks for the comment.</p></div>
+            <div class="piece voice" data-piece="3"><b>Voice note on the DM</b><div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><p>The recording named in the prompt.</p></div>
+            <div class="piece book" data-piece="4"><b>Booking link sent</b><p>The calendar link saved for this business.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="showcase">
+    <div class="wrap">
+      <p class="kicker">The panel</p>
+      <h2>The screens you actually open.</h2>
+      <p class="lede">Shots from the product. Counts on the dashboard are the rows stored for that business.</p>
+      <div class="shots">
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Agentic Setter</span></div>
+            <div class="browser-view"><img src="/assets/marketing/setter.webp" alt="The setter prompt editor beside the practice chat, with save, versions, and the reply delay." width="1280" height="1320" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>Prompt on the left. Practice chat on the right. Nothing in practice is sent.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Comment voice</span></div>
+            <div class="browser-view"><img src="/assets/marketing/comment-voice.webp" alt="Comment voice rules with keywords, intent, a private reply, and a decision log." width="1280" height="1486" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>Keywords, intent, and one private text reply. The decision log sits under the rules.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Voice Gen</span></div>
+            <div class="browser-view"><img src="/assets/marketing/voice-notes.webp" alt="Voice Gen with a recorded note titled Opener, coaching, marked active." width="1280" height="832" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>You record the notes. The setter sends the one the prompt names.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Dashboard</span></div>
+            <div class="browser-view"><img src="/assets/marketing/dashboard.webp" alt="Dashboard cards for leads, chats, booked calls, and how many agents are on." width="1280" height="678" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>Leads, chats, booked calls, and which agents are on.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -187,38 +263,97 @@
       <h2>The same controls you open when you sign in.</h2>
       <div class="features">
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v9H8l-3 3V6z"/></svg>
           <h3>AI DM setter</h3>
           <p>Replies in Instagram DMs from the prompt the business writes. It stays off until a prompt is saved, the practice chat has been used, and the switch is turned on.</p>
         </article>
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3zM6 11a6 6 0 0 0 12 0M12 17v3"/></svg>
           <h3>Recorded voice notes</h3>
           <p>Notes are recordings stored for that business. The setter sends the named recording on a normal DM.</p>
         </article>
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16H7zM9 8h6M9 12h6M9 16h3"/></svg>
           <h3>Booking link</h3>
           <p>Each business saves its own calendar link. The setter inserts that link when the prompt asks for it.</p>
         </article>
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12v8H9l-3 3V7zM8 11h8"/></svg>
           <h3>Comment voice</h3>
           <p>Understands the comment against the keywords and intent you save, in English or Spanish. One private text reply. No ManyChat needed.</p>
         </article>
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v12H5zM8 10h8M8 14h5"/></svg>
           <h3>Practice chat</h3>
           <p>A full conversation in the panel, on the draft or saved prompt, before the setter goes live. Nothing from practice is sent.</p>
         </article>
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"/></svg>
+          <h3>Reply delay</h3>
+          <p>You set a minimum and a maximum in seconds. The live reply waits a random time between them. Zero is allowed. Practice can skip the wait.</p>
+        </article>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM16 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM4 19c.4-2.4 2.2-4 4.2-4s3.8 1.6 4.2 4M14 19c.3-1.6 1.4-2.8 3-2.8 1.4 0 2.5.8 3 2.2"/></svg>
           <h3>Lead finding and warm-up</h3>
           <p>Separate agents, each with its own switch. They stay off until you turn them on. Roleflow does not run that scan from the page.</p>
         </article>
         <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           <h3>Follow-up</h3>
           <p>Sends only when the saved rules match, including a 24-hour window, and only while its switch is on.</p>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="wrap">
+      <p class="kicker">Compare</p>
+      <h2>Roleflow, a hired setter, and a keyword bot.</h2>
+      <p class="lede">How each one handles a message. No scores and no made-up totals.</p>
+      <div class="compare">
         <article>
-          <h3>English and Spanish</h3>
-          <p>The panel language is English or Spanish. This site is available in both.</p>
+          <h3>Roleflow</h3>
+          <ul>
+            <li><strong>Replies</strong> from the system prompt you write, edit, and version in the panel.</li>
+            <li><strong>Voice</strong> is a recording you made, sent on a normal DM when the prompt names it.</li>
+            <li><strong>Comments</strong> match a keyword or an intent you write, in English or Spanish, then one private text reply. No ManyChat.</li>
+            <li><strong>Before it is live</strong> you run a practice chat. Practice never sends to Instagram. Each agent stays off until you turn it on.</li>
+            <li><strong>Booking</strong> sends the calendar link saved for that business, after the delay you set.</li>
+          </ul>
+        </article>
+        <article>
+          <h3>A hired setter</h3>
+          <ul>
+            <li><strong>Replies</strong> come from a person you train and schedule.</li>
+            <li><strong>Voice</strong> is whatever that person records and sends while they are working.</li>
+            <li><strong>Comments</strong> are read by that person. There is no keyword or intent rule unless you give them one.</li>
+            <li><strong>Before it is live</strong> you brief them. There is no practice thread inside Roleflow for their chats.</li>
+            <li><strong>Booking</strong> is the link you tell them to send, on the hours you agree.</li>
+          </ul>
+        </article>
+        <article>
+          <h3>ManyChat-style keyword bots</h3>
+          <ul>
+            <li><strong>Replies</strong> are the fixed message tied to a keyword, not a system prompt you edit as a conversation.</li>
+            <li><strong>Voice</strong> is not a recording chosen from a setter prompt in this panel.</li>
+            <li><strong>Comments</strong> fire when the listed words match. Roleflow can also match an intent you describe, and it does not need ManyChat.</li>
+            <li><strong>Before it is live</strong> there is no full-conversation practice chat that stays off Instagram.</li>
+            <li><strong>Booking</strong> is a link pasted into that flow. Roleflow stores the link on the business and inserts it from the prompt.</li>
+          </ul>
         </article>
       </div>
+    </div>
+  </section>
+
+  <section class="langs" id="languages">
+    <div class="wrap lang-band">
+      <div>
+        <p class="kicker">English and Spanish</p>
+        <h2>The panel switches language. So does this site.</h2>
+        <p class="lede">Comment voice rules can be written in either language. The dashboard language control is English or Spanish.</p>
+      </div>
+      <p class="lang-links"><a href="/" hreflang="en" aria-current="page">English</a><a href="/es/" hreflang="es" lang="es">Español</a></p>
     </div>
   </section>
 
@@ -240,6 +375,10 @@
           <p>Yes. The practice chat runs the full thread on the saved or draft prompt. Practice never sends a message to Instagram. The setter stays off until you turn it on.</p>
         </details>
         <details>
+          <summary>Does the setter reply the instant a message arrives?</summary>
+          <p>You choose a minimum and a maximum in seconds. The live reply waits a random time between them. Zero is allowed. Practice can skip the wait.</p>
+        </details>
+        <details>
           <summary>What do the switches control?</summary>
           <p>Lead finding, warm-up, the setter, follow-up, and comment voice each have an on/off switch. An agent with no saved switch stays off. Lead finding and warm-up do not run a scan from this page.</p>
         </details>
@@ -252,7 +391,7 @@
   </section>
 
   <section class="final" id="start">
-    <div class="wrap">
+    <div class="wrap final-band">
       <p class="kicker">Demo</p>
       <h2>See the panel on a call.</h2>
       <p class="lede">One calendar. Bring the offer you sell in Instagram DMs.</p>
@@ -272,5 +411,6 @@
 <script src="supabase/config.js"></script>
 <script type="module" src="auth/nav.js"></script>
 <script type="module" src="auth/sidebar.js"></script>
+<script src="/assets/home-motion.js" defer></script>
 </body>
 </html>
