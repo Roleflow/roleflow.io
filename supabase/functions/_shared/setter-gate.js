@@ -1,6 +1,8 @@
 // Decides whether the live setter may answer, which model it uses, and which
 // lead fields to store. No network calls.
 
+export { delaySeconds, practiceDelaySeconds } from "./setter-delay.js";
+
 export const DEFAULT_MODEL = "grok-4.3";
 export const ESCALATION_MODEL = "grok-4.7";
 
@@ -13,12 +15,6 @@ function minutesOf(value) {
   const minute = Number(match[2]);
   if (hour > 23 || minute > 59) return null;
   return hour * 60 + minute;
-}
-
-function clampDelay(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 0;
-  return Math.min(300, Math.max(0, Math.round(number)));
 }
 
 export function officeOpen({ now, timeZone, mode, start, end, hoursByDay }) {
@@ -45,19 +41,6 @@ export function officeOpen({ now, timeZone, mode, start, end, hoursByDay }) {
   if (open == null || close == null || open === close) return true;
   if (open < close) return minutes >= open && minutes < close;
   return minutes >= open || minutes < close;
-}
-
-export function delaySeconds(min, max, random) {
-  const low = Math.min(clampDelay(min), clampDelay(max));
-  const high = Math.max(clampDelay(min), clampDelay(max));
-  const roll = typeof random === "function" ? Number(random()) : Math.random();
-  const unit = Math.min(1, Math.max(0, Number.isFinite(roll) ? roll : 0));
-  return low + Math.floor((high - low) * unit);
-}
-
-export function practiceDelaySeconds(min, max, simulate, random) {
-  if (simulate !== true) return 0;
-  return delaySeconds(min, max, random);
 }
 
 export function chooseModel({ preferred, text, state }) {
