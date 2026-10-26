@@ -1,7 +1,7 @@
 import { AGENT_KEYS, DEFAULT_POLICY, dashboardMetrics, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
 import { shareCents, showUpRate } from "./model.js";
 import { grokLaunchUrl } from "./client-config.js";
-import { beginInstagramConnect } from "./connect-instagram.js";
+import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
 import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prompt-tokens.js";
@@ -40,10 +40,23 @@ const COPY = {
     keyTest: "Test key",
     keyChecking: "Checking…",
     keyLocked: "Only an owner or admin can change this key.",
+    igTitle: "Connect Instagram",
     igOn: "Instagram is connected for this business.",
     igOff: "Instagram is not connected for this business.",
-    igBody: "Connect Instagram starts the account login for this business.",
-    igUnavailable: "Instagram connection is not available right now. Contact Roleflow support.",
+    igBody: "Instagram opens in this browser for this business only. Log into the account you want, then allow access.",
+    igReconnectBody: "Reconnect opens Instagram for this business. The account you allow replaces this one. Disconnect frees it for another business.",
+    igUnavailable: "Instagram connect is not available yet.",
+    igConnected: "Connected",
+    igNotConnected: "Not connected",
+    igFailed: "Needs another try",
+    igConnect: "Connect Instagram",
+    igOpening: "Opening Instagram…",
+    igOpeningFor: "Opening Instagram for this business…",
+    igRetry: "Try again",
+    igRetryHint: "Instagram didn't open. You can try again.",
+    igReconnect: "Reconnect",
+    igDisconnect: "Disconnect",
+    igDisconnected: "Instagram disconnected.",
     dashLede: "One business. Live numbers only.",
     leads: "Leads",
     leadsNote: "People stored for this business.",
@@ -100,10 +113,23 @@ const COPY = {
     keyTest: "Probar clave",
     keyChecking: "Comprobando…",
     keyLocked: "Solo un propietario o un admin puede cambiar esta clave.",
+    igTitle: "Conectar Instagram",
     igOn: "Instagram está conectado para este negocio.",
     igOff: "Instagram no está conectado para este negocio.",
-    igBody: "Conectar Instagram abre el acceso de la cuenta de este negocio.",
-    igUnavailable: "La conexión de Instagram no está disponible ahora. Contacta con el soporte de Roleflow.",
+    igBody: "Instagram se abre en este navegador solo para este negocio. Entra en la cuenta que quieras y permite el acceso.",
+    igReconnectBody: "Reconectar abre Instagram para este negocio. La cuenta que permitas sustituye a esta. Desconectar la deja libre para otro negocio.",
+    igUnavailable: "La conexión de Instagram todavía no está disponible.",
+    igConnected: "Conectado",
+    igNotConnected: "Sin conectar",
+    igFailed: "Hace falta otro intento",
+    igConnect: "Conectar Instagram",
+    igOpening: "Abriendo Instagram…",
+    igOpeningFor: "Abriendo Instagram para este negocio…",
+    igRetry: "Reintentar",
+    igRetryHint: "Instagram no se abrió. Puedes volver a intentarlo.",
+    igReconnect: "Reconectar",
+    igDisconnect: "Desconectar",
+    igDisconnected: "Instagram desconectado.",
     dashLede: "Un negocio. Solo números reales.",
     leads: "Leads",
     leadsNote: "Personas guardadas de este negocio.",
@@ -652,24 +678,72 @@ export function renderModelKey(ui) {
 export function renderInstagramConnect(ui) {
   const copy = text(ui.language());
   const card = ui.el("section", { class: "agent", id: "instagram-connect" });
-  card.append(ui.el("h3", { text: "Connect Instagram" }));
-  const connected = Boolean(ui.state.ig && ui.state.ig.status === "connected");
-  card.append(ui.el("p", { text: connected ? copy.igOn : copy.igOff }));
-  card.append(ui.el("p", { text: copy.igBody }));
+  const businessId = ui.state.businessId || "";
+  const ig = ui.state.ig && (!ui.state.ig.business_id || ui.state.ig.business_id === businessId) ? ui.state.ig : null;
+  const connected = Boolean(ig && ig.status === "connected");
+  const failed = Boolean(ig && ig.status === "error");
+  const handle = ig && ig.username ? "@" + String(ig.username).replace(/^@/, "") : "";
+  const lastError = ig && ig.last_error ? scrubChannelCopy(ig.last_error) : "";
+  const pendingNotice = !connected && ui.state.connectError ? scrubChannelCopy(ui.state.connectError) : "";
+  card.dataset.businessId = businessId;
+  card.append(ui.el("h3", { text: copy.igTitle }));
+  card.append(ui.el("p", {
+    class: connected ? "integration-status on" : "integration-status",
+    role: "status",
+    text: connected ? copy.igConnected : failed ? copy.igFailed : copy.igNotConnected
+  }));
+  card.append(ui.el("p", { text: connected ? (handle || copy.igOn) : copy.igOff }));
+  card.append(ui.el("p", { class: "mute", text: connected ? copy.igReconnectBody : copy.igBody }));
   const status = ui.el("p", { class: "mute", "data-connect-status": "1", role: "status" });
+  if (pendingNotice || lastError) status.textContent = pendingNotice || lastError;
   if (ui.state.canEdit) {
-    const control = ui.button("Connect Instagram", async () => {
+    const row = ui.el("div", { class: "filters" });
+    const label = connected ? copy.igReconnect : failed || pendingNotice ? copy.igRetry : copy.igConnect;
+    const control = ui.button(label, async () => {
       control.disabled = true;
-      const result = await beginInstagramConnect({ state: ui.state, toast: ui.toast });
+      control.textContent = copy.igOpening;
+      control.setAttribute("aria-busy", "true");
+      status.textContent = copy.igOpeningFor;
+      if (ui.state.preview) {
+        card.dataset.connectBusiness = businessId;
+        return;
+      }
+      const result = await beginInstagramConnect({ state: ui.state, toast: ui.toast, businessId });
       if (result.mode === "redirect") {
+        status.textContent = copy.igOpening;
         location.assign(result.authUrl);
         return;
       }
-      status.textContent = copy.igUnavailable;
-      if (result.mode !== "manual" && result.error && ui.toast) ui.toast(result.error, "bad");
+      status.textContent = result.mode === "manual" ? copy.igUnavailable : (result.error || copy.igRetryHint);
+      if (result.error && ui.toast) ui.toast(result.mode === "manual" ? copy.igUnavailable : result.error, "bad");
       control.disabled = false;
+      control.textContent = copy.igRetry;
+      control.removeAttribute("aria-busy");
     });
-    card.append(control);
+    control.setAttribute("data-connect-instagram", businessId);
+    row.append(control);
+    if (connected || failed) {
+      const disconnect = ui.button(copy.igDisconnect, async () => {
+        disconnect.disabled = true;
+        if (ui.state.preview) {
+          status.textContent = copy.igDisconnected;
+          card.dataset.disconnectedBusiness = businessId;
+          return;
+        }
+        const result = await disconnectInstagram({ state: ui.state, businessId });
+        if (!result.ok) {
+          status.textContent = result.error || copy.igRetryHint;
+          if (ui.toast) ui.toast(result.error || copy.igRetryHint, "bad");
+          disconnect.disabled = false;
+          return;
+        }
+        if (ui.toast) ui.toast(copy.igDisconnected);
+        if (ui.bootBusiness) await ui.bootBusiness(businessId);
+      });
+      disconnect.classList.add("ghost");
+      row.append(disconnect);
+    }
+    card.append(row);
   }
   card.append(status);
   return card;

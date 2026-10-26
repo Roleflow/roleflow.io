@@ -55,8 +55,32 @@ export function verifyState(token, secret, now) {
   const businessId = String(payload.b || "");
   const nonce = String(payload.n || "");
   const exp = Number(payload.e);
-  if (!/^[0-9a-f-]{36}$/i.test(businessId) || !nonce || !Number.isFinite(exp) || exp < now) return { ok: false };
+  if (!/^[0-9a-f-]{36}$/i.test(businessId) || !nonce || !Number.isFinite(exp)) return { ok: false };
+  if (exp < now) return { ok: false, businessId };
   return { ok: true, businessId, nonce };
+}
+
+async function listedProfileId(fetchImpl, apiKey, businessId) {
+  const listed = await fetchImpl(API_BASE + "/profiles?externalId=" + encodeURIComponent(businessId), {
+    headers: authHeaders(apiKey)
+  });
+  const list = await listed.json().catch(() => ({}));
+  const profiles = Array.isArray(list.profiles) ? list.profiles : [];
+  const found = profiles.find((profile) => profile && String(profile.externalId || "") === String(businessId));
+  return found ? profileIdFrom(found) : "";
+}
+
+async function ownedProfileId(fetchImpl, apiKey, profileId, businessId) {
+  const id = String(profileId || "");
+  if (!id) return "";
+  const response = await fetchImpl(API_BASE + "/profiles/" + encodeURIComponent(id), {
+    headers: authHeaders(apiKey)
+  });
+  if (!response.ok) return "";
+  const payload = await response.json().catch(() => ({}));
+  const profile = payload && payload.profile ? payload.profile : payload;
+  if (!profile || String(profile.externalId || "") !== String(businessId)) return "";
+  return profileIdFrom(profile) || id;
 }
 
 export function profileBody(business) {
@@ -113,16 +137,14 @@ export async function startConnect(input) {
   const secret = String(input.webhookSecret || apiKey);
   const now = input.now || Date.now();
   const nonce = input.nonce || randomBytes(16).toString("hex");
-  let profileId = String(input.existingProfileId || "");
   const fetchImpl = input.fetchImpl;
-  if (!profileId) {
-    const listed = await fetchImpl(API_BASE + "/profiles?externalId=" + encodeURIComponent(input.business.id), {
-      headers: authHeaders(apiKey)
-    });
-    const list = await listed.json().catch(() => ({}));
-    const profiles = Array.isArray(list.profiles) ? list.profiles : [];
-    const found = profiles.find((profile) => String(profile.externalId || "") === String(input.business.id));
-    profileId = found ? profileIdFrom(found) : "";
+  const businessId = String(input.business && input.business.id || "");
+  // A stored id or a 409 id is used only when that profile's external id is
+  // this business. Another business's profile, including the first workspace,
+  // is never attached here.
+  let profileId = await listedProfileId(fetchImpl, apiKey, businessId);
+  if (!profileId && input.existingProfileId) {
+    profileId = await ownedProfileId(fetchImpl, apiKey, input.existingProfileId, businessId);
   }
   if (!profileId) {
     const created = await fetchImpl(API_BASE + "/profiles", {
@@ -131,11 +153,22 @@ export async function startConnect(input) {
       body: JSON.stringify(profileBody(input.business))
     });
     const payload = await created.json().catch(() => ({}));
-    const existing = String((payload.details && payload.details.existingProfileId) || "");
-    if (created.status === 409 && existing) profileId = existing;
-    else if (!created.ok) return { configured: true, error: "Instagram connect could not start." };
-    else profileId = profileIdFrom(payload);
-    if (!profileId) return { configured: true, error: "Instagram connect could not start." };
+    if (created.status === 409) {
+      profileId = await listedProfileId(fetchImpl, apiKey, businessId);
+      if (!profileId) {
+        profileId = await ownedProfileId(
+          fetchImpl,
+          apiKey,
+          payload.details && payload.details.existingProfileId,
+          businessId
+        );
+      }
+      if (!profileId) return { configured: true, error: "Instagram connect could not start." };
+    } else if (!created.ok) return { configured: true, error: "Instagram connect could not start." };
+    else {
+      profileId = profileIdFrom(payload);
+      if (!profileId) return { configured: true, error: "Instagram connect could not start." };
+    }
   }
   const state = signState({ b: input.business.id, e: now + STATE_MS, n: nonce }, secret);
   const query = connectQuery({ profileId, state, logoUrl: input.logoUrl });

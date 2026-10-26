@@ -50,7 +50,13 @@ async function finish(body: { state?: string; account_id?: string; accountId?: s
   const secret = config.webhookSecret || config.apiKey;
   if (!secret) return { ok: false, error: "Instagram connect is not available yet.", businessId: "" };
   const checked = verifyState(state, secret, Date.now());
-  if (!checked.ok) return { ok: false, error: "This connection link expired. Start again from the panel.", businessId: "" };
+  if (!checked.ok) {
+    return {
+      ok: false,
+      error: "This connection link expired. Start again from the panel.",
+      businessId: checked.businessId || ""
+    };
+  }
   const saved = await admin.rpc("acq_gateway_connect_account", {
     p_business: checked.businessId,
     p_nonce: checked.nonce,
@@ -72,6 +78,7 @@ function redirect(result: { ok: boolean; error?: string; businessId?: string }) 
   if (result.businessId) url.searchParams.set("business", result.businessId);
   if (result.ok) url.searchParams.set("ig", "connected");
   else url.searchParams.set("notice", clientSafeText(result.error) || "Instagram didn't finish connecting. You can try again from the panel.");
+  url.searchParams.set("connect", "1");
   url.hash = "integrations";
   return Response.redirect(url.toString(), 302);
 }

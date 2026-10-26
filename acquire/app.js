@@ -189,7 +189,7 @@ async function boot() {
   state.language = readLanguage(safeStorage());
   const preview = readPreview();
   if (preview) {
-    Object.assign(state, preview, { tab: tabFromHash() });
+    Object.assign(state, preview, { tab: tabFromHash(), preview: true });
     state.canEdit = preview.canEdit === true;
     state.canManageKeys = state.canEdit === true;
     const seed = await import("./setter-seed.js");
@@ -218,10 +218,16 @@ async function boot() {
       { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "" } }
     ];
     armEditorRequest();
+    fillPicker();
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
+    captureInstagramNotice();
     paint();
-    consumeInstagramNotice();
+    settleInstagramNotice();
+    if (new URLSearchParams(location.search).get("add") === "1") {
+      const adder = await import("./add-business.js");
+      adder.openAddBusiness({ supabase: null, preview: true });
+    }
     return;
   }
   if (!isConfigured()) {
@@ -249,9 +255,7 @@ async function boot() {
       history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
   }
-  const notice = new URLSearchParams(location.search).get("notice");
-  if (notice) toast(notice, "bad");
-  consumeInstagramNotice();
+  captureInstagramNotice();
   if (new URLSearchParams(location.search).get("onboarding") === "1" && !location.hash) {
     history.replaceState(null, "", location.pathname + location.search + "#onboarding");
   }
@@ -283,12 +287,28 @@ async function boot() {
   }
   fillPicker();
   const requested = new URLSearchParams(location.search).get("business");
+  let initial = state.businesses.find((row) => row.id === requested);
+  if (requested && !initial && /^[0-9a-f-]{36}$/i.test(requested)) {
+    const again = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").eq("id", requested).maybeSingle();
+    if (again.data && again.data.id) {
+      state.businesses = state.businesses.concat([{ ...again.data, agent_name: again.data.name || "Acquisition" }]);
+      fillPicker();
+      initial = state.businesses.find((row) => row.id === requested);
+    }
+  }
+  if (requested && !initial) {
+    showMessage("That business is not on this account", "Choose a business from the list. Instagram connect stays on the business you pick.");
+    return;
+  }
   const owned = state.businesses.find((row) => row.owner_id === state.user.id);
-  const initial = state.businesses.find((row) => row.id === requested) || owned || state.businesses[0];
+  initial = initial || owned || state.businesses[0];
   await bootBusiness(initial.id);
 }
 
+let bootToken = 0;
+
 async function bootBusiness(id, options) {
+  const token = ++bootToken;
   const quiet = Boolean(options && options.quiet);
   if (state.businessId && state.businessId !== id) {
     state.studio = null;
@@ -297,6 +317,8 @@ async function bootBusiness(id, options) {
     state.chatDraft = "";
     state.openThread = "";
     state.messages = [];
+    state.ig = null;
+    state.connectError = "";
   }
   state.businessId = id;
   pick.value = id;
@@ -304,11 +326,13 @@ async function bootBusiness(id, options) {
   const members = state.user
     ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at, scopes").eq("business_id", id)
     : { data: [] };
+  if (token !== bootToken) return;
   state.memberRows = members.error ? [] : members.data || [];
   state.members = state.memberRows.filter((row) => row.status === "active");
   const profileIds = state.memberRows.map((row) => row.user_id).filter(Boolean);
   if (profileIds.length) {
     const profiles = await state.supabase.from("profiles").select("id, email, full_name").in("id", profileIds);
+    if (token !== bootToken) return;
     state.memberProfiles = profiles.error ? [] : profiles.data || [];
   } else state.memberProfiles = [];
   const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
@@ -316,11 +340,13 @@ async function bootBusiness(id, options) {
   state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
   if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
   const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
+  if (token !== bootToken) return;
   if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
     showMessage("Pipeline is not ready", missing(ensured.error) ? "Apply the acquisition migrations, then refresh." : ensured.error.message);
     return;
   }
-  const loaded = await loadAll(id);
+  const loaded = await loadAll(id, token);
+  if (token !== bootToken) return;
   if (state.openThread && state.supabase) {
     const messages = await state.supabase.from("ig_messages").select("id, thread_id, direction, body, kind, created_at").eq("thread_id", state.openThread).eq("business_id", id).order("created_at", { ascending: true });
     state.messages = messages.error ? [] : messages.data || [];
@@ -335,6 +361,7 @@ async function bootBusiness(id, options) {
     if (adminHome) adminHome.hidden = !state.isAdmin;
     armEditorRequest();
     paint();
+    settleInstagramNotice();
   }
 }
 
@@ -349,7 +376,8 @@ function armEditorRequest() {
   if (state.tab !== "inbound") state.tab = "inbound";
 }
 
-async function loadAll(id) {
+async function loadAll(id, token) {
+  const live = () => token == null || token === bootToken;
   const q = state.supabase;
   const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, outbox, connectRequests] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
@@ -376,6 +404,7 @@ async function loadAll(id) {
     q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
     q.from("acq_channel_connect_requests").select("id, workspace_id, channel, username, status, notes, requested_by, created_at, updated_at").eq("workspace_id", id).order("created_at", { ascending: false }).limit(10)
   ]);
+  if (!live()) return false;
   const firstError = [settings, workforce, targets, voices].find((res) => res.error);
   if (firstError) {
     showMessage("Could not read the pipeline", missing(firstError.error) ? "Apply the acquisition migration, then refresh." : firstError.error.message);
@@ -393,8 +422,10 @@ async function loadAll(id) {
   state.activity = activity.error ? [] : activity.data || [];
   state.voices = voices.data || [];
   const clips = await q.from("acq_owner_clips").select("id, label, when_to_use, kind, mime_type, byte_size, active, storage_path, speech_provider, created_at").eq("business_id", id).order("created_at", { ascending: false });
+  if (!live()) return false;
   state.ownerClips = clips.error ? [] : clips.data || [];
   const hints = await q.rpc("acq_llm_key_hints", { p_business: id });
+  if (!live()) return false;
   state.llmKeys = hints.error || !Array.isArray(hints.data) ? [] : hints.data;
   state.performance = performance.error ? [] : performance.data || [];
   state.stats = null;
@@ -422,6 +453,7 @@ async function loadAll(id) {
     q.from("acq_schedule_endpoints").select("id, provider, name, availability_url, booking_url, condition, has_api_key").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_value_assets").select("id, kind, title, url, label, storage_path, send_instructions, placement, agent_roles").eq("business_id", id).order("created_at", { ascending: false })
   ]);
+  if (!live()) return false;
   state.brief = brief.error ? null : brief.data;
   state.briefVersions = versions.error ? [] : versions.data || [];
   state.agentCards = cards.error ? [] : cards.data || [];
@@ -438,6 +470,7 @@ async function loadAll(id) {
     q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
   ]);
+  if (!live()) return false;
   state.followupSteps = followups.error ? [] : followups.data || [];
   state.welcomeSteps = welcomes.error ? [] : welcomes.data || [];
   state.manualFollowups = manuals.error ? [] : manuals.data || [];
@@ -453,6 +486,7 @@ async function loadAll(id) {
     q.from("acq_notifications").select("id, title, body, created_at, read_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
     q.from("acq_origins").select("id, name, keyword").eq("business_id", id).order("created_at", { ascending: false })
   ]);
+  if (!live()) return false;
   state.stateRules = stateRules.error ? [] : stateRules.data || [];
   state.tagRules = tagRules.error ? [] : tagRules.data || [];
   state.webhooks = webhooks.error ? [] : webhooks.data || [];
@@ -461,6 +495,7 @@ async function loadAll(id) {
   state.notifications = notifications.error ? [] : notifications.data || [];
   state.origins = origins.error ? [] : origins.data || [];
   const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
+  if (!live()) return false;
   state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
   const [agentPrompts, agentRoutines, agentRuns, agentActions, agentSettings] = await Promise.all([
     q.from("agent_prompts").select("id, agent_role, body, note, char_count, score, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(80),
@@ -469,6 +504,7 @@ async function loadAll(id) {
     q.from("agent_actions").select("id, agent_role, run_id, type, target, status, approved_by, error, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
     q.from("agent_settings").select("agent_role, auto_approve").eq("business_id", id)
   ]);
+  if (!live()) return false;
   state.agentPrompts = agentPrompts.error ? [] : agentPrompts.data || [];
   state.agentRoutines = agentRoutines.error ? [] : agentRoutines.data || [];
   state.agentRuns = agentRuns.error ? [] : agentRuns.data || [];
@@ -480,6 +516,7 @@ async function loadAll(id) {
     q.from("acq_agent_tools").select("id, agent_role, kind, name, config, created_at").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
   ]);
+  if (!live()) return false;
   state.setterPrompts = setterPrompts.error ? [] : setterPrompts.data || [];
   state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
   state.agentTools = agentTools.error ? [] : agentTools.data || [];
@@ -490,6 +527,7 @@ async function loadAll(id) {
     q.from("acq_followup_policy").select("*").eq("business_id", id).maybeSingle(),
     state.user ? q.from("acq_user_prefs").select("language").eq("user_id", state.user.id).maybeSingle() : Promise.resolve({ data: null, error: null })
   ]);
+  if (!live()) return false;
   state.agentSwitches = switches.error ? [] : switches.data || [];
   state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
@@ -500,6 +538,7 @@ async function loadAll(id) {
     q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
     q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
   ]);
+  if (!live()) return false;
   state.promptVersions = promptVersions.error ? (state.promptVersions || []) : promptVersions.data || [];
   state.commentVoiceRules = voiceRules.error ? [] : voiceRules.data || [];
   state.commentVoiceCap = voiceSettings.error || !voiceSettings.data ? 30 : voiceSettings.data.daily_cap;
@@ -511,6 +550,7 @@ async function loadAll(id) {
   const selected = state.flow && state.flow.chat && state.flow.chat.startsWith("contact:") ? state.flow.chat.slice("contact:".length) : "";
   const openConversation = selected ? (state.conversations || []).find((row) => row.contact_id === selected) : null;
   if (openConversation) await loadThread(openConversation.id, "newest");
+  if (!live()) return false;
   return true;
 }
 
@@ -624,10 +664,9 @@ function paint() {
     const keyCard = document.getElementById("model-key");
     if (keyCard) keyCard.scrollIntoView({ block: "start" });
   }
-  const connectCard = document.getElementById("connect-instagram");
-  if (connectCard && (state.tab === "integrations" || state.tab === "onboarding" || state.configKey === "connect")) {
-    connectCard.scrollIntoView({ block: "start" });
-  }
+  const connectCard = document.getElementById("instagram-connect") || document.getElementById("connect-instagram");
+  const connectFocus = state.tab === "integrations" || state.tab === "onboarding" || state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
+  if (connectCard && connectFocus) connectCard.scrollIntoView({ block: "start" });
   armRefresh();
 }
 
@@ -3233,12 +3272,31 @@ function tabGroup(tab) {
   return canonicalTab(tab);
 }
 
-function consumeInstagramNotice() {
+function captureInstagramNotice() {
   const url = new URL(location.href);
-  if (url.searchParams.get("ig") !== "connected") return;
-  toast("Instagram connected.");
+  const flag = url.searchParams.get("ig");
+  const notice = url.searchParams.get("notice");
+  if (flag !== "connected" && !notice) return;
+  if (flag === "connected") state.connectFlag = "connected";
+  if (notice) state.connectError = notice;
   url.searchParams.delete("ig");
+  url.searchParams.delete("notice");
   history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+
+function settleInstagramNotice() {
+  if (state.connectFlag === "connected") {
+    const ig = state.ig;
+    const mine = Boolean(ig && ig.status === "connected" && (!ig.business_id || ig.business_id === state.businessId));
+    if (mine) {
+      state.connectError = "";
+      toast("Instagram connected.");
+    } else {
+      state.connectError = "Instagram didn't finish connecting for this business. You can try again.";
+      toast(state.connectError, "bad");
+    }
+  } else if (state.connectError) toast(state.connectError, "bad");
+  state.connectFlag = "";
 }
 
 function tabFromHash() {
@@ -3246,7 +3304,8 @@ function tabFromHash() {
   const raw = parts[0];
   const tab = canonicalTab(raw);
   state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
-  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations")) state.configKey = "connect";
+  const connectQuery = new URLSearchParams(location.search).get("connect") === "1";
+  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || connectQuery)) state.configKey = "connect";
   else if (tab === "settings" && (raw === "configuration" || raw === "settings" || raw === "controls")) state.configKey = state.configKey || "reply";
   return tab;
 }
@@ -3348,9 +3407,22 @@ function readPreview() {
   if (params.get("preview") !== "1") return null;
   const pending = params.get("pending") === "1";
   const connect = params.get("connect") === "1" || pending;
+  const many = params.get("many") === "1";
+  const selected = many && params.get("business") === "second" ? "second" : "preview";
+  const igStatus = params.get("igstatus") || "";
+  const ig = igStatus === "error"
+    ? { business_id: selected, status: "error", username: "", last_error: "Instagram didn't finish connecting. You can try again." }
+    : igStatus === "connected"
+      ? { business_id: selected, status: "connected", username: params.get("handle") || "northstudio" }
+      : connect
+        ? { business_id: selected, status: "disconnected" }
+        : { business_id: selected, status: "connected", username: "previewcoach" };
   return {
-    businessId: "preview",
-    businesses: [{ id: "preview", agent_name: "Preview coaching" }],
+    preview: true,
+    businessId: selected,
+    businesses: many
+      ? [{ id: "preview", agent_name: "First business", owner_id: "owner" }, { id: "second", agent_name: "North studio", owner_id: "owner" }]
+      : [{ id: "preview", agent_name: "Preview coaching" }],
     canEdit: params.get("edit") === "1",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
@@ -3375,7 +3447,7 @@ function readPreview() {
     leads: [],
     threads: [{ id: "th1", igsid: "1", username: "northstar", state: "qualification", lead_status: "warm", human_locked: false, followup_count: 0, meet_link: "", updated_at: "2026-10-21T09:10:00Z" }],
     messages: [{ id: "m1", thread_id: "th1", direction: "in", body: "Are you a bot?", kind: "text", created_at: "2026-10-21T09:10:00Z" }],
-    ig: connect ? { status: "disconnected" } : { status: "connected", username: "previewcoach" },
+    ig,
     connectRequests: pending ? [{ id: "preview-request", workspace_id: "preview", channel: "instagram", username: "previewcoach", status: "pending", notes: "Business account" }] : [],
     google: { status: "disconnected" },
     agentSwitches: [],
