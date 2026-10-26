@@ -3510,6 +3510,12 @@ function showMessage(title, text) {
   app.append(box);
 }
 
+function previewCallAt() {
+  const date = new Date();
+  date.setHours(15, 0, 0, 0);
+  return date.toISOString();
+}
+
 function readPreview() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return null;
@@ -3546,7 +3552,7 @@ function readPreview() {
     ],
     outreach: [{ id: "o1", target_id: "t1", decision: "send", opener: "Hey northstar — saw the CTA.", sent_result: null }],
     steps: [],
-    bookings: [{ id: "b1", target_id: "t2", show_status: "scheduled" }],
+    bookings: [{ id: "b1", target_id: "t2", show_status: "scheduled", scheduled_at: previewCallAt() }],
     deals: [{ id: "d1", target_id: "t2", amount_cents: 1000000, currency: "USD", attributed: true }],
     reports: [{ id: "r1", kind: "daily", period_start: "2026-10-21", summary: "Cap 30. New targets today: 12.", body: { cap: 30 } }],
     exceptions: [{ id: "e1", message: "4 leads stuck in warmup for more than 3 days." }],

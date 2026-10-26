@@ -5,7 +5,8 @@ import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
 import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prompt-tokens.js";
-import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
+import { renderRoleflowCalendar } from "./calendar-page.js";
+import { sectionText } from "./section-copy.js";
 
 const COPY = {
   en: {
@@ -192,49 +193,9 @@ export function renderDashboardHome(ui) {
 
 export function renderCalendar(ui) {
   const copy = text(ui.language());
-  const lang = ui.language ? ui.language() : "en";
-  const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, sectionText(lang, "calendarTitle"), sectionText(lang, "calendarBody"), "calendar", "clipboard"));
-  const alert = sectionAlert(ui, "calendar");
-  if (alert) wrap.append(alert);
-  const rows = ui.state.bookings || [];
-  const show = showUpRate(rows);
-  const showed = rows.filter((row) => row.show_status === "showed").length;
-  const missed = rows.filter((row) => row.show_status === "no_show").length;
-  const tiles = ui.el("div", { class: "kpi-row" });
-  [
-    ["gray", sectionText(lang, "booked"), String(rows.length)],
-    ["mint", sectionText(lang, "showed"), String(showed)],
-    ["lavender", sectionText(lang, "noShow"), String(missed)],
-    ["peach", sectionText(lang, "showUp"), show.rate == null ? "—" : Math.round(show.rate * 100) + "%"]
-  ].forEach(([tone, label, value]) => {
-    const card = ui.el("article", { class: "kpi pastel " + tone });
-    card.append(ui.el("span", { class: "watermark", "aria-hidden": "true", text: label.slice(0, 1) }));
-    card.append(ui.el("span", { text: label }), ui.el("strong", { text: value }));
-    tiles.append(card);
-  });
-  wrap.append(tiles);
-  const linkCard = ui.el("section", { class: "section-card" });
-  linkCard.append(ui.el("h3", { text: lang === "es" ? "Enlace de reserva" : "Booking link" }));
-  const booking = ui.el("input", {
-    id: "calendar-booking-link",
-    type: "url",
-    value: (ui.state.settings && ui.state.settings.booking_fallback_url) || ui.state.bookingLink || "",
-    placeholder: "Booking link",
-    "aria-label": lang === "es" ? "Enlace de reserva" : "Booking link"
-  });
-  linkCard.append(booking);
-  if (ui.saveBookingLink && ui.state.canEdit) linkCard.append(ui.button(lang === "es" ? "Guardar enlace" : "Save link", () => ui.saveBookingLink(booking.value)));
-  else linkCard.append(ui.el("p", { class: "mute", text: booking.value || (lang === "es" ? "Todavía no hay enlace." : "No link yet.") }));
-  wrap.append(linkCard);
-  const google = ui.state.google;
-  const account = ui.el("section", { class: "agent" });
-  account.append(ui.el("h3", { text: "Google Calendar" }));
-  account.append(ui.el("p", { text: google && google.status === "connected" ? sectionText(lang, "calendarOn") + (google.email ? " · " + google.email : "") : sectionText(lang, "calendarOff") }));
-  account.append(ui.el("a", { class: "btn ghost sm", href: "#settings" }, ["Open settings"]));
-  wrap.append(account);
+  let recordForm = null;
   if (ui.recordBooking && ui.state.canEdit) {
-    const form = ui.el("form", { class: "agent", id: "record-booking" });
+    const form = ui.el("form", { class: "gcal-record", id: "record-booking" });
     const handle = ui.el("input", { id: "booking-handle", type: "text", maxlength: "30", autocomplete: "off", "aria-label": copy.bookHandle });
     form.append(ui.el("h3", { text: copy.bookTitle }));
     form.append(ui.el("p", { class: "mute", text: copy.bookBody }));
@@ -244,44 +205,9 @@ export function renderCalendar(ui) {
       ui.recordBooking(handle.value);
     });
     form.append(ui.button(copy.bookSave, null, "submit"));
-    wrap.append(form);
+    recordForm = form;
   }
-  const tableCard = ui.el("section", { class: "section-card" });
-  tableCard.append(ui.el("h3", { text: lang === "es" ? "Llamadas" : "Calls" }));
-  if (!rows.length && !alert) tableCard.append(sectionEmpty(ui, "calendarEmpty"));
-  if (rows.length) {
-    const tableNode = ui.el("table", { class: "leads" });
-    const head = ui.el("tr");
-    [lang === "es" ? "Persona" : "Person", lang === "es" ? "Estado" : "Status", lang === "es" ? "Enlace" : "Link", ""].forEach((label) => head.append(ui.el("th", { text: label })));
-    tableNode.append(ui.el("thead", {}, [head]));
-    const body = ui.el("tbody");
-    const now = Date.now();
-    rows.forEach((row) => {
-      const target = (ui.state.targets || []).find((item) => item.id === row.target_id);
-      const when = row.created_at || row.updated_at || "";
-      const upcoming = !when || new Date(when).getTime() >= now - 86400000;
-      const line = ui.el("tr");
-      const statusCell = ui.el("td");
-      const tone = row.show_status === "showed" ? "booked" : row.show_status === "no_show" ? "lost" : row.show_status === "cancelled" ? "open" : "discovering";
-      if (ui.saveShowStatus && ui.state.canEdit) {
-        const select = ui.el("select", { class: "status-pill " + tone, "aria-label": copy.showLabel });
-        [["scheduled", "Scheduled"], ["showed", "Showed"], ["no_show", "No-show"], ["cancelled", "Cancelled"]].forEach(([value, label]) => select.append(ui.el("option", { value, text: label })));
-        select.value = row.show_status || "scheduled";
-        statusCell.append(select, ui.button(copy.showSave, () => ui.saveShowStatus(target || { id: row.target_id }, row, select.value)));
-      } else statusCell.append(ui.el("span", { class: "status-pill " + tone, text: row.show_status || "scheduled" }));
-      line.append(
-        ui.el("td", { text: (target && target.handle ? "@" + target.handle : "Booking") + " · " + (upcoming ? (lang === "es" ? "Próxima" : "Upcoming") : (lang === "es" ? "Pasada" : "Past")) }),
-        statusCell,
-        ui.el("td", { text: row.meet_link || "—" }),
-        ui.el("td", { text: "" })
-      );
-      body.append(line);
-    });
-    tableNode.append(body);
-    tableCard.append(ui.el("div", { class: "table-wrap" }, [tableNode]));
-  }
-  wrap.append(tableCard);
-  return wrap;
+  return renderRoleflowCalendar(ui, { recordForm });
 }
 
 export function renderGrokAgent(ui, kind) {

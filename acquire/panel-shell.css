@@ -194,3 +194,107 @@ select.status-pill{border:0;border-radius:999px;padding:4px 8px;font:700 .75rem 
   .mini-kpis{grid-template-columns:1fr}
   .thread-head .composer-tools{width:100%}
 }
+
+.gcal{position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:12px;min-width:0;color:var(--ink)}
+.gcal-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.gcal-toolbar h2,.gcal-label{flex:1;min-width:8rem;margin:0;font:800 1.25rem/1.2 var(--h);letter-spacing:-.03em}
+.gcal-today,.gcal-nav,.gcal-views button,.gcal-mini-day,.gcal-chip,.gcal-more,.gcal-event,.gcal-sched,.gcal-pop-close{font:600 .82rem var(--b);cursor:pointer}
+.gcal-today,.gcal-nav{border:1px solid var(--line);background:var(--bg2);color:var(--ink);border-radius:999px}
+.gcal-today{padding:8px 14px}
+.gcal-nav{width:32px;height:32px;padding:0}
+.gcal-showup{border-radius:999px;padding:4px 10px;background:#F3EEE6;color:#6B6478;font:700 .75rem var(--b);white-space:nowrap}
+.gcal-views{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.gcal-views button{border:0;background:transparent;color:var(--ink);padding:8px 12px}
+.gcal-views button[aria-pressed=true]{background:#EEE8FB;color:#1C1730}
+.gcal-body{display:grid;grid-template-columns:220px minmax(0,1fr);gap:12px;align-items:start;min-width:0}
+.gcal-rail{min-width:0}
+.gcal-rail>summary,.gcal-book>summary{cursor:pointer;font:700 .82rem var(--h);margin-bottom:8px}
+.gcal-mini-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.gcal-mini-head strong{font:700 .85rem var(--h)}
+.gcal-mini-grid,.gcal-month-dow,.gcal-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+.gcal-dow,.gcal-month-dow span{text-align:center;color:var(--mute);font:700 .68rem var(--b)}
+.gcal-mini-day{width:28px;height:28px;margin:0 auto;border:0;border-radius:50%;background:transparent;color:var(--ink);padding:0}
+.gcal-mini-day.is-out{color:var(--mute)}
+.gcal-mini-day.is-today{box-shadow:inset 0 0 0 1px #7B4DFF}
+.gcal-mini-day.is-selected{background:#7B4DFF;color:#fff}
+.gcal-layers{display:grid;gap:8px;margin:12px 0}
+.gcal-layer{display:flex;align-items:center;gap:8px;font:600 .85rem var(--b)}
+.gcal-layer.calls input{accent-color:#7B4DFF}
+.gcal-layer.followups input{accent-color:#C9862A}
+.gcal-book{display:grid;gap:8px;margin-top:8px}
+.gcal-book input,.gcal-record input,.gcal-pop select{width:100%}
+.gcal-record{display:grid;gap:8px;margin-top:8px}
+.gcal-main{min-width:0}
+.gcal-time{max-height:640px;overflow:auto;min-width:0;border-top:1px solid var(--line)}
+.gcal-time-inner{min-width:100%}
+.gcal[data-view=week] .gcal-time-inner{min-width:max(100%,720px)}
+.gcal-head,.gcal-allday,.gcal-hours-grid{display:grid;grid-template-columns:52px repeat(var(--days,7),minmax(0,1fr))}
+.gcal-head{position:sticky;top:0;z-index:3;background:var(--bg2)}
+.gcal-dayhead{display:grid;justify-items:center;gap:2px;padding:8px 2px;color:var(--mute);font:600 .75rem var(--b)}
+.gcal-dayhead .gcal-num,.gcal-cell .gcal-num{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;border:0;background:transparent;color:inherit;font:700 .85rem var(--h)}
+.gcal-dayhead.is-today,.gcal-col.is-today{background:color-mix(in srgb,#7B4DFF 8%,transparent)}
+.gcal-dayhead.is-today .gcal-num,.gcal-cell.is-today .gcal-num{background:#7B4DFF;color:#fff}
+.gcal-gutter{color:var(--mute);font:600 .68rem var(--b);padding:4px}
+.gcal-allday{border-bottom:1px solid var(--line);align-items:start}
+.gcal-allday-list{grid-column:2 / -1}
+.gcal-allday-list,.gcal-untimed{display:flex;flex-wrap:wrap;gap:4px;padding:4px;align-items:center}
+.gcal-allday-label{color:var(--mute);font:700 .72rem var(--b)}
+.gcal-hour,.gcal-hourline{height:48px;box-sizing:border-box}
+.gcal-hour{position:relative}
+.gcal-hour span{position:absolute;top:0;right:6px;transform:translateY(-50%);color:var(--mute);font:600 .68rem var(--b);background:var(--bg2);padding:0 2px}
+.gcal-hour:first-child span{transform:none;top:2px}
+.gcal-col{position:relative;border-left:1px solid var(--line)}
+.gcal-hourline{border-top:1px solid var(--line)}
+.gcal-event{position:absolute;z-index:1;overflow:hidden;border:0;border-left:3px solid #7B4DFF;border-radius:6px;padding:1px 4px;text-align:left;min-height:18px;font-size:.72rem;line-height:1.15}
+.gcal-event strong,.gcal-event small,.gcal-chip,.gcal-sched{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gcal-event small{font-weight:500;opacity:.85}
+.gcal-event.calls,.gcal-chip.calls,.gcal-sched.calls{background:#EEE8FB;color:#3D2A86;border-left-color:#7B4DFF}
+.gcal-event.showed,.gcal-chip.showed,.gcal-sched.showed{background:#E5F6EE;color:#145C38;border-left-color:#1F9D6A}
+.gcal-event.no_show,.gcal-chip.no_show,.gcal-sched.no_show{background:#FDEEE4;color:#8A3E10;border-left-color:#E07A2F}
+.gcal-event.cancelled,.gcal-chip.cancelled,.gcal-sched.cancelled{background:#F3F1F6;color:#5C5668;border-left-color:#C8C2D0}
+.gcal-event.followups,.gcal-chip.followups,.gcal-sched.followups{background:#FDECCE;color:#6E4A0C;border-left-color:#C9862A}
+.gcal-now{position:absolute;left:0;right:0;height:2px;background:#E23B3B;z-index:2;pointer-events:none}
+.gcal-now::before{content:"";position:absolute;left:-4px;top:-4px;width:10px;height:10px;border-radius:50%;background:#E23B3B}
+.gcal-month{min-width:0}
+.gcal-month-dow{margin-top:8px}
+.gcal-month-grid{border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.gcal-cell{min-height:88px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px;display:grid;align-content:start;gap:2px;min-width:0}
+.gcal-cell.is-out{background:color-mix(in srgb,var(--mute) 6%,transparent)}
+.gcal-chip,.gcal-sched{border:0;border-left:3px solid #7B4DFF;border-radius:6px;text-align:left;padding:2px 6px}
+.gcal-month .gcal-chip,.gcal-schedule .gcal-sched{width:100%}
+.gcal-allday .gcal-chip,.gcal-untimed .gcal-chip{width:auto;max-width:100%}
+.gcal-more{border:0;background:transparent;color:var(--mute);text-align:left;padding:0 4px}
+.gcal-daygroup{display:grid;gap:6px;padding:8px 0;border-top:1px solid var(--line)}
+.gcal-daygroup h3{margin:0;font:700 .95rem var(--h)}
+.gcal-daygroup.is-today h3{color:#7B4DFF}
+.gcal-sched{display:flex;gap:8px;align-items:center}
+.gcal-sched strong{flex:1;min-width:0}
+.gcal-sched-time{color:var(--mute);min-width:7rem}
+.gcal-backdrop{position:fixed;inset:0;border:0;background:transparent;z-index:20;padding:0}
+.gcal-pop{position:absolute;z-index:21;width:min(280px,calc(100% - 16px));display:grid;gap:8px;padding:14px;border-radius:16px;background:var(--bg2);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow)}
+.gcal-pop strong{font:800 1rem var(--h);padding-right:24px}
+.gcal-handle{color:var(--mute)}
+.gcal-pop-close{position:absolute;top:8px;right:8px;width:28px;height:28px;border:0;border-radius:50%;background:transparent;color:var(--ink)}
+.gcal-pop-actions{display:flex;flex-wrap:wrap;gap:8px}
+html[data-theme=light] body.platform .gcal{background:#fff;color:#1C1730}
+html[data-theme=dark] .gcal-event.calls,html[data-theme=dark] .gcal-chip.calls,html[data-theme=dark] .gcal-sched.calls{background:#2A2150;color:#F4EFFF}
+html[data-theme=dark] .gcal-event.showed,html[data-theme=dark] .gcal-chip.showed,html[data-theme=dark] .gcal-sched.showed{background:#143528;color:#D9F5E6}
+html[data-theme=dark] .gcal-event.followups,html[data-theme=dark] .gcal-chip.followups,html[data-theme=dark] .gcal-sched.followups{background:#3A2C12;color:#FFE7C2}
+html[data-theme=dark] .gcal-showup,html[data-theme=dark] .gcal-views button[aria-pressed=true]{background:#2A2150;color:#F4EFFF}
+@media(min-width:768px){
+  body.platform main.wrap:has(.gcal){width:min(1180px,calc(100% - 40px));max-width:1180px}
+  .page-frame:has(.gcal) .command-field,.page-frame:has(.gcal) .biz-context{width:min(1180px,calc(100% - 40px))}
+  .gcal-rail>summary{display:none}
+}
+@media(max-width:767px){
+  .gcal-body{grid-template-columns:minmax(0,1fr)}
+  .gcal-main{order:-1}
+  .gcal[data-view=week] .gcal-time-inner{min-width:max(100%,640px)}
+}
+@media(max-width:420px){
+  .gcal{padding:8px}
+  .gcal-views{width:100%}
+  .gcal-views button{flex:1;padding:8px 4px}
+  .gcal-cell{min-height:64px}
+  .gcal-label{font-size:1.05rem}
+}
