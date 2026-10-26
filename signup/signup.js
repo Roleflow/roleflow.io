@@ -70,7 +70,7 @@ function armProof() {
   proofTimer = window.setInterval(() => moveProof(1), 7000);
 }
 
-if (proofPane) {
+if (proofPane && document.getElementById("proof-prev")) {
   paintProof();
   document.getElementById("proof-prev").addEventListener("click", () => moveProof(-1));
   document.getElementById("proof-next").addEventListener("click", () => moveProof(1));
