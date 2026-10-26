@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { canonicalTab, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { delayError } from "./studio-ops-model.js";
-import { practiceDelaySeconds } from "../supabase/functions/_shared/setter-gate.js";
+import { practiceDelaySeconds } from "./setter-delay.js";
 import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";

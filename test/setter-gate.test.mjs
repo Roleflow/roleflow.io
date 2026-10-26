@@ -26,6 +26,10 @@ assert.equal(delaySeconds("nope", 10, () => 0), 0);
 assert.equal(practiceDelaySeconds(30, 120, false, () => 1), 0);
 assert.equal(practiceDelaySeconds(30, 120, true, () => 0), 30);
 assert.equal(practiceDelaySeconds(0, 0, true, () => 1), 0);
+assert.equal(read("acquire/setter-delay.js"), read("supabase/functions/_shared/setter-delay.js"));
+assert.match(read("acquire/app.js"), /from "\.\/setter-delay\.js"/);
+assert.doesNotMatch(read("acquire/app.js"), /supabase\/functions/);
+assert.match(read("supabase/functions/_shared/setter-gate.js"), /from "\.\/setter-delay\.js"/);
 
 assert.equal(chooseModel({ preferred: "grok-4.3", text: "What is the price?", state: "qualification" }), "grok-4.3");
 assert.equal(chooseModel({ preferred: "grok-4.3", text: "That is too expensive", state: "qualification" }), "grok-4.7");
