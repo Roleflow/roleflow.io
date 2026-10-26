@@ -20,6 +20,9 @@ export const NAV_GROUPS = [
     { tab: "setter", icon: "inbox", tone: "t2", label: { en: "Agentic Setter", es: "Setter" } },
     { tab: "commentvoice", icon: "send", tone: "t5", label: { en: "Comment voice", es: "Voz en comentarios" } },
     { tab: "followup", icon: "trend", tone: "t3", label: { en: "Follow Up Boss", es: "Seguimiento" } }
+  ] },
+  { id: "account", label: { en: "Account", es: "Cuenta" }, items: [
+    { tab: "settings", icon: "settings", tone: "t1", label: { en: "Settings", es: "Ajustes" } }
   ] }
 ];
 

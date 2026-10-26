@@ -185,7 +185,7 @@ async function acceptInbound(db, businessId, event) {
   if (thread.human_locked) return;
   if (!settings?.system_enabled) return;
   if (!await agentEnabled(db, businessId, "setter")) return;
-  const delay = replyDelayMs(settings.reply_delay_seconds ?? 60, 0.2, Math.random);
+  const delay = replyDelayMs(settings.reply_delay_seconds ?? 30, settings.reply_delay_max_seconds ?? 120, Math.random);
   await db.from("ig_outbox").insert({
     business_id: businessId,
     thread_id: thread.id,

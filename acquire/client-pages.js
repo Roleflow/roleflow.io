@@ -164,14 +164,40 @@ export function renderSetter(ui) {
   ]));
   wrap.append(renderInstagramConnect(ui));
   wrap.append(switchCard(ui, "setter", copy));
-  wrap.append(promptEditor(ui));
-  wrap.append(practiceThread(ui));
+  const studio = ui.el("div", {
+    class: "setter-studio",
+    id: "setter-studio",
+    "data-pane": ui.state.setterPane === "chat" ? "chat" : "editor"
+  });
+  const tabs = ui.el("div", { class: "setter-tabs", role: "tablist", "aria-label": "Setter workspace" });
+  const editorTab = ui.el("button", { type: "button", role: "tab" }, ["Prompt"]);
+  const chatTab = ui.el("button", { type: "button", role: "tab" }, ["Practice"]);
+  const showPane = (pane) => {
+    ui.state.setterPane = pane;
+    studio.dataset.pane = pane;
+    editorTab.setAttribute("aria-selected", pane === "editor" ? "true" : "false");
+    chatTab.setAttribute("aria-selected", pane === "chat" ? "true" : "false");
+  };
+  editorTab.addEventListener("click", () => showPane("editor"));
+  chatTab.addEventListener("click", () => showPane("chat"));
+  tabs.append(editorTab, chatTab);
+  showPane(ui.state.setterPane === "chat" ? "chat" : "editor");
+  const split = ui.el("div", { class: "setter-split" });
+  split.append(promptEditor(ui), practiceThread(ui));
+  studio.append(tabs, split);
+  wrap.append(studio);
   return wrap;
 }
 
 function promptEditor(ui) {
-  const prompt = ui.el("section", { class: "agent", id: "setter-prompt-editor" });
-  prompt.append(ui.el("h3", { text: "System prompt" }));
+  const prompt = ui.el("section", { class: "agent setter-editor", id: "setter-prompt-editor" });
+  const area = ui.el("textarea", { id: "setter-prompt", rows: "16", maxlength: String(PROMPT_MAX), "aria-label": "Setter system prompt" });
+  area.value = ui.state.setterDraft != null ? ui.state.setterDraft : (ui.state.setterPrompt || "");
+  area.addEventListener("input", () => { ui.state.setterDraft = area.value; });
+  const bar = ui.el("div", { class: "setter-bar" });
+  bar.append(ui.button("Save prompt", () => ui.saveSetterPrompt(area.value)));
+  bar.append(versionControls(ui, area));
+  prompt.append(bar, delayFields(ui));
   const booking = ui.el("input", {
     id: "booking-link",
     type: "url",
@@ -192,18 +218,46 @@ function promptEditor(ui) {
   });
   prompt.append(bookingRow, ui.el("div", { class: "filters" }, [picker, insert]));
   prompt.append(ui.el("p", { class: "mute", text: "Voice notes come from Voice Gen. The token plays that note when the setter replies. The booking token becomes this business's link." }));
-  const area = ui.el("textarea", { id: "setter-prompt", rows: "12", maxlength: String(PROMPT_MAX), "aria-label": "Setter system prompt" });
-  area.value = ui.state.setterPrompt || "";
   prompt.append(area);
-  prompt.append(ui.button("Save prompt", () => ui.saveSetterPrompt(area.value)));
-  prompt.append(versionList(ui, area));
+  prompt.append(versionDiff(ui, area));
   return prompt;
 }
 
-function versionList(ui, area) {
-  const wrap = ui.el("div", { class: "prompt-versions" });
-  const versions = (ui.state.promptVersions || []).slice().sort((left, right) => Number(right.version) - Number(left.version));
-  wrap.append(ui.el("h3", { text: "Versions" }));
+function delayFields(ui) {
+  const settings = ui.state.settings || {};
+  const row = ui.el("div", { class: "setter-delay" });
+  const min = ui.el("input", {
+    id: "reply-delay-min",
+    type: "number",
+    min: "0",
+    max: "300",
+    value: String(settings.reply_delay_seconds == null ? 30 : settings.reply_delay_seconds),
+    "aria-label": "Minimum reply delay in seconds"
+  });
+  const max = ui.el("input", {
+    id: "reply-delay-max",
+    type: "number",
+    min: "0",
+    max: "300",
+    value: String(settings.reply_delay_max_seconds == null ? 120 : settings.reply_delay_max_seconds),
+    "aria-label": "Maximum reply delay in seconds"
+  });
+  row.append(
+    ui.el("label", { text: "Wait from" }, [min]),
+    ui.el("label", { text: "to" }, [max]),
+    ui.el("span", { class: "mute", text: "seconds" }),
+    ui.button("Save delay", () => ui.saveReplyDelay(min.value, max.value))
+  );
+  return row;
+}
+
+function sortedVersions(ui) {
+  return (ui.state.promptVersions || []).slice().sort((left, right) => Number(right.version) - Number(left.version));
+}
+
+function versionControls(ui, area) {
+  const versions = sortedVersions(ui);
+  const wrap = ui.el("div", { class: "setter-versions" });
   if (!versions.length) {
     wrap.append(ui.el("p", { class: "mute", text: "No saved versions yet." }));
     return wrap;
@@ -214,21 +268,31 @@ function versionList(ui, area) {
     const when = ui.when ? ui.when(row.created_at) : "";
     select.append(ui.el("option", { value: row.id, text: "Version " + row.version + " · " + who + (when ? " · " + when : "") }));
   });
-  const diff = ui.el("div", { class: "prompt-diff", id: "prompt-diff" });
-  const paint = () => {
-    const row = versions.find((item) => item.id === select.value) || versions[0];
-    paintDiff(ui, diff, row ? row.body : "", area.value);
-  };
-  select.addEventListener("change", paint);
-  paint();
+  select.addEventListener("change", () => paintVersionDiff(ui, area));
   const restore = ui.button("Restore this version", () => {
     const row = versions.find((item) => item.id === select.value);
     if (!row) return;
     if (!window.confirm("Restore this version? The setter stays off unless you turn it on.")) return;
+    ui.state.setterDraft = row.body || "";
     ui.restoreSetterPrompt(row);
   });
-  wrap.append(select, diff, restore);
+  wrap.append(select, restore);
   return wrap;
+}
+
+function versionDiff(ui, area) {
+  const diff = ui.el("div", { class: "prompt-diff", id: "prompt-diff" });
+  queueMicrotask(() => paintVersionDiff(ui, area));
+  return diff;
+}
+
+function paintVersionDiff(ui, area) {
+  const diff = document.getElementById("prompt-diff");
+  const select = document.getElementById("prompt-version");
+  if (!diff) return;
+  const versions = sortedVersions(ui);
+  const row = versions.find((item) => select && item.id === select.value) || versions[0];
+  paintDiff(ui, diff, row ? row.body : "", area.value);
 }
 
 function paintDiff(ui, host, before, after) {
@@ -245,7 +309,7 @@ function paintDiff(ui, host, before, after) {
 
 function practiceThread(ui) {
   const trial = ui.state.setterTrial || { scenario: "follower", messages: [] };
-  const wrap = ui.el("section", { class: "agent", id: "setter-trial" });
+  const wrap = ui.el("section", { class: "agent setter-chat", id: "setter-trial" });
   wrap.append(ui.el("h3", { text: "Practice thread" }));
   wrap.append(ui.el("p", { text: "A simulated Instagram DM. You play the lead. Nothing is sent to Instagram." }));
   const scenarios = ui.el("div", { class: "filters", id: "setter-scenarios" });
@@ -254,15 +318,21 @@ function practiceThread(ui) {
     if (trial.scenario === item.id) button.classList.add("on");
     scenarios.append(button);
   });
-  scenarios.append(ui.button("Restart", () => ui.restartTrial()));
+  scenarios.append(ui.button("Reset", () => ui.restartTrial()));
   wrap.append(scenarios);
+  const simulate = ui.el("input", { id: "practice-delay", type: "checkbox" });
+  simulate.checked = ui.state.practiceSimulateDelay === true;
+  simulate.addEventListener("change", () => { ui.state.practiceSimulateDelay = simulate.checked; });
+  wrap.append(ui.el("label", { class: "switch" }, [simulate, " Simulate the reply delay. Leave this off to skip the wait. Zero is allowed."]));
   const log = ui.el("div", { id: "setter-trial-log", class: "dm-thread" });
   (trial.messages || []).forEach((message) => log.append(trialBubble(ui, message)));
   if (!(trial.messages || []).length) log.append(ui.el("p", { class: "mute", text: "The thread is empty. Write as the lead." }));
   const input = ui.el("input", { id: "setter-trial-input", type: "text", maxlength: "500", placeholder: "Write as the lead", "aria-label": "Lead message" });
   const area = () => document.getElementById("setter-prompt");
   const send = ui.button("Send", () => {
-    const prompt = area() ? area().value : ui.state.setterPrompt;
+    ui.state.setterPane = "chat";
+    const prompt = area() ? area().value : (ui.state.setterDraft != null ? ui.state.setterDraft : ui.state.setterPrompt);
+    if (area()) ui.state.setterDraft = area().value;
     ui.sendTrial(prompt, input.value);
   });
   wrap.append(log, ui.el("div", { class: "filters" }, [input, send]));
@@ -287,6 +357,7 @@ function trialBubble(ui, message) {
     }
     bubble.append(card);
   });
+  if (message.delayLine) bubble.append(ui.el("p", { class: "mute", text: message.delayLine }));
   if (message.role === "assistant" && message.versionLabel) {
     bubble.append(ui.el("p", { class: "mute", text: message.versionLabel }));
     if (message.prompt) {
