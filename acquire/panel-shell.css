@@ -385,7 +385,7 @@ body.platform .assistant-panel.is-docked{position:static;width:100%;max-width:no
 .assistant-compose input[type=text]{flex:1;min-width:140px}
 .assistant-send{width:40px;height:40px;border-radius:50%;border:0;background:#7B4DFF;color:#fff;cursor:pointer;font-weight:800}
 .assistant-note{margin:0;color:var(--mute);font-size:12px}
-.assistant-panel select.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.assistant-panel select.sr,body.platform .config-layout select.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
 @media(min-width:768px){
   body.platform.assistant-modal .app-main::before{left:244px}
   html.side-collapsed body.platform.assistant-modal .app-main::before{left:96px}
