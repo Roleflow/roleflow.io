@@ -423,6 +423,6 @@ function walk(dir) {
   }
 }
 walk(root);
-assert.deepEqual(named, ["acquire/client-pages.js"]);
+assert.deepEqual(named, []);
 
 console.log("ig gateway tests passed");

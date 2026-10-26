@@ -18,6 +18,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, previewReply, setterMayEnable } from "../_shared/agent-control.js";
 import { completeJson } from "../roleflow-acquisition/ig/llm.js";
 import { loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,8 +100,9 @@ async function previewSetter(admin, businessId, userId, body) {
     });
     const raw = typeof result === "string" ? result : "";
     const text = raw.trim();
-    if (text) {
-      reply = text.slice(0, 500);
+    const safe = clientSafeText(text).slice(0, 500);
+    if (safe) {
+      reply = safe;
       source = "model";
     }
   } catch (error) {

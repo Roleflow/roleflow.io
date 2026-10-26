@@ -43,16 +43,11 @@ Point the Zernio webhook at `functions/v1/zernio-webhook`. Inbound Instagram DMs
 
 ## Connect Instagram
 
-Connect Instagram in Settings and on Agentic Setter calls `GET https://zernio.com/api/v1/connect/instagram` for that business's profile and opens the returned Instagram login URL. That is the path to use when `ZERNIO_API_KEY` is set.
+The signed-in dashboard never names the transport. Connect Instagram calls `GET https://zernio.com/api/v1/connect/instagram` with `welcome=false` and opens the returned Instagram login URL. That call is what to use when `ZERNIO_API_KEY` is set.
 
-If the key is missing, the button cannot start that login. Open https://zernio.com/dashboard and do this by hand:
+If the key is missing, the button cannot start the login. The page says "Instagram connection is not available right now. Contact Roleflow support." It does not link to a third-party dashboard. Set `ZERNIO_API_KEY` yourself (the key is created in the provider dashboard), then use Connect Instagram again.
 
-1. Sign in.
-2. Create a profile for the business, or open the profile whose external id is the business id.
-3. Connect an Instagram Business or Creator account. A personal account cannot connect.
-4. Create an API key at https://zernio.com/dashboard/api-keys, set `ZERNIO_API_KEY`, and use Connect Instagram again so Roleflow receives the account and the webhook.
-
-Connecting only in the dashboard does not attach the account to Roleflow until the connect call succeeds.
+The provider's hosted welcome screen is not white-label. `brandName`, `logoUrl`, and `welcomeTheme` only apply when `welcome=true`, and that page still shows the provider's mark. Headless mode is for platforms that need a selection step. The default Instagram login has no selection step. Instagram's own consent screen still names the provider's app. There is no API flag that hides that name, so the connect call keeps `welcome=false` and the browser is only given an `instagram.com` URL.
 
 ## What you turn on
 
