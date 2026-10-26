@@ -82,7 +82,7 @@ assert.match(read("signup/index.html"), /href="\/terms\/"/);
 const privacy = read("privacy/index.html");
 assert.match(privacy, /does not ask for or store Instagram passwords/);
 assert.match(privacy, /roleflow-acquisition\/deletion/);
-assert.match(privacy, /10% share of growth/);
+assert.match(privacy, /show that customer their pipeline and reports/);
 assert.doesNotMatch(privacy, /Diego to review/);
 const terms = read("terms/index.html");
 assert.match(terms, /Draft for review/);
@@ -105,8 +105,10 @@ assert.doesNotMatch(app, /from\("client_ai_setters"\)[\s\S]{0,180}\.eq\("client_
 
 const signup = read("signup/index.html");
 assert.match(signup, /id="google-btn" disabled/);
-assert.match(signup, /id="proof-quote"/);
-assert.match(signup, /\[TESTIMONIAL/);
+assert.match(signup, /id="proof"/);
+assert.match(signup, /Value Add Marketing/);
+assert.match(signup, /Results vary; not a guarantee/);
+assert.doesNotMatch(signup, /\[TESTIMONIAL/);
 assert.doesNotMatch(signup, /official integration|Meta integration|meta business/i);
 assert.match(read("signup/signup.js"), /signInWithOAuth/);
 assert.match(read("signup/signup.js"), /GOOGLE_AUTH === true/);

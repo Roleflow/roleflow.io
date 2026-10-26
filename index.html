@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Roleflow | An AI team that brings you new clients</title>
-<meta name="description" content="AI acquisition team for high-ticket coaches, consultants, and agencies. Outbound finds clients. Inbound books calls. Pay 10% of the growth.">
+<title>Roleflow | AI Client Acquisition Engine</title>
+<meta name="description" content="Roleflow is an AI Client Acquisition Engine for coaches and info businesses. The AI DM setter runs from the prompt in your panel, sends your recorded voice notes, and books calls on your calendar.">
 <link rel="canonical" href="https://www.roleflow.io/">
 <link rel="alternate" hreflang="en" href="https://www.roleflow.io/">
 <link rel="alternate" hreflang="es" href="https://www.roleflow.io/es/">
 <link rel="alternate" hreflang="x-default" href="https://www.roleflow.io/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Roleflow">
-<meta property="og:title" content="Roleflow | An AI team that brings you new clients">
-<meta property="og:description" content="AI acquisition team for high-ticket coaches, consultants, and agencies. Outbound finds clients. Inbound books calls. Pay 10% of the growth.">
+<meta property="og:title" content="Roleflow | AI Client Acquisition Engine">
+<meta property="og:description" content="Roleflow is an AI Client Acquisition Engine for coaches and info businesses. The AI DM setter runs from the prompt in your panel, sends your recorded voice notes, and books calls on your calendar.">
 <meta property="og:url" content="https://www.roleflow.io/">
 <meta property="og:image" content="https://www.roleflow.io/og-home.png">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="es_ES">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Roleflow | An AI team that brings you new clients">
-<meta name="twitter:description" content="AI acquisition team for high-ticket coaches, consultants, and agencies. Outbound finds clients. Inbound books calls. Pay 10% of the growth.">
+<meta name="twitter:title" content="Roleflow | AI Client Acquisition Engine">
+<meta name="twitter:description" content="Roleflow is an AI Client Acquisition Engine for coaches and info businesses. The AI DM setter runs from the prompt in your panel, sends your recorded voice notes, and books calls on your calendar.">
 <meta name="twitter:image" content="https://www.roleflow.io/og-home.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,10 +32,25 @@
   "@graph": [
     {
       "@type": "Organization",
+      "@id": "https://www.roleflow.io/#org",
       "name": "Roleflow",
       "url": "https://www.roleflow.io/",
+      "logo": "https://www.roleflow.io/logo.png",
       "email": "diego@roleflow.io",
-      "description": "A done-for-you AI client-acquisition team for high-ticket coaches, consultants, and agencies."
+      "description": "AI Client Acquisition Engine for coaches and info businesses. The AI DM setter runs from the prompt the business writes in its panel, sends recorded voice notes, and books calls on the business calendar.",
+      "sameAs": [
+        "https://www.instagram.com/roleflow.io",
+        "https://www.tiktok.com/@roleflow.io",
+        "https://www.youtube.com/@roleflow"
+      ]
+    },
+    {
+      "@type": "Product",
+      "@id": "https://www.roleflow.io/#app",
+      "name": "Roleflow",
+      "category": "AI Client Acquisition Engine",
+      "description": "An AI Client Acquisition Engine for coaches and info businesses. The setter uses the prompt saved in the panel, sends the business's recorded voice notes, books calls on the business's calendar link, and can reply to comments without ManyChat. A practice chat tests the conversation before the agent goes live. Lead finding, warm-up, and each other agent have their own on/off switch. The panel is in English and Spanish.",
+      "brand": { "@type": "Brand", "name": "Roleflow" }
     },
     {
       "@type": "FAQPage",
@@ -45,23 +60,31 @@
           "name": "What does Roleflow do?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Roleflow runs a done-for-you AI acquisition team in your own panel. Outbound Manager finds ideal prospects, warms them up, and sends personalised outreach. Inbound Manager qualifies conversations and books calls. Chief of Staff reports the day. You pay 10% of the growth you record."
+            "text": "Roleflow is an AI Client Acquisition Engine for coaches and info businesses. The AI DM setter replies from the prompt the business writes and edits in its panel. It can send the business's recorded voice notes and the business's booking link. Comment-triggered outreach reads the comment and sends one private text reply. No ManyChat is required."
           }
         },
         {
           "@type": "Question",
-          "name": "What do I pay?",
+          "name": "Are the voice notes recordings?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No setup fee and no retainer. The fee is 10% of the growth you record on deals this system sourced. If you record nothing, nothing is owed."
+            "text": "Yes. The business records voice notes in the panel. When the setter prompt names one, that recording is sent on a normal DM. A comment reply is text. The note mapped to a comment is stored on the decision and is not attached."
           }
         },
         {
           "@type": "Question",
-          "name": "Are the voice notes mine?",
+          "name": "Can I test a conversation before it goes live?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. You record them and upload them. Personalised Outreach sends those recordings on the opener."
+            "text": "Yes. The practice chat in the panel runs a full conversation on the saved or draft prompt. Practice never sends a message to Instagram. The setter stays off until you turn it on."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the setter reply the instant a message arrives?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "You choose a minimum and a maximum in seconds. The live reply waits a random time between them. Zero is allowed. Practice can skip the wait."
           }
         }
       ]
@@ -77,9 +100,10 @@
     <a class="brand" href="/"><img alt="" src="/assets/logo.jpg" width="34" height="34">Roleflow</a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#flow">How it works</a>
-      <a href="#workforce">Workforce</a>
-      <a href="#pricing">Pricing</a>
-      <a href="/signup/?mode=login">Log in</a>
+      <a href="#showcase">Product</a>
+      <a href="#compare">Compare</a>
+      <a href="#faq">FAQ</a>
+      <a href="/es/" hreflang="es" lang="es">Español</a>
     </nav>
     <a class="navlink menu-toggle" id="menu-toggle" href="/signup/">Access</a>
   </div>
@@ -135,148 +159,201 @@
 
 <main id="main">
   <section class="hero">
+    <div class="mesh" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="wrap hero-grid">
-      <div>
-        <p class="kicker">For high-ticket coaches, consultants, and agencies</p>
-        <h1>An AI team that brings you <span class="g">new clients</span>.</h1>
-        <p class="lede">Roleflow is a done-for-you AI acquisition team. It creates new business outbound, and it converts the inbound you already have. You watch the work in your own panel, and you pay 10% of the growth it generates.</p>
+      <div class="hero-copy">
+        <p class="kicker">For coaches and info businesses</p>
+        <h1>
+          <span class="line"><span>AI Client Acquisition Engine</span></span>
+          <span class="line"><span class="g">for Instagram DMs.</span></span>
+        </h1>
+        <p class="lede">The AI DM setter runs from the prompt you write in the panel. It sends your recorded voice notes, waits the time you set, and sends your booking link.</p>
         <div class="actions">
-          <a class="btn" href="#start">See if you qualify</a>
-          <a class="btn ghost" href="/signup/">Create your account</a>
+          <a class="btn" href="https://calendar.app.google/R4wpQ4b8F5J7xnD39" target="_blank" rel="noopener">Book a demo</a>
         </div>
       </div>
-      <aside class="panel-card" aria-label="The team in your panel">
-        <header><strong>Your panel</strong><span>One business</span></header>
-        <div class="lane">
-          <b>Outbound Manager</b>
-          <div class="chips"><span>ICP Target Acquisition</span><span>Engagement Warm-Up</span><span>Personalised Outreach</span></div>
+      <figure class="vsl">
+        <div class="vsl-float" data-parallax>
+          <div class="browser vsl-device">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>share.descript.com</span></div>
+            <div class="vsl-frame">
+              <iframe src="https://share.descript.com/embed/XJIQMjM0Q1N" title="Roleflow walkthrough" loading="lazy" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            </div>
+          </div>
         </div>
-        <div class="lane">
-          <b>Inbound Manager</b>
-          <div class="chips"><span>Comment-to-DM</span><span>Qualification</span><span>Follow-up / Recovery</span><span>Booking &amp; Show-up</span></div>
-        </div>
-        <p class="hero-foot">Chief of Staff reports the day. CRM, Stats, and Performance sit beside the team.</p>
-      </aside>
+        <figcaption><a href="https://share.descript.com/view/XJIQMjM0Q1N" target="_blank" rel="noopener">Watch the walkthrough</a> if the player does not load.</figcaption>
+      </figure>
     </div>
   </section>
 
-  <section id="start">
-    <div class="wrap">
-      <p class="kicker">Questionnaire</p>
-      <h2>See if you qualify.</h2>
-      <p class="lede" style="margin-top:16px">Four questions. The calendar link is on the result, and only after you pass.</p>
-      <div class="quiz">
-        <div id="qz" tabindex="-1" aria-live="polite"></div>
-      </div>
+  <div class="marquee" aria-label="What is in the panel">
+    <div class="marquee-track">
+      <p>AI DM setter</p><p>Recorded voice notes</p><p>Booking link</p><p>Comment voice</p><p>Practice chat</p><p>Reply delay</p><p>Follow-up</p><p>Lead warmer</p><p>Outreacher</p><p>Prompt versions</p><p>English and Spanish</p>
+      <p aria-hidden="true">AI DM setter</p><p aria-hidden="true">Recorded voice notes</p><p aria-hidden="true">Booking link</p><p aria-hidden="true">Comment voice</p><p aria-hidden="true">Practice chat</p><p aria-hidden="true">Reply delay</p><p aria-hidden="true">Follow-up</p><p aria-hidden="true">Lead warmer</p><p aria-hidden="true">Outreacher</p><p aria-hidden="true">Prompt versions</p><p aria-hidden="true">English and Spanish</p>
     </div>
-  </section>
+  </div>
 
   <section id="flow">
     <div class="wrap">
-      <p class="kicker">How it works</p>
-      <h2>Find. Warm up. Reach out. Book. Report.</h2>
-      <p class="lede" style="margin-top:16px">Five steps, named the way they appear in the panel. Each one is a seat you can open.</p>
-      <div class="steps">
-        <article class="step"><i>01</i><div><h3>Find</h3><p><em>ICP Target Acquisition</em> looks for accounts that match the ideal client.</p></div></article>
-        <article class="step"><i>02</i><div><h3>Warm up</h3><p><em>Engagement Warm-Up</em> follows, likes, and comments before anyone pitches.</p></div></article>
-        <article class="step"><i>03</i><div><h3>Reach out</h3><p><em>Personalised Outreach</em> sends the opener, including a voice note you recorded.</p></div></article>
-        <article class="step"><i>04</i><div><h3>Qualify and book</h3><p><em>Inbound Manager</em> runs Comment-to-DM, Qualification, Follow-up / Recovery, and Booking &amp; Show-up.</p></div></article>
-        <article class="step"><i>05</i><div><h3>Report</h3><p><em>Chief of Staff</em> writes the daily summary. Stats and Performance show what happened.</p></div></article>
+      <p class="kicker">How a lead moves</p>
+      <h2>From a comment to a booking link.</h2>
+      <p class="lede">A live sketch of the path. Scroll the steps, or let it play. A comment reply is text. The voice note is a recording on the DM.</p>
+      <div class="flow-grid">
+        <ol class="flow-steps">
+          <li data-step="1"><i>01</i><div><h3>A comment arrives</h3><p>Someone writes on a post. Comment voice has the keywords and the intent you saved, in English or Spanish.</p></div></li>
+          <li data-step="2"><i>02</i><div><h3>It reads the comment</h3><p>If the comment matches, one private text reply is queued. No ManyChat. The setter itself stays off until you turn it on.</p></div></li>
+          <li data-step="3"><i>03</i><div><h3>A voice note on the DM</h3><p>On a normal DM, the setter sends the recording the prompt names. A note mapped to a comment is logged and is not attached.</p></div></li>
+          <li data-step="4"><i>04</i><div><h3>Your booking link goes out</h3><p>When the prompt asks for it, the setter sends the calendar link saved for that business. The reply waits a random time between the minimum and maximum you set.</p></div></li>
+        </ol>
+        <div class="demo-sticky">
+          <div class="phone" data-demo aria-hidden="true">
+            <div class="phone-top"><span></span> Direct</div>
+            <div class="piece comment" data-piece="1"><b>Comment</b><p>@ada · How does the system work?</p></div>
+            <div class="piece typing" data-piece="2"><span></span><span></span><span></span></div>
+            <div class="piece reply" data-piece="3"><b>Private reply</b><p>Thanks for the comment.</p></div>
+            <div class="piece voice" data-piece="3"><b>Voice note on the DM</b><div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><p>The recording named in the prompt.</p></div>
+            <div class="piece book" data-piece="4"><b>Booking link sent</b><p>The calendar link saved for this business.</p></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-  <section id="lanes">
+  <section id="showcase">
     <div class="wrap">
-      <p class="kicker">Two lanes, one team</p>
-      <h2>New business, and the conversations you already get.</h2>
-      <div class="lanes">
-        <article>
-          <p class="kicker">Outbound</p>
-          <h3>Outbound Manager</h3>
-          <p class="lede">This lane creates demand. It finds people who fit, warms the relationship, and starts the conversation. It sits on top of whatever inbound you already receive.</p>
-          <ul>
-            <li><strong>ICP Target Acquisition</strong> finds the prospects.</li>
-            <li><strong>Engagement Warm-Up</strong> shows up in the feed before the ask.</li>
-            <li><strong>Personalised Outreach</strong> sends the first message in your voice.</li>
-          </ul>
-        </article>
-        <article>
-          <p class="kicker">Inbound</p>
-          <h3>Inbound Manager</h3>
-          <p class="lede">This lane converts what comes in: direct messages, comments, and story replies. It qualifies, follows up, and books the call.</p>
-          <ul>
-            <li><strong>Comment-to-DM</strong> turns a comment into a conversation.</li>
-            <li><strong>Qualification</strong> asks one question at a time.</li>
-            <li><strong>Follow-up / Recovery</strong> picks the thread back up.</li>
-            <li><strong>Booking &amp; Show-up</strong> puts a qualified call on the calendar.</li>
-          </ul>
-        </article>
+      <p class="kicker">The panel</p>
+      <h2>The screens you actually open.</h2>
+      <p class="lede">Shots from the product. Counts on the dashboard are the rows stored for that business.</p>
+      <div class="shots">
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Agentic Setter</span></div>
+            <div class="browser-view"><img src="/assets/marketing/setter.webp" alt="The setter prompt editor beside the practice chat, with save, versions, and the reply delay." width="1280" height="1320" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>Prompt on the left. Practice chat on the right. Nothing in practice is sent.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Comment voice</span></div>
+            <div class="browser-view"><img src="/assets/marketing/comment-voice.webp" alt="Comment voice rules with keywords, intent, a private reply, and a decision log." width="1280" height="1486" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>Keywords, intent, and one private text reply. The decision log sits under the rules.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Voice Gen</span></div>
+            <div class="browser-view"><img src="/assets/marketing/voice-notes.webp" alt="Voice Gen with a recorded note titled Opener, coaching, marked active." width="1280" height="832" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>You record the notes. The setter sends the one the prompt names.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Dashboard</span></div>
+            <div class="browser-view"><img src="/assets/marketing/dashboard.webp" alt="Dashboard cards for leads, chats, booked calls, and how many agents are on." width="1280" height="678" loading="lazy" decoding="async"></div>
+          </div>
+          <figcaption>Leads, chats, booked calls, and which agents are on.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
 
   <section id="workforce">
     <div class="wrap">
-      <p class="kicker">Your AI workforce</p>
-      <h2>The same seats you open in the panel.</h2>
-      <p class="lede" style="margin-top:16px">Each business has an office. Working screens glow. A paused seat sits idle. Opening a seat shows its switch, its latest activity, and a link into the CRM. The desks on this page are the layout, with the live activity left in the panel.</p>
-      <div class="offices">
-        <article class="office">
-          <h3>Outbound office</h3>
-          <p>Three seats, with Outbound Manager at the front.</p>
-          <div class="seats">
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>ICP Target Acquisition</strong><span>Finds ideal prospects</span></div></div>
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>Engagement Warm-Up</strong><span>Warms them before the ask</span></div></div>
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>Personalised Outreach</strong><span>Sends the opener you recorded</span></div></div>
-          </div>
-          <div class="manager"><b>Outbound Manager</b><span>Runs the lane</span></div>
+      <p class="kicker">In the panel</p>
+      <h2>The same controls you open when you sign in.</h2>
+      <div class="features">
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v9H8l-3 3V6z"/></svg>
+          <h3>AI DM setter</h3>
+          <p>Replies in Instagram DMs from the prompt the business writes. It stays off until a prompt is saved, the practice chat has been used, and the switch is turned on.</p>
         </article>
-        <article class="office">
-          <h3>Inbound office</h3>
-          <p>Four seats, with Inbound Manager at the front.</p>
-          <div class="seats">
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>Comment-to-DM</strong><span>Opens the conversation</span></div></div>
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>Qualification</strong><span>Checks budget, timing, and fit</span></div></div>
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>Follow-up / Recovery</strong><span>Brings a quiet thread back</span></div></div>
-            <div class="seat"><i class="screen" aria-hidden="true"></i><div><strong>Booking &amp; Show-up</strong><span>Books the call</span></div></div>
-          </div>
-          <div class="manager"><b>Inbound Manager</b><span>Runs the lane</span></div>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3zM6 11a6 6 0 0 0 12 0M12 17v3"/></svg>
+          <h3>Recorded voice notes</h3>
+          <p>Notes are recordings stored for that business. The setter sends the named recording on a normal DM.</p>
         </article>
-      </div>
-      <div class="also" aria-label="Also in the panel">
-        <span>Chief of Staff</span>
-        <span>CRM</span>
-        <span>Stats</span>
-        <span>Performance</span>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16H7zM9 8h6M9 12h6M9 16h3"/></svg>
+          <h3>Booking link</h3>
+          <p>Each business saves its own calendar link. The setter inserts that link when the prompt asks for it.</p>
+        </article>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12v8H9l-3 3V7zM8 11h8"/></svg>
+          <h3>Comment voice</h3>
+          <p>Understands the comment against the keywords and intent you save, in English or Spanish. One private text reply. No ManyChat needed.</p>
+        </article>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v12H5zM8 10h8M8 14h5"/></svg>
+          <h3>Practice chat</h3>
+          <p>A full conversation in the panel, on the draft or saved prompt, before the setter goes live. Nothing from practice is sent.</p>
+        </article>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"/></svg>
+          <h3>Reply delay</h3>
+          <p>You set a minimum and a maximum in seconds. The live reply waits a random time between them. Zero is allowed. Practice can skip the wait.</p>
+        </article>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM16 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM4 19c.4-2.4 2.2-4 4.2-4s3.8 1.6 4.2 4M14 19c.3-1.6 1.4-2.8 3-2.8 1.4 0 2.5.8 3 2.2"/></svg>
+          <h3>Lead finding and warm-up</h3>
+          <p>Separate agents, each with its own switch. They stay off until you turn them on. Roleflow does not run that scan from the page.</p>
+        </article>
+        <article>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <h3>Follow-up</h3>
+          <p>Sends only when the saved rules match, including a 24-hour window, and only while its switch is on.</p>
+        </article>
       </div>
     </div>
   </section>
 
-  <section id="pricing">
-    <div class="wrap price-grid">
+  <section id="compare">
+    <div class="wrap">
+      <p class="kicker">Compare</p>
+      <h2>Roleflow, a hired setter, and a keyword bot.</h2>
+      <p class="lede">How each one handles a message. No scores and no made-up totals.</p>
+      <div class="compare">
+        <article>
+          <h3>Roleflow</h3>
+          <ul>
+            <li><strong>Replies</strong> from the system prompt you write, edit, and version in the panel.</li>
+            <li><strong>Voice</strong> is a recording you made, sent on a normal DM when the prompt names it.</li>
+            <li><strong>Comments</strong> match a keyword or an intent you write, in English or Spanish, then one private text reply. No ManyChat.</li>
+            <li><strong>Before it is live</strong> you run a practice chat. Practice never sends to Instagram. Each agent stays off until you turn it on.</li>
+            <li><strong>Booking</strong> sends the calendar link saved for that business, after the delay you set.</li>
+          </ul>
+        </article>
+        <article>
+          <h3>A hired setter</h3>
+          <ul>
+            <li><strong>Replies</strong> come from a person you train and schedule.</li>
+            <li><strong>Voice</strong> is whatever that person records and sends while they are working.</li>
+            <li><strong>Comments</strong> are read by that person. There is no keyword or intent rule unless you give them one.</li>
+            <li><strong>Before it is live</strong> you brief them. There is no practice thread inside Roleflow for their chats.</li>
+            <li><strong>Booking</strong> is the link you tell them to send, on the hours you agree.</li>
+          </ul>
+        </article>
+        <article>
+          <h3>ManyChat-style keyword bots</h3>
+          <ul>
+            <li><strong>Replies</strong> are the fixed message tied to a keyword, not a system prompt you edit as a conversation.</li>
+            <li><strong>Voice</strong> is not a recording chosen from a setter prompt in this panel.</li>
+            <li><strong>Comments</strong> fire when the listed words match. Roleflow can also match an intent you describe, and it does not need ManyChat.</li>
+            <li><strong>Before it is live</strong> there is no full-conversation practice chat that stays off Instagram.</li>
+            <li><strong>Booking</strong> is a link pasted into that flow. Roleflow stores the link on the business and inserts it from the prompt.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="langs" id="languages">
+    <div class="wrap lang-band">
       <div>
-        <p class="kicker">Pricing</p>
-        <h2>10% of the growth. Nothing else.</h2>
-        <p class="lede" style="margin-top:16px">No setup fee. No retainer. The share is 10% of the cash you record on deals this system sourced. If you record nothing, the share is $0. The rate stays at 10%.</p>
-        <p class="ten g" aria-hidden="true">10%</p>
+        <p class="kicker">English and Spanish</p>
+        <h2>The panel switches language. So does this site.</h2>
+        <p class="lede">Comment voice rules can be written in either language. The dashboard language control is English or Spanish.</p>
       </div>
-      <div class="panel-card">
-        <div class="facts">
-          <div><span>Setup</span><strong>$0</strong></div>
-          <div><span>Retainer</span><strong>$0</strong></div>
-          <div><span>Share of recorded growth</span><strong>10%</strong></div>
-        </div>
-        <div class="slider">
-          <label for="rv">Cash you record on sourced deals <b id="rvv">$10,000</b></label>
-          <input id="rv" type="range" min="0" max="100000" step="1000" value="10000">
-          <div class="facts">
-            <div><span>Roleflow share</span><strong id="fee">$1,000</strong></div>
-            <div><span>You keep</span><strong id="keep">$9,000</strong></div>
-          </div>
-          <p class="note">An illustration of the 10% arithmetic on an amount you choose. Client results are not shown here.</p>
-        </div>
-      </div>
+      <p class="lang-links"><a href="/" hreflang="en" aria-current="page">English</a><a href="/es/" hreflang="es" lang="es">Español</a></p>
     </div>
   </section>
 
@@ -287,53 +364,39 @@
       <div class="faq">
         <details open>
           <summary>What does Roleflow do?</summary>
-          <p>It runs an AI acquisition team inside your own panel. Outbound Manager finds ideal prospects, warms them up, and reaches out. Inbound Manager qualifies direct messages, comments, and story replies, then books calls. Chief of Staff writes a daily summary. CRM, Stats, and Performance show the pipeline and the 10% share.</p>
+          <p>Roleflow is an AI Client Acquisition Engine for coaches and info businesses. The AI DM setter runs from the prompt you write and edit in the panel. It can send your recorded voice notes and your booking link. Comment voice reads a comment and can send one private text reply. No ManyChat needed.</p>
         </details>
         <details>
-          <summary>What do I pay?</summary>
-          <p>Nothing to start, and nothing each month as a retainer. You pay 10% of the growth you record on deals this system sourced. Record nothing, and nothing is owed for that work.</p>
+          <summary>Are the voice notes recordings?</summary>
+          <p>Yes. You record them in the panel. When the prompt names a note, that file is sent on a normal DM. A comment reply is text. The note mapped to a comment is stored on the decision and is not attached.</p>
         </details>
         <details>
-          <summary>Are the voice notes mine?</summary>
-          <p>Yes. You record them and upload them. Personalised Outreach sends those recordings on the opener.</p>
+          <summary>Can I test a conversation before it goes live?</summary>
+          <p>Yes. The practice chat runs the full thread on the saved or draft prompt. Practice never sends a message to Instagram. The setter stays off until you turn it on.</p>
         </details>
         <details>
-          <summary>What do I see in the panel?</summary>
-          <p>The outbound office, the inbound office, the CRM stages Cold, Warm, Hot, Converted, and Dead, plus Stats and Performance for the dates you choose. Activity on a desk comes from that business. Empty seats stay empty.</p>
+          <summary>Does the setter reply the instant a message arrives?</summary>
+          <p>You choose a minimum and a maximum in seconds. The live reply waits a random time between them. Zero is allowed. Practice can skip the wait.</p>
         </details>
         <details>
-          <summary>Who is it for?</summary>
-          <p>High-ticket coaches, consultants, and agencies. You qualify with over 20 DMs a day, an offer above $1k, a closing rate above 20%, and over $30k a month in cash collected. The questions on this page apply that check.</p>
+          <summary>What do the switches control?</summary>
+          <p>Lead finding, warm-up, the setter, follow-up, and comment voice each have an on/off switch. An agent with no saved switch stays off. Lead finding and warm-up do not run a scan from this page.</p>
         </details>
         <details>
-          <summary>How do I start?</summary>
-          <p>Answer the questions. If you qualify, the result shows the calendar link and a link to create your account. If you don't, retake the questions once your offer, price, close rate, or cash collected changes.</p>
+          <summary>How do I get in?</summary>
+          <p>Book a demo on the calendar. Access opens the account flow. If you are already signed in, that flow continues to your dashboard.</p>
         </details>
       </div>
     </div>
   </section>
 
-  <section id="for-diego">
-    <div class="wrap">
-      <div class="hold">
-        <p class="kicker">Placeholders for Diego</p>
-        <h2>Fill these before this page is final.</h2>
-        <ol>
-          <li><strong>Walkthrough video.</strong> The previous recording pitched the message-only offer, so it is not embedded here. Send a new URL when you have one of the panel.</li>
-          <li><strong>Proof.</strong> Client names, logos, and results stay off this page until you supply them.</li>
-        </ol>
-      </div>
-    </div>
-  </section>
-
-  <section class="final">
-    <div class="wrap">
-      <p class="kicker">Start</p>
-      <h2>Put the team on your inbound, and on the clients you do not have yet.</h2>
-      <p class="lede">Answer the questions. The calendar link is on the result, and only if you qualify.</p>
+  <section class="final" id="start">
+    <div class="wrap final-band">
+      <p class="kicker">Demo</p>
+      <h2>See the panel on a call.</h2>
+      <p class="lede">One calendar. Bring the offer you sell in Instagram DMs.</p>
       <div class="actions">
-        <a class="btn" href="#start">See if you qualify</a>
-        <a class="btn ghost" href="/signup/">Create your account</a>
+        <a class="btn" href="https://calendar.app.google/R4wpQ4b8F5J7xnD39" target="_blank" rel="noopener">Book a demo</a>
       </div>
     </div>
   </section>
@@ -342,26 +405,12 @@
 <footer>
   <div class="wrap">
     <p class="foot-social"><a href="https://www.instagram.com/roleflow.io" target="_blank" rel="noopener">Instagram</a><a href="https://www.tiktok.com/@roleflow.io" target="_blank" rel="noopener">TikTok</a><a href="https://www.youtube.com/@roleflow" target="_blank" rel="noopener">YouTube</a></p>
-    <p class="foot-row"><img class="foot-logo" alt="" src="/assets/logo.jpg" width="22" height="22" loading="lazy"><a href="/resources/">Resources</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><span>© Roleflow. AI client acquisition, paid on the growth it generates.</span></p>
+    <p class="foot-row"><img class="foot-logo" alt="" src="/assets/logo.jpg" width="22" height="22" loading="lazy"><a href="/resources/">Resources</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/es/" hreflang="es" lang="es">Español</a><span>© Roleflow. AI Client Acquisition Engine.</span></p>
   </div>
 </footer>
-<script type="module" src="/assets/qualify-ui.js"></script>
 <script src="supabase/config.js"></script>
 <script type="module" src="auth/nav.js"></script>
 <script type="module" src="auth/sidebar.js"></script>
-<script>
-(function () {
-  var input = document.getElementById("rv");
-  var money = function (n) { return "$" + Math.round(n).toLocaleString("en-US"); };
-  function paint() {
-    var value = Number(input.value);
-    document.getElementById("rvv").textContent = money(value);
-    document.getElementById("fee").textContent = money(value * 0.1);
-    document.getElementById("keep").textContent = money(value * 0.9);
-  }
-  input.addEventListener("input", paint);
-  paint();
-})();
-</script>
+<script src="/assets/home-motion.js" defer></script>
 </body>
 </html>

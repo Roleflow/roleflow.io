@@ -17,6 +17,7 @@ a{color:var(--gold)}
 .skip:focus{top:calc(12px + env(safe-area-inset-top,0px))}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .wrap{max-width:min(900px,100%);margin:0 auto;padding:0 22px;min-width:0}
+.wrap>*{min-width:0;overflow-wrap:anywhere}
 nav{position:sticky;top:0;z-index:5;background:rgba(10,18,38,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
 nav .in{position:relative;max-width:1080px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;justify-content:center}
 .brand{display:flex;align-items:center;gap:10px;font:800 1.2rem var(--h);color:inherit;text-decoration:none}
@@ -473,10 +474,22 @@ body.wf-lock{overflow:hidden}
 @media(min-width:861px){
   .biz-row{padding-inline:52px;scroll-padding-inline:52px}
 }
+.vam-access{justify-content:center}
+.vam-card{background:#050505;color:#f2f5f4;border:1px solid rgba(255,255,255,.09);border-radius:22px;padding:28px 24px;box-shadow:0 24px 60px -30px rgba(0,153,125,.5)}
+.vam-card img{display:block;height:40px;width:auto;max-width:min(220px,100%)}
+.vam-result{margin:16px 0 0;font-family:"Unbounded","Bricolage Grotesque",system-ui,sans-serif;font-weight:500;font-size:clamp(1.2rem,2.4vw,1.7rem);line-height:1.3;letter-spacing:-.03em;color:#f2f5f4}
+.vam-by{margin:12px 0 0;color:#10eec1;font-weight:600}
+.vam-note{margin:8px 0 0;color:#7e8886;font-size:.85rem}
 @media(max-width:860px){
   .auth-split{grid-template-columns:1fr}
   .proof-pane{border-right:0;border-bottom:1px solid var(--line);padding:28px 18px}
-  .form-pane{order:-1;padding:28px 18px 18px}
+  .vam-access{padding:14px 16px 0;border-bottom:0}
+  .vam-card{display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:2px;align-items:center;padding:12px 14px;border-radius:16px}
+  .vam-card img{height:28px;grid-row:1 / span 2}
+  .vam-result{margin:0;font-size:.92rem;line-height:1.35}
+  .vam-by{display:none}
+  .vam-note{grid-column:1 / -1;margin:4px 0 0}
+  .form-pane{padding:16px 18px 18px}
   .biz-arrow{display:none}
   .workflow-layout{grid-template-columns:1fr}
   .wf-grid{grid-template-columns:1fr;grid-template-areas:"metrics" "brain" "health" "roster" "log" "funnel"}

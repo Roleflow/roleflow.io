@@ -1,6 +1,11 @@
 {
   "redirects": [
     {
+      "source": "/favicon.ico",
+      "destination": "/assets/logo.jpg",
+      "statusCode": 307
+    },
+    {
       "source": "/acquire",
       "destination": "/account/acquisition/",
       "statusCode": 301
@@ -28,6 +33,36 @@
     {
       "source": "/admin/office/index.html",
       "destination": "/admin/hq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/pricing",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/pricing/",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/pricing/index.html",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/precios",
+      "destination": "/es/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/precios/",
+      "destination": "/es/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/precios/index.html",
+      "destination": "/es/",
       "statusCode": 301
     },
     {
