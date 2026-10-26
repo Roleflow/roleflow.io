@@ -2,7 +2,7 @@
    Rules that must not restyle the quiz are scoped under body.geo, except the footer. */
 :root{--bg:#0A1226;--bg2:#101A33;--line:#243155;--ink:#EEF1FA;--mute:#9AA6C6;--gold:#E8B04A;--m:#C0409A;--o:#FF8A3D;--grad:linear-gradient(120deg,#7B4DFF,#C0409A 50%,#FF8A3D);
 --h:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;--b:'Instrument Sans','Segoe UI',system-ui,sans-serif}
-body.geo{box-sizing:border-box;margin:0;background:radial-gradient(900px 520px at 50% -8%,rgba(123,77,255,.28),transparent 62%),radial-gradient(700px 420px at 100% 40%,rgba(255,138,61,.09),transparent 60%),var(--bg);color:var(--ink);font:400 17px/1.6 var(--b);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body.geo{box-sizing:border-box;margin:0;overflow-x:clip;background:radial-gradient(900px 520px at 50% -8%,rgba(123,77,255,.28),transparent 62%),radial-gradient(700px 420px at 100% 40%,rgba(255,138,61,.09),transparent 60%),var(--bg);color:var(--ink);font:400 17px/1.6 var(--b);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body.geo *,body.geo *::before,body.geo *::after{box-sizing:border-box}
 body.geo :focus-visible{outline:2px solid rgba(123,77,255,.85);outline-offset:3px}
 body.geo a{color:var(--gold)}
@@ -26,6 +26,14 @@ body.geo .crumbs{font-size:.92rem;color:var(--mute);margin:0 0 16px}
 body.geo .crumbs ol{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:0}
 body.geo .crumbs li:not(:last-child)::after{content:"/";margin-left:6px;color:var(--line)}
 body.geo .answer{font-size:1.08rem;margin:16px 0 0}
+body.geo .kicker{margin:0 0 10px;color:var(--gold);font:600 .76rem/1 var(--b);letter-spacing:.14em;text-transform:uppercase}
+body.geo .edge{position:relative;overflow:hidden;margin-top:28px;padding:28px 22px 22px;border-radius:24px;border:1px solid rgba(123,77,255,.45);background:radial-gradient(420px 180px at 0% 0%,rgba(123,77,255,.38),transparent 70%),radial-gradient(320px 160px at 100% 120%,rgba(255,138,61,.22),transparent 70%),#101A33}
+body.geo .edge h2{margin-top:0}
+body.geo .edge-mark{margin:0 0 8px;font:800 clamp(2rem,8vw,2.6rem)/1 var(--h);letter-spacing:-.04em;background:var(--grad);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:geoShine 8s linear infinite}
+body.geo .edge .card{min-width:0;background:rgba(10,18,38,.55);transition:transform .3s ease,border-color .3s ease}
+body.geo .edge .card h3{margin-top:0}
+body.geo .edge .card:hover{transform:translateY(-4px);border-color:rgba(192,64,154,.55)}
+@keyframes geoShine{to{background-position:200% 0}}
 body.geo .updated{color:var(--gold);font-weight:600;margin:12px 0 0}
 body.geo .note{color:var(--mute);font-size:.95rem}
 body.geo .btn{display:inline-block;border:0;cursor:pointer;font:600 1.02rem var(--b);color:#fff;background:var(--grad);padding:15px 26px;border-radius:999px;text-decoration:none;text-align:center}
