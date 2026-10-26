@@ -179,7 +179,7 @@ bindAssistant(() => ({
   onClose() {
     state.assistantOpen = false;
     state.assistantExpanded = false;
-    if (state.tab === "assistant") go("home");
+    if (state.tab === "assistant") go("dashboard");
     else parkAssistant();
   },
   onExpand() {
@@ -662,17 +662,14 @@ function paint() {
     if (state.canEdit) banner.append(button("Resume", resumeInstagram));
     root.append(banner);
   }
-  const step = nextStepCard();
-  if (step && state.tab !== "assistant" && state.tab !== "home") root.append(step);
   const ui = pageUi();
-  if (state.tab === "home" || (state.tab === "assistant" && !state.assistantExpanded)) root.append(renderPanelHome(ui));
   if (state.tab === "dashboard") root.append(renderDashboardHome(ui));
   if (state.tab === "performance") {
     state.statsEmbedded = true;
     root.append(renderPerformance(ui));
     root.append(renderStats(ui));
   }
-  if (state.tab === "assistant" && state.assistantExpanded) root.append(dockAssistant(ui));
+  if (state.tab === "assistant") root.append(dockAssistant(ui));
   if (state.tab === "chats") root.append(renderChats(ui));
   if (state.tab === "opportunities") root.append(renderCrm(ui));
   if (state.tab === "calendar") root.append(renderCalendar(ui));
@@ -689,22 +686,12 @@ function paint() {
   if (state.tab === "setter") root.append(renderSetter(ui));
   if (state.tab === "commentvoice") root.append(renderCommentVoice(ui));
   if (state.tab === "followup") root.append(renderFollowBoss(ui));
-  if (state.tab === "billing") {
-    const host = el("div", { id: "billing" });
-    root.append(host);
-    renderEngine("billing", host, engineCtx());
-  }
-  if (state.tab === "team") root.append(renderTeam(ui));
-  if (state.tab === "instagram") {
-    const wrap = el("div", { class: "platform-home" });
-    wrap.append(pageHeader(ui, sectionText(language(), "igTitle"), sectionText(language(), "igBody"), "configuration", "link"));
-    wrap.append(renderInstagramConnect(ui));
-    root.append(wrap);
-  }
   if (state.tab === "settings") {
-    if (state.settingsFocus === "model") state.configKey = "reply";
+    root.append(renderModelKey(ui));
+    root.append(renderInstagramConnect(ui));
     root.append(renderConfiguration(ui));
     root.append(renderSalesLinks(ui));
+    root.append(renderTeam(ui));
   }
   if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox" && state.tab !== "billing") {
     const host = el("div");
@@ -719,7 +706,7 @@ function paint() {
     if (keyCard) keyCard.scrollIntoView({ block: "start" });
   }
   const connectCard = document.getElementById("instagram-connect") || document.getElementById("connect-instagram");
-  const connectFocus = state.tab === "instagram" || state.tab === "onboarding" || state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
+  const connectFocus = state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
   if (connectCard && connectFocus) connectCard.scrollIntoView({ block: "start" });
   armRefresh();
 }
@@ -3464,7 +3451,9 @@ function setPanel(open) {
 
 function go(tab) {
   closeOffice();
+  const raw = String(tab || "").split("/")[0];
   const next = canonicalTab(tab);
+  if (next === "settings" && (raw === "integrations" || raw === "instagram" || raw === "billing" || String(tab).includes("/connect"))) state.configKey = "connect";
   const url = new URL(location.href);
   url.hash = next;
   history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -3483,16 +3472,15 @@ function markTab() {
     ? (language() === "es" ? "Configuración" : "Setup")
     : (item ? navLabel(item, language()) : "Dashboard");
   if (title) title.textContent = label;
-  const command = document.getElementById("command-label");
-  if (command) command.textContent = sectionText(language(), "command");
-  const cycle = document.getElementById("lang-cycle");
-  if (cycle) cycle.textContent = language() === "es" ? "ES" : "EN";
+  const product = sectionText(language(), "productName");
+  const footerName = document.getElementById("panel-footer-name");
+  if (footerName) footerName.textContent = product;
   const business = state.businesses.find((row) => row.id === state.businessId);
   const name = business && business.agent_name ? business.agent_name : "This business";
   if (sub) sub.textContent = name;
   const avatar = document.getElementById("biz-avatar");
   if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "R";
-  document.title = label + " · Roleflow";
+  document.title = label + " · " + product;
 }
 
 function tabGroup(tab) {
@@ -3532,7 +3520,7 @@ function tabFromHash() {
   const tab = canonicalTab(raw);
   state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
   const connectQuery = new URLSearchParams(location.search).get("connect") === "1";
-  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || connectQuery)) state.configKey = "connect";
+  if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "instagram" || raw === "billing" || connectQuery)) state.configKey = "connect";
   else if (tab === "settings" && (raw === "configuration" || raw === "settings" || raw === "controls")) state.configKey = state.configKey || "reply";
   return tab;
 }

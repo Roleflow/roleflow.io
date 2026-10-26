@@ -1,4 +1,4 @@
-import { DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
+import { AGENT_KEYS, dashboardMetrics, DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
 import { grokLaunchUrl } from "./client-config.js";
 import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
@@ -176,51 +176,25 @@ export function text(language) {
 
 export function renderDashboardHome(ui) {
   const copy = text(ui.language());
-  const wrap = ui.el("div", { class: "platform-home dash-home" });
-  const grid = ui.el("div", { class: "dash-grid" });
-  const ig = ui.state.ig && (!ui.state.ig.business_id || ui.state.ig.business_id === ui.state.businessId) ? ui.state.ig : null;
-  const connected = Boolean(ig && ig.status === "connected");
-  const handle = ig && ig.username ? "@" + String(ig.username).replace(/^@/, "") : "";
-  const accounts = ui.el("article", { class: "dash-card accounts" });
-  accounts.append(ui.el("div", { class: "dash-kicker" }, [
-    ui.el("span", { class: "dash-ico", "aria-hidden": "true", text: "IG" }),
-    ui.el("h2", { text: copy.accounts })
-  ]));
-  const row = ui.el("p", { class: "acct-row" });
-  row.append(ui.el("i", { class: connected ? "dot-on" : "dot-off", "aria-hidden": "true" }));
-  row.append(document.createTextNode("Instagram "));
-  row.append(ui.el("strong", { text: connected ? (handle || copy.igConnected) : copy.igNotConnected }));
-  accounts.append(row);
-  accounts.append(ui.button(copy.manageAccounts, () => { if (ui.go) ui.go("instagram"); }));
-  const pending = (ui.state.exceptions || []).length + (ui.state.notifications || []).filter((item) => !item.read_at).length;
-  const alerts = ui.el("article", { class: "dash-card alerts" });
-  alerts.append(ui.el("div", { class: "dash-kicker" }, [
-    ui.el("span", { class: "dash-ico", "aria-hidden": "true", text: "!" }),
-    ui.el("h2", { text: copy.alerts })
-  ]));
-  alerts.append(ui.el("p", { class: "dash-pending", text: copy.pending.replace("{n}", String(pending)) }));
-  const view = ui.button(copy.viewAlerts, () => {
-    const panel = document.getElementById("notify-panel");
-    if (panel) {
-      panel.hidden = false;
-      (ui.state.exceptions || []).forEach((item) => {
-        if (item.message) panel.append(ui.el("p", { text: item.message }));
-      });
-    }
+  const metrics = dashboardMetrics({
+    targets: ui.state.targets,
+    threads: ui.state.threads,
+    bookings: ui.state.bookings,
+    switches: ui.state.agentSwitches
   });
-  view.classList.add("ghost");
-  alerts.append(view);
-  grid.append(accounts, alerts);
+  const wrap = ui.el("div", { class: "platform-home" });
+  wrap.append(ui.pageHeader(ui, "Dashboard", "One business. Live numbers only.", "dashboard", "grid"));
+  const grid = ui.el("div", { class: "home-grid" });
+  grid.append(metricCard(ui, "Leads", String(metrics.leads), "People stored for this business."));
+  grid.append(metricCard(ui, "Chats", String(metrics.chats), "Threads Roleflow can open."));
+  grid.append(metricCard(ui, "Booked", String(metrics.booked), "Calendar rows that are not cancelled."));
+  grid.append(metricCard(ui, "Agents live", String(metrics.liveAgents) + " / " + AGENT_KEYS.length, "Each agent stays off until you turn it on."));
   wrap.append(grid);
-  const banner = ui.el("a", { class: "info-banner", href: "#sops" });
-  banner.append(ui.el("strong", { text: copy.promptsLink }));
-  banner.append(ui.el("p", { text: copy.promptsBanner }));
-  banner.addEventListener("click", (event) => {
-    event.preventDefault();
-    if (ui.go) ui.go("sops");
-  });
+  const banner = ui.el("div", { class: "info-banner", role: "status" });
+  const on = ui.state.settings && ui.state.settings.system_enabled;
+  banner.append(ui.el("p", { text: (on ? "The workspace is on." : "The workspace is off.") + " " + ui.instagramLine() }));
   wrap.append(banner);
-  wrap.append(ui.el("p", {}, [ui.el("a", { class: "btn ghost sm", href: "#billing" }, [copy.billingLink])]));
+  wrap.append(ui.el("p", { class: "hq-note", text: copy.channel }));
   return wrap;
 }
 

@@ -147,11 +147,11 @@ assert.match(read("supabase/migrations/20261026220000_gemini_default.sql"), /set
 assert.match(read("supabase/migrations/20261026230000_target_stage_rank.sql"), /grant execute on function public\.acq_stage_rank\(text\) to authenticated/);
 assert.match(read("supabase/functions/roleflow-assistant/index.ts"), /#calendar/);
 assert.match(read("supabase/functions/roleflow-assistant/index.ts"), /show_status/);
-assert.match(read("acquire/app.js"), /state\.tab === "billing"/);
+assert.match(read("acquire/app.js"), /raw === "billing"/);
 assert.match(read("acquire/app.js"), /state\.tab !== "billing"/);
 assert.match(read("acquire/engine-ui.js"), /id: "record-growth"/);
-assert.match(read("acquire/client-nav.mjs"), /tab: "billing"/);
-assert.match(read("acquire/client-nav.mjs"), /name === "onboarding"/);
+assert.match(read("acquire/client-nav.mjs"), /billing: "settings"/);
+assert.match(read("acquire/client-nav.mjs"), /onboarding: "sops"/);
 assert.match(read("acquire/app.js"), /async function recordBooking/);
 assert.match(read("acquire/client-pages.js"), /id: "record-booking"/);
 assert.equal(modelPatch("xai", true).llm_setter_own_key, false);

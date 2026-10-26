@@ -9,37 +9,13 @@ import { sectionAlert, sectionText } from "./section-copy.js";
 
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const FACES = {
-  reply: { en: ["When does the AI reply?", "Activation, hours, time zone, and the wait before a reply."], es: ["¿Cuándo responde la IA?", "Activación, horario, zona horaria y la espera antes de responder."] },
-  who: { en: ["Who does it reply to?", "Who gets a reply, and who is skipped."], es: ["¿A quién responde?", "Quién recibe respuesta y quién no."] },
-  stop: { en: ["When does it stop replying?", "The moment the AI steps back."], es: ["¿Cuándo deja de responder?", "El momento en que la IA se aparta."] },
-  write: { en: ["How does it write?", "Tone, length, and the words it uses."], es: ["¿Cómo escribe?", "Tono, longitud y las palabras que usa."] },
-  file: { en: ["How is the lead classified?", "How a person moves through the stages."], es: ["¿Cómo se clasifica el lead?", "Cómo avanza una persona por las etapas."] },
-  notify: { en: ["Who do we notify?", "Who hears when a lead moves."], es: ["¿A quién avisamos?", "Quién se entera cuando un lead avanza."] },
-  connect: { en: ["Which tools does it connect to?", "Instagram and the other tools for this business."], es: ["¿Qué herramientas conecta?", "Instagram y el resto de herramientas de este negocio."] },
-  business: { en: ["Business & team", "Name, offer, and who can edit."], es: ["Negocio y equipo", "Nombre, oferta y quién puede editar."] }
-};
-
-function face(ui, id) {
-  const lang = ui.language ? ui.language() : "en";
-  const row = FACES[id];
-  const pack = row ? (row[lang] || row.en) : ["", ""];
-  return { title: pack[0], hint: pack[1] };
-}
-
 export function renderConfiguration(ui) {
-  const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "platform-home" });
-  const top = ui.el("div", { class: "settings-top" });
-  const watch = ui.el("button", { type: "button", class: "btn ghost sm" }, [lang === "es" ? "Ver tutorial" : "Watch tutorial"]);
-  watch.addEventListener("click", () => openTutorial(lang));
-  top.append(watch);
-  wrap.append(top);
-  wrap.append(ui.pageHeader(ui, lang === "es" ? "Ajustes" : "Settings", "Eight questions. Saving stays in this panel. Live setter sync is off.", "configuration", "settings"));
+  wrap.append(ui.pageHeader(ui, "Configuration", "Eight questions. Saving stays in this panel. Live setter sync is off.", "configuration", "settings"));
   const layout = ui.el("div", { class: "config-layout" });
   const list = ui.el("div", { class: "config-list" });
-  const search = ui.el("input", { class: "cfg-search", type: "search", placeholder: lang === "es" ? "Buscar un ajuste…" : "Search a setting…", "aria-label": lang === "es" ? "Buscar un ajuste" : "Search a setting" });
-  const questions = ui.el("div", { class: "cfg-menu" });
+  const search = ui.el("input", { type: "search", placeholder: "Search settings", "aria-label": "Search settings" });
+  const questions = ui.el("div");
   list.append(search, questions);
   const panel = ui.el("div", { id: "config-panel" });
   layout.append(list, panel);
@@ -47,45 +23,20 @@ export function renderConfiguration(ui) {
   const draw = () => {
     const query = search.value.trim().toLowerCase();
     questions.replaceChildren();
-    QUESTIONS.filter((item) => {
-      const shown = face(ui, item.id);
-      const hay = (item.q + " " + shown.title + " " + shown.hint).toLowerCase();
-      return !query || hay.includes(query);
-    }).forEach((item) => {
-      const shown = face(ui, item.id);
-      const button = ui.el("button", { type: "button", class: "cfg-item", "data-command": "cfg-" + item.id, "aria-pressed": ui.state.configKey === item.id ? "true" : "false" });
-      button.append(ui.el("span", { class: "cfg-ico", "aria-hidden": "true", text: shown.title.slice(0, 1) }));
-      const copy = ui.el("span");
-      copy.append(ui.el("strong", { text: shown.title }), ui.el("small", { text: shown.hint }));
-      button.append(copy, ui.el("span", { class: "cfg-chevron", "aria-hidden": "true", text: "›" }));
+    QUESTIONS.filter((item) => !query || item.q.toLowerCase().includes(query)).forEach((item) => {
+      const button = ui.el("button", { type: "button", "data-command": "cfg-" + item.id, "aria-pressed": ui.state.configKey === item.id ? "true" : "false" }, [item.q]);
       button.addEventListener("click", () => {
         ui.state.configKey = item.id;
         ui.paint();
       });
       questions.append(button);
     });
-    if (!questions.childElementCount) questions.append(ui.el("p", { text: lang === "es" ? "Ningún ajuste coincide." : "No matching question." }));
+    if (!questions.childElementCount) questions.append(ui.el("p", { text: "No matching question." }));
     panel.replaceChildren(configBody(ui, ui.state.configKey));
   };
   search.addEventListener("input", draw);
   draw();
   return wrap;
-}
-
-function openTutorial(lang) {
-  const modal = document.getElementById("how-modal");
-  const body = document.getElementById("how-body");
-  const title = document.getElementById("how-title");
-  if (!modal || !body) return;
-  if (title) title.textContent = lang === "es" ? "Tutorial" : "Tutorial";
-  body.replaceChildren();
-  const frame = document.createElement("iframe");
-  frame.className = "tutorial-frame";
-  frame.src = "https://share.descript.com/embed/XJIQMjM0Q1N";
-  frame.title = lang === "es" ? "Recorrido de Roleflow" : "Roleflow walkthrough";
-  frame.setAttribute("allowfullscreen", "");
-  body.append(frame);
-  modal.hidden = false;
 }
 
 function configBody(ui, key) {
@@ -102,7 +53,7 @@ function configBody(ui, key) {
 function replyBody(ui) {
   const settings = ui.state.settings || {};
   const card = ui.el("form", { class: "agent", "data-command": "cfg-reply" });
-  card.append(ui.el("h3", { text: face(ui, "reply").title }));
+  card.append(ui.el("h3", { text: "When does the AI answer?" }));
   const enabled = switchLabel(ui, "AI answers messages", settings.system_enabled === true);
   const mode = ui.el("select", { class: "sr", "aria-label": "Office hours" });
   const choices = [["always", "24 hours"], ["same", "Same every day"], ["per_day", "Per day"]];
@@ -539,10 +490,7 @@ function connectBody(ui) {
 
 function businessBody(ui) {
   const card = ui.el("form", { class: "agent", "data-command": "cfg-business" });
-  card.append(ui.el("h3", { text: face(ui, "business").title }));
-  const team = ui.button("Business & team", () => { if (ui.go) ui.go("team"); });
-  team.classList.add("ghost");
-  card.append(team);
+  card.append(ui.el("h3", { text: "Business" }));
   const current = (ui.state.businesses || []).find((row) => row.id === ui.state.businessId);
   card.append(ui.el("p", { text: current ? current.name : "This business" }));
   card.append(ui.el("p", { text: "Clone copies the brief, agent instructions, links, content titles, follow-ups, and these settings. Leads, uploaded files, and keys stay with the original. The new business starts with the AI off." }));

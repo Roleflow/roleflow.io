@@ -196,7 +196,7 @@ const STRATEGY_TABS = [
   { tab: "sops", en: "SOPs", es: "SOPs" },
   { tab: "content", en: "Content", es: "Contenido" },
   { tab: "commentvoice", en: "Comment voice", es: "Voz en comentarios" },
-  { tab: "followup", en: "Follow-ups", es: "Seguimientos" }
+  { tab: "voice", en: "Voice Gen", es: "Voz" }
 ];
 
 export function strategyTabs(ui) {
@@ -221,7 +221,7 @@ export function strategyTabs(ui) {
 }
 
 export function pageHeader(ui, title, text, how, iconName) {
-  const card = ui.el("section", { class: "page-card hero-card" });
+  const card = ui.el("section", { class: "page-card" });
   const copy = ui.el("div", { class: "page-copy" });
   copy.append(iconTile(iconName || "grid", "t1"), ui.el("div", {}, [ui.el("h2", { text: title }), ui.el("p", { text })]));
   const lang = ui.language ? ui.language() : "en";
