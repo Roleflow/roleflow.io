@@ -74,6 +74,57 @@ export function formatDelta(delta) {
   return delta > 0 ? "+" + size + " characters" : "−" + size + " characters";
 }
 
+const ES_LABELS = {
+  sell: "Qué vendes",
+  credibility: "Credibilidad",
+  who: "A quién ayudas",
+  pains: "Dolores",
+  desires: "Deseos",
+  beliefs: "Creencias falsas",
+  current: "Situación actual",
+  transformed: "Situación transformada",
+  problem: "Problema que resuelves",
+  offer: "Oferta",
+  service: "Descripción del servicio",
+  guarantee: "Garantía",
+  benefits: "Beneficios",
+  differentiation: "Diferenciación",
+  mission: "Misión y valores",
+  results: "Resultados y casos",
+  risks: "Riesgos y aclaraciones"
+};
+
+export function briefHeading(key, language) {
+  const found = BRIEF_FIELDS.find((field) => field[0] === key);
+  if (!found) return key;
+  return language === "es" ? (ES_LABELS[key] || found[1]) : found[1];
+}
+
+export function briefDocument(brief, language) {
+  const source = { ...emptyBrief(), ...(brief || {}) };
+  return BRIEF_FIELDS.map(([key]) => "## " + briefHeading(key, language) + "\n" + String(source[key] || "")).join("\n\n");
+}
+
+export function parseBriefDocument(text) {
+  const fields = emptyBrief();
+  const headingToKey = new Map();
+  BRIEF_FIELDS.forEach(([key, label]) => {
+    headingToKey.set(label.toLowerCase(), key);
+    const spanish = ES_LABELS[key];
+    if (spanish) headingToKey.set(spanish.toLowerCase(), key);
+  });
+  String(text || "").split(/^## /m).forEach((part) => {
+    const clean = part.trim();
+    if (!clean) return;
+    const breakAt = clean.indexOf("\n");
+    const title = (breakAt === -1 ? clean : clean.slice(0, breakAt)).trim().toLowerCase();
+    const body = breakAt === -1 ? "" : clean.slice(breakAt + 1).trim();
+    const key = headingToKey.get(title);
+    if (key) fields[key] = body;
+  });
+  return fields;
+}
+
 export function scoreBrief(brief) {
   const source = { ...emptyBrief(), ...(brief || {}) };
   const filled = BRIEF_FIELDS.filter(([key]) => String(source[key] || "").trim().length > 0);

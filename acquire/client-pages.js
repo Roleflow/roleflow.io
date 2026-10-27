@@ -1,11 +1,11 @@
 import { AGENT_KEYS, dashboardMetrics, DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
-import { grokLaunchUrl } from "./client-config.js";
 import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
 import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
 import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { renderRoleflowCalendar } from "./calendar-page.js";
 import { sectionText } from "./section-copy.js";
+import { renderSetterDesk } from "./setter-workspace.js";
 
 const COPY = {
   en: {
@@ -218,61 +218,24 @@ export function renderCalendar(ui) {
 }
 
 export function renderGrokAgent(ui, kind) {
-  const copy = text(ui.language());
-  const title = kind === "warmer" ? "Lead Warmer" : "Outreacher";
-  const body = kind === "warmer" ? copy.warmer : copy.outreach;
+  const lang = ui.language ? ui.language() : "en";
+  const es = lang === "es";
+  const title = kind === "warmer" ? (es ? "Calentador" : "Lead Warmer") : (es ? "Prospección" : "Outreacher");
+  const body = es
+    ? "Este agente está en preparación. No se puede activar desde esta página."
+    : "This agent is in preparation. It cannot be turned on from this page.";
   const wrap = ui.el("div", { class: "platform-home" });
   wrap.append(ui.pageHeader(ui, title, body, kind, kind === "warmer" ? "users" : "send"));
-  wrap.append(switchCard(ui, kind, copy));
-  const launch = ui.el("section", { class: "agent" });
-  launch.append(ui.el("h3", { text: copy.grokTitle }));
-  const url = grokLaunchUrl(kind);
-  if (!url) {
-    launch.append(ui.el("p", { text: copy.grokMissing }));
-    const button = ui.el("button", { type: "button", class: "btn", disabled: true }, [copy.grokOpen]);
-    launch.append(button);
-  } else {
-    launch.append(ui.el("a", { class: "btn", href: url, target: "_blank", rel: "noopener noreferrer" }, [copy.grokOpen]));
-  }
-  wrap.append(launch);
+  const card = ui.el("section", { class: "agent coming-card", role: "status" });
+  card.append(ui.el("p", { class: "soon-badge", text: es ? "Próximamente" : "Coming soon" }));
+  card.append(ui.el("h3", { text: es ? "Próximamente" : "Coming soon" }));
+  card.append(ui.el("p", { text: body }));
+  wrap.append(card);
   return wrap;
 }
 
 export function renderSetter(ui) {
-  const copy = text(ui.language());
-  const wrap = ui.el("div", { class: "platform-home" });
-  if (!ui.state.embedSetter) {
-    wrap.append(ui.pageHeader(ui, "Agentic Setter", copy.setter, "setter", "inbox"));
-    wrap.append(ui.el("p", { text: copy.channel }));
-    wrap.append(ui.el("p", {}, [
-      ui.el("a", { class: "btn ghost sm", id: "setter-key-link", href: "#settings/model" }, [copy.keyLink])
-    ]));
-    wrap.append(renderInstagramConnect(ui));
-  }
-  wrap.append(switchCard(ui, "setter", copy));
-  const studio = ui.el("div", {
-    class: "setter-studio",
-    id: "setter-studio",
-    "data-pane": ui.state.setterPane === "chat" ? "chat" : "editor"
-  });
-  const tabs = ui.el("div", { class: "setter-tabs", role: "tablist", "aria-label": "Setter workspace" });
-  const editorTab = ui.el("button", { type: "button", role: "tab" }, ["Prompt"]);
-  const chatTab = ui.el("button", { type: "button", role: "tab" }, ["Practice"]);
-  const showPane = (pane) => {
-    ui.state.setterPane = pane;
-    studio.dataset.pane = pane;
-    editorTab.setAttribute("aria-selected", pane === "editor" ? "true" : "false");
-    chatTab.setAttribute("aria-selected", pane === "chat" ? "true" : "false");
-  };
-  editorTab.addEventListener("click", () => showPane("editor"));
-  chatTab.addEventListener("click", () => showPane("chat"));
-  tabs.append(editorTab, chatTab);
-  showPane(ui.state.setterPane === "chat" ? "chat" : "editor");
-  const split = ui.el("div", { class: "setter-split" });
-  split.append(promptEditor(ui), practiceThread(ui));
-  studio.append(tabs, split);
-  wrap.append(studio);
-  return wrap;
+  return renderSetterDesk(ui);
 }
 
 function promptEditor(ui) {

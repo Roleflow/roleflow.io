@@ -98,6 +98,11 @@ Deno.serve(async (req) => {
     if (!reply) return json(502, { error: "The model returned an empty reply." });
     return json(200, { reply });
   }
+  if (action === "edit" && String(body.prompt || "").trim()) {
+    const prompt = String(parsed.prompt || "").trim().slice(0, 80000);
+    if (!prompt) return json(502, { error: "The model returned an empty prompt." });
+    return json(200, { prompt });
+  }
   return json(200, { fields: cleanFields(parsed.fields || parsed) });
 });
 
@@ -115,6 +120,10 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
   }
   if (action === "edit") {
     const instruction = String(body.instruction || "").slice(0, 500);
+    const prompt = String(body.prompt || "").trim();
+    if (prompt) {
+      return "Apply this edit to the agent prompt. Return {\"prompt\": string}. Do not add facts that are not implied by the prompt. Edit: " + instruction + "\nPrompt:\n" + prompt.slice(0, 8000);
+    }
     return "Apply this edit to the brief and return {\"fields\": {same keys}}. Edit: " + instruction + "\nBrief JSON:\n" + JSON.stringify(fields);
   }
   const lines = Array.isArray(body.lines) ? body.lines.slice(-12) : [];

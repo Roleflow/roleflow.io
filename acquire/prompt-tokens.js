@@ -37,7 +37,9 @@ export function voiceCatalog(notes) {
       title,
       path: note.storage_path || note.path || "",
       mime: note.mime_type || note.mime || "audio/mpeg",
-      bucket: note.bucket || "acq-voice"
+      bucket: note.bucket || "acq-voice",
+      slot: note.slot || "",
+      when: note.slot === "comment" ? String(note.script_hint || note.when_to_send || "").trim() : ""
     });
   }
   return rows;
