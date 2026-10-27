@@ -188,7 +188,7 @@ assert.match(homepage, /See if you qualify/);
 assert.doesNotMatch(homepage, /Book your call|Book a call|book a call/i);
 assert.doesNotMatch(homepage, /calendar\.app\.google/);
 assert.match(homepage, /Outbound Manager/);
-assert.match(homepage, /Client Acquisition System/);
+assert.match(homepage, /AI Client Acquisition Engine/);
 assert.match(homepage, /href="#start"/);
 assert.match(homepage, /id="qz"/);
 assert.match(fs.readFileSync(path.join(root, "assets/qualify.js"), "utf8"), /How many DMs do you get from potential customers per day/);

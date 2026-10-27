@@ -32,7 +32,7 @@ MO_ES = vs_table(["Mochi", "Software para un equipo de ventas en Instagram. La t
     "Quieres que Roleflow monte y opere el sistema de DMs de Instagram, con notas de voz en tu propia voz, clonadas de una grabación corta.") + src_es(MO_SOURCES) + links_es() + '<p><a href="/es/vs/ripdrip/">RipDrip</a></p>'
 
 ABOUT_EN = '''
-<p>Roleflow is a Client Acquisition System. We build and run your Instagram DM system, with voice notes in your own voice, cloned from a short recording.</p>
+<p>Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system, with voice notes in your own voice, cloned from a short recording.</p>
 <h2>Mission</h2>
 <p>High-ticket Instagram businesses lose leads because replies are slow, follow-ups get forgotten, and the owner spends the day managing setters. Roleflow builds and runs the DM system so closers can sell on the calls.</p>
 <h2>Company</h2>
@@ -48,7 +48,7 @@ ABOUT_EN = '''
 ''' + links_en()
 
 ABOUT_ES = '''
-<p>Roleflow es un sistema de adquisición de clientes para Instagram. Nosotros lo montamos y lo operamos.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA para Instagram. Nosotros lo montamos y lo operamos.</p>
 <h2>Misión</h2>
 <p>Los negocios de ticket alto en Instagram pierden leads porque la respuesta tarda, el seguimiento se olvida y el dueño pasa el día gestionando setters. Roleflow monta y opera el sistema de DMs para que los closers vendan en las llamadas.</p>
 <h2>Empresa</h2>
@@ -70,7 +70,7 @@ COACH_EN = '''
 <p>The pains are the ones coaches already name. Leads wait hours. The reply that finally goes out is a generic text. The follow-up never happens because the thread fell under newer messages. And if you hired a setter, you now manage that person instead of coaching. Roleflow takes the first response, the follow-up, and the booking. You keep the sessions and the sales calls.</p>
 <h2>How it works for a coaching offer</h2>
 <p>You send a short recording. Voice notes go out in your own voice, cloned from that recording, and Roleflow writes replies that follow your offer and your tone. A lead who asks about a high-ticket program gets a conversation, not a link dump: what they want, whether they can invest, and whether a call makes sense. If they qualify, the call lands on your calendar. If they go quiet, the follow-up still goes out within 24 hours. Voice notes in your own voice, cloned from a short recording go out so the thread sounds like you. Follow-ups go out only within 24 hours.</p>
-<p>This is done for you. You do not build a button flow and you do not staff a night shift. Roleflow is a Client Acquisition System. We build and run your Instagram DM system, with voice notes in your own voice, cloned from a short recording.</p>
+<p>This is done for you. You do not build a button flow and you do not staff a night shift. Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system, with voice notes in your own voice, cloned from a short recording.</p>
 <h2>Who qualifies</h2>
 <p>Coaches with 20+ DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ a month collected. A $200 group challenge, a WhatsApp community, or a coach who gets three DMs a week is outside the fit. Instagram DMs only. We build and run the Instagram DM system. The work stays on Instagram DMs.</p>
 <p>Your setters, if you still have them, stop living in the first-response queue. Closers take the calls Roleflow books. Your closers still take every call that lands on the calendar. Read <a href="/for/business-coaches/">business coaches</a>, <a href="/for/fitness-coaches/">fitness coaches</a>, and the <a href="/best-ai-dm-setters/">comparison</a>.</p>
@@ -81,7 +81,7 @@ COACH_ES = '''
 <p>Los dolores son los que los coaches ya dicen. El lead espera horas. La respuesta que sale es un texto genérico. El seguimiento no ocurre porque el hilo quedó debajo de mensajes nuevos. Y si contrataste un setter, ahora gestionas a esa persona en lugar de hacer coaching. Roleflow toma la primera respuesta, el seguimiento y la agenda. Tú te quedas con las sesiones y las llamadas de venta.</p>
 <h2>Cómo funciona con una oferta de coaching</h2>
 <p>Mandas una grabación corta. Roleflow envía tu nota personal y escribe respuestas que siguen tu oferta y tu tono. Quien pregunta por un programa de ticket alto recibe una conversación, no un montón de links: qué busca, si puede invertir y si una llamada tiene sentido. Si califica, la llamada queda en tu calendario. Si se enfría, el seguimiento igual sale. Las notas de voz salen con tu nota personal para que el hilo suene a ti. El seguimiento sale solo dentro de 24 horas.</p>
-<p>Es hecho para ti. No armas un flujo de botones ni cubres un turno de noche. Roleflow es un sistema de adquisición de clientes para Instagram. Nosotros lo montamos y lo operamos hoy.</p>
+<p>Es hecho para ti. No armas un flujo de botones ni cubres un turno de noche. Roleflow es un motor de adquisición de clientes con IA para Instagram. Nosotros lo montamos y lo operamos hoy.</p>
 <h2>Quién califica</h2>
 <p>Coaches con más de 20 DMs al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes. Un reto de $200, una comunidad de WhatsApp o un coach con tres DMs a la semana queda afuera. Solo DMs de Instagram. Nosotros montamos y operamos el sistema. El trabajo se queda en los DMs de Instagram.</p>
 <p>Tus setters, si todavía los tienes, salen de la cola de primera respuesta. Los closers hacen las llamadas que Roleflow agenda. Tus closers igual hacen cada llamada que queda en el calendario. Lee <a href="/es/para/coaches-de-negocios/">coaches de negocios</a>, <a href="/es/para/coaches-fitness/">coaches fitness</a> y la <a href="/es/mejores-setters-con-ia/">comparativa</a>.</p>
@@ -118,7 +118,7 @@ FIT_EN = '''
 <p>You record your voice once. Roleflow runs the Instagram DMs while you are on the gym floor or in sessions. Qualification is the same bar as the rest of Roleflow: 20+ DMs a day, offer above $1,000, close rate above 20%, $30k+ a month collected. A coach selling only low-ticket app subscriptions does not qualify. WhatsApp check-ins with current clients are a different channel. Roleflow does not run those.</p>
 <p>Follow-ups go out only within 24 hours. Qualified leads are booked on your calendar. We build and run the Instagram DM system.</p>
 <p>The lead who DMs from a reel is often comparing three coaches before lunch. Roleflow's job is the reply and the booking, not a new training plan. Spots, price, and whether they already train are the questions. People who only want a free PDF stay out of the calendar. People who can buy the high-ticket coaching get a time. That is the whole handoff. Nothing on this page is a client result, a star rating, or a review of any kind. We build the Instagram DM system and we keep it running while you coach. The first reply, the follow-up, and the booking stay with Roleflow. Your closers take the calls that land on the calendar, and the program itself stays yours to deliver.</p>
-<p>Roleflow is a Client Acquisition System, with voice notes in your own voice, cloned from a short recording. See <a href="/for/coaches/">coaches</a>.</p>
+<p>Roleflow is an AI Client Acquisition Engine, with voice notes in your own voice, cloned from a short recording. See <a href="/for/coaches/">coaches</a>.</p>
 '''
 FIT_ES = '''
 <h2>Los reels llenan el inbox. El programa igual tiene precio.</h2>
@@ -128,7 +128,7 @@ FIT_ES = '''
 <p>Grabas tu voz una vez. Roleflow lleva los DMs de Instagram mientras estás en el piso o en sesión. La calificación es la misma barra del resto de Roleflow: más de 20 DMs al día, oferta de más de $1.000, cierre superior al 20 % y más de $30.000 cobrados al mes. Un coach que solo vende suscripciones baratas de una app no califica. Los check-ins de WhatsApp con clientes actuales son otro canal. Roleflow no los lleva.</p>
 <p>El seguimiento sale solo dentro de 24 horas. Los leads calificados quedan en el calendario. Nosotros montamos y operamos el sistema.</p>
 <p>Quien escribe desde un reel suele comparar tres coaches antes del almuerzo. El trabajo de Roleflow es la respuesta y la agenda, no un plan de entreno nuevo. Cupos, precio y si ya entrena son las preguntas. Quien solo quiere un PDF gratis no entra al calendario. Quien puede comprar el coaching de ticket alto se lleva un horario. Ese es el traspaso. Nada en esta página es un resultado de un cliente, una puntuación con estrellas ni una reseña. Nosotros montamos el sistema de DMs de Instagram y lo seguimos operando mientras das coaching. La primera respuesta, el seguimiento y la agenda se quedan en Roleflow.</p>
-<p>Roleflow es un sistema de adquisición de clientes para Instagram, con notas de voz en tu propia voz. Mira <a href="/es/para/coaches/">coaches</a>.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA para Instagram, con notas de voz en tu propia voz. Mira <a href="/es/para/coaches/">coaches</a>.</p>
 '''
 CON_EN = '''
 <h2>The DM is the first meeting</h2>
@@ -137,7 +137,7 @@ CON_EN = '''
 <h2>Scope</h2>
 <p>Instagram DMs only. If your pipeline is referrals and the phone, this is the wrong product. If your pipeline is inbound DMs from posts and you close above 20% on calls, with 20+ DMs a day and $30k+ a month collected, it is the right one. Follow-ups go out only within 24 hours.</p>
 <p>Consultants also get DMs that are not buyers: students, vendors, and people who want a free audit. The setter's job is to tell those apart before a 45-minute call is spent on someone who cannot hire you. Roleflow uses your questions for that filter. It does not invent a case study or a win rate. If a fact is not confirmed, it is left out instead of being dressed up. The same rule keeps salary figures and star ratings off this page. We leave both of them out.</p>
-<p>Roleflow is a Client Acquisition System, with voice notes in your own voice, cloned from a short recording. We build it and run it, so the first meeting in the DMs is answered in seconds. Your closers, or you, still take the call once it is booked. That is the handoff. Follow-ups go out only within 24 hours. Qualified leads are booked on your calendar. We build and run the Instagram DM system. Your closers, or you, take the booked call. See <a href="/for/agency-owners/">agency owners</a> and <a href="/faq/">the FAQ</a>.</p>
+<p>Roleflow is an AI Client Acquisition Engine, with voice notes in your own voice, cloned from a short recording. We build it and run it, so the first meeting in the DMs is answered in seconds. Your closers, or you, still take the call once it is booked. That is the handoff. Follow-ups go out only within 24 hours. Qualified leads are booked on your calendar. We build and run the Instagram DM system. Your closers, or you, take the booked call. See <a href="/for/agency-owners/">agency owners</a> and <a href="/faq/">the FAQ</a>.</p>
 '''
 CON_ES = '''
 <h2>El DM es la primera reunión</h2>
@@ -146,7 +146,7 @@ CON_ES = '''
 <h2>Alcance</h2>
 <p>Solo DMs de Instagram. Si tu pipeline son referidos y el teléfono, este producto no es. Si tu pipeline son DMs de lo que publicas y cierras por encima del 20 % en llamadas, con más de 20 DMs al día y más de $30.000 cobrados al mes, sí lo es. El seguimiento sale solo dentro de 24 horas.</p>
 <p>Los consultores también reciben DMs que no son compradores: estudiantes, proveedores y gente que quiere una auditoría gratis. El trabajo del setter es separarlos antes de gastar 45 minutos con quien no puede contratarte. Roleflow usa tus preguntas para ese filtro. No inventa un caso ni una tasa de éxito. Si un dato no está confirmado, la página lo marca en lugar de adornarlo. La misma regla deja fuera sueldos y estrellas de reseña. Las dos cosas se quedan afuera.</p>
-<p>Roleflow es un sistema de adquisición de clientes para Instagram, con notas de voz en tu propia voz. Lo montamos y lo operamos, así la primera reunión en los DMs recibe respuesta en segundos. Tus closers, o tú, igual hacen la llamada cuando ya está agendada. Ese es el traspaso. Los leads calificados quedan en el calendario. Nosotros montamos y operamos el sistema. Tus closers, o tú, hacen la llamada agendada. Mira <a href="/es/para/agencias/">agencias</a> y <a href="/es/preguntas-frecuentes/">las preguntas</a>.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA para Instagram, con notas de voz en tu propia voz. Lo montamos y lo operamos, así la primera reunión en los DMs recibe respuesta en segundos. Tus closers, o tú, igual hacen la llamada cuando ya está agendada. Ese es el traspaso. Los leads calificados quedan en el calendario. Nosotros montamos y operamos el sistema. Tus closers, o tú, hacen la llamada agendada. Mira <a href="/es/para/agencias/">agencias</a> y <a href="/es/preguntas-frecuentes/">las preguntas</a>.</p>
 '''
 AG_EN = '''
 <h2>Your clients' inboxes are not this product</h2>
@@ -155,7 +155,7 @@ AG_EN = '''
 <h2>Qualification, stated plainly</h2>
 <p>20+ DMs a day on the Instagram account we would run, an offer above $1,000, a close rate above 20%, and $30k+ a month collected. An agency whose offer is $500, or that lives in email and Upwork, does not qualify. Instagram DMs only.</p>
 <p>Delivery weeks are when agency DMs go cold. You are in a client Slack, and the founder who asked about a retainer on Monday has booked another shop by Thursday. Roleflow is the reply that still goes out, with voice notes in your own voice, cloned from a short recording, without you opening Instagram. Follow-ups stay within 24 hours. It asks budget and timing. It does not pitch a package you do not sell. The call it books is for your offer, on your account, not for a client's. No client logo and no revenue claim is added here. If a founder asks for a proposal, Roleflow books the call and leaves the scope document to you. It does not send a price you have not approved. Quotes stay in your hands.</p>
-<p>Roleflow is a Client Acquisition System, with voice notes in your own voice, cloned from a short recording. We build the system on the agency owner's own Instagram and we run it. The first reply, the follow-up, and the booking stay with Roleflow. The delivery team stays on client work, and the closer takes the call. Follow-ups go out only within 24 hours. Qualified leads are booked on your calendar. We build and run the Instagram DM system. See <a href="/for/consultants/">consultants</a> and <a href="/for/course-creators/">course creators</a>.</p>
+<p>Roleflow is an AI Client Acquisition Engine, with voice notes in your own voice, cloned from a short recording. We build the system on the agency owner's own Instagram and we run it. The first reply, the follow-up, and the booking stay with Roleflow. The delivery team stays on client work, and the closer takes the call. Follow-ups go out only within 24 hours. Qualified leads are booked on your calendar. We build and run the Instagram DM system. See <a href="/for/consultants/">consultants</a> and <a href="/for/course-creators/">course creators</a>.</p>
 '''
 AG_ES = '''
 <h2>El inbox de tus clientes no es este producto</h2>
@@ -164,7 +164,7 @@ AG_ES = '''
 <h2>Calificación, en claro</h2>
 <p>Más de 20 DMs al día en la cuenta de Instagram que operaríamos, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes. Una agencia que vende setups de $500, o que vive en el email y en Upwork, no califica. Solo DMs de Instagram.</p>
 <p>Las semanas de entrega son cuando los DMs de la agencia se enfrían. Estás en el Slack de un cliente, y el fundador que preguntó por un retainer el lunes ya contrató a otro el jueves. Roleflow es la respuesta que igual sale, con notas de voz en tu propia voz, clonadas de una grabación corta, sin que abras Instagram. El seguimiento se queda dentro de 24 horas. Pregunta presupuesto y tiempos. No ofrece un paquete que tú no vendes. La llamada que agenda es de tu oferta, en tu cuenta, no en la de un cliente. Aquí no hay logo de cliente ni cifra de facturación inventada. Si un fundador pide una propuesta, Roleflow agenda la llamada y te deja el documento de alcance. No manda un precio que tú no aprobaste. La cotización se queda en tus manos.</p>
-<p>Roleflow es un sistema de adquisición de clientes para Instagram, con notas de voz en tu propia voz. Nosotros montamos ese sistema y lo seguimos operando en tu propio Instagram. Ese es el trabajo. El seguimiento sale solo dentro de 24 horas. Los leads calificados quedan en el calendario. Nosotros montamos y operamos el sistema. Mira <a href="/es/para/consultores/">consultores</a> y <a href="/es/para/infoproductores/">infoproductores</a>.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA para Instagram, con notas de voz en tu propia voz. Nosotros montamos ese sistema y lo seguimos operando en tu propio Instagram. Ese es el trabajo. El seguimiento sale solo dentro de 24 horas. Los leads calificados quedan en el calendario. Nosotros montamos y operamos el sistema. Mira <a href="/es/para/consultores/">consultores</a> y <a href="/es/para/infoproductores/">infoproductores</a>.</p>
 '''
 COURSE_EN = '''
 <h2>Launches make a queue, not a relationship</h2>
@@ -174,7 +174,7 @@ COURSE_EN = '''
 <p>The dangerous day is not launch day. It is three days later, when the unanswered "thinking about it" threads are buried. Follow-ups go out only within 24 hours. Booking is the job. You still teach and you still take sales calls. We build and run the Instagram DM system.</p>
 <p>Qualify with 20+ DMs a day, close rate above 20%, and $30k+ a month collected. Instagram only. A creator who sells on email and uses Instagram as a billboard is not the fit. Qualified leads are booked on your calendar. We build and run the Instagram DM system.</p>
 <p>Cart-open week also brings refund questions and "which bonus is included" from people who already bought. Those are support, not sales. Roleflow should book new buyers and leave existing-student support to you. The page does not invent launch revenue. It only describes the inbox problem. A launch screenshot is not a testimonial and is not used. People who already bought stay with your support inbox. New buyers who still have questions about price and fit are the threads Roleflow is for. We build the Instagram DM system and we run it through the launch and the quiet days after. Your closers take the calls that get booked.</p>
-<p>Roleflow is a Client Acquisition System, with voice notes in your own voice, cloned from a short recording. See <a href="/for/coaches/">coaches</a> and <a href="/best-ai-dm-setters/">the comparison</a>.</p>
+<p>Roleflow is an AI Client Acquisition Engine, with voice notes in your own voice, cloned from a short recording. See <a href="/for/coaches/">coaches</a> and <a href="/best-ai-dm-setters/">the comparison</a>.</p>
 '''
 COURSE_ES = '''
 <h2>Un lanzamiento arma una cola, no una relación</h2>
@@ -184,7 +184,7 @@ COURSE_ES = '''
 <p>El día peligroso no es el del lanzamiento. Es tres días después, cuando los hilos de "lo estoy pensando" quedaron enterrados. El seguimiento sale solo dentro de 24 horas. Agendar es el trabajo. Tú sigues enseñando y sigues haciendo las llamadas de venta. Nosotros montamos y operamos el sistema de DMs.</p>
 <p>Califica con más de 20 DMs al día, un cierre superior al 20 % y más de $30.000 cobrados al mes. Solo Instagram. Quien vende por email y usa Instagram como cartel no encaja. Los leads calificados quedan en el calendario. Nosotros montamos y operamos el sistema.</p>
 <p>La semana de carrito también trae preguntas de reembolso y de "qué bono incluye" de quien ya compró. Eso es soporte, no venta. Roleflow debería agendar compradores nuevos y dejarte el soporte de alumnos. Esta página no inventa ingresos de un lanzamiento. Solo describe el problema del inbox. Una captura del lanzamiento no es un testimonio y no se usa. Quien ya compró se queda en tu soporte. Quien todavía pregunta precio y encaje es el hilo de Roleflow.</p>
-<p>Roleflow es un sistema de adquisición de clientes para Instagram, con notas de voz en tu propia voz. Nosotros montamos el sistema de DMs y lo operamos. Tus closers hacen las llamadas que quedan agendadas. Mira <a href="/es/para/coaches/">coaches</a> y <a href="/es/mejores-setters-con-ia/">la comparativa</a>.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA para Instagram, con notas de voz en tu propia voz. Nosotros montamos el sistema de DMs y lo operamos. Tus closers hacen las llamadas que quedan agendadas. Mira <a href="/es/para/coaches/">coaches</a> y <a href="/es/mejores-setters-con-ia/">la comparativa</a>.</p>
 '''
 
 def faq_pick(src, idxs, extra=()):
@@ -193,11 +193,11 @@ def faq_pick(src, idxs, extra=()):
 
 LIST_EXTRA_EN = [
     ("Who should not use Roleflow?", "WhatsApp, email, or phone-first sellers, low-ticket offers, and businesses with very low DM volume.", True),
-    ("Did Roleflow write this comparison?", "Yes. Roleflow wrote this page and sells a Client Acquisition System. Every tool, including Roleflow, has a wrong-for line.", True),
+    ("Did Roleflow write this comparison?", "Yes. Roleflow wrote this page and sells an AI Client Acquisition Engine. Every tool, including Roleflow, has a wrong-for line.", True),
 ]
 LIST_EXTRA_ES = [
     ("¿Quién no debería usar Roleflow?", "Quien vende por WhatsApp, email o teléfono, quien tiene una oferta de ticket bajo y quien tiene muy pocos DMs.", True),
-    ("¿Roleflow escribió esta comparativa?", "Sí. Roleflow escribió esta página y vende un sistema de adquisición de clientes. Cada herramienta, Roleflow incluida, tiene una línea de para quién no es.", True),
+    ("¿Roleflow escribió esta comparativa?", "Sí. Roleflow escribió esta página y vende un motor de adquisición de clientes con IA. Cada herramienta, Roleflow incluida, tiene una línea de para quién no es.", True),
 ]
 NICHE_FAQ_EN = [
     ("Which channels?", FAQ_EN[5][1], True),
@@ -260,31 +260,31 @@ RES_ES = '''
 
 PAGES = [
     D.P("", "es", "Home", "Inicio", skip_en=True, home=True,
-        title_en="Roleflow | Client Acquisition System",
-        title_es="Roleflow | Sistema de adquisición de clientes",
-        desc_en="Client Acquisition System for Instagram DMs. We build and run the DM system, answer every lead in seconds, and book qualified calls on your calendar today.",
-        desc_es="Sistema de adquisición de clientes para DMs de Instagram. Montamos y operamos el sistema, respondemos cada lead en segundos y agendamos las llamadas hoy.",
+        title_en="Roleflow | AI Client Acquisition Engine",
+        title_es="Roleflow | Motor de adquisición de clientes con IA",
+        desc_en="AI Client Acquisition Engine for Instagram DMs. We build and run the DM system, answer every lead in seconds, and book qualified calls on your calendar today.",
+        desc_es="Motor de adquisición de clientes con IA para DMs de Instagram. Montamos y operamos el sistema, respondemos cada lead en segundos y agendamos las llamadas hoy.",
         h1_en="Roleflow",
-        h1_es="Sistema de adquisición de clientes",
-        answer_en="Roleflow is a Client Acquisition System. We build and run your Instagram DM system. It replies to every inbound DM in seconds, sends voice notes in your own voice, cloned from a short recording, follows up only within 24 hours, and books qualified calls. Your closers take the calls.",
-        answer_es="Roleflow es un sistema de adquisición de clientes. Montamos y operamos tu sistema de DMs de Instagram. Responde cada lead en segundos, manda notas de voz en tu propia voz, clonadas de una grabación corta, y el seguimiento sale solo dentro de 24 horas. Tus closers hacen las llamadas.",
+        h1_es="Motor de adquisición de clientes con IA",
+        answer_en="Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system. It replies to every inbound DM in seconds, sends voice notes in your own voice, cloned from a short recording, follows up only within 24 hours, and books qualified calls. Your closers take the calls.",
+        answer_es="Roleflow es un motor de adquisición de clientes con IA. Montamos y operamos tu sistema de DMs de Instagram. Responde cada lead en segundos, manda notas de voz en tu propia voz, clonadas de una grabación corta, y el seguimiento sale solo dentro de 24 horas. Tus closers hacen las llamadas.",
         body_en="", body_es=D.HOME_ES_BODY, faq_en=D.HOME_FAQ_EN, faq_es=D.HOME_FAQ_ES,
         crumbs_en=[("Home", "/")], crumbs_es=[("Inicio", "/es/")]),
     D.P("what-is-an-ai-dm-setter", "es/que-es-un-setter-con-ia", "What is an AI DM setter", "Qué es un setter con IA",
         title_en="What Is an AI DM Setter? | Roleflow", title_es="Qué es un setter con IA | Roleflow",
-        desc_en="An AI DM setter replies, qualifies, follows up, and books calls. Roleflow is a Client Acquisition System for Instagram DMs, with voice notes in your own voice.",
-        desc_es="Un setter con IA responde DMs, califica, hace seguimiento y agenda. Roleflow es un sistema de adquisición de clientes, con notas de voz en tu propia voz.",
+        desc_en="An AI DM setter replies, qualifies, follows up, and books calls. Roleflow is an AI Client Acquisition Engine for Instagram DMs, with voice notes in your voice.",
+        desc_es="Un setter con IA responde DMs, califica, hace seguimiento y agenda. Roleflow es un motor de adquisición de clientes con IA, con notas de voz en tu propia voz.",
         h1_en="What is an AI DM setter?", h1_es="Qué es un setter con IA",
-        answer_en="An AI DM setter is software that replies to inbound direct messages, qualifies the lead, follows up, and books a sales call. It does the work of a human appointment setter. Roleflow is a Client Acquisition System for Instagram DMs. It replies in seconds and sends voice notes in your own voice, cloned from a short recording.",
-        answer_es="Un setter con IA es un software que responde los mensajes directos, califica al lead, hace seguimiento y agenda una llamada de venta. Hace el trabajo de un appointment setter humano. Roleflow es un sistema de adquisición de clientes: responde en segundos y manda notas de voz en tu propia voz, clonadas de una grabación corta.",
+        answer_en="An AI DM setter is software that replies to inbound direct messages, qualifies the lead, follows up, and books a sales call. It does the work of a human appointment setter. Roleflow is an AI Client Acquisition Engine for Instagram DMs. It replies in seconds and sends voice notes in your own voice, cloned from a short recording.",
+        answer_es="Un setter con IA es un software que responde los mensajes directos, califica al lead, hace seguimiento y agenda una llamada de venta. Hace el trabajo de un appointment setter humano. Roleflow es un motor de adquisición de clientes con IA: responde en segundos y manda notas de voz en tu propia voz, clonadas de una grabación corta.",
         body_en=D.DEF_EN, body_es=D.DEF_ES, faq_en=faq_pick(FAQ_EN, [0, 1, 5]), faq_es=faq_pick(FAQ_ES, [0, 1, 5])),
     D.P("faq", "es/preguntas-frecuentes", "FAQ", "Preguntas frecuentes",
         title_en="AI DM Setter FAQ | Roleflow", title_es="Preguntas del setter con IA | Roleflow",
-        desc_en="FAQ on what an AI DM setter is, who qualifies, and Instagram DMs. Roleflow is a Client Acquisition System we build and run, with voice notes in your own voice.",
-        desc_es="Preguntas sobre qué es un setter con IA, quién califica y los DMs de Instagram. Roleflow es un sistema de adquisición de clientes que montamos y operamos.",
+        desc_en="FAQ on what an AI DM setter is, who qualifies, and Instagram DMs. Roleflow is an AI Client Acquisition Engine we build and run, with voice notes in your voice.",
+        desc_es="Preguntas sobre qué es un setter con IA, quién califica y los DMs de Instagram. Roleflow es un motor de adquisición de clientes con IA que montamos y operamos.",
         h1_en="AI DM setter FAQ", h1_es="Preguntas frecuentes",
-        answer_en="These answers cover what an AI DM setter is, what Roleflow does, who qualifies, and which channel it runs. Roleflow is a Client Acquisition System for Instagram DMs, with voice notes in your own voice, cloned from a short recording. We build the system and we run it.",
-        answer_es="Estas respuestas explican qué es un setter con IA, qué hace Roleflow, quién califica y en qué canal trabaja. Roleflow es un sistema de adquisición de clientes para Instagram, con notas de voz en tu propia voz, clonadas de una grabación corta.",
+        answer_en="These answers cover what an AI DM setter is, what Roleflow does, who qualifies, and which channel it runs. Roleflow is an AI Client Acquisition Engine for Instagram DMs, with voice notes in your own voice, cloned from a short recording. We build the system and we run it.",
+        answer_es="Estas respuestas explican qué es un setter con IA, qué hace Roleflow, quién califica y en qué canal trabaja. Roleflow es un motor de adquisición de clientes con IA para Instagram, con notas de voz en tu propia voz, clonadas de una grabación corta.",
         body_en="<p>Unknown facts are left out.</p>" + links_en(),
         body_es="<p>Si un dato no está confirmado, no se inventa.</p>" + links_es(),
         faq_en=FAQ_EN, faq_es=FAQ_ES),
@@ -295,7 +295,7 @@ PAGES = [
         desc_es="Roleflow responde DMs de Instagram en segundos, manda notas de voz que grabas, hace seguimiento y agenda llamadas. El precio en español no está publicado.",
         h1_en="$0 upfront + 10% of revenue generated, no retainer",
         h1_es="Precios",
-        answer_en="Roleflow is a Client Acquisition System. We build and run your Instagram DM system. Every lead is answered in seconds. Voice notes go out in your own voice, cloned from a short recording. Follow-ups are sent only within 24 hours. Qualified leads are booked on your calendar.",
+        answer_en="Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system. Every lead is answered in seconds. Voice notes go out in your own voice, cloned from a short recording. Follow-ups are sent only within 24 hours. Qualified leads are booked on your calendar.",
         answer_es="Roleflow responde cada DM de Instagram en segundos, manda notas de voz personales que grabas, hace seguimiento y agenda a quien califica. Nosotros lo montamos y lo operamos. Solo DMs de Instagram. Califican más de 20 DMs al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes.",
         body_en="", body_es=""),
     D.P("best-ai-dm-setters", "es/mejores-setters-con-ia", "Best AI DM setters", "Mejores setters con IA", updated=True, article=True,
@@ -303,8 +303,8 @@ PAGES = [
         desc_en="A 2026 comparison of Roleflow, RipDrip, and Mochi for Instagram DMs. Only cited prices and features, with a wrong-for line on each tool, checked in October.",
         desc_es="Comparativa de 2026 de Roleflow, RipDrip y Mochi para DMs de Instagram. Solo precios y funciones citados, con una línea de no encaje en cada herramienta.",
         h1_en="Best AI DM setters for Instagram (2026)", h1_es="Los mejores setters con IA para Instagram (2026)",
-        answer_en="Pick Roleflow when you want a Client Acquisition System we build and run, with voice notes in your own voice, cloned from a short recording. RipDrip publishes a team-built clone, usually live in 72 hours, and no price. Mochi publishes monthly plans at $149, $297, and $497.",
-        answer_es="Elige Roleflow si quieres un sistema de adquisición de clientes que montamos y operamos, con notas de voz en tu propia voz, clonadas de una grabación corta. RipDrip publica un clon de su equipo, en general en 72 horas, y sin precio. Mochi publica planes de $149, $297 y $497.",
+        answer_en="Pick Roleflow when you want an AI Client Acquisition Engine we build and run, with voice notes in your own voice, cloned from a short recording. RipDrip publishes a team-built clone, usually live in 72 hours, and no price. Mochi publishes monthly plans at $149, $297, and $497.",
+        answer_es="Elige Roleflow si quieres un motor de adquisición de clientes con IA que montamos y operamos, con notas de voz en tu propia voz, clonadas de una grabación corta. RipDrip publica un clon de su equipo, en general en 72 horas, y sin precio. Mochi publica planes de $149, $297 y $497.",
         body_en=D.BEST_EN, body_es=D.BEST_ES,
         faq_en=faq_pick(FAQ_EN, [0, 2, 5, 6, 7], LIST_EXTRA_EN),
         faq_es=faq_pick(FAQ_ES, [0, 2, 5, 6, 7], LIST_EXTRA_ES)),
@@ -318,16 +318,16 @@ PAGES = [
         body_en=RES_EN, body_es=RES_ES),
     D.P("vs/ripdrip", "es/vs/ripdrip", "Roleflow vs RipDrip", "Roleflow frente a RipDrip", updated=True,
         title_en="Roleflow vs RipDrip", title_es="Roleflow frente a RipDrip",
-        desc_en="Roleflow vs RipDrip for Instagram DMs. A Client Acquisition System we build and run, against a team-built clone, a 72-hour setup, and no published price.",
-        desc_es="Roleflow frente a RipDrip en DMs de Instagram. Un sistema de adquisición de clientes, frente a un clon que arma su equipo, en 72 horas y sin precio publicado.",
+        desc_en="Roleflow vs RipDrip for Instagram DMs. An AI Client Acquisition Engine we build and run, against a team-built clone, a 72-hour setup, and no published price.",
+        desc_es="Roleflow frente a RipDrip en DMs de Instagram. Un motor de adquisición de clientes con IA, frente a un clon que arma su equipo, en 72 horas y sin precio.",
         h1_en="Roleflow vs RipDrip", h1_es="Roleflow vs RipDrip",
-        answer_en="Roleflow is a Client Acquisition System, with voice notes in your own voice, cloned from a short recording. We build the system and we run it. RipDrip says it builds a custom AI sales clone for an Instagram DM funnel, usually live in 72 hours, and that its team does the build. That page does not publish a price.",
-        answer_es="Roleflow es un sistema de adquisición de clientes en Instagram, con notas de voz en tu propia voz, clonadas de una grabación corta. Nosotros lo montamos y lo operamos. El home de RipDrip dice que arma un clon con IA para un embudo de DMs y que suele estar en vivo en 72 horas. Esa página no publica un precio.",
+        answer_en="Roleflow is an AI Client Acquisition Engine, with voice notes in your own voice, cloned from a short recording. We build the system and we run it. RipDrip says it builds a custom AI sales clone for an Instagram DM funnel, usually live in 72 hours, and that its team does the build. That page does not publish a price.",
+        answer_es="Roleflow es un motor de adquisición de clientes con IA, con notas de voz en tu propia voz, clonadas de una grabación corta. Nosotros lo montamos y lo operamos. El home de RipDrip dice que arma un clon con IA para un embudo de DMs y que suele estar en vivo en 72 horas. Esa página no publica un precio.",
         body_en=RD_EN, body_es=RD_ES, faq_en=NICHE_FAQ_EN, faq_es=NICHE_FAQ_ES),
     D.P("vs/mochi", "es/vs/mochi", "Roleflow vs Mochi", "Roleflow frente a Mochi", updated=True,
         title_en="Roleflow vs Mochi", title_es="Roleflow frente a Mochi",
-        desc_en="Roleflow vs Mochi for Instagram DMs. A Client Acquisition System we build and run, against Mochi monthly plans at $149, $297, and $497. Sources included.",
-        desc_es="Roleflow frente a Mochi en DMs de Instagram. Un sistema de adquisición de clientes, frente a los planes de Mochi a $149, $297 y $497. Fuentes incluidas.",
+        desc_en="Roleflow vs Mochi for Instagram DMs. An AI Client Acquisition Engine we build and run, against Mochi monthly plans at $149, $297, and $497. Sources included.",
+        desc_es="Roleflow frente a Mochi en DMs de Instagram. Un motor de adquisición de clientes con IA, frente a los planes de Mochi a $149, $297 y $497. Fuentes incluidas.",
         h1_en="Roleflow vs Mochi", h1_es="Roleflow vs Mochi",
         answer_en="Roleflow builds and runs your Instagram DM system, with voice notes in your own voice, cloned from a short recording. Mochi lists monthly plans at $149, $297, and $497, a 7-day trial, and an Instagram inbox your team uses. Essential and Pro list voice notes that setters type. Choose Mochi to run that software.",
         answer_es="Roleflow monta y opera el sistema de DMs de Instagram, con notas de voz en tu propia voz, clonadas de una grabación corta. Mochi lista planes de $149, $297 y $497 al mes, 7 días de prueba y un inbox para tu equipo. Essential y Pro listan notas de voz que escribe el setter.",
@@ -344,58 +344,58 @@ def niche(en, es, name_en, name_es, title_en, title_es, desc_en, desc_es, h1_en,
 PAGES += [
     niche("for/coaches", "es/para/coaches", "For coaches", "Para coaches",
           "AI DM Setter for Coaches | Roleflow", "Setter con IA para coaches | Roleflow",
-          "AI DM setter for coaches on Instagram. Roleflow is a Client Acquisition System: replies in seconds, voice notes in your own voice, and booked calls. We run it.",
-          "Setter con IA para coaches en Instagram. Roleflow es un sistema de adquisición de clientes: responde en segundos y agenda llamadas calificadas. Lo operamos.",
+          "AI DM setter for coaches on Instagram. Roleflow is an AI Client Acquisition Engine: replies in seconds, voice notes in your voice, and booked calls. We run it.",
+          "Setter con IA para coaches en Instagram. Roleflow es un motor de adquisición de clientes con IA: responde en segundos y agenda la llamada. Lo operamos.",
           "AI DM setter for coaches", "Setter con IA para coaches",
-          "An AI DM setter for coaches replies to Instagram leads about your program, qualifies them, and books the sales call. Roleflow does that work as a Client Acquisition System, with voice notes in your own voice, cloned from a short recording. We build it and we run it.",
-          "Un setter con IA para coaches responde en Instagram sobre tu programa, califica y agenda la llamada. Roleflow lo hace como sistema de adquisición de clientes, con notas de voz en tu propia voz, clonadas de una grabación corta. Nosotros lo montamos y lo operamos.",
+          "An AI DM setter for coaches replies to Instagram leads about your program, qualifies them, and books the sales call. Roleflow does that work as an AI Client Acquisition Engine, with voice notes in your own voice, cloned from a short recording. We build it and we run it.",
+          "Un setter con IA para coaches responde en Instagram sobre tu programa, califica y agenda la llamada. Roleflow lo hace como motor de adquisición de clientes con IA, con notas de voz en tu propia voz, clonadas de una grabación corta. Nosotros lo montamos y lo operamos.",
           COACH_EN, COACH_ES),
     niche("for/business-coaches", "es/para/coaches-de-negocios", "For business coaches", "Para coaches de negocios",
           "AI DM Setter for Business Coaches | Roleflow", "Setter con IA para negocios | Roleflow",
-          "AI DM setter for business coaches. Roleflow is a Client Acquisition System for Instagram DMs: replies in seconds and books qualified calls. We build and run it.",
-          "Setter con IA para coaches de negocios. Roleflow es un sistema de adquisición de clientes: lleva los DMs de Instagram y agenda llamadas calificadas hoy.",
+          "AI DM setter for business coaches. Roleflow is an AI Client Acquisition Engine for Instagram DMs: replies in seconds and books calls. We build and run it.",
+          "Setter con IA para coaches de negocios. Roleflow es un motor de adquisición de clientes con IA: lleva los DMs de Instagram y agenda llamadas calificadas hoy.",
           "AI DM setter for business coaches", "Setter con IA para coaches de negocios",
-          "Business coaches lose deals when a DM about a high-ticket program sits for hours. Roleflow is a Client Acquisition System for Instagram. It replies in seconds, sends voice notes in your own voice, cloned from a short recording, and books qualified calls. We build it and we run it.",
-          "Un coach de negocios pierde ventas cuando un DM sobre un programa de ticket alto espera horas. Roleflow es un sistema de adquisición de clientes para Instagram: responde en segundos, manda notas de voz en tu propia voz y agenda llamadas. Nosotros lo montamos y lo operamos.",
+          "Business coaches lose deals when a DM about a high-ticket program sits for hours. Roleflow is an AI Client Acquisition Engine for Instagram. It replies in seconds, sends voice notes in your own voice, cloned from a short recording, and books qualified calls. We build it and we run it.",
+          "Un coach de negocios pierde ventas cuando un DM sobre un programa de ticket alto espera horas. Roleflow es un motor de adquisición de clientes con IA para Instagram: responde en segundos, manda notas de voz en tu propia voz y agenda llamadas. Nosotros lo montamos y lo operamos.",
           BIZ_EN, BIZ_ES),
     niche("for/fitness-coaches", "es/para/coaches-fitness", "For fitness coaches", "Para coaches fitness",
           "AI DM Setter for Fitness Coaches | Roleflow", "Setter con IA para fitness | Roleflow",
-          "AI DM setter for fitness coaches on Instagram. Roleflow is a Client Acquisition System: it answers program DMs in seconds and books calls. We build and run it.",
-          "Setter con IA para coaches fitness en Instagram. Roleflow es un sistema de adquisición de clientes: responde DMs del programa en segundos y agenda llamadas.",
+          "AI DM setter for fitness coaches on Instagram. Roleflow is an AI Client Acquisition Engine: it answers DMs in seconds and books calls. We build and run it.",
+          "Setter con IA para coaches fitness en Instagram. Roleflow es un motor de adquisición de clientes con IA: responde DMs del programa y agenda llamadas hoy.",
           "AI DM setter for fitness coaches", "Setter con IA para coaches fitness",
           "Fitness coaches get DMs after reels asking if spots are open. Roleflow answers those Instagram messages in seconds, with voice notes in your own voice, cloned from a short recording, and books people who fit. We build it and we run it. It fits coaches above the qualification line, not low-ticket challenges.",
-          "Los coaches de fitness reciben DMs después de un reel preguntando si quedan cupos. Roleflow responde esos mensajes de Instagram en segundos, con notas de voz en tu propia voz, y agenda a quien encaja. Es un sistema de adquisición de clientes. Nosotros lo montamos y lo operamos.",
+          "Los coaches de fitness reciben DMs después de un reel preguntando si quedan cupos. Roleflow responde esos mensajes de Instagram en segundos, con notas de voz en tu propia voz, y agenda a quien encaja. Es un motor de adquisición de clientes con IA. Nosotros lo montamos y lo operamos.",
           FIT_EN, FIT_ES),
     niche("for/consultants", "es/para/consultores", "For consultants", "Para consultores",
           "AI DM Setter for Consultants | Roleflow", "Setter con IA para consultores | Roleflow",
-          "AI DM setter for consultants on Instagram. Roleflow is a Client Acquisition System: it qualifies leads and books calls. We build the system and run it.",
-          "Setter con IA para consultores en DMs de Instagram. Roleflow es un sistema de adquisición de clientes: califica y agenda llamadas. Lo montamos y lo operamos.",
+          "AI DM setter for consultants on Instagram. Roleflow is an AI Client Acquisition Engine: it qualifies leads and books calls. We build the system and run it.",
+          "Setter con IA para consultores en Instagram. Roleflow es un motor de adquisición de clientes con IA: califica y agenda llamadas. Lo montamos y lo operamos.",
           "AI DM setter for consultants", "Setter con IA para consultores",
-          "Consultants sell through conversations, and Instagram DMs are often the first one. Roleflow is a Client Acquisition System that replies in seconds, sends voice notes in your own voice, cloned from a short recording, and books a qualified call. We build it and we run it.",
-          "Los consultores venden en conversaciones, y el DM de Instagram suele ser la primera. Roleflow es un sistema de adquisición de clientes: responde en segundos, manda notas de voz en tu propia voz y agenda una llamada calificada. Lo montamos y lo operamos. Si vendes por teléfono, no es tu canal.",
+          "Consultants sell through conversations, and Instagram DMs are often the first one. Roleflow is an AI Client Acquisition Engine that replies in seconds, sends voice notes in your own voice, cloned from a short recording, and books a qualified call. We build it and we run it.",
+          "Los consultores venden en conversaciones, y el DM de Instagram suele ser la primera. Roleflow es un motor de adquisición de clientes con IA: responde en segundos, manda notas de voz en tu propia voz y agenda una llamada calificada. Lo montamos y lo operamos. Si vendes por teléfono, no es tu canal.",
           CON_EN, CON_ES),
     niche("for/agency-owners", "es/para/agencias", "For agency owners", "Para agencias",
           "AI DM Setter for Agency Owners | Roleflow", "Setter con IA para agencias | Roleflow",
-          "AI DM setter for agency owners selling from their own Instagram. Roleflow is a Client Acquisition System that books qualified calls. We build and run it.",
-          "Setter con IA para dueños de agencia que venden desde su Instagram. Roleflow es un sistema de adquisición de clientes y agenda llamadas calificadas hoy.",
+          "AI DM setter for agency owners selling from their own Instagram. Roleflow is an AI Client Acquisition Engine that books qualified calls. We build and run it.",
+          "Setter con IA para dueños de agencia que venden desde su Instagram. Roleflow es un motor de adquisición de clientes con IA y agenda llamadas calificadas hoy.",
           "AI DM setter for agency owners", "Setter con IA para dueños de agencia",
           "Agency owners who sell a high-ticket service from their own Instagram still lose leads in the DMs. Roleflow replies in seconds, sends voice notes in your own voice, cloned from a short recording, follows up within 24 hours, and books the call. We build and run it.",
-          "El dueño de una agencia que vende un servicio de ticket alto desde su propio Instagram también pierde leads en los DMs. Roleflow es un sistema de adquisición de clientes: responde en segundos, hace seguimiento dentro de 24 horas y agenda. No llevamos el inbox de tus clientes.",
+          "El dueño de una agencia que vende un servicio de ticket alto desde su propio Instagram también pierde leads en los DMs. Roleflow es un motor de adquisición de clientes con IA: responde en segundos, hace seguimiento dentro de 24 horas y agenda. No llevamos el inbox de tus clientes.",
           AG_EN, AG_ES),
     niche("for/course-creators", "es/para/infoproductores", "For course creators", "Para infoproductores",
           "AI DM Setter for Course Creators | Roleflow", "Setter con IA para cursos | Roleflow",
-          "AI DM setter for course creators. Roleflow is a Client Acquisition System: it answers launch DMs on Instagram in seconds and books calls. We build and run it.",
-          "Setter con IA para infoproductores. Roleflow es un sistema de adquisición de clientes: responde los DMs del lanzamiento en Instagram y agenda llamadas.",
+          "AI DM setter for course creators. Roleflow is an AI Client Acquisition Engine: it answers DMs on Instagram in seconds and books calls. We build and run it.",
+          "Setter con IA para infoproductores. Roleflow es un motor de adquisición de clientes con IA: responde los DMs del lanzamiento en Instagram y agenda llamadas.",
           "AI DM setter for course creators", "Setter con IA para infoproductores",
           "Course creators get a spike of Instagram DMs when a post or launch goes out. Roleflow answers each one in seconds, qualifies, follows up only within 24 hours, and books calls for a high-ticket offer, with voice notes in your own voice, cloned from a short recording. We build and run it.",
-          "Quien vende un curso recibe un pico de DMs en Instagram cuando publica o abre un lanzamiento. Roleflow es un sistema de adquisición de clientes: responde cada DM en segundos, califica, hace seguimiento dentro de 24 horas y agenda llamadas de ticket alto. Nosotros lo montamos y lo operamos.",
+          "Quien vende un curso recibe un pico de DMs en Instagram cuando publica o abre un lanzamiento. Roleflow es un motor de adquisición de clientes con IA: responde cada DM en segundos, califica, hace seguimiento dentro de 24 horas y agenda llamadas de ticket alto. Nosotros lo montamos y lo operamos.",
           COURSE_EN, COURSE_ES),
     D.P("about", "es/sobre-nosotros", "About", "Sobre nosotros",
-        title_en="About Roleflow | Client Acquisition System", title_es="Sobre Roleflow | Sistema de adquisición",
-        desc_en="About Roleflow, a Client Acquisition System for Instagram DMs. Voice notes in your own voice. We build the system and run it. Contact diego@roleflow.io.",
-        desc_es="Sobre Roleflow, sistema de adquisición de clientes para Instagram. Notas de voz en tu propia voz. Lo montamos y lo operamos. Contacto diego@roleflow.io.",
+        title_en="About Roleflow | AI Client Acquisition Engine", title_es="Sobre Roleflow | Motor de adquisición de clientes con IA",
+        desc_en="About Roleflow, an AI Client Acquisition Engine for Instagram DMs. Voice notes in your own voice. We build the system and run it. Contact diego@roleflow.io.",
+        desc_es="Sobre Roleflow, motor de adquisición de clientes con IA para Instagram. Notas de voz en tu propia voz. Lo montamos y lo operamos. Contacto diego@roleflow.io.",
         h1_en="About Roleflow", h1_es="Sobre Roleflow",
-        answer_en="Roleflow is a Client Acquisition System. We build and run your Instagram DM system. It replies in seconds, sends voice notes in your own voice, cloned from a short recording, follows up only within 24 hours, and books qualified calls. Your closers take the calls. Contact diego@roleflow.io.",
-        answer_es="Roleflow es un sistema de adquisición de clientes. Montamos y operamos tu sistema de DMs de Instagram. Responde en segundos, manda notas de voz en tu propia voz, clonadas de una grabación corta, y agenda llamadas calificadas. El contacto es diego@roleflow.io.",
+        answer_en="Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system. It replies in seconds, sends voice notes in your own voice, cloned from a short recording, follows up only within 24 hours, and books qualified calls. Your closers take the calls. Contact diego@roleflow.io.",
+        answer_es="Roleflow es un motor de adquisición de clientes con IA. Montamos y operamos tu sistema de DMs de Instagram. Responde en segundos, manda notas de voz en tu propia voz, clonadas de una grabación corta, y agenda llamadas calificadas. El contacto es diego@roleflow.io.",
         body_en=ABOUT_EN, body_es=ABOUT_ES),
 ]

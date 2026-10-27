@@ -17,7 +17,7 @@ def P(en, es, name_en, name_es, **k):
 
 HOME_ES_BODY = '''
 <h2>Qué hace Roleflow</h2>
-<p>Roleflow es un sistema de adquisición de clientes. Montamos y operamos tu sistema de DMs de Instagram.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA. Montamos y operamos tu sistema de DMs de Instagram.</p>
 <div class="grid">
 <article class="card"><h3>Responde en segundos</h3><p>Cada DM de Instagram recibe respuesta.</p></article>
 <article class="card"><h3>Notas de voz con tu voz</h3><p>Las notas salen en tu propia voz, clonadas de una grabación corta.</p></article>
@@ -36,32 +36,32 @@ DEF_EN = '''
 <h2>What it does</h2>
 <p>An AI DM setter replies, qualifies, follows up, and books. The lead messages you. The setter answers, asks the questions that decide fit, nudges people who go quiet, and puts a qualified call on the calendar. Your closers take that call.</p>
 <h2>How it differs from a button flow</h2>
-<p>A button flow sends people down a path you drew. An AI DM setter holds a conversation about your offer. Roleflow is a Client Acquisition System for Instagram DMs only. The two products compared on this site, using only their own pages, are <a href="/vs/ripdrip/">RipDrip</a> and <a href="/vs/mochi/">Mochi</a>.</p>
+<p>A button flow sends people down a path you drew. An AI DM setter holds a conversation about your offer. Roleflow is an AI Client Acquisition Engine for Instagram DMs only. The two products compared on this site, using only their own pages, are <a href="/vs/ripdrip/">RipDrip</a> and <a href="/vs/mochi/">Mochi</a>.</p>
 <h2>How it differs from a person in the inbox</h2>
 <p>A person can hear nuance and can work the phone. They also work a shift, and someone has to hire and manage them. Roleflow replies in seconds, and sends follow-ups only within 24 hours. It does not replace your closer. We do not publish a salary for that role.</p>
 <h2>Done for you, not self-serve</h2>
 <p>Self-serve tools hand you a login and a monthly plan. Roleflow builds the Instagram DM system and runs it. Voice notes are in your own voice, cloned from a short recording. Follow-ups go out only within 24 hours.</p>
 <h2>Who should use one</h2>
 <p>High-ticket coaches, consultants, course creators, and agency owners with 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ a month collected. Not a fit: WhatsApp, email, or phone-first sellers, low-ticket offers, or very low DM volume.</p>
-<p>Roleflow is a Client Acquisition System. We build and run your Instagram DM system, with voice notes in your own voice, cloned from a short recording.</p>
+<p>Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system, with voice notes in your own voice, cloned from a short recording.</p>
 ''' + links_en()
 
 DEF_ES = '''
 <h2>Qué hace</h2>
 <p>Un setter con IA responde, califica, hace seguimiento y agenda. El lead te escribe. El setter contesta, hace las preguntas de encaje, retoma a quien se enfría y deja la llamada calificada en el calendario. Tus closers hacen esa llamada.</p>
 <h2>En qué se diferencia de un flujo de botones</h2>
-<p>Un flujo de botones empuja a la gente por un camino que dibujaste. Un setter con IA conversa sobre tu oferta. Roleflow es un sistema de adquisición de clientes, solo para DMs de Instagram. Los dos productos que comparamos en este sitio, solo con sus propias páginas, son <a href="/es/vs/ripdrip/">RipDrip</a> y <a href="/es/vs/mochi/">Mochi</a>.</p>
+<p>Un flujo de botones empuja a la gente por un camino que dibujaste. Un setter con IA conversa sobre tu oferta. Roleflow es un motor de adquisición de clientes con IA, solo para DMs de Instagram. Los dos productos que comparamos en este sitio, solo con sus propias páginas, son <a href="/es/vs/ripdrip/">RipDrip</a> y <a href="/es/vs/mochi/">Mochi</a>.</p>
 <h2>En qué se diferencia de una persona en el inbox</h2>
 <p>Una persona lee matices y puede atender el teléfono. También trabaja un turno, y alguien tiene que contratarla y supervisarla. Roleflow responde en segundos, y el seguimiento sale solo dentro de 24 horas. No reemplaza a tu closer. No publicamos un sueldo para ese rol.</p>
 <h2>Hecho para ti, no autoservicio</h2>
 <p>El autoservicio te da un login y un plan mensual. Roleflow arma el sistema de DMs y lo opera. Las notas de voz salen en tu propia voz, clonadas de una grabación corta. El seguimiento sale solo dentro de 24 horas.</p>
 <h2>Quién debería usar uno</h2>
 <p>Coaches, consultores, infoproductores y dueños de agencia de ticket alto, con más de 20 DMs al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes. No encaja quien vende por WhatsApp, email o teléfono, ni el ticket bajo, ni un volumen muy bajo de DMs.</p>
-<p>Roleflow es un sistema de adquisición de clientes para Instagram. Nosotros lo montamos y lo operamos.</p>
+<p>Roleflow es un motor de adquisición de clientes con IA para Instagram. Nosotros lo montamos y lo operamos.</p>
 ''' + links_es()
 
 BEST_EN = '''
-<p class="note">Roleflow wrote this article. We sell a Client Acquisition System, so read the wrong-for line on Roleflow the same way you read it on RipDrip and on Mochi.</p>
+<p class="note">Roleflow wrote this article. We sell an AI Client Acquisition Engine, so read the wrong-for line on Roleflow the same way you read it on RipDrip and on Mochi.</p>
 <h2>What is an AI DM setter</h2>
 <p>Software that answers inbound DMs, qualifies leads, follows up, and books calls. <a href="/what-is-an-ai-dm-setter/">Full definition</a>.</p>
 <h2>How we compared</h2>
@@ -87,7 +87,7 @@ BEST_EN = '''
 ''' + src(RD_SOURCES + MO_SOURCES) + links_en()
 
 BEST_ES = '''
-<p class="note">Roleflow escribió este artículo. Vendemos un sistema de adquisición de clientes, así que lee la línea de "no recomendable" de Roleflow igual que la de RipDrip y la de Mochi.</p>
+<p class="note">Roleflow escribió este artículo. Vendemos un motor de adquisición de clientes con IA, así que lee la línea de "no recomendable" de Roleflow igual que la de RipDrip y la de Mochi.</p>
 <h2>Qué es un setter con IA</h2>
 <p>Un software que responde DMs, califica, hace seguimiento y agenda llamadas. <a href="/es/que-es-un-setter-con-ia/">Definición completa</a>.</p>
 <h2>Cómo comparamos</h2>
