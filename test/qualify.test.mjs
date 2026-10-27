@@ -166,7 +166,7 @@ for (const file of htmlFiles(root)) {
   assert.equal(text.includes('href="/es'), false, rel);
   assert.equal(text.includes('hreflang="es"'), false, rel);
 }
-assert.match(fs.readFileSync(path.join(root, "account/acquisition/index.html"), "utf8"), /value="es">Español/);
+assert.match(fs.readFileSync(path.join(root, "account/acquisition/index.html"), "utf8"), /class="profile-lang"[\s\S]*id="lang-es" data-lang="es"[\s\S]*id="lang-en"/);
 assert.match(fs.readFileSync(path.join(root, "signup/index.html"), "utf8"), /data-qualify/);
 
 console.log("qualify tests passed");

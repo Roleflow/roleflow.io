@@ -248,7 +248,7 @@ assert.doesNotMatch(homepage, /ManyChat|Zernio|RipDrip|Mochi|guaranteed/i);
 assert.equal(fs.existsSync(path.join(root, "es/index.html")), false);
 assert.doesNotMatch(homepage, /href="\/es/);
 assert.doesNotMatch(homepage, /hreflang="es"/);
-assert.match(read("account/acquisition/index.html"), /value="es">Español/);
+assert.match(read("account/acquisition/index.html"), /class="profile-lang"[\s\S]*id="lang-es" data-lang="es"[\s\S]*id="lang-en"/);
 const accessPage = read("signup/index.html");
 assert.match(accessPage, /AI Client Acquisition Engine/);
 assert.match(accessPage, /Value Add Marketing/);
