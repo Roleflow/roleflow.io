@@ -118,7 +118,7 @@ const LLM_CHOICES = [
   ["gemini", "Gemini 3 Flash", ["gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.0-flash"]],
   ["xai", "xAI", ["grok-4.3", "grok-4.7"]],
   ["openai", "OpenAI", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o"]],
-  ["anthropic", "Anthropic", ["claude-sonnet-4-5", "claude-3-5-haiku-latest"]],
+  ["anthropic", "Anthropic", ["claude-sonnet-5-5", "claude-sonnet-4-5", "claude-3-5-haiku-latest"]],
   ["openrouter", "OpenRouter", ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4.5", "google/gemini-3-flash-preview", "google/gemini-2.5-flash", "x-ai/grok-4"]],
   ["custom", "Custom OpenAI-compatible", []]
 ];

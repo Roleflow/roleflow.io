@@ -669,3 +669,7 @@ body.admin-panel .connect-banner .roster-biz{display:flex;flex-wrap:wrap;align-i
   body.admin-panel .biz-grid{grid-template-columns:minmax(0,1fr)}
   body.admin-panel .biz-tile.biz-face,body.admin-panel button.biz-tile.add-business{width:100%;max-width:none}
 }
+.claude-choice{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:600;cursor:pointer}
+.claude-choice input{width:auto;accent-color:#7B4DFF}
+.claude-mask{margin:8px 0;font-family:ui-monospace,SFMono-Regular,monospace;letter-spacing:.03em}
+.claude-notice{margin:0 0 12px;padding:10px 12px;border-radius:12px;background:rgba(255,138,61,.16);color:#EEF1FA}

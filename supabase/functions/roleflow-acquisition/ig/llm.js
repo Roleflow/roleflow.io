@@ -55,16 +55,21 @@ Non-negotiable output contract:
 - ${slotLine} Never say a voice note was sent.${savedBooking}`;
 }
 
-export async function completeJson({ env, system, messages, fetchImpl, tools, runtime, fallback, onError, responseFormat, maxTokens, temperature }) {
+export async function completeJson({ env, system, messages, fetchImpl, tools, runtime, fallback, chain, onError, responseFormat, maxTokens, temperature }) {
   const { completeChat, runtimeFromEnv } = await import("../../_shared/llm-provider.js");
-  const chosen = runtime || runtimeFromEnv(env || {});
+  const steps = Array.isArray(chain) ? chain.filter((step) => step && step.apiKey) : [];
+  const chosen = steps[0] || runtime || runtimeFromEnv(env || {});
   if (chosen && chosen.provider === "xai" && !chosen.endpoint) chosen.endpoint = XAI_CHAT_URL;
+  steps.forEach((step) => {
+    if (step.provider === "xai" && !step.endpoint) step.endpoint = XAI_CHAT_URL;
+  });
   if (!chosen) {
     const error = new Error(providerHelp());
     error.code = "llm_unconfigured";
     throw error;
   }
   const result = await completeChat({
+    chain: steps.length ? steps : undefined,
     runtime: chosen,
     fallback: fallback || null,
     system,

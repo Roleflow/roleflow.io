@@ -11,12 +11,14 @@
 //   GEMINI_API_KEY        model key when the provider is Gemini
 //   GOOGLE_API_KEY        accepted in place of GEMINI_API_KEY
 //   GEMINI_MODEL          optional model name
+//   ANTHROPIC_API_KEY     platform Claude key for setter replies. If it is missing,
+//                         the setter keeps its current model and the fallback is logged.
 // SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are injected.
 // If no model key is set, the practice thread returns an error and does not invent a reply.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
-import { PROVIDERS, completeChat, loadBusinessRuntime, logLlmError, redactSecret } from "../_shared/llm-provider.js";
+import { PROVIDERS, clientReplyView, completeChat, loadSetterReply, logLlmError, redactSecret } from "../_shared/llm-provider.js";
 import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
@@ -163,15 +165,24 @@ async function previewSetter(admin, businessId, userId, body) {
     title: commentNote ? commentNote.title : "Comment"
   });
   const env = Deno.env.toObject();
-  const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
-  const runtime = loaded.runtime;
-  if (!runtime || !runtime.apiKey) return json(200, { ok: false, error: "No model key is configured.", sent: false });
+  const loaded = await loadSetterReply(admin, businessId, env);
+  const runtime = loaded.chain[0];
+  if (!runtime || !runtime.apiKey) return json(200, clientReplyView({ ok: false, error: "No model key is configured.", sent: false }));
+  let notice = "";
   let result;
   try {
     result = await completeChat({
-      runtime,
-      fallback: loaded.fallback,
-      onError: (info) => logLlmError(admin, { businessId, purpose: "setter", ...info }),
+      chain: loaded.chain,
+      onError: async (info) => {
+        const authNotice = info.auth && info.source === "own";
+        await logLlmError(admin, {
+          businessId,
+          purpose: "setter",
+          ...info,
+          message: authNotice ? "This business's Claude API key was rejected. Fell back to the next model." : info.message
+        });
+        if (authNotice) notice = "This business's Claude API key was rejected. The setter used the next model.";
+      },
       system: [
         expandPrompt(prompt, bookingLink),
         tokenGuide(catalog, bookingLink),
@@ -183,7 +194,7 @@ async function previewSetter(admin, businessId, userId, body) {
       messages
     });
   } catch (error) {
-    return json(200, { ok: false, error: practiceError(error, [runtime.apiKey, loaded.fallback && loaded.fallback.apiKey]), sent: false });
+    return json(200, clientReplyView({ ok: false, error: practiceError(error, loaded.chain.map((step) => step.apiKey)), sent: false }, loaded.chain.map((step) => step.apiKey)));
   }
   const text = unwrapModelText(result && result.text).trim();
   if (!text) return json(200, { ok: false, error: "The model returned an empty reply.", sent: false });
@@ -207,7 +218,7 @@ async function previewSetter(admin, businessId, userId, body) {
       updated_by: userId
     });
   }
-  return json(200, {
+  return json(200, clientReplyView({
     ok: true,
     reply,
     provider: providerId,
@@ -216,11 +227,14 @@ async function previewSetter(admin, businessId, userId, body) {
     key_source: result.keySource === "business" ? "business" : "platform",
     tested_at: testedAt,
     sent: false,
+    notice,
+    fell_back: result.fellBack === true,
+    usage: result.usage || undefined,
     booking_link: bookingLink,
     voices: resolved.voices.map((note) => ({ id: note.id, title: note.title, slug: note.slug, path: note.path, mime: note.mime })),
     version,
     prompt
-  });
+  }, loaded.chain.map((step) => step.apiKey)));
 }
 
 async function commentWhenFor(admin, businessId, body) {

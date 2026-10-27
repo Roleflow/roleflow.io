@@ -3,6 +3,7 @@
 // and is never returned.
 
 import {
+  clientReplyView,
   completeChat,
   logLlmError,
   normalizeProvider,
@@ -63,8 +64,8 @@ Deno.serve(async (req) => {
       onError: (entry) => logLlmError(admin, { ...entry, businessId, purpose: "test" })
     });
     const reply = clientSafeText(redactSecret(String(result.text || "").trim(), apiKey)).slice(0, 80);
-    return json(200, { ok: true, reply: reply || "pong" });
+    return json(200, clientReplyView({ ok: true, reply: reply || "pong", usage: result.usage || undefined }, [apiKey]));
   } catch (error) {
-    return json(200, { ok: false, error: clientSafeText(redactSecret(error && error.message, apiKey)) || "The connection did not answer." });
+    return json(200, clientReplyView({ ok: false, error: clientSafeText(redactSecret(error && error.message, apiKey)) || "The connection did not answer." }, [apiKey]));
   }
 });

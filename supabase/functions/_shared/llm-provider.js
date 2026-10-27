@@ -2,6 +2,8 @@
 // Platform keys stay in the function environment. A business key is passed in
 // already decrypted and is never written to the returned error text.
 
+export const CLAUDE_SONNET_MODEL = "claude-sonnet-5-5";
+
 export const PROVIDERS = {
   xai: {
     id: "xai",
@@ -22,8 +24,8 @@ export const PROVIDERS = {
   anthropic: {
     id: "anthropic",
     label: "Anthropic",
-    defaultModel: "claude-sonnet-4-5",
-    models: ["claude-sonnet-4-5", "claude-3-5-haiku-latest"],
+    defaultModel: CLAUDE_SONNET_MODEL,
+    models: [CLAUDE_SONNET_MODEL, "claude-sonnet-4-5", "claude-3-5-haiku-latest"],
     kind: "anthropic",
     url: "https://api.anthropic.com/v1/messages"
   },
@@ -197,6 +199,7 @@ export function parseChat(provider, payload) {
 }
 
 export async function completeChat(input) {
+  if (input && Array.isArray(input.chain)) return completeChain(input);
   const primary = input && input.runtime;
   if (!primary || !primary.apiKey) {
     const error = new Error("No model key is configured.");
@@ -204,28 +207,78 @@ export async function completeChat(input) {
     throw error;
   }
   try {
-    return await once(primary, input);
+    const result = await once(primary, input);
+    logUsage(result);
+    return result;
   } catch (error) {
     const safe = redactSecret(error && error.message, primary.apiKey);
     const fallback = usableFallback(primary, input && input.fallback);
     if (input && input.onError) {
-      await input.onError({ provider: primary.provider, model: primary.model, message: safe, fellBack: Boolean(fallback) });
+      await input.onError({ provider: primary.provider, model: primary.model, source: primary.source || "", message: safe, fellBack: Boolean(fallback), auth: Boolean(error && error.auth) });
     }
     if (!fallback) {
       const wrapped = new Error(safe);
       wrapped.code = error && error.code;
+      wrapped.auth = Boolean(error && error.auth);
       throw wrapped;
     }
     try {
-      return await once(fallback, input);
+      const result = await once(fallback, input);
+      result.fellBack = true;
+      result.authFallback = Boolean(error && error.auth);
+      logUsage(result);
+      return result;
     } catch (second) {
       const safeFallback = redactSecret(second && second.message, fallback.apiKey);
       if (input && input.onError) {
-        await input.onError({ provider: fallback.provider, model: fallback.model, message: safeFallback, fellBack: false });
+        await input.onError({ provider: fallback.provider, model: fallback.model, source: fallback.source || "", message: safeFallback, fellBack: false, auth: Boolean(second && second.auth) });
       }
       throw new Error(safeFallback);
     }
   }
+}
+
+async function completeChain(input) {
+  const steps = (input.chain || []).filter((step) => step && step.apiKey);
+  if (!steps.length) {
+    const error = new Error("No model key is configured.");
+    error.code = "llm_unconfigured";
+    throw error;
+  }
+  let lastError = null;
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
+    try {
+      const result = await once(step, input);
+      result.fellBack = index > 0;
+      result.authFallback = Boolean(lastError && lastError.auth);
+      logUsage(result);
+      return result;
+    } catch (error) {
+      lastError = error;
+      const safe = redactSecret(error && error.message, step.apiKey);
+      const next = steps[index + 1];
+      if (input.onError) {
+        await input.onError({
+          provider: step.provider,
+          model: step.model,
+          source: step.source || "",
+          message: safe,
+          fellBack: Boolean(next),
+          auth: Boolean(error && error.auth)
+        });
+      }
+      if (!next) {
+        const wrapped = new Error(safe);
+        wrapped.code = error && error.code;
+        wrapped.auth = Boolean(error && error.auth);
+        throw wrapped;
+      }
+    }
+  }
+  const error = new Error("No model key is configured.");
+  error.code = "llm_unconfigured";
+  throw error;
 }
 
 export async function loadBusinessRuntime(admin, businessId, purpose, env) {
@@ -245,6 +298,81 @@ export async function loadBusinessRuntime(admin, businessId, purpose, env) {
     ? null
     : platform;
   return { runtime, fallback };
+}
+
+export function claudeRuntime(apiKey, source) {
+  return {
+    provider: "anthropic",
+    model: CLAUDE_SONNET_MODEL,
+    apiKey: String(apiKey || "").trim(),
+    baseUrl: "",
+    source: source === "own" ? "own" : "platform"
+  };
+}
+
+export function setterReplyPlan({ mode, businessKey, env, current }) {
+  const owned = mode === "own" ? String(businessKey || "").trim() : "";
+  const platformKey = String(env && env.ANTHROPIC_API_KEY || "").trim();
+  const chain = [];
+  if (owned) chain.push(claudeRuntime(owned, "own"));
+  if (platformKey && platformKey !== owned) chain.push(claudeRuntime(platformKey, "platform"));
+  const currentKey = current && String(current.apiKey || "").trim();
+  const currentRuntime = currentKey
+    ? { ...current, apiKey: currentKey, source: current.source || "current" }
+    : null;
+  if (currentRuntime && !chain.some((step) => step.provider === currentRuntime.provider && step.model === currentRuntime.model && step.apiKey === currentRuntime.apiKey)) {
+    chain.push(currentRuntime);
+  }
+  const claude = chain.some((step) => step.provider === "anthropic");
+  return { chain, fellBack: !claude && Boolean(currentRuntime), reason: claude ? "" : "anthropic_missing" };
+}
+
+export async function loadSetterReply(admin, businessId, env) {
+  const currentLoaded = await loadBusinessRuntime(admin, businessId, "setter", env);
+  const current = currentLoaded && currentLoaded.runtime;
+  let mode = "default";
+  let businessKey = "";
+  if (admin && businessId) {
+    const row = await admin.from("acq_settings").select("setter_claude_mode").eq("agent_id", businessId).maybeSingle();
+    if (row && !row.error && row.data && row.data.setter_claude_mode === "own") mode = "own";
+    if (mode === "own") {
+      const loaded = await admin.rpc("acq_llm_read_key", { p_business: businessId, p_provider: "anthropic" });
+      const data = loaded && !loaded.error ? loaded.data : null;
+      if (data && data.ok === true && data.api_key) businessKey = String(data.api_key);
+    }
+  }
+  const plan = setterReplyPlan({ mode, businessKey, env, current });
+  if (plan.fellBack && admin && businessId) {
+    await logLlmError(admin, {
+      businessId,
+      purpose: "setter",
+      provider: "anthropic",
+      model: CLAUDE_SONNET_MODEL,
+      message: "ANTHROPIC_API_KEY is not set. Fell back to the current model.",
+      fellBack: true
+    });
+  }
+  return plan;
+}
+
+const CLIENT_REPLY_KEYS = ["ok", "reply", "error", "provider", "provider_label", "model", "key_source", "tested_at", "sent", "notice", "fell_back", "version", "prompt", "voices", "booking_link", "preview"];
+
+export function clientReplyView(result, secrets) {
+  const source = result && typeof result === "object" ? result : {};
+  const view = {};
+  CLIENT_REPLY_KEYS.forEach((key) => {
+    if (source[key] !== undefined) view[key] = source[key];
+  });
+  ["reply", "error", "notice"].forEach((key) => {
+    if (typeof view[key] === "string") view[key] = redactListed(view[key], secrets);
+  });
+  if (source.usage && typeof source.usage === "object") {
+    view.usage = {
+      input: Math.max(0, Number(source.usage.input) || 0),
+      output: Math.max(0, Number(source.usage.output) || 0)
+    };
+  }
+  return view;
 }
 
 export async function logLlmError(admin, entry) {
@@ -283,7 +411,11 @@ async function once(runtime, input) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = providerError(payload) || (runtime.provider + " request failed.");
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    const kind = payload && payload.error && typeof payload.error === "object" ? String(payload.error.type || "") : "";
+    error.auth = response.status === 401 || response.status === 403 || kind === "authentication_error" || kind === "permission_error";
+    throw error;
   }
   const parsed = parseChat(runtime.provider, payload);
   if (payload && payload.choices && payload.choices[0] && payload.choices[0].finish_reason === "length") {
@@ -294,7 +426,8 @@ async function once(runtime, input) {
     toolCalls: parsed.toolCalls,
     provider: runtime.provider,
     model: String(runtime.model || ""),
-    keySource: runtime.source === "own" ? "business" : "platform"
+    keySource: runtime.source === "own" ? "business" : "platform",
+    usage: readUsage(runtime.provider, payload)
   };
 }
 
@@ -498,4 +631,34 @@ function providerError(payload) {
   if (body.error && typeof body.error === "object") return String(body.error.message || "");
   if (typeof body.error === "string") return body.error;
   return "";
+}
+
+function readUsage(provider, payload) {
+  const body = payload && typeof payload === "object" ? payload : {};
+  const usage = body.usage && typeof body.usage === "object" ? body.usage : null;
+  if (!usage) return null;
+  const input = Number(usage.input_tokens != null ? usage.input_tokens : usage.prompt_tokens);
+  const output = Number(usage.output_tokens != null ? usage.output_tokens : usage.completion_tokens);
+  if (!Number.isFinite(input) && !Number.isFinite(output)) return null;
+  return { input: Math.max(0, Number.isFinite(input) ? input : 0), output: Math.max(0, Number.isFinite(output) ? output : 0) };
+}
+
+function logUsage(result) {
+  if (!result || !result.usage) return;
+  console.log(JSON.stringify({
+    event: "llm_usage",
+    provider: result.provider || "",
+    model: result.model || "",
+    source: result.keySource || "",
+    input_tokens: result.usage.input,
+    output_tokens: result.usage.output
+  }));
+}
+
+function redactListed(value, secrets) {
+  let out = String(value || "");
+  (Array.isArray(secrets) ? secrets : [secrets]).forEach((secret) => {
+    out = redactSecret(out, secret);
+  });
+  return out;
 }

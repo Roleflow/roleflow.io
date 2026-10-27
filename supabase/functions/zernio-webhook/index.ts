@@ -3,7 +3,7 @@
 // provider's retry window; the setter runs after the response.
 
 import { completeJson, systemPrompt } from "../roleflow-acquisition/ig/llm.js";
-import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { bookingTool, loadBusinessRuntime, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
 import { chooseClip, clipFromSlot, clipInstructions } from "../_shared/clip-plan.js";
 import { sentMessage, withAttachment } from "../_shared/clip-send.js";
 import {
@@ -201,8 +201,8 @@ async function planJob(admin, job) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "Outside office hours." }).eq("id", job.id).eq("status", "pending");
     return;
   }
-  const loaded = await loadBusinessRuntime(admin, job.account.businessId, "setter", env);
-  const runtime = loaded.runtime;
+  const loaded = await loadSetterReply(admin, job.account.businessId, env);
+  const runtime = loaded.chain[0];
   if (!runtime) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "The setter is not configured." }).eq("id", job.id).eq("status", "pending");
     return;
@@ -243,9 +243,15 @@ async function planJob(admin, job) {
       booking,
       llm: () => completeJson({
         env,
-        runtime,
-        fallback: loaded.fallback,
-        onError: (info) => logLlmError(admin, { businessId: job.account.businessId, purpose: "setter", ...info }),
+        chain: loaded.chain,
+        onError: (info) => logLlmError(admin, {
+          businessId: job.account.businessId,
+          purpose: "setter",
+          ...info,
+          message: info.auth && info.source === "own"
+            ? "This business's Claude API key was rejected. Fell back to the next model."
+            : info.message
+        }),
         tools: [bookingTool()],
         system: promptBody,
         messages: [{ role: "user", content: JSON.stringify({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }) }]

@@ -1,5 +1,7 @@
 // Client-side view of a business model key. The full key is never kept.
 
+export const CLAUDE_SONNET_MODEL = "claude-sonnet-5-5";
+
 export const CLIENT_PROVIDERS = [
   { id: "gemini", label: "Gemini 3 Flash", model: "gemini-3-flash-preview" },
   { id: "xai", label: "xAI", model: "grok-4.3" },
@@ -11,6 +13,12 @@ const PROVIDER_ID = /^[a-z0-9_-]{2,40}$/;
 export function defaultModel(provider) {
   const found = CLIENT_PROVIDERS.find((item) => item.id === provider);
   return found ? found.model : "gemini-3-flash-preview";
+}
+
+export function maskedKey(last4) {
+  const tail = String(last4 || "");
+  if (!/^[A-Za-z0-9]{4}$/.test(tail)) return "";
+  return "sk-ant-..." + tail;
 }
 
 export function keyHint(hints, provider) {

@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { hubChallenge, verifySignature, extractEvents, eventId } from "./ig/webhook.js";
 import { planTurn } from "./ig/engine.js";
 import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/llm.js";
-import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { bookingTool, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
 import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
@@ -248,7 +248,7 @@ async function runOutbox(db, row) {
   if (row.kind === "human") return sendHuman(db, row, thread, settings);
   const prompts = await currentPrompt(db, businessId, role);
   const env = Deno.env.toObject();
-  const loaded = await loadBusinessRuntime(db, businessId, "setter", env);
+  const loaded = await loadSetterReply(db, businessId, env);
   const booking = await loadBooking(db, businessId, prompts, settings);
   const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
   const clips = clipRows.error ? [] : (clipRows.data || []);
@@ -267,9 +267,15 @@ async function runOutbox(db, row) {
       booking,
       llm: (input) => completeJson({
         env,
-        runtime: loaded.runtime,
-        fallback: loaded.fallback,
-        onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
+        chain: loaded.chain,
+        onError: (info) => logLlmError(db, {
+          businessId,
+          purpose: "setter",
+          ...info,
+          message: info.auth && info.source === "own"
+            ? "This business's Claude API key was rejected. Fell back to the next model."
+            : info.message
+        }),
         tools: [bookingTool()],
         system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
@@ -548,7 +554,7 @@ async function playground(db, businessId, body) {
   const prompts = await currentPrompt(db, businessId, role);
   const settings = await loadSettings(db, businessId);
   const env = Deno.env.toObject();
-  const loaded = await loadBusinessRuntime(db, businessId, "setter", env);
+  const loaded = await loadSetterReply(db, businessId, env);
   const booking = await loadBooking(db, businessId, prompts, settings);
   try {
     const plan = await planTurn({
@@ -564,9 +570,15 @@ async function playground(db, businessId, body) {
       booking,
       llm: () => completeJson({
         env,
-        runtime: loaded.runtime,
-        fallback: loaded.fallback,
-        onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
+        chain: loaded.chain,
+        onError: (info) => logLlmError(db, {
+          businessId,
+          purpose: "setter",
+          ...info,
+          message: info.auth && info.source === "own"
+            ? "This business's Claude API key was rejected. Fell back to the next model."
+            : info.message
+        }),
         tools: [bookingTool()],
         system: systemPrompt({ ...prompts, notes: (prompts.notes || "") + knowledgeBlock(settings) }, booking),
         messages: Array.isArray(body.messages) ? body.messages : [{ role: "user", content: String(body.text || "") }]

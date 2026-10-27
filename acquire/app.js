@@ -461,6 +461,9 @@ async function loadAll(id, token) {
   const hints = await q.rpc("acq_llm_key_hints", { p_business: id });
   if (!live()) return false;
   state.llmKeys = hints.error || !Array.isArray(hints.data) ? [] : hints.data;
+  const llmNote = await q.from("acq_llm_errors").select("message").eq("business_id", id).eq("provider", "anthropic").order("created_at", { ascending: false }).limit(1);
+  const note = !llmNote.error && llmNote.data && llmNote.data[0] ? String(llmNote.data[0].message || "") : "";
+  state.claudeNotice = /Claude API key was rejected/.test(note) ? note : "";
   state.performance = performance.error ? [] : performance.data || [];
   state.stats = null;
   state.leads = [];
@@ -1407,6 +1410,10 @@ async function sendTrial(prompt, message, options) {
     return;
   }
   if (result.tested_at && body.trim() === String(state.setterPrompt || "").trim()) state.setterTestedAt = result.tested_at;
+  if (result.notice) {
+    state.claudeNotice = result.notice;
+    toast(result.notice, "bad");
+  }
   const voices = [];
   for (const note of result.voices || []) {
     let playbackUrl = "";
@@ -1473,7 +1480,8 @@ function trialModelLine(result) {
   if (!result || !result.model) return "";
   const provider = result.provider_label || result.provider || "Model";
   const key = result.key_source === "business" ? "Business key" : "Platform key";
-  return provider + " · " + result.model + " · " + key;
+  const usage = result.usage ? " · " + result.usage.input + " in · " + result.usage.output + " out" : "";
+  return provider + " · " + result.model + " · " + key + usage;
 }
 
 function safeTrialError(message) {
@@ -2155,6 +2163,9 @@ async function testLlm(body) {
   const typed = String(body && body.api_key || "").trim();
   if (typed && (typed.length < 8 || typed.length > 400)) return failLlm("That key is not a usable length.");
   if (!state.supabase) {
+    const claude = new URLSearchParams(location.search).get("claude");
+    if (claude === "ok") return "OK · 8 in · 1 out";
+    if (claude === "bad") return "That Claude API key was rejected.";
     if (!typed && !keyHint(state.llmKeys, body && body.provider)) return failLlm("No key is saved for that provider.");
     return failLlm("This preview does not call a model.");
   }
@@ -2164,6 +2175,7 @@ async function testLlm(body) {
   const data = invoked.data || {};
   if (invoked.error || data.ok === false) return failLlm(data.error || "The connection did not answer.");
   toast("OK");
+  if (data.usage) return "OK · " + data.usage.input + " in · " + data.usage.output + " out";
   return "OK";
 }
 
@@ -3890,7 +3902,9 @@ function readPreview() {
     canEdit: params.get("edit") === "1",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
-    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120 },
+    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120, setter_claude_mode: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? "own" : "default" },
+    llmKeys: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? [{ provider: "anthropic", last4: "abcd" }] : [],
+    claudeNotice: params.get("claude") === "bad" ? "This business's Claude API key was rejected." : "",
     setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : null,
     outbox: [],
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),

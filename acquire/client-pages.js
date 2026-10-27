@@ -1,6 +1,6 @@
 import { AGENT_KEYS, dashboardMetrics, DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
 import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
-import { CLIENT_PROVIDERS, keyHint, modelPatch } from "./model-key.js";
+import { CLAUDE_SONNET_MODEL, keyHint, maskedKey } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
 import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { renderRoleflowCalendar } from "./calendar-page.js";
@@ -41,6 +41,15 @@ const COPY = {
     keyTest: "Test key",
     keyChecking: "Checking…",
     keyLocked: "Only an owner or admin can change this key.",
+    aiTitle: "AI model",
+    aiBody: "Setter replies use Claude Sonnet. Roleflow default uses Roleflow's key. You can save your own Claude API key instead. It is stored encrypted, and this page only shows a masked hint after you save.",
+    aiDefault: "Roleflow default",
+    aiOwn: "Use my own Claude API key",
+    aiDefaultNote: "Roleflow uses Claude Sonnet. If that key is not set, the setter keeps its current model.",
+    aiReplace: "Replace",
+    aiOk: "Claude answered.",
+    aiRejected: "That Claude API key was rejected.",
+    aiFallback: "This business's Claude API key was rejected. The setter used the next model.",
     igTitle: "Connect Instagram",
     igOn: "Instagram is connected for this business.",
     igOff: "Instagram is not connected for this business.",
@@ -121,6 +130,15 @@ const COPY = {
     keyTest: "Probar clave",
     keyChecking: "Comprobando…",
     keyLocked: "Solo un propietario o un admin puede cambiar esta clave.",
+    aiTitle: "Modelo de IA",
+    aiBody: "Las respuestas del setter usan Claude Sonnet. El predeterminado de Roleflow usa la clave de Roleflow. También puedes guardar tu propia clave de Claude. Se guarda cifrada y esta página solo muestra una pista enmascarada.",
+    aiDefault: "Predeterminado de Roleflow",
+    aiOwn: "Usar mi propia clave de Claude",
+    aiDefaultNote: "Roleflow usa Claude Sonnet. Si esa clave no está, el setter sigue con su modelo actual.",
+    aiReplace: "Reemplazar",
+    aiOk: "Claude respondió.",
+    aiRejected: "Esa clave de Claude fue rechazada.",
+    aiFallback: "La clave de Claude de este negocio fue rechazada. El setter usó el siguiente modelo.",
     igTitle: "Conectar Instagram",
     igOn: "Instagram está conectado para este negocio.",
     igOff: "Instagram no está conectado para este negocio.",
@@ -632,69 +650,97 @@ export function renderFollowBoss(ui) {
 export function renderModelKey(ui) {
   const copy = text(ui.language());
   const card = ui.el("form", { class: "agent", id: "model-key" });
-  card.append(ui.el("h3", { text: copy.keyTitle }));
-  card.append(ui.el("p", { text: copy.keyBody }));
-  const current = ui.state.settings && ui.state.settings.llm_setter_provider;
-  const provider = ui.el("select", { id: "model-key-provider", "aria-label": copy.keyProvider });
-  CLIENT_PROVIDERS.forEach((item) => {
-    provider.append(ui.el("option", { value: item.id, text: item.label, selected: item.id === current ? true : null }));
-  });
-  const key = ui.el("input", {
-    id: "model-key-input",
-    type: "password",
-    autocomplete: "off",
-    "aria-label": copy.keyLabel,
-    placeholder: copy.keyPlaceholder
-  });
-  const hint = ui.el("p", { id: "model-key-hint", class: "mute" });
-  const modelNote = ui.el("p", { id: "model-key-default", class: "mute" });
+  card.append(ui.el("h3", { text: copy.aiTitle }));
+  card.append(ui.el("p", { text: copy.aiBody }));
+  if (ui.state.claudeNotice) card.append(ui.el("p", { class: "claude-notice", role: "status", text: copy.aiFallback }));
+  const savedMode = ui.state.settings && ui.state.settings.setter_claude_mode === "own" ? "own" : "default";
+  const last4 = keyHint(ui.state.llmKeys, "anthropic");
+  let mode = savedMode;
+  let replacing = !last4;
+  const body = ui.el("div", { id: "model-key-body" });
   const status = ui.el("p", { id: "model-key-result", role: "status" });
-  const paintHint = () => {
-    const last4 = keyHint(ui.state.llmKeys, provider.value);
-    const chosen = CLIENT_PROVIDERS.find((item) => item.id === provider.value);
-    hint.textContent = last4 ? copy.keySaved.replace("{last4}", last4) : copy.keyNone;
-    modelNote.textContent = chosen ? "Default model: " + chosen.model : "";
-  };
-  provider.addEventListener("change", paintHint);
-  paintHint();
-  card.append(
-    ui.el("label", { text: copy.keyProvider }, [provider]),
-    modelNote,
-    ui.el("label", { text: copy.keyLabel }, [key]),
-    hint,
-    status
-  );
   const manage = ui.state.canManageKeys === true;
-  const row = ui.el("div", { class: "filters" });
-  if (manage && ui.saveLlm) {
-    row.append(ui.button(copy.keySave, (event) => {
-      event.preventDefault();
-      const providerId = provider.value;
-      const apiKey = key.value;
-      key.value = "";
-      ui.saveLlm(modelPatch(providerId, false), [{ provider: providerId, apiKey }]);
-    }));
-    row.append(ui.button(copy.keyRemove, (event) => {
-      event.preventDefault();
-      const providerId = provider.value;
-      key.value = "";
-      ui.saveLlm(modelPatch(providerId, true), [{ provider: providerId, clear: true }]);
-    }));
-  }
-  if (ui.state.canEdit && ui.testLlm) {
-    row.append(ui.button(copy.keyTest, async (event) => {
-      event.preventDefault();
-      status.textContent = copy.keyChecking;
-      const message = await ui.testLlm({
-        purpose: "setter",
-        provider: provider.value,
-        model: CLIENT_PROVIDERS.find((item) => item.id === provider.value).model,
-        api_key: key.value
+  const choice = (value, label) => {
+    const input = ui.el("input", {
+      type: "radio",
+      name: "claude-mode",
+      value,
+      checked: mode === value ? true : null
+    });
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      mode = value;
+      if (value === "default") replacing = false;
+      paintBody();
+      if (value === "default" && manage && ui.saveLlm && savedMode !== "default") {
+        ui.saveLlm({ setter_claude_mode: "default" }, []);
+      }
+    });
+    return ui.el("label", { class: "claude-choice" }, [input, label]);
+  };
+  const paintBody = () => {
+    body.replaceChildren();
+    body.append(choice("default", copy.aiDefault), choice("own", copy.aiOwn));
+    if (mode !== "own") {
+      body.append(ui.el("p", { class: "mute", text: copy.aiDefaultNote }));
+    } else if (last4 && !replacing) {
+      body.append(ui.el("p", { id: "model-key-hint", class: "claude-mask", text: maskedKey(last4) }));
+    } else {
+      const key = ui.el("input", {
+        id: "model-key-input",
+        type: "password",
+        autocomplete: "off",
+        spellcheck: "false",
+        "aria-label": copy.keyLabel,
+        placeholder: copy.keyPlaceholder
       });
-      status.textContent = message || "";
-    }));
-  }
-  if (row.childElementCount) card.append(row);
+      body.append(ui.el("label", { text: copy.keyLabel }, [key]));
+      if (manage && ui.saveLlm) {
+        const save = ui.button(copy.keySave, (event) => {
+          event.preventDefault();
+          const apiKey = key.value;
+          key.value = "";
+          ui.saveLlm({ setter_claude_mode: "own" }, [{ provider: "anthropic", apiKey }]);
+        });
+        body.append(save);
+      }
+    }
+    const row = ui.el("div", { class: "filters" });
+    if (mode === "own" && last4 && !replacing && manage && ui.saveLlm) {
+      row.append(ui.button(copy.aiReplace, (event) => {
+        event.preventDefault();
+        replacing = true;
+        paintBody();
+      }));
+      row.append(ui.button(copy.keyRemove, (event) => {
+        event.preventDefault();
+        ui.saveLlm({ setter_claude_mode: "default" }, [{ provider: "anthropic", clear: true }]);
+      }));
+    }
+    if (ui.state.canEdit && ui.testLlm) {
+      row.append(ui.button(copy.keyTest, async (event) => {
+        event.preventDefault();
+        const typed = document.getElementById("model-key-input");
+        status.textContent = copy.keyChecking;
+        const message = await ui.testLlm({
+          purpose: "setter",
+          provider: "anthropic",
+          model: CLAUDE_SONNET_MODEL,
+          api_key: typed ? typed.value : ""
+        });
+        const text = String(message || "");
+        if (text === "OK" || text.startsWith("OK ")) {
+          const rest = text.slice(2).trim();
+          status.textContent = rest ? copy.aiOk + " Tokens " + rest : copy.aiOk;
+        } else if (/rejected|authentication|invalid x-api-key|unauthorized/i.test(text)) status.textContent = copy.aiRejected;
+        else status.textContent = text;
+      }));
+    }
+    if (row.childElementCount) body.append(row);
+    body.append(status);
+  };
+  paintBody();
+  card.append(body);
   if (!manage) card.append(ui.el("p", { class: "hq-note", text: copy.keyLocked }));
   card.addEventListener("submit", (event) => event.preventDefault());
   return card;
