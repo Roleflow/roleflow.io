@@ -1,10 +1,26 @@
 (function () {
+  var skool = document.querySelector(".skool-link");
+  if (skool && window.SKOOL_URL) {
+    skool.setAttribute("href", window.SKOOL_URL);
+    var soon = skool.querySelector(".soon");
+    if (soon) soon.hidden = true;
+  }
+  var burger = document.querySelector(".nav-burger");
+  var bar = document.querySelector(".top");
+  if (burger && bar) {
+    burger.addEventListener("click", function () {
+      var open = bar.classList.toggle("is-open");
+      burger.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
   if (reduce.matches) return;
   document.documentElement.classList.add("js-motion");
 
   var top = document.querySelector(".top");
   var layer = document.querySelector("[data-parallax]");
+  var shell = document.querySelector(".vsl-shell");
   var mesh = document.querySelector(".mesh");
   var fine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   var scrollTicking = false;
@@ -17,6 +33,12 @@
       if (layer) {
         var shift = Math.max(-28, Math.min(18, -window.scrollY * 0.08));
         layer.style.setProperty("--py", shift.toFixed(2));
+      }
+      if (shell) {
+        var box = shell.getBoundingClientRect();
+        var visible = Math.max(0, Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0));
+        var ratio = box.height ? Math.min(1, visible / box.height) : 0;
+        shell.style.setProperty("--glow", Math.max(ratio, 0.2).toFixed(3));
       }
       scrollTicking = false;
     });

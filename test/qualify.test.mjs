@@ -8,8 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const ui = fs.readFileSync(path.join(root, "assets/qualify-ui.js"), "utf8");
 
-const demoCtas = [...homepage.matchAll(/<a\b[^>]*>Book a demo<\/a>/g)].map((match) => match[0]);
-assert.equal(demoCtas.length, 2);
+const demoCtas = [...homepage.matchAll(/<a\b[^>]*>Apply To Work Together →<\/a>/g)].map((match) => match[0]);
+assert.equal(demoCtas.length, 3);
 for (const tag of demoCtas) {
   assert.match(tag, /href="#qualify"/);
   assert.match(tag, /data-qualify/);
@@ -144,8 +144,29 @@ for (const file of fs.readdirSync(path.join(root, "scripts")).filter((name) => n
 const llms = fs.readFileSync(path.join(root, "llms.txt"), "utf8");
 assert.equal(llms.includes("calendar.app.google"), false);
 assert.match(llms, /#qualify/);
-assert.match(fs.readFileSync(path.join(root, "es/index.html"), "utf8"), /lang="es"/);
-assert.match(fs.readFileSync(path.join(root, "es/index.html"), "utf8"), /data-qualify/);
+assert.doesNotMatch(llms, /roleflow\.io\/es/);
+assert.equal(fs.existsSync(path.join(root, "es/index.html")), false);
+const vercel = JSON.parse(fs.readFileSync(path.join(root, "vercel.json"), "utf8"));
+const redirectTo = (source) => vercel.redirects.find((item) => item.source === source);
+assert.equal(redirectTo("/es").destination, "/");
+assert.equal(redirectTo("/es").statusCode, 301);
+assert.equal(redirectTo("/es/").destination, "/");
+assert.equal(redirectTo("/es/para/coaches/").destination, "/for/coaches/");
+assert.equal(redirectTo("/es/para/coaches/").statusCode, 301);
+assert.equal(redirectTo("/es/que-es-un-setter-con-ia/").destination, "/what-is-an-ai-dm-setter/");
+assert.equal(redirectTo("/es/:path*").destination, "/");
+assert.equal(redirectTo("/es/:path*").statusCode, 301);
+const sitemap = fs.readFileSync(path.join(root, "sitemap.xml"), "utf8");
+assert.doesNotMatch(sitemap, /\/es\//);
+assert.doesNotMatch(sitemap, /hreflang="es"/);
+for (const file of htmlFiles(root)) {
+  const rel = path.relative(root, file);
+  if (rel.startsWith("account/") || rel.startsWith("admin/") || rel.startsWith("acquire/")) continue;
+  const text = fs.readFileSync(file, "utf8");
+  assert.equal(text.includes('href="/es'), false, rel);
+  assert.equal(text.includes('hreflang="es"'), false, rel);
+}
+assert.match(fs.readFileSync(path.join(root, "account/acquisition/index.html"), "utf8"), /value="es">Español/);
 assert.match(fs.readFileSync(path.join(root, "signup/index.html"), "utf8"), /data-qualify/);
 
 console.log("qualify tests passed");

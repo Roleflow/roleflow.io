@@ -183,7 +183,7 @@ assert.equal(submission.split("maya@northstar.example").length - 1, 1);
 
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
 assert.match(homepage, /src="supabase\/config\.js"/);
-assert.match(homepage, /Book a demo/);
+assert.match(homepage, /Apply To Work Together/);
 assert.doesNotMatch(homepage, /Book your call|Book a call|book a call/i);
 assert.doesNotMatch(homepage, /calendar\.app\.google/);
 assert.match(homepage, /href="#qualify" data-qualify/);

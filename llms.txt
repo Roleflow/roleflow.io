@@ -6,7 +6,7 @@ Roleflow is a Client Acquisition System for high-ticket coaches, consultants, co
 
 Who it fits: businesses with 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+/month cash collected.
 Who it does not fit: businesses selling mainly through WhatsApp, email or phone (Instagram DMs only), low-ticket offers, or very low DM volume.
-Roleflow is an AI Client Acquisition Engine. Book a demo opens the on-site qualification (#qualify on English pages, and the same quiz in Spanish on /es/ pages). Public pages do not link to a calendar.
+Roleflow is an AI Client Acquisition Engine. Apply To Work Together opens the on-site qualification (#qualify). Public pages do not link to a calendar.
 
 ## Social
 - Instagram: https://www.instagram.com/roleflow.io
@@ -29,19 +29,3 @@ Roleflow is an AI Client Acquisition Engine. Book a demo opens the on-site quali
 - [For course creators](https://www.roleflow.io/for/course-creators/)
 - [About](https://www.roleflow.io/about/)
 - [Sign up](https://www.roleflow.io/signup/)
-
-## Español
-- [Inicio](https://www.roleflow.io/es/)
-- [Qué es un setter con IA](https://www.roleflow.io/es/que-es-un-setter-con-ia/)
-- [Preguntas frecuentes](https://www.roleflow.io/es/preguntas-frecuentes/)
-- [Mejores setters con IA](https://www.roleflow.io/es/mejores-setters-con-ia/)
-- [Recursos](https://www.roleflow.io/es/recursos/)
-- [Roleflow frente a RipDrip](https://www.roleflow.io/es/vs/ripdrip/)
-- [Roleflow frente a Mochi](https://www.roleflow.io/es/vs/mochi/)
-- [Para coaches](https://www.roleflow.io/es/para/coaches/)
-- [Para coaches de negocios](https://www.roleflow.io/es/para/coaches-de-negocios/)
-- [Para coaches fitness](https://www.roleflow.io/es/para/coaches-fitness/)
-- [Para consultores](https://www.roleflow.io/es/para/consultores/)
-- [Para agencias](https://www.roleflow.io/es/para/agencias/)
-- [Para infoproductores](https://www.roleflow.io/es/para/infoproductores/)
-- [Sobre nosotros](https://www.roleflow.io/es/sobre-nosotros/)

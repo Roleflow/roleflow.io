@@ -51,18 +51,233 @@
       "statusCode": 301
     },
     {
+      "source": "/es",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/index.html",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/que-es-un-setter-con-ia",
+      "destination": "/what-is-an-ai-dm-setter/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/que-es-un-setter-con-ia/",
+      "destination": "/what-is-an-ai-dm-setter/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/que-es-un-setter-con-ia/index.html",
+      "destination": "/what-is-an-ai-dm-setter/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/preguntas-frecuentes",
+      "destination": "/faq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/preguntas-frecuentes/",
+      "destination": "/faq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/preguntas-frecuentes/index.html",
+      "destination": "/faq/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/mejores-setters-con-ia",
+      "destination": "/best-ai-dm-setters/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/mejores-setters-con-ia/",
+      "destination": "/best-ai-dm-setters/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/mejores-setters-con-ia/index.html",
+      "destination": "/best-ai-dm-setters/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/recursos",
+      "destination": "/resources/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/recursos/",
+      "destination": "/resources/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/recursos/index.html",
+      "destination": "/resources/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/vs/ripdrip",
+      "destination": "/vs/ripdrip/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/vs/ripdrip/",
+      "destination": "/vs/ripdrip/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/vs/ripdrip/index.html",
+      "destination": "/vs/ripdrip/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/vs/mochi",
+      "destination": "/vs/mochi/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/vs/mochi/",
+      "destination": "/vs/mochi/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/vs/mochi/index.html",
+      "destination": "/vs/mochi/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches",
+      "destination": "/for/coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches/",
+      "destination": "/for/coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches/index.html",
+      "destination": "/for/coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches-de-negocios",
+      "destination": "/for/business-coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches-de-negocios/",
+      "destination": "/for/business-coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches-de-negocios/index.html",
+      "destination": "/for/business-coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches-fitness",
+      "destination": "/for/fitness-coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches-fitness/",
+      "destination": "/for/fitness-coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/coaches-fitness/index.html",
+      "destination": "/for/fitness-coaches/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/consultores",
+      "destination": "/for/consultants/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/consultores/",
+      "destination": "/for/consultants/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/consultores/index.html",
+      "destination": "/for/consultants/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/agencias",
+      "destination": "/for/agency-owners/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/agencias/",
+      "destination": "/for/agency-owners/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/agencias/index.html",
+      "destination": "/for/agency-owners/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/infoproductores",
+      "destination": "/for/course-creators/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/infoproductores/",
+      "destination": "/for/course-creators/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/para/infoproductores/index.html",
+      "destination": "/for/course-creators/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/sobre-nosotros",
+      "destination": "/about/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/sobre-nosotros/",
+      "destination": "/about/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/sobre-nosotros/index.html",
+      "destination": "/about/",
+      "statusCode": 301
+    },
+    {
       "source": "/es/precios",
-      "destination": "/es/",
+      "destination": "/",
       "statusCode": 301
     },
     {
       "source": "/es/precios/",
-      "destination": "/es/",
+      "destination": "/",
       "statusCode": 301
     },
     {
       "source": "/es/precios/index.html",
-      "destination": "/es/",
+      "destination": "/",
+      "statusCode": 301
+    },
+    {
+      "source": "/es/:path*",
+      "destination": "/",
       "statusCode": 301
     },
     {
