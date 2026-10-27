@@ -241,7 +241,8 @@ const migrationNames = [
   "20261026190000_reply_delay_default.sql",
   "20261026200000_qualification_leads.sql",
   "20261026220000_gemini_default.sql",
-  "20261026230000_target_stage_rank.sql"
+  "20261026230000_target_stage_rank.sql",
+  "20261027120000_comment_recording_slot.sql"
 ];
 assert.deepEqual(
   migrationNames,

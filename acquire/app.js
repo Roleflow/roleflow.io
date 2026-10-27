@@ -3,8 +3,9 @@ import { toast } from "../auth/ui.js";
 import { NAV_GROUPS, canonicalTab, navLabel, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
-import { gateSetter, localTry, renderCalendar, renderCommentVoice, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
-import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog } from "./prompt-tokens.js";
+import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
+import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
+import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
@@ -266,6 +267,9 @@ async function boot() {
     return;
   }
   state.user = data.session.user;
+  const accountProfile = await state.supabase.from("profiles").select("id, email, full_name").eq("id", state.user.id).maybeSingle();
+  if (!accountProfile.error && accountProfile.data) state.accountProfile = accountProfile.data;
+  paintProfile();
   logoutBtn.hidden = true;
   if (panelLogout) panelLogout.hidden = true;
   const inviteToken = new URLSearchParams(location.search).get("invite");
@@ -337,6 +341,8 @@ async function bootBusiness(id, options) {
   if (state.businessId && state.businessId !== id) {
     state.studio = null;
     state.studioScore = null;
+    state.setterDesk = null;
+    state.simConversations = null;
     state.flow = null;
     state.chatDraft = "";
     state.openThread = "";
@@ -568,17 +574,19 @@ async function loadAll(id, token) {
   state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
   state.bookingLink = bookingLinkFor(state.settings && state.settings.booking_fallback_url);
-  const [promptVersions, voiceRules, voiceSettings, voiceLog] = await Promise.all([
+  const [promptVersions, voiceRules, voiceSettings, voiceLog, commentSlot] = await Promise.all([
     q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", id).order("version", { ascending: false }).limit(30),
     q.from("acq_comment_voice_rules").select("id, keywords, intent, message, clip_id, position").eq("business_id", id).order("position", { ascending: true }),
     q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
-    q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
+    q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
+    q.from("acq_comment_slots").select("when_to_send, voice_note_id").eq("business_id", id).maybeSingle()
   ]);
   if (!live()) return false;
   state.promptVersions = promptVersions.error ? (state.promptVersions || []) : promptVersions.data || [];
   state.commentVoiceRules = voiceRules.error ? [] : voiceRules.data || [];
   state.commentVoiceCap = voiceSettings.error || !voiceSettings.data ? 30 : voiceSettings.data.daily_cap;
   state.commentVoiceLog = voiceLog.error ? [] : voiceLog.data || [];
+  state.commentSlot = commentSlot.error ? null : commentSlot.data;
   state.followupPolicy = followPolicy.error ? null : followPolicy.data;
   if (!prefs.error && prefs.data && (prefs.data.language === "en" || prefs.data.language === "es")) {
     state.language = writeLanguage(safeStorage(), prefs.data.language);
@@ -673,18 +681,12 @@ function paint() {
   if (state.tab === "chats") root.append(renderChats(ui));
   if (state.tab === "opportunities") root.append(renderCrm(ui));
   if (state.tab === "calendar") root.append(renderCalendar(ui));
-  if (state.tab === "sops") {
-    state.embedSetter = true;
-    const layout = el("div", { class: "prompt-layout" });
-    layout.append(renderBusiness(ui), renderSetter(ui));
-    root.append(layout);
-  }
+  if (state.tab === "sops") root.append(renderBusiness(ui));
   if (state.tab === "content") root.append(renderValueContent(ui));
   if (state.tab === "voice") root.append(voiceLibrary());
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
   if (state.tab === "outreacher") root.append(renderGrokAgent(ui, "outreacher"));
   if (state.tab === "setter") root.append(renderSetter(ui));
-  if (state.tab === "commentvoice") root.append(renderCommentVoice(ui));
   if (state.tab === "followup") root.append(renderFollowBoss(ui));
   if (state.tab === "settings") {
     root.append(renderModelKey(ui));
@@ -708,6 +710,14 @@ function paint() {
   const connectCard = document.getElementById("instagram-connect") || document.getElementById("connect-instagram");
   const connectFocus = state.configKey === "connect" || new URLSearchParams(location.search).get("connect") === "1";
   if (connectCard && connectFocus) connectCard.scrollIntoView({ block: "start" });
+  if (new URLSearchParams(location.search).get("menu") === "1") {
+    const panel = document.getElementById("profile-panel");
+    const open = document.getElementById("profile-open");
+    if (panel && open) {
+      panel.hidden = false;
+      open.setAttribute("aria-expanded", "true");
+    }
+  }
   armRefresh();
 }
 
@@ -840,6 +850,9 @@ function pageUi() {
     restoreSetterPrompt,
     saveBookingLink,
     saveReplyDelay,
+    analyzePrompt,
+    editPrompt,
+    saveCommentSlot,
     sendTrial,
     startTrial,
     restartTrial,
@@ -951,25 +964,57 @@ function bindProfile() {
   const open = document.getElementById("profile-open");
   const panel = document.getElementById("profile-panel");
   const settings = document.getElementById("profile-settings");
-  const lang = document.getElementById("profile-language");
   const signOut = document.getElementById("profile-logout");
   if (!open || !panel) return;
+  const items = () => [...panel.querySelectorAll("[role='menuitem'], [role='menuitemradio']")];
+  const closeMenu = (focusOpener) => {
+    panel.hidden = true;
+    open.setAttribute("aria-expanded", "false");
+    if (focusOpener) open.focus();
+  };
+  const openMenu = () => {
+    panel.hidden = false;
+    open.setAttribute("aria-expanded", "true");
+    const first = items()[0];
+    if (first) first.focus();
+  };
   open.addEventListener("click", (event) => {
     event.stopPropagation();
-    panel.hidden = !panel.hidden;
-    open.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+    if (panel.hidden) openMenu();
+    else closeMenu(false);
+  });
+  open.addEventListener("keydown", (event) => {
+    if ((event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") && panel.hidden) {
+      event.preventDefault();
+      openMenu();
+    }
   });
   document.addEventListener("click", (event) => {
     if (panel.hidden) return;
     if (panel.contains(event.target) || open.contains(event.target)) return;
-    panel.hidden = true;
-    open.setAttribute("aria-expanded", "false");
+    closeMenu(false);
   });
-  if (settings) settings.addEventListener("click", () => { panel.hidden = true; go("settings"); });
-  if (lang) {
-    lang.value = language();
-    lang.addEventListener("change", () => saveLanguage(lang.value));
-  }
+  document.addEventListener("keydown", (event) => {
+    if (panel.hidden || event.key !== "Escape") return;
+    event.preventDefault();
+    closeMenu(true);
+  });
+  panel.addEventListener("keydown", (event) => {
+    const list = items();
+    const index = list.indexOf(document.activeElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      if (!list.length) return;
+      if (event.key === "Home") list[0].focus();
+      else if (event.key === "End") list[list.length - 1].focus();
+      else if (event.key === "ArrowDown") list[(index + 1 + list.length) % list.length].focus();
+      else list[(index - 1 + list.length) % list.length].focus();
+    }
+  });
+  panel.querySelectorAll(".lang-flag").forEach((button) => {
+    button.addEventListener("click", () => saveLanguage(button.dataset.lang));
+  });
+  if (settings) settings.addEventListener("click", () => { closeMenu(false); go("settings"); });
   if (signOut) signOut.addEventListener("click", () => logout());
 }
 
@@ -991,8 +1036,6 @@ function bindShell() {
     input.dispatchEvent(new Event("input"));
     input.focus();
   });
-  const cycle = document.getElementById("lang-cycle");
-  if (cycle) cycle.addEventListener("click", () => saveLanguage(language() === "es" ? "en" : "es"));
 }
 
 function renderPanelHome(ui) {
@@ -1030,7 +1073,7 @@ function firstSteps(lang) {
     { id: "instagram", done: igDone, title: es ? "Conectar Instagram" : "Connect Instagram", action: es ? "Conectar" : "Connect", go: "instagram" },
     { id: "review", done: reviewed, title: es ? "Revisar tu negocio" : "Review your business", action: es ? "Revisar" : "Review", go: "sops" },
     { id: "prompt", done: promptDone, title: es ? "Configurar prompt y SOP" : "Set up prompt/SOP", action: es ? "Abrir" : "Open", go: "sops" },
-    { id: "test", done: tested, title: es ? "Probar el chat" : "Test chat", action: es ? "Probar" : "Test", go: "sops" }
+    { id: "test", done: tested, title: es ? "Probar el chat" : "Test chat", action: es ? "Probar" : "Test", go: "setter" }
   ];
   const doneCount = steps.filter((step) => step.done).length;
   const active = steps.find((step) => !step.done) || null;
@@ -1078,16 +1121,41 @@ function nextStepCard() {
   return card;
 }
 
+function accountIdentity() {
+  const profile = state.accountProfile;
+  const member = (state.memberProfiles || []).find((row) => state.user && row.id === state.user.id);
+  const meta = state.user && state.user.user_metadata;
+  const email = (profile && profile.email) || (member && member.email) || (state.user && state.user.email) || "";
+  const name = (profile && profile.full_name) || (member && member.full_name) || (meta && (meta.full_name || meta.name)) || email;
+  return { name: String(name || "").trim(), email: String(email || "").trim() };
+}
+
 function paintProfile() {
-  const lang = document.getElementById("profile-language");
   const open = document.getElementById("profile-open");
-  if (lang && document.activeElement !== lang) lang.value = language();
+  const es = language() === "es";
+  const identity = accountIdentity();
+  const shown = identity.name || identity.email;
+  const letter = (shown || "R").trim().charAt(0).toUpperCase() || "R";
   const avatar = document.getElementById("profile-avatar");
-  const business = state.businesses.find((row) => row.id === state.businessId);
-  const name = business && business.agent_name ? business.agent_name : "Roleflow";
-  const letter = name.trim().charAt(0).toUpperCase() || "R";
+  const name = document.getElementById("profile-name");
+  const email = document.getElementById("profile-email");
   if (avatar) avatar.textContent = letter;
-  if (open) open.setAttribute("aria-label", "Account menu for " + name);
+  if (name) name.textContent = shown || (es ? "Cuenta" : "Account");
+  if (email) email.textContent = identity.email;
+  if (open) open.setAttribute("aria-label", (es ? "Menú de la cuenta" : "Account menu") + (shown ? " " + shown : ""));
+  const settings = document.getElementById("profile-settings");
+  const support = document.getElementById("profile-support");
+  const signOut = document.getElementById("profile-logout");
+  if (settings) settings.textContent = es ? "Ajustes" : "Settings";
+  if (support) support.textContent = es ? "Soporte" : "Support";
+  if (signOut) signOut.textContent = es ? "Cerrar sesión" : "Sign out";
+  document.querySelectorAll(".lang-flag").forEach((button) => {
+    const on = button.dataset.lang === language();
+    button.classList.toggle("is-active", on);
+    button.setAttribute("aria-checked", on ? "true" : "false");
+  });
+  const group = document.querySelector(".profile-lang");
+  if (group) group.setAttribute("aria-label", es ? "Idioma" : "Language");
 }
 
 async function saveLanguage(value) {
@@ -1118,6 +1186,10 @@ async function dashboardCall(body) {
 async function setAgent(key, enabled) {
   if (!state.canEdit) {
     toast("You can't edit this business.", "bad");
+    return;
+  }
+  if (enabled && (key === "warmer" || key === "outreacher")) {
+    toast(language() === "es" ? "Próximamente. Este agente no se puede activar." : "Coming soon. This agent cannot be turned on.", "bad");
     return;
   }
   if (enabled && key === "setter") {
@@ -1275,10 +1347,12 @@ function restartTrial() {
   paint();
 }
 
-async function sendTrial(prompt, message) {
+async function sendTrial(prompt, message, options) {
   const sample = String(message || "").trim();
   const body = String(prompt || "");
-  if (!sample) return;
+  const followup = options && Number(options.followup);
+  const asBusiness = Boolean(options && options.sender === "business");
+  if (!followup && !sample) return;
   state.setterDraft = body;
   state.setterPane = "chat";
   const delayMin = document.getElementById("reply-delay-min");
@@ -1290,7 +1364,12 @@ async function sendTrial(prompt, message) {
     role: item.role,
     content: item.text || ""
   }));
-  trial.messages = (trial.messages || []).concat([{ role: "user", text: sample }]);
+  if (asBusiness) {
+    trial.messages = (trial.messages || []).concat([{ role: "assistant", text: sample, business: true }]);
+    paint();
+    return;
+  }
+  if (!followup) trial.messages = (trial.messages || []).concat([{ role: "user", text: sample }]);
   paint();
   let result;
   if (!state.supabase) {
@@ -1309,9 +1388,12 @@ async function sendTrial(prompt, message) {
       result = await dashboardCall({
         action: "preview_setter",
         prompt: body,
-        message: sample,
+        message: followup ? "" : sample,
         messages: history,
-        scenario: trial.scenario
+        scenario: trial.scenario,
+        followup: followup || 0,
+        lead_state: (options && options.leadState) || (trial.leadState || ""),
+        comment_when: commentWhenForTrial()
       });
     } catch (error) {
       result = { ok: false, error: error.message };
@@ -1345,12 +1427,19 @@ async function sendTrial(prompt, message) {
     role: "assistant",
     text: result.reply || "",
     voices,
-    modelLine: trialModelLine(result),
+    preview: result.preview === true,
+    modelLine: result.preview ? "" : trialModelLine(result),
     versionLabel: label,
     prompt: result.prompt || body,
     delayLine: waited > 0 ? "Waited " + waited + " seconds." : "Delay skipped."
   }]);
   paint();
+}
+
+function commentWhenForTrial() {
+  const field = document.getElementById("comment-when");
+  if (field) return field.value;
+  return commentSlotView(state.commentSlot, state.commentVoiceRules).when;
 }
 
 function previewPracticeReply(input) {
@@ -1372,6 +1461,7 @@ function previewPracticeReply(input) {
     provider_label: "Google Gemini",
     model: "gemini-3-flash-preview",
     key_source: "platform",
+    preview: true,
     version: promptVersionLabel(input.versions, body),
     prompt: body,
     sent: false,
@@ -1588,6 +1678,18 @@ async function callStudio(action, extra) {
     return null;
   }
   return invoked.data;
+}
+
+async function analyzePrompt(prompt) {
+  const data = await callStudio("score", { prompt, fields: (state.brief && state.brief.fields) || {} });
+  if (!data || data.score == null) return null;
+  return { score: Number(data.score), items: Array.isArray(data.items) ? data.items : [] };
+}
+
+async function editPrompt(prompt, instruction) {
+  const data = await callStudio("edit", { prompt, instruction, fields: (state.brief && state.brief.fields) || {} });
+  if (!data || !data.prompt) return null;
+  return String(data.prompt);
 }
 
 async function scoreWithModel(fields) {
@@ -2684,14 +2786,19 @@ function voiceQueue() {
 
 function voiceLibrary() {
   const wrap = el("div", { class: "acq" });
+  const es = language() === "es";
   wrap.append(el("section", { class: "banner gold" }, [
-    el("p", { text: "You record the notes. Agents pick the active recording for the slot — opener, gap, follow-up, booking, reminder. A cloned voice is not used." })
+    el("p", { text: es
+      ? "Tú grabas las notas. Los agentes eligen la grabación activa de cada hueco. No se usa una voz clonada."
+      : "You record the notes. Agents pick the active recording for the slot — opener, gap, follow-up, booking, reminder, and comment. A cloned voice is not used." })
   ]));
+  wrap.append(commentSlotCard());
   wrap.append(voiceQueue());
-  if (state.canEdit && state.supabase) wrap.append(voiceForm());
+  if (state.canEdit) wrap.append(voiceForm());
   const grid = el("div", { class: "agents" });
-  if (!state.voices.length) grid.append(el("p", { class: "mute", text: "No personal voice notes yet." }));
-  state.voices.forEach((note) => {
+  const notes = (state.voices || []).filter((note) => note.slot !== COMMENT_SLOT);
+  if (!notes.length) grid.append(el("p", { class: "mute", text: es ? "Todavía no hay notas de voz." : "No personal voice notes yet." }));
+  notes.forEach((note) => {
     const perf = voiceRates(state.performance.find((row) => row.id === note.id) || {});
     const card = el("article", { class: "voice-card" });
     const slot = SLOTS.find((item) => item.id === note.slot);
@@ -3328,6 +3435,107 @@ async function saveDeal(event, targetId, amount, note) {
   }
 }
 
+function commentSlotCard() {
+  const es = language() === "es";
+  const view = commentSlotView(state.commentSlot, state.commentVoiceRules);
+  const note = (state.voices || []).find((row) => row.slot === COMMENT_SLOT && row.active !== false);
+  const card = el("section", { class: "agent comment-slot", id: "comment-slot" });
+  card.append(el("h3", { text: es ? "Comentario" : "Comment" }));
+  card.append(el("p", { text: es
+    ? "Una grabación para cuando alguien comenta. Escribe cuándo debe enviarla el setter."
+    : "One recording for when someone comments. Write when the setter should send it." }));
+  const when = el("textarea", { id: "comment-when", rows: "3", maxlength: "1000", "aria-label": es ? "Cuándo enviarla" : "When to send it" });
+  when.value = view.when;
+  card.append(el("label", { text: es ? "Cuándo enviarla" : "When to send it" }, [when]));
+  if (view.source === "rules") {
+    card.append(el("p", { class: "mute", text: es
+      ? "Este texto sale de las reglas de comentarios guardadas hasta que lo guardes aquí."
+      : "This text comes from your saved comment rules until you save it here." }));
+  }
+  if (!note) card.append(el("p", { class: "mute", text: es ? "Todavía no hay una grabación de comentario." : "No comment recording yet." }));
+  else {
+    card.append(el("p", { text: (note.title || "Comment") + (note.active === false ? (es ? " · inactiva" : " · inactive") : "") }));
+    if (note.id) card.append(el("p", { class: "mute", text: voiceToken(note.title || "comment") }));
+    const audio = el("audio", { controls: true, preload: "none" });
+    card.append(audio);
+    if (state.supabase && note.storage_path) {
+      signAudio(note.storage_path).then((url) => { if (url) audio.src = url; });
+    } else if (!state.supabase) audio.src = previewToneUrl();
+  }
+  if (state.canEdit) {
+    const file = el("input", { type: "file", accept: "audio/*", "aria-label": es ? "Archivo de audio" : "Audio file" });
+    const record = button(es ? "Grabar" : "Record", null, "button");
+    let recorder = null;
+    let stream = null;
+    record.addEventListener("click", async () => {
+      if (recorder && recorder.state === "recording") {
+        recorder.stop();
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        toast(es ? "El micrófono no está disponible." : "The microphone is not available.", "bad");
+        return;
+      }
+      const chunks = [];
+      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        const named = new File([blob], "comment.webm", { type: "audio/webm" });
+        await storeVoice(named, { slot: COMMENT_SLOT, title: es ? "Comentario" : "Comment", hint: when.value });
+      };
+      recorder.start();
+      record.textContent = es ? "Parar" : "Stop";
+    });
+    const row = el("div", { class: "filters" });
+    row.append(file, record, button(es ? "Guardar" : "Save", async () => {
+      const chosen = file.files && file.files[0];
+      if (chosen) await storeVoice(chosen, { slot: COMMENT_SLOT, title: es ? "Comentario" : "Comment", hint: when.value });
+      else await saveCommentSlot(when.value, note && note.id);
+    }));
+    card.append(row);
+  }
+  return card;
+}
+
+async function saveCommentSlot(when, voiceNoteId) {
+  const text = String(when || "").trim().slice(0, 1000);
+  const note = (state.voices || []).find((row) => row.slot === COMMENT_SLOT && (voiceNoteId ? row.id === voiceNoteId : row.active !== false));
+  const id = (voiceNoteId || (note && note.id) || (state.commentSlot && state.commentSlot.voice_note_id) || "") || null;
+  if (!state.supabase) {
+    state.commentSlot = { when_to_send: text, voice_note_id: id };
+    if (note) note.script_hint = text;
+    toast(language() === "es" ? "Guardado en esta vista previa." : "Saved in this preview.");
+    paint();
+    return;
+  }
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  const saved = await state.supabase.from("acq_comment_slots").upsert({
+    business_id: state.businessId,
+    when_to_send: text,
+    voice_note_id: id,
+    updated_at: new Date().toISOString()
+  });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  if (note && note.id) {
+    await state.supabase.from("acq_voice_library").update({ script_hint: text }).eq("id", note.id).eq("agent_id", state.businessId);
+    note.script_hint = text;
+  }
+  state.commentSlot = { when_to_send: text, voice_note_id: id };
+  toast(agentText(language()).saved);
+  paint();
+}
+
 async function storeVoice(file, meta) {
   if (!file || file.size > MAX_BYTES) {
     toast("Keep the recording under 20 MB.", "bad");
@@ -3336,6 +3544,27 @@ async function storeVoice(file, meta) {
   const mime = mimeOf(file);
   if (!AUDIO_TYPES.has(mime)) {
     toast("Use mp3, m4a, wav, ogg, or webm.", "bad");
+    return;
+  }
+  if (!state.supabase) {
+    const id = "preview-" + Date.now();
+    state.voices = (state.voices || []).filter((row) => meta.slot !== COMMENT_SLOT || row.slot !== COMMENT_SLOT).concat([{
+      id,
+      slot: meta.slot,
+      title: (meta.title || "").trim() || "Voice note",
+      niche: (meta.niche || "").trim() || null,
+      variant: (meta.variant || "").trim() || null,
+      active: true,
+      script_hint: (meta.hint || "").trim(),
+      storage_path: "",
+      mime_type: mime,
+      updated_at: new Date().toISOString()
+    }]);
+    if (meta.slot === COMMENT_SLOT) await saveCommentSlot(meta.hint || "", id);
+    else {
+      toast(language() === "es" ? "Guardado en esta vista previa." : "Saved in this preview.");
+      paint();
+    }
     return;
   }
   const id = crypto.randomUUID();
@@ -3364,6 +3593,15 @@ async function storeVoice(file, meta) {
     await state.supabase.storage.from("acq-voice").remove([path]);
     toast(saved.error.message, "bad");
     return;
+  }
+  if (meta.slot === COMMENT_SLOT) {
+    const linked = await state.supabase.from("acq_comment_slots").upsert({
+      business_id: state.businessId,
+      when_to_send: String(meta.hint || "").trim().slice(0, 1000),
+      voice_note_id: id,
+      updated_at: new Date().toISOString()
+    });
+    if (linked.error) toast(linked.error.message, "bad");
   }
   toast("Voice note saved.");
   await bootBusiness(state.businessId);
@@ -3517,6 +3755,11 @@ function settleInstagramNotice() {
 function tabFromHash() {
   const parts = location.hash.replace("#", "").split("/");
   const raw = parts[0];
+  if (raw === "commentvoice") {
+    const url = new URL(location.href);
+    url.hash = "voice";
+    history.replaceState(null, "", url.pathname + url.search + "#voice");
+  }
   const tab = canonicalTab(raw);
   state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
   const connectQuery = new URLSearchParams(location.search).get("connect") === "1";
@@ -3662,7 +3905,10 @@ function readPreview() {
     reports: [{ id: "r1", kind: "daily", period_start: "2026-10-21", summary: "Cap 30. New targets today: 12.", body: { cap: 30 } }],
     exceptions: [{ id: "e1", message: "4 leads stuck in warmup for more than 3 days." }],
     activity: [{ id: "a1", target_id: "t1", action: "voice.sent", result: "sent", actor: "bot", notes: "Opener", created_at: "2026-10-21T09:05:00Z" }],
-    voices: [{ id: "v1", slot: "outreach_opener", title: "Opener — coaching", niche: "coaching", variant: null, active: true, script_hint: "Hey, I listened to the reel.", storage_path: "", updated_at: "2026-10-21" }],
+    voices: [
+      { id: "v1", slot: "outreach_opener", title: "Opener — coaching", niche: "coaching", variant: null, active: true, script_hint: "Hey, I listened to the reel.", storage_path: "", updated_at: "2026-10-21" },
+      { id: "v-comment", slot: "comment", title: "Comment", niche: "", variant: null, active: true, script_hint: "", storage_path: "", updated_at: "2026-10-26" }
+    ],
     contacts: [
       { id: "c-ada", name: "Ada North", ig_handle: "adanorth", crm_state: "discovering", ai_enabled: true, automated: true, is_verified: true, tags: ["warm"], unread_count: 1, message_count: 2, follower_count: 1200, they_follow: true, we_follow: false, last_message_at: "2026-10-25T18:00:00Z", attributes: { summary: "Asked how the offer works." } },
       { id: "c-sam", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "lost", ai_enabled: false, automated: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z", attributes: { summary: "Went quiet after the first reply." } }
@@ -3688,7 +3934,31 @@ function readPreview() {
       { id: "preview-prompt-1", version: 1, body: "You are the setter for this business. Ask one question at a time.", created_at: "2026-10-23T06:00:00Z", created_by: null },
       { id: "preview-prompt-2", version: 2, body: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}.", created_at: "2026-10-26T08:00:00Z", created_by: null }
     ],
-    setterTrial: { scenario: "comment", messages: [] },
+    setterTrial: {
+      scenario: "follower",
+      leadState: "discovering",
+      messages: [
+        { role: "user", text: "How does the offer work?" },
+        { role: "assistant", text: "I can walk you through it. What are you working on right now?", preview: true, versionLabel: "Version 2", delayLine: "Delay skipped." }
+      ]
+    },
+    previewSimulations: [
+      {
+        id: "sim-saved",
+        title: "Asked about the offer",
+        leadState: "qualifying",
+        messages: [
+          { role: "user", text: "Do you work with coaches?" },
+          { role: "assistant", text: "Yes. What kind of clients do you want more of?", preview: true, versionLabel: "Version 2" }
+        ],
+        updatedAt: "2026-10-26T08:00:00Z",
+        versionLabel: "Version 2"
+      }
+    ],
+    brief: { fields: { sell: "A coaching offer for founders who want a steadier calendar.", who: "Founders with an Instagram audience.", offer: "A done-with-you acquisition system.", pains: "Inconsistent calls.", guarantee: "You can pause the workspace any time." } },
+    agentCards: [{ role: "qualification", name: "Setter", instructions: "Ask one question at a time.", delegations: [{ to: "appointment_booking", when: "they agree to a call" }] }],
+    user: { id: "preview-user", email: "owner@example.com", user_metadata: { full_name: "Preview owner" } },
+    accountProfile: { full_name: "Preview owner", email: "owner@example.com" },
     commentVoiceCap: 30,
     commentVoiceRules: [{ id: "rule-1", keywords: ["SYSTEM", "SYSTEMS", "SISTEM"], intent: "Someone asking how the system works", message: "Thanks for the comment.", clip_id: "v1" }],
     commentVoiceLog: [{ id: "log-1", matched: false, queued: false, reason: "no_match", comment_text: "Nice post", commenter_username: "ada", created_at: "2026-10-26T09:00:00Z" }],

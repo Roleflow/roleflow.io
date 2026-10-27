@@ -9,7 +9,8 @@ import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/
 import { bookingTool, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
 import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
-import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog } from "../_shared/prompt-tokens.js";
+import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
+import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
@@ -254,6 +255,7 @@ async function runOutbox(db, row) {
   const voiceRows = await db.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", businessId).eq("active", true);
   const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
   const bookingLink = bookingLinkFor(settings.booking_fallback_url || "");
+  const commentGuide = await loadCommentGuide(db, businessId, catalog);
   let plan;
   try {
     plan = await planTurn({
@@ -269,7 +271,7 @@ async function runOutbox(db, row) {
         fallback: loaded.fallback,
         onError: (info) => logLlmError(db, { businessId, purpose: "setter", ...info }),
         tools: [bookingTool()],
-        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink),
+        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -328,7 +330,7 @@ async function sendHuman(db, row, thread, settings) {
   }).eq("id", row.id).eq("business_id", row.business_id);
 }
 
-function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink) {
+function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide) {
   const knowledge = knowledgeBlock(settings);
   const sections = savedPrompt
     ? { notes: knowledge }
@@ -336,7 +338,23 @@ function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, b
   const saved = savedPrompt
     ? expandPrompt(savedPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n"
     : "";
-  return saved + systemPrompt(sections, booking) + clipInstructions(clips);
+  const comment = commentGuide ? "\n\n" + commentGuide : "";
+  return saved + systemPrompt(sections, booking) + clipInstructions(clips) + comment;
+}
+
+async function loadCommentGuide(db, businessId, catalog) {
+  const slot = await db.from("acq_comment_slots").select("when_to_send").eq("business_id", businessId).maybeSingle();
+  let when = slot.data ? String(slot.data.when_to_send || "").trim() : "";
+  if (!when) {
+    const rules = await db.from("acq_comment_voice_rules").select("keywords, intent").eq("business_id", businessId);
+    when = whenToSendFromRules(rules.error ? [] : rules.data || []);
+  }
+  const note = (catalog || []).find((item) => item.slot === "comment");
+  return commentSlotGuide({
+    when,
+    token: note ? voiceToken(note.slug) : "",
+    title: note ? note.title : "Comment"
+  });
 }
 
 async function deliver(db, businessId, thread, settings, bubbles, slot, decision, kind, commentId, voiceNote) {

@@ -312,7 +312,18 @@ footer{padding:40px 22px 60px;color:var(--mute);font-size:.9rem;border-top:1px s
 .user-chip{text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:10px 12px}
 .user-chip strong{display:block}
 .user-chip span{color:var(--mute);font-size:.85rem;overflow-wrap:anywhere}
-.biz-main{text-align:left}
+.biz-main{text-align:left;overflow-x:hidden}
+.biz-board{display:grid;grid-template-columns:repeat(3,285px);gap:18px;align-items:stretch;width:100%;max-width:100%}
+.biz-board .biz-card{width:285px;height:276px;min-width:0;max-width:285px;box-sizing:border-box;align-content:start}
+.biz-board .biz-card.add-business{background:var(--grad);color:#fff;border:0;cursor:pointer;text-align:left}
+.biz-board .biz-card.add-business h2,.biz-board .biz-card.add-business p,.biz-board .biz-card.add-business .add-plus{color:#fff}
+@media(max-width:1180px){
+  .biz-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .biz-board .biz-card{width:100%;max-width:none;height:auto;min-height:276px}
+}
+@media(max-width:390px){
+  .biz-board{grid-template-columns:minmax(0,1fr)}
+}
 .biz-scroller{position:relative}
 .biz-row{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:stretch;gap:16px;width:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding-inline:4px;padding:2px 4px 12px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .biz-row:focus{outline:2px solid var(--gold);outline-offset:2px}

@@ -43,6 +43,19 @@ export function createdAgo(iso, now = Date.now()) {
   return "Created " + days + (days === 1 ? " day ago" : " days ago");
 }
 
+export function createdPhrase(iso, language, now = Date.now()) {
+  const line = createdAgo(iso, now);
+  if (language !== "es") return line;
+  return line
+    .replace("Created date not recorded", "Fecha de creación no registrada")
+    .replace(/^Created (\d+) minute ago$/, "Creado hace $1 minuto")
+    .replace(/^Created (\d+) minutes ago$/, "Creado hace $1 minutos")
+    .replace(/^Created (\d+) hour ago$/, "Creado hace $1 hora")
+    .replace(/^Created (\d+) hours ago$/, "Creado hace $1 horas")
+    .replace(/^Created (\d+) day ago$/, "Creado hace $1 día")
+    .replace(/^Created (\d+) days ago$/, "Creado hace $1 días");
+}
+
 export function stageChip(stage) {
   const key = String(stage || "").trim().toLowerCase();
   if (key === "hot" || key === "warm" || key === "cold") return key;

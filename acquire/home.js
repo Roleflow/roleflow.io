@@ -195,7 +195,6 @@ export function renderConfiguration(ui) {
 const STRATEGY_TABS = [
   { tab: "sops", en: "SOPs", es: "SOPs" },
   { tab: "content", en: "Content", es: "Contenido" },
-  { tab: "commentvoice", en: "Comment voice", es: "Voz en comentarios" },
   { tab: "voice", en: "Voice Gen", es: "Voz" }
 ];
 
@@ -268,6 +267,10 @@ function navLink(ui, item) {
   const label = typeof item.label === "string" ? item.label : navLabel(item, ui.language ? ui.language() : "en");
   const link = ui.el("a", { href: "#" + item.tab, "data-tab": item.tab, "data-tip": label, "data-tone": item.tone || "t1" });
   link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: label }));
+  if (item.soon) {
+    const language = ui.language ? ui.language() : "en";
+    link.append(ui.el("span", { class: "soon-badge", text: language === "es" ? "Pronto" : "Soon" }));
+  }
   link.addEventListener("click", (event) => {
     event.preventDefault();
     ui.go(item.tab);

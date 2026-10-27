@@ -21,6 +21,7 @@ import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
 import { normalizeCap } from "../_shared/comment-voice.js";
+import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
 import {
   bookingLinkFor,
   expandPrompt,
@@ -30,7 +31,8 @@ import {
   unwrapModelText,
   tokenGuide,
   trialScenario,
-  voiceCatalog
+  voiceCatalog,
+  voiceToken
 } from "../_shared/prompt-tokens.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -135,8 +137,9 @@ async function writePrompt(admin, businessId, userId, prompt, options) {
 async function previewSetter(admin, businessId, userId, body) {
   const prompt = String(body.prompt || "").trim().slice(0, PROMPT_MAX);
   const message = String(body.message || "").trim().slice(0, 500);
+  const followup = Math.max(0, Math.min(12, Number(body.followup) || 0));
   if (!prompt) return json(200, { ok: false, error: "Save a system prompt first." });
-  if (!message) return json(200, { ok: false, error: "Write a message to try." });
+  if (!message && !followup) return json(200, { ok: false, error: "Write a message to try." });
   const scenario = trialScenario(body.scenario);
   const settings = await admin.from("acq_settings").select("booking_fallback_url").eq("agent_id", businessId).maybeSingle();
   const bookingLink = bookingLinkFor(settings.data && settings.data.booking_fallback_url);
@@ -146,7 +149,19 @@ async function previewSetter(admin, businessId, userId, body) {
   const messages = history.map((item) => ({
     role: item && item.role === "assistant" ? "assistant" : "user",
     content: String(item && (item.content || item.text) || "").trim().slice(0, 8000)
-  })).filter((item) => item.content).concat([{ role: "user", content: message }]);
+  })).filter((item) => item.content);
+  if (followup && !message) {
+    messages.push({ role: "user", content: "Simulate follow-up " + followup + ". The lead has not replied. Write only the next follow-up. This is practice and it sends nothing." });
+  } else {
+    messages.push({ role: "user", content: message });
+  }
+  const commentWhen = await commentWhenFor(admin, businessId, body);
+  const commentNote = catalog.find((note) => note.slot === "comment");
+  const commentGuide = commentSlotGuide({
+    when: commentWhen,
+    token: commentNote ? voiceToken(commentNote.slug) : "",
+    title: commentNote ? commentNote.title : "Comment"
+  });
   const env = Deno.env.toObject();
   const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
   const runtime = loaded.runtime;
@@ -160,9 +175,11 @@ async function previewSetter(admin, businessId, userId, body) {
       system: [
         expandPrompt(prompt, bookingLink),
         tokenGuide(catalog, bookingLink),
+        commentGuide,
         scenario.context,
+        "Lead state: " + String(body.lead_state || "open") + ".",
         "Reply as the setter. Follow the system prompt for length and style. You may include a voice token and the booking token when that prompt calls for them. Do not call tools. This is a practice thread and it sends nothing."
-      ].join("\n\n"),
+      ].filter(Boolean).join("\n\n"),
       messages
     });
   } catch (error) {
@@ -204,6 +221,17 @@ async function previewSetter(admin, businessId, userId, body) {
     version,
     prompt
   });
+}
+
+async function commentWhenFor(admin, businessId, body) {
+  if (body && Object.prototype.hasOwnProperty.call(body, "comment_when")) {
+    return String(body.comment_when || "").trim().slice(0, 1000);
+  }
+  const slot = await admin.from("acq_comment_slots").select("when_to_send").eq("business_id", businessId).maybeSingle();
+  const saved = slot.data ? String(slot.data.when_to_send || "").trim() : "";
+  if (saved) return saved.slice(0, 1000);
+  const rules = await admin.from("acq_comment_voice_rules").select("keywords, intent").eq("business_id", businessId);
+  return whenToSendFromRules(rules.error ? [] : rules.data || []);
 }
 
 function practiceError(error, secrets) {
@@ -263,6 +291,9 @@ async function setAgent(admin, businessId, userId, body) {
   const key = String(body.agent_key || "");
   if (!KEYS.has(key)) return json(400, { ok: false, error: "Unknown agent." });
   const enabled = body.enabled === true;
+  if (enabled && (key === "warmer" || key === "outreacher")) {
+    return json(200, { ok: false, error: "Coming soon. This agent cannot be turned on." });
+  }
   if (enabled && key === "setter") {
     const prompt = await admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle();
     const gate = setterMayEnable({

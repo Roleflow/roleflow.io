@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
 import { liveSections } from "../account/setter-model.js";
-import { activitySeries, categoryTone, createdAgo, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
+import { activitySeries, categoryTone, createdPhrase, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
 import { openAddBusiness } from "../acquire/add-business.js";
@@ -147,6 +147,12 @@ function contactLabel(lead) {
   return contact || "—";
 }
 
+function gridLanguage() {
+  const requested = new URLSearchParams(location.search).get("lang");
+  if (requested === "es" || requested === "en") return requested;
+  try { return localStorage.getItem("roleflow.lang") === "es" ? "es" : "en"; } catch (_error) { return "en"; }
+}
+
 function sparkline(days) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 120 36");
@@ -266,6 +272,12 @@ function dayChart(series) {
   return block;
 }
 
+function readGridPreview() {
+  const host = location.hostname;
+  if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return false;
+  return new URLSearchParams(location.search).get("preview") === "1";
+}
+
 function readBizFixture() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1") return null;
@@ -276,7 +288,25 @@ function readBizFixture() {
 
 const preview = readBizFixture();
 const arriving = rememberCallback(window.location.href);
-if (preview) {
+if (readGridPreview() && !preview) {
+  hideBoot();
+  const lang = gridLanguage();
+  const es = lang === "es";
+  heading.innerHTML = es ? 'Tus <span class="g">negocios</span>' : 'Your <span class="g">businesses</span>';
+  document.title = es ? "Tus negocios · Roleflow" : "Your businesses · Roleflow";
+  sub.textContent = es ? "Vista previa. Estas tarjetas son datos de ejemplo." : "Preview. These cards are sample data.";
+  const now = Date.now();
+  paintBoard(null, { id: "preview" }, [
+    { id: "preview", agent_name: "Preview coaching", status: "active", created_at: new Date(now - 86400000 * 3).toISOString(), client_id: "preview" },
+    { id: "second", agent_name: "North studio", status: "paused", created_at: new Date(now - 86400000 * 12).toISOString(), client_id: "preview" }
+  ], new Map([
+    ["preview", { leads_per_day: [
+      { day: new Date(now - 86400000 * 2).toISOString().slice(0, 10), count: 1 },
+      { day: new Date(now - 86400000).toISOString().slice(0, 10), count: 2 },
+      { day: new Date(now).toISOString().slice(0, 10), count: 1 }
+    ] }]
+  ]), new Map(), false, "", new Set(), true);
+} else if (preview) {
   hideBoot();
   heading.textContent = preview.agent.agent_name || "Workforce";
   document.title = (preview.agent.agent_name || "Workforce") + " · Roleflow";
@@ -475,87 +505,55 @@ function paintSide(user, agents, route, isAdmin, roles) {
 }
 
 function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds) {
-  heading.innerHTML = isAdmin ? 'Businesses' : 'Your <span class="g">businesses</span>';
-  document.title = isAdmin ? "Businesses · Roleflow" : "Your businesses · Roleflow";
+  const es = gridLanguage() === "es";
+  heading.innerHTML = isAdmin ? "Businesses" : (es ? 'Tus <span class="g">negocios</span>' : 'Your <span class="g">businesses</span>');
+  document.title = isAdmin ? "Businesses · Roleflow" : (es ? "Tus negocios · Roleflow" : "Your businesses · Roleflow");
   const owned = agents.some((agent) => agent.client_id === user.id);
   sub.textContent = agents.length
-    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : "Each card opens leads, workflow, workforce, and assets.")
-    : (isAdmin ? "No setters are in the cache yet." : "No business is linked to this account yet.");
+    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : (es ? "Cada tarjeta abre leads, workflow, equipo y archivos." : "Each card opens leads, workflow, workforce, and assets."))
+    : (isAdmin ? "No setters are in the cache yet." : (es ? "Ningún negocio está vinculado a esta cuenta." : "No business is linked to this account yet."));
+  paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, false, owned);
+}
+
+function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sample, owned) {
+  const es = gridLanguage() === "es";
   app.innerHTML = "";
-  if (statsError) {
-    app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
-  }
-  const scroller = el("div", { class: "biz-scroller" });
-  const prev = el("button", { type: "button", class: "biz-arrow prev", "aria-label": "Previous businesses" }, ["←"]);
-  const next = el("button", { type: "button", class: "biz-arrow next", "aria-label": "Next businesses" }, ["→"]);
-  const grid = el("div", { class: "biz-row", id: "biz-row", tabindex: "0" });
+  if (statsError) app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
+  const grid = el("div", { class: "biz-board", id: "biz-board" });
   if (!agents.length) {
     grid.append(el("div", { class: "state" }, [
-      el("h2", { text: "No businesses yet" }),
-      el("p", { text: isAdmin ? "Setters show here after they are in the cache, even before a client is linked." : "Add the business name, or wait until an admin links one." })
+      el("h2", { text: es ? "Todavía no hay negocios" : "No businesses yet" }),
+      el("p", { text: isAdmin ? "Setters show here after they are in the cache, even before a client is linked." : (es ? "Añade el nombre del negocio, o espera a que un admin lo vincule." : "Add the business name, or wait until an admin links one.") })
     ]));
   }
   agents.forEach((agent) => {
     const stats = statsById.get(agent.id) || {};
     const week = last7(asSeries(stats.leads_per_day));
-    const total = Number(stats.total_leads);
-    const shown = Number.isFinite(total) ? total : week.total;
     const active = agent.status !== "paused";
-    const card = el("a", { class: "biz-card", href: "#" + agent.id + "/leads" });
+    const card = el("a", { class: "biz-card", href: sample ? "#list" : "#" + agent.id + "/leads" });
     card.addEventListener("click", (event) => {
       event.preventDefault();
-      go("#" + agent.id + "/leads");
+      if (!sample) go("#" + agent.id + "/leads");
     });
     const status = el("p", { class: "status-line" }, [
       el("i", { class: active ? "dot on" : "dot" }),
-      active ? "AI active" : "Paused"
+      active ? "AI active" : (es ? "IA inactiva" : "AI inactive")
     ]);
     const open = el("span", { class: "ext", "aria-hidden": "true" });
     open.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" d="M14 5h5v5M19 5l-9 9"/><path fill="none" stroke="currentColor" stroke-width="2" d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5"/></svg>';
-    const bits = [
-      open,
-      status,
-      el("h2", { text: agent.agent_name || "AI Setter" }),
-      el("p", { class: "card-client", text: clientLine(agent, peopleById) })
-    ];
+    const bits = [open, status, el("h2", { text: agent.agent_name || "AI Setter" })];
+    if (!sample) bits.push(el("p", { class: "card-client", text: clientLine(agent, peopleById) }));
     if (isAdmin && pendingIds.has(agent.id)) bits.push(el("p", { class: "pending-flag", text: "Pending publish" }));
-    bits.push(
-      el("p", { class: "mute", text: createdAgo(agent.created_at) }),
-      sparkline(week.days),
-      el("p", { class: "lead-count", text: String(shown) }),
-      el("p", { class: "mute", text: Number.isFinite(total) ? "Conversations in the sync" : "Leads in the last 7 days" })
-    );
+    bits.push(el("p", { class: "mute", text: createdPhrase(agent.created_at, es ? "es" : "en") }));
+    if (week.days.some((day) => day.count > 0)) bits.push(sparkline(week.days));
+    else bits.push(el("p", { class: "mute", text: es ? "Sin leads en los últimos 7 días" : "No leads in the last 7 days" }));
+    bits.push(el("p", { class: "lead-count", text: String(week.total) }));
+    bits.push(el("p", { class: "mute", text: es ? "Leads · últimos 7 días" : "Leads · last 7 days" }));
     card.append(...bits);
     grid.append(card);
   });
-  if (!isAdmin) grid.append(addCard(supabase, user, owned));
-  prev.addEventListener("click", () => scrollRow(grid, -1));
-  next.addEventListener("click", () => scrollRow(grid, 1));
-  grid.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      scrollRow(grid, 1);
-    } else if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      scrollRow(grid, -1);
-    }
-  });
-  const syncArrows = () => {
-    const max = grid.scrollWidth - grid.clientWidth;
-    const overflow = max > 2;
-    prev.hidden = !overflow;
-    next.hidden = !overflow;
-    prev.disabled = grid.scrollLeft <= 2;
-    next.disabled = grid.scrollLeft >= max - 2;
-  };
-  grid.addEventListener("scroll", syncArrows);
-  if (typeof ResizeObserver === "function") {
-    const observer = new ResizeObserver(() => syncArrows());
-    observer.observe(grid);
-  }
-  scroller.append(prev, grid, next);
-  app.append(scroller);
-  requestAnimationFrame(syncArrows);
+  if (!isAdmin) grid.append(addCard(supabase, user, owned, sample));
+  app.append(grid);
 }
 
 function scrollRow(row, direction) {
@@ -564,12 +562,13 @@ function scrollRow(row, direction) {
   row.scrollBy({ left: direction * width, behavior: "smooth" });
 }
 
-function addCard(supabase, user, owned) {
-  const card = el("button", { type: "button", class: "biz-card add add-business", id: "add-business" });
+function addCard(supabase, user, owned, sample) {
+  const es = gridLanguage() === "es";
+  const card = el("button", { type: "button", class: "biz-card add-business", id: "add-business" });
   card.append(el("span", { class: "add-plus", text: "+" }));
-  card.append(el("h2", { text: "Add business" }));
-  card.append(el("p", { text: owned ? "Add another business and review its setter prompt." : "Name, offer, and who the setter should book." }));
-  card.addEventListener("click", () => openAddBusiness({ supabase, preview: false }));
+  card.append(el("h2", { text: es ? "Añadir negocio" : "Add business" }));
+  card.append(el("p", { text: owned ? (es ? "Añade otro negocio y revisa el prompt de su setter." : "Add another business and review its setter prompt.") : (es ? "Nombre, oferta y a quién debe agendar el setter." : "Name, offer, and who the setter should book.") }));
+  card.addEventListener("click", () => openAddBusiness({ supabase, preview: sample === true }));
   void user;
   void linkByName;
   return card;

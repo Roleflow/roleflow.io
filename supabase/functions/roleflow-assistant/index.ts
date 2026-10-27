@@ -24,10 +24,9 @@ const MAP = [
   "Opportunities (#opportunities): the lead list, from Open through Postponed. Filters, notes, and a message queue that does not send while live sync is off.",
   "Performance (#performance): origins such as story, post, reel, ad, or a keyword, plus a 12-month projection from numbers the user types.",
   "Content (#content): files and links an agent can send, plus recordings.",
-  "Voice Gen (#voice): the owner's own voice notes by slot. A cloned voice is not used.",
-  "Lead Warmer (#warmer) and Outreacher (#outreacher): each stays off until it is turned on. The external sign-in button stays disabled until a real https address is configured.",
-  "Agentic Setter (#setter): the system prompt, version restore, reply delay, booking link, and a practice thread. Practice uses the selected model and does not send an Instagram message.",
-  "Comment voice (#commentvoice): keyword or intent rules that queue one private reply. It stays off until it is turned on. The reply is text.",
+  "Voice Gen (#voice): the owner's own voice notes by slot, including a Comment recording and the plain-language note for when to send it. A cloned voice is not used. Older comment-voice links open this page.",
+  "Lead Warmer (#warmer) and Outreacher (#outreacher): shown as coming later. Their pages do not turn them on.",
+  "Agentic Setter (#setter): the business brief, the system prompt, version restore, reply delay, and a simulator. The simulator uses the selected model and does not send an Instagram message.",
   "Follow Up Boss (#followup): quiet hours, stage, booking, and a cap. It stays off until it is turned on.",
   "Settings (#settings): the model key, Instagram connect, the eight configuration questions, sales links, and team invites.",
   "Admin roster (/admin/): one card per business. Open enters that business."

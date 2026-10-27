@@ -177,7 +177,7 @@ assert.match(pages, /Connect Instagram/);
 assert.match(pages, /Instagram connect is not available yet\./);
 assert.match(pages, /Try again/);
 assert.doesNotMatch(pages, /zernio/i);
-assert.match(pages, /#settings\/model/);
+assert.match(read("acquire/setter-workspace.js"), /#settings\/model/);
 assert.match(read("acquire/app.js"), /renderModelKey/);
 assert.match(read("acquire/app.js"), /canManageKeys/);
 assert.doesNotMatch(read("acquire/app.js"), /zernio|tailortalk/i);
