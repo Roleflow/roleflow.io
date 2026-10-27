@@ -66,7 +66,8 @@ assert.match(read("acquire/setter-workspace.js"), /Not analyzed/);
 assert.match(read("acquire/setter-workspace.js"), /Simulate follow-up/);
 assert.match(read("businesses/app.js"), /class: "biz-board"/);
 assert.match(read("businesses/app.js"), /No leads in the last 7 days/);
-assert.match(read("auth/site.css"), /grid-template-columns:repeat\(3,285px\)/);
+assert.match(read("auth/site.css"), /grid-template-columns:repeat\(3,300px\)/);
+assert.match(read("admin/acquisition-admin.js"), /businessCard\(/);
 assert.doesNotMatch(read("acquire/setter-workspace.js") + read("acquire/comment-slot.js"), /zernio/i);
 assert.doesNotMatch(read("acquire/client-pages.js"), /https?:\/\//);
 

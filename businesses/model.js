@@ -40,7 +40,11 @@ export function createdAgo(iso, now = Date.now()) {
     return "Created " + hours + (hours === 1 ? " hour ago" : " hours ago");
   }
   const days = Math.max(1, Math.round(seconds / 86400));
-  return "Created " + days + (days === 1 ? " day ago" : " days ago");
+  if (days < 30) return "Created " + days + (days === 1 ? " day ago" : " days ago");
+  const months = Math.max(1, Math.round(days / 30));
+  if (months < 12) return "Created " + months + (months === 1 ? " month ago" : " months ago");
+  const years = Math.max(1, Math.round(months / 12));
+  return "Created " + years + (years === 1 ? " year ago" : " years ago");
 }
 
 export function createdPhrase(iso, language, now = Date.now()) {
@@ -53,7 +57,11 @@ export function createdPhrase(iso, language, now = Date.now()) {
     .replace(/^Created (\d+) hour ago$/, "Creado hace $1 hora")
     .replace(/^Created (\d+) hours ago$/, "Creado hace $1 horas")
     .replace(/^Created (\d+) day ago$/, "Creado hace $1 día")
-    .replace(/^Created (\d+) days ago$/, "Creado hace $1 días");
+    .replace(/^Created (\d+) days ago$/, "Creado hace $1 días")
+    .replace(/^Created (\d+) month ago$/, "Creado hace $1 mes")
+    .replace(/^Created (\d+) months ago$/, "Creado hace $1 meses")
+    .replace(/^Created (\d+) year ago$/, "Creado hace $1 año")
+    .replace(/^Created (\d+) years ago$/, "Creado hace $1 años");
 }
 
 export function stageChip(stage) {

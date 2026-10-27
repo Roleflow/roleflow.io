@@ -6,6 +6,7 @@ import { activitySeries, categoryTone, createdPhrase, initials, last7, scrub, se
 import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
 import { openAddBusiness } from "../acquire/add-business.js";
+import { addBusinessCard, businessCard } from "./biz-board.js";
 import { cancelWorkforce, fixtureClient, mountWorkforce } from "./workforce.js";
 
 bindShell();
@@ -292,20 +293,22 @@ if (readGridPreview() && !preview) {
   hideBoot();
   const lang = gridLanguage();
   const es = lang === "es";
-  heading.innerHTML = es ? 'Tus <span class="g">negocios</span>' : 'Your <span class="g">businesses</span>';
+  heading.classList.add("biz-title");
+  heading.textContent = es ? "Tus negocios" : "Your businesses";
   document.title = es ? "Tus negocios · Roleflow" : "Your businesses · Roleflow";
   sub.textContent = es ? "Vista previa. Estas tarjetas son datos de ejemplo." : "Preview. These cards are sample data.";
   const now = Date.now();
   paintBoard(null, { id: "preview" }, [
-    { id: "preview", agent_name: "Preview coaching", status: "active", created_at: new Date(now - 86400000 * 3).toISOString(), client_id: "preview" },
-    { id: "second", agent_name: "North studio", status: "paused", created_at: new Date(now - 86400000 * 12).toISOString(), client_id: "preview" }
+    { id: "preview", agent_name: "Preview coaching", status: "active", created_at: new Date(now - 86400000 * 90).toISOString(), client_id: "preview" },
+    { id: "second", agent_name: "North studio", status: "paused", created_at: new Date(now - 86400000 * 12).toISOString(), client_id: "preview" },
+    { id: "third", agent_name: "Value Add Marketing", status: "active", created_at: new Date(now - 86400000 * 40).toISOString(), client_id: "preview" }
   ], new Map([
     ["preview", { leads_per_day: [
       { day: new Date(now - 86400000 * 2).toISOString().slice(0, 10), count: 1 },
       { day: new Date(now - 86400000).toISOString().slice(0, 10), count: 2 },
       { day: new Date(now).toISOString().slice(0, 10), count: 1 }
     ] }]
-  ]), new Map(), false, "", new Set(), true);
+  ]), new Map(), false, "", new Set(), true, false, new Set(["second"]));
 } else if (preview) {
   hideBoot();
   heading.textContent = preview.agent.agent_name || "Workforce";
@@ -399,6 +402,14 @@ async function boot(supabase, user) {
   if (!accessRes.error) {
     (accessRes.data || []).forEach((row) => roles.set(row.agent_id, row.role));
   }
+  const sharedIds = new Set();
+  roles.forEach((role, id) => {
+    if (role === "viewer" || role === "editor") sharedIds.add(id);
+  });
+  if (agents.length) {
+    const memberRes = await supabase.from("business_members").select("agent_id, status").in("agent_id", agents.map((agent) => agent.id)).eq("status", "active");
+    if (!memberRes.error) (memberRes.data || []).forEach((row) => sharedIds.add(row.agent_id));
+  }
   const pendingIds = new Set();
   if (isAdmin) {
     const pendingRes = await supabase.from("onboarding_submissions").select("user_id, publish_agent_id, publish_status").eq("publish_status", "pending");
@@ -419,7 +430,7 @@ async function boot(supabase, user) {
       go("#" + route.id + "/leads");
       return;
     }
-    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds);
+    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds);
     else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles);
     paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin, roles);
   }
@@ -504,18 +515,19 @@ function paintSide(user, agents, route, isAdmin, roles) {
   else nav.prepend(block);
 }
 
-function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds) {
+function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds) {
   const es = gridLanguage() === "es";
-  heading.innerHTML = isAdmin ? "Businesses" : (es ? 'Tus <span class="g">negocios</span>' : 'Your <span class="g">businesses</span>');
+  heading.classList.add("biz-title");
+  heading.textContent = isAdmin ? "Businesses" : (es ? "Tus negocios" : "Your businesses");
   document.title = isAdmin ? "Businesses · Roleflow" : (es ? "Tus negocios · Roleflow" : "Your businesses · Roleflow");
   const owned = agents.some((agent) => agent.client_id === user.id);
   sub.textContent = agents.length
     ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : (es ? "Cada tarjeta abre leads, workflow, equipo y archivos." : "Each card opens leads, workflow, workforce, and assets."))
     : (isAdmin ? "No setters are in the cache yet." : (es ? "Ningún negocio está vinculado a esta cuenta." : "No business is linked to this account yet."));
-  paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, false, owned);
+  paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, false, owned, sharedIds || new Set());
 }
 
-function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sample, owned) {
+function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sample, owned, sharedIds) {
   const es = gridLanguage() === "es";
   app.innerHTML = "";
   if (statsError) app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
@@ -530,26 +542,22 @@ function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, stat
     const stats = statsById.get(agent.id) || {};
     const week = last7(asSeries(stats.leads_per_day));
     const active = agent.status !== "paused";
-    const card = el("a", { class: "biz-card", href: sample ? "#list" : "#" + agent.id + "/leads" });
-    card.addEventListener("click", (event) => {
-      event.preventDefault();
-      if (!sample) go("#" + agent.id + "/leads");
+    const card = businessCard({
+      name: agent.agent_name || "AI Setter",
+      active,
+      activeText: es ? "IA activa" : "AI active",
+      shared: Boolean(sharedIds && sharedIds.has(agent.id)),
+      sharedText: es ? "Compartido" : "Shared",
+      created: createdPhrase(agent.created_at, es ? "es" : "en"),
+      leadLabel: es ? "Leads · últimos 7 días" : "Leads · last 7 days",
+      total: week.total,
+      days: week.days,
+      chartLabel: week.total ? "Leads over the last 7 days" : "No leads in the last 7 days",
+      href: sample ? "#list" : "#" + agent.id + "/leads",
+      onOpen: sample ? () => {} : () => go("#" + agent.id + "/leads")
     });
-    const status = el("p", { class: "status-line" }, [
-      el("i", { class: active ? "dot on" : "dot" }),
-      active ? "AI active" : (es ? "IA inactiva" : "AI inactive")
-    ]);
-    const open = el("span", { class: "ext", "aria-hidden": "true" });
-    open.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" d="M14 5h5v5M19 5l-9 9"/><path fill="none" stroke="currentColor" stroke-width="2" d="M16 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h5"/></svg>';
-    const bits = [open, status, el("h2", { text: agent.agent_name || "AI Setter" })];
-    if (!sample) bits.push(el("p", { class: "card-client", text: clientLine(agent, peopleById) }));
-    if (isAdmin && pendingIds.has(agent.id)) bits.push(el("p", { class: "pending-flag", text: "Pending publish" }));
-    bits.push(el("p", { class: "mute", text: createdPhrase(agent.created_at, es ? "es" : "en") }));
-    if (week.days.some((day) => day.count > 0)) bits.push(sparkline(week.days));
-    else bits.push(el("p", { class: "mute", text: es ? "Sin leads en los últimos 7 días" : "No leads in the last 7 days" }));
-    bits.push(el("p", { class: "lead-count", text: String(week.total) }));
-    bits.push(el("p", { class: "mute", text: es ? "Leads · últimos 7 días" : "Leads · last 7 days" }));
-    card.append(...bits);
+    if (!sample && clientLine(agent, peopleById)) card.dataset.client = clientLine(agent, peopleById);
+    if (isAdmin && pendingIds.has(agent.id)) card.append(el("p", { class: "pending-flag", text: "Pending publish" }));
     grid.append(card);
   });
   if (!isAdmin) grid.append(addCard(supabase, user, owned, sample));
@@ -564,14 +572,13 @@ function scrollRow(row, direction) {
 
 function addCard(supabase, user, owned, sample) {
   const es = gridLanguage() === "es";
-  const card = el("button", { type: "button", class: "biz-card add-business", id: "add-business" });
-  card.append(el("span", { class: "add-plus", text: "+" }));
-  card.append(el("h2", { text: es ? "Añadir negocio" : "Add business" }));
-  card.append(el("p", { text: owned ? (es ? "Añade otro negocio y revisa el prompt de su setter." : "Add another business and review its setter prompt.") : (es ? "Nombre, oferta y a quién debe agendar el setter." : "Name, offer, and who the setter should book.") }));
-  card.addEventListener("click", () => openAddBusiness({ supabase, preview: sample === true }));
+  void owned;
   void user;
   void linkByName;
-  return card;
+  return addBusinessCard({
+    text: es ? "Añadir negocio" : "Add business",
+    onClick: () => openAddBusiness({ supabase, preview: sample === true })
+  });
 }
 
 async function linkByName(supabase, name) {
@@ -591,6 +598,7 @@ async function paintDetail(supabase, user, agents, statsById, route, isAdmin, pe
     ]));
     return;
   }
+  heading.classList.remove("biz-title");
   heading.textContent = agent.agent_name || "AI Setter";
   document.title = (agent.agent_name || "Business") + " · Roleflow";
   const tab = DETAIL_TABS.find(([id]) => id === route.section)?.[1] || "";

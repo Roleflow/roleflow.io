@@ -1,5 +1,7 @@
 import { openAddBusiness } from "../acquire/add-business.js";
 import { scrubChannelCopy } from "../acquire/connect-instagram.js";
+import { addBusinessCard, businessCard } from "../businesses/biz-board.js";
+import { createdPhrase } from "../businesses/model.js";
 
 const ICP = "icp_acquisition";
 const WARMUP = "engagement_warmup";
@@ -50,8 +52,12 @@ export async function renderAcquisitionRoster(supabase, app) {
   const workersById = group(workers.data || [], "business_id");
   const targetsById = group(targets.error ? [] : targets.data || [], "agent_id");
   const waiting = requests.error ? [] : requests.data || [];
+  const shared = new Set();
+  const members = await supabase.from("business_members").select("agent_id, status").in("agent_id", ids).eq("status", "active");
+  if (!members.error) (members.data || []).forEach((row) => shared.add(row.agent_id));
   const shell = el("div");
-  shell.append(connectQueue(waiting, businesses, (row, status, buttons) => resolveConnectRequest(supabase, app, row, status, buttons)));
+  const queue = connectQueue(waiting, businesses, (row, status, buttons) => resolveConnectRequest(supabase, app, row, status, buttons), rosterLang());
+  if (queue) shell.append(queue);
   if (requests.error && !/schema cache|does not exist|PGRST205/i.test(requests.error.message || "")) {
     shell.append(el("p", { class: "roster-note", text: "Connect requests could not be read." }));
   }
@@ -61,6 +67,9 @@ export async function renderAcquisitionRoster(supabase, app) {
       detail: { text: waiting.length === 1 ? "An Instagram connection is waiting." : waiting.length + " Instagram connections are waiting." }
     }));
   }
+  const lang = rosterLang();
+  const title = document.getElementById("admin-title");
+  if (title) title.textContent = lang === "es" ? "Tus negocios" : "Your businesses";
   const root = el("div", { class: "biz-grid", id: "admin-roster" });
   if (targets.error) {
     root.append(el("p", { class: "roster-note", text: "Lead history could not be read." }));
@@ -73,10 +82,11 @@ export async function renderAcquisitionRoster(supabase, app) {
       link: linkById.get(business.id) || null,
       ig: igById.get(business.id) || null,
       workers: workersById.get(business.id) || [],
-      leads: targets.error ? null : (targetsById.get(business.id) || [])
-    }));
+      leads: targets.error ? null : (targetsById.get(business.id) || []),
+      shared: shared.has(business.id)
+    }, lang));
   });
-  root.append(addBusinessCard(() => openAddBusiness({ supabase, preview: false })));
+  root.append(addBusinessCard({ id: "add-business", text: lang === "es" ? "Añadir negocio" : "Add business", onClick: () => openAddBusiness({ supabase, preview: false }) }));
   shell.append(root);
   app.replaceChildren(shell);
 }
@@ -87,17 +97,65 @@ export function renderAddPreview(app) {
   sample.append(el("h2", { text: "Roleflow" }));
   sample.append(el("p", { text: "Live" }));
   root.append(sample);
-  root.append(addBusinessCard(() => openAddBusiness({ supabase: null, preview: true })));
+  root.append(addBusinessCard({ text: "Add business", onClick: () => openAddBusiness({ supabase: null, preview: true }) }));
   app.replaceChildren(root);
 }
 
-function addBusinessCard(onClick) {
-  const add = el("button", { type: "button", class: "biz-tile add-business", id: "add-business" });
-  add.append(el("span", { class: "add-plus", text: "+" }));
-  add.append(el("h2", { text: "Add business" }));
-  add.append(el("p", { text: "Name, offer, and who the setter should book." }));
-  add.addEventListener("click", onClick);
-  return add;
+export function renderRosterPreview(app) {
+  const params = new URLSearchParams(location.search);
+  const title = document.getElementById("admin-title");
+  if (title) title.textContent = params.get("lang") === "es" ? "Tus negocios" : "Your businesses";
+  const now = Date.now();
+  const businesses = [
+    { id: "w1", name: "Chad Owens", created_at: new Date(now - 86400000 * 90).toISOString() },
+    { id: "w2", name: "Thomas Miller", created_at: new Date(now - 86400000 * 120).toISOString() },
+    { id: "w3", name: "Value Add Marketing", created_at: new Date(now - 86400000 * 120).toISOString() },
+    { id: "w4", name: "Shadow Boys", created_at: new Date(now - 86400000 * 60).toISOString() }
+  ];
+  const leads = new Map([
+    ["w1", previewLeadRows(10)],
+    ["w2", []],
+    ["w3", []],
+    ["w4", []]
+  ]);
+  const waiting = params.get("connect") === "1" ? [
+    { id: "preview-a", workspace_id: "w1", username: "vam.coach", status: "pending", notes: "Business account" }
+  ] : [];
+  const lang = params.get("lang") === "es" ? "es" : "en";
+  const shell = el("div");
+  const queue = connectQueue(waiting, businesses, (row, status) => {
+    row.status = status;
+    renderRosterPreview(app);
+  }, lang);
+  if (queue) shell.append(queue);
+  const root = el("div", { class: "biz-grid", id: "admin-roster" });
+  businesses.forEach((business) => {
+    root.append(gridCard(business, {
+      settings: { system_enabled: true },
+      link: null,
+      ig: null,
+      leads: leads.get(business.id) || [],
+      shared: business.id === "w4"
+    }, lang));
+  });
+  root.append(addBusinessCard({
+    text: lang === "es" ? "Añadir negocio" : "Add business",
+    onClick: () => openAddBusiness({ supabase: null, preview: true })
+  }));
+  shell.append(root);
+  app.replaceChildren(shell);
+}
+
+function previewLeadRows(total) {
+  const start = new Date();
+  start.setHours(12, 0, 0, 0);
+  const rows = [];
+  for (let i = 0; i < total; i += 1) {
+    const day = new Date(start);
+    day.setDate(start.getDate() - (i % 5));
+    rows.push({ created_at: day.toISOString() });
+  }
+  return rows;
 }
 
 export function renderConnectPreview(app) {
@@ -111,10 +169,11 @@ export function renderConnectPreview(app) {
   ];
   const draw = () => {
     const waiting = rows.filter((row) => row.status === "pending" || row.status === "in_progress");
-    app.replaceChildren(connectQueue(waiting, businesses, (row, status) => {
+    const queue = connectQueue(waiting, businesses, (row, status) => {
       row.status = status;
       draw();
-    }));
+    });
+    app.replaceChildren(queue || el("p", { class: "roster-note", text: waiting.length ? "" : "" }));
   };
   draw();
 }
@@ -136,23 +195,25 @@ function resolveConnectRequest(supabase, app, row, status, buttons) {
   });
 }
 
-function connectQueue(rows, businesses, onResolve) {
-  const section = el("section", { class: "agent", id: "connect-requests" });
-  section.append(el("h2", { text: "Connect requests" }));
-  section.append(el("p", { class: "roster-note", text: "Instagram usernames waiting for this channel to be finished." }));
-  if (!rows.length) {
-    section.append(el("p", { text: "No Instagram connections are waiting." }));
-    return section;
-  }
-  const names = new Map((businesses || []).map((row) => [row.id, row.name || "Untitled business"]));
+function rosterLang() {
+  try { return localStorage.getItem("roleflow.lang") === "es" ? "es" : "en"; } catch (_error) { return "en"; }
+}
+
+function connectQueue(rows, businesses, onResolve, lang) {
+  if (!rows.length) return null;
+  const section = el("section", { class: "connect-banner", id: "connect-requests" });
+  const heading = lang === "es" ? "Solicitudes de conexión" : "Connect requests";
+  section.append(el("h2", { text: heading + " · " + rows.length }));
+  const es = lang === "es";
+  const names = new Map((businesses || []).map((row) => [row.id, row.name || (es ? "Negocio sin nombre" : "Untitled business")]));
   rows.forEach((row) => {
     const block = el("article", { class: "roster-biz" });
-    block.append(el("h3", { text: names.get(row.workspace_id) || "This business" }));
+    block.append(el("h3", { text: names.get(row.workspace_id) || (es ? "Este negocio" : "This business") }));
     block.append(el("p", { text: "@" + row.username + (row.notes ? " · " + row.notes : "") }));
-    block.append(el("p", { text: row.status === "in_progress" ? "Syncing" : "Waiting" }));
+    block.append(el("p", { text: row.status === "in_progress" ? (es ? "Sincronizando" : "Syncing") : (es ? "En espera" : "Waiting") }));
     const actions = el("div", { class: "filters" });
-    const connected = el("button", { type: "button", class: "btn sm" }, ["Mark connected"]);
-    const failed = el("button", { type: "button", class: "btn sm ghost" }, ["Mark failed"]);
+    const connected = el("button", { type: "button", class: "btn sm" }, [es ? "Marcar conectado" : "Mark connected"]);
+    const failed = el("button", { type: "button", class: "btn sm ghost" }, [es ? "Marcar fallido" : "Mark failed"]);
     const buttons = [connected, failed];
     connected.addEventListener("click", () => onResolve(row, "connected", buttons));
     failed.addEventListener("click", () => onResolve(row, "failed", buttons));
@@ -163,33 +224,51 @@ function connectQueue(rows, businesses, onResolve) {
   return section;
 }
 
-function gridCard(business, data) {
-  const tile = el("article", { class: "biz-tile" });
+function gridCard(business, data, lang) {
   const on = Boolean(data.settings && data.settings.system_enabled);
-  const head = el("div", { class: "roster-head" });
-  head.append(el("span", { class: on ? "ai-dot on" : "ai-dot", title: on ? "AI active" : "AI off" }));
-  head.append(el("strong", { text: on ? "AI active" : "AI off" }));
-  tile.append(head);
-  tile.append(el("h2", { text: business.name || "Untitled business" }));
-  tile.append(el("p", { class: "roster-meta", text: "Created " + createdLabel(business.created_at) }));
-  tile.append(el("p", { class: "roster-meta", text: ownerLine(data.profile) }));
-  const days = sparkDays(data.leads);
-  const total = days.reduce((sum, day) => sum + day.count, 0);
-  tile.append(sparkSvg(days));
-  tile.append(el("p", { text: data.leads == null ? "Lead history could not be read." : total + " leads in the last 7 days" }));
-  tile.append(el("p", { text: instagramLine(data.ig, data.link) }));
-  tile.append(el("p", { text: setterLinkLine(data.link, data.settings) }));
-  const actions = el("div", { class: "filters" });
-  actions.append(el("a", {
-    class: "btn sm",
-    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#dashboard"
-  }, ["Open"]));
-  actions.append(el("a", {
-    class: "btn sm ghost",
-    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#pipeline"
-  }, ["CRM"]));
-  tile.append(actions);
-  return tile;
+  const days = data.leads == null ? [] : sparkDays(data.leads);
+  const total = data.leads == null ? null : days.reduce((sum, day) => sum + day.count, 0);
+  const es = lang === "es";
+  return businessCard({
+    name: business.name || (es ? "Negocio sin nombre" : "Untitled business"),
+    active: on,
+    activeText: es ? "IA activa" : "AI active",
+    shared: Boolean(data.shared),
+    sharedText: es ? "Compartido" : "Shared",
+    created: createdPhrase(business.created_at, es ? "es" : "en"),
+    leadLabel: es ? "Leads · últimos 7 días" : "Leads · last 7 days",
+    total,
+    days,
+    chartLabel: total ? "Leads over the last 7 days" : "No leads in the last 7 days",
+    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#dashboard",
+    menu: cardMenu(business, data)
+  });
+}
+
+function cardMenu(business, data) {
+  const id = encodeURIComponent(business.id);
+  const wrap = el("div", { class: "biz-menu-wrap" });
+  const button = el("button", {
+    type: "button",
+    class: "biz-kebab",
+    "aria-label": "Business actions",
+    "aria-expanded": "false"
+  }, ["⋮"]);
+  const menu = el("div", { class: "biz-menu", hidden: true });
+  menu.append(el("a", { href: "/account/acquisition/?business=" + id + "#dashboard" }, ["Open"]));
+  menu.append(el("a", { href: "/account/acquisition/?business=" + id + "#pipeline" }, ["CRM"]));
+  menu.append(el("p", { text: instagramLine(data.ig, data.link) }));
+  menu.append(el("p", { text: setterLinkLine(data.link, data.settings) }));
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const next = menu.hidden;
+    document.querySelectorAll(".biz-menu").forEach((node) => { node.hidden = true; });
+    menu.hidden = !next;
+    button.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+  });
+  wrap.append(button, menu);
+  return wrap;
 }
 
 function sparkDays(rows) {
@@ -200,7 +279,7 @@ function sparkDays(rows) {
   for (let i = 0; i < 7; i++) {
     const day = new Date(start);
     day.setDate(start.getDate() + i);
-    days.push({ key: day.toISOString().slice(0, 10), count: 0 });
+    days.push({ key: day.toISOString().slice(0, 10), count: 0, label: String(day.getDate()) });
   }
   (rows || []).forEach((row) => {
     const key = String(row.created_at || "").slice(0, 10);
@@ -210,145 +289,6 @@ function sparkDays(rows) {
   return days;
 }
 
-function sparkSvg(days) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 100 46");
-  svg.setAttribute("class", "spark");
-  svg.setAttribute("aria-hidden", "true");
-  const max = Math.max(1, ...days.map((day) => day.count));
-  const points = days.map((day, index) => {
-    const x = days.length === 1 ? 0 : (index / (days.length - 1)) * 100;
-    const y = 42 - (day.count / max) * 36;
-    return x.toFixed(1) + "," + y.toFixed(1);
-  }).join(" ");
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-  line.setAttribute("points", points);
-  svg.append(line);
-  return svg;
-}
-
-function createdLabel(value) {
-  if (!value) return "date not recorded";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "date not recorded";
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
-
-function businessCard(business, data) {
-  const section = el("section", { class: "roster-biz" });
-  const head = el("div", { class: "roster-head" });
-  head.append(el("h2", { text: business.name || "Untitled business" }));
-  const actions = el("div", { class: "filters" });
-  actions.append(el("a", {
-    class: "btn sm",
-    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#dashboard"
-  }, ["Open"]));
-  actions.append(el("a", {
-    class: "btn sm ghost",
-    href: "/account/acquisition/?business=" + encodeURIComponent(business.id) + "#pipeline"
-  }, ["CRM"]));
-  head.append(actions);
-  section.append(head);
-  section.append(el("p", { class: "roster-meta", text: ownerLine(data.profile) }));
-  section.append(el("p", { text: instagramLine(data.ig, data.link) }));
-  section.append(el("p", { text: setterLinkLine(data.link, data.settings) }));
-  section.append(el("p", { text: workerLine(data.workers) }));
-  section.append(el("p", { text: systemLine(data.settings) }));
-  const provisioned = data.roles.filter((row) => ROLE_SET.has(row.role));
-  if (!provisioned.length) {
-    section.append(el("p", { text: "No agents provisioned yet. Open the CRM and finish setup." }));
-    return section;
-  }
-  const agents = el("div", { class: "agents" });
-  const icp = data.roles.find((row) => row.role === ICP);
-  const warmup = data.roles.find((row) => row.role === WARMUP);
-  const outreach = data.roles.find((row) => row.role === OUTREACH);
-  const setterRows = SETTER_ROLES.map((role) => data.roles.find((row) => row.role === role)).filter(Boolean);
-  if (icp) agents.append(icpCard(icp, data));
-  if (warmup || outreach) agents.append(warmupCard(warmup, outreach, data));
-  if (setterRows.length) agents.append(setterCard(setterRows, data));
-  section.append(agents);
-  return section;
-}
-
-function icpCard(row, data) {
-  const status = roleStatus(row);
-  const cap = data.settings && data.settings.daily_cap;
-  const lines = [
-    cap ? "Today " + countToday(row, data.settings) + " / " + cap : "Daily cap not set",
-    activityLine([row.last_run_at, newestHeartbeat(data.workers)])
-  ];
-  if (data.targetCount != null) lines.push("Profiles found today: " + countToday(row, data.settings));
-  return agentCard("ICP Target Acquisition", status, lines);
-}
-
-function warmupCard(warmup, outreach, data) {
-  const present = [warmup, outreach].filter(Boolean);
-  const status = bundleStatus(present);
-  const lines = [];
-  if (warmup) lines.push("Warm-up today " + countToday(warmup, data.settings));
-  if (outreach) lines.push("Outreach today " + countToday(outreach, data.settings));
-  lines.push(activityLine([
-    warmup && warmup.last_run_at,
-    outreach && outreach.last_run_at,
-    newestHeartbeat(data.workers)
-  ]));
-  if (!data.ig || data.ig.status !== "connected") lines.push("Instagram: not connected");
-  return agentCard("Warm-up and outreach", status, lines);
-}
-
-function setterCard(rows, data) {
-  const provider = (data.settings && data.settings.setter_provider) || "roleflow_meta";
-  const linkStatus = data.link && data.link.status;
-  const pending = provider === "engine" && (!data.link || linkStatus === "pending" || linkStatus === "disconnected");
-  const status = linkStatus === "error"
-    ? { label: "Needs attention", kind: "wait" }
-    : pending
-      ? { label: "Pending activation", kind: "wait" }
-      : bundleStatus(rows);
-  const lines = [
-    activityLine([
-      ...rows.map((row) => row.last_run_at),
-      data.link && data.link.last_synced_at,
-      data.link && data.link.webhook_seen_at
-    ])
-  ];
-  if (data.link && data.link.last_sync_error) lines.push(data.link.last_sync_error);
-  else if (pending) lines.push("The setter stays pending until the engine agent is linked.");
-  return agentCard("Roleflow Setter Engine", status, lines);
-}
-
-function agentCard(name, status, lines) {
-  const card = el("article", { class: "agent" });
-  const head = el("header");
-  head.append(el("h3", { text: name }), pill(status.label, status.kind));
-  card.append(head);
-  lines.filter(Boolean).forEach((line) => card.append(el("p", { text: line })));
-  return card;
-}
-
-function roleStatus(row) {
-  if (!row) return { label: "Not provisioned", kind: "off" };
-  if (row.status === "active") return { label: "Active", kind: "on" };
-  if (row.status === "paused") return { label: "Paused", kind: "off" };
-  return { label: "Pending activation", kind: "wait" };
-}
-
-function bundleStatus(rows) {
-  if (!rows.length) return { label: "Not provisioned", kind: "off" };
-  const active = rows.filter((row) => row.status === "active").length;
-  if (active === rows.length) return { label: "Active", kind: "on" };
-  if (active === 0) return { label: "Paused", kind: "off" };
-  return { label: "Mixed", kind: "wait" };
-}
-
-function ownerLine(profile) {
-  if (!profile) return "Owner not on file";
-  const name = String(profile.full_name || "").trim();
-  const email = String(profile.email || "").trim();
-  if (name && email) return name + " · " + email;
-  return email || name || "Owner not on file";
-}
 
 function instagramLine(ig) {
   if (ig && ig.username && ig.status === "connected") return "Instagram: @" + cleanHandle(ig.username);
@@ -365,72 +305,8 @@ function setterLinkLine(link, settings) {
   return "Setter link: Not linked · " + provider;
 }
 
-function workerLine(workers) {
-  if (!workers.length) return "No worker key yet";
-  const live = workers.find((row) => row.enabled) || workers[0];
-  const beat = live.last_heartbeat_at ? "Last heartbeat " + when(live.last_heartbeat_at) : "No heartbeat yet";
-  if (!live.enabled || live.status === "paused") return "Worker paused · " + beat;
-  return "Worker " + (live.status || "offline") + " · " + beat;
-}
-
-function systemLine(settings) {
-  if (!settings) return "System not set up";
-  const system = settings.system_enabled ? "System on" : "System off";
-  const cap = settings.daily_cap ? "Daily cap " + settings.daily_cap + " targets" : "Daily cap not set";
-  const setup = settings.onboarding_step && settings.onboarding_step !== "live" ? " · Setup not finished" : "";
-  return system + " · " + cap + setup;
-}
-
-function countToday(row, settings) {
-  if (!row || row.daily_count_on == null) return 0;
-  const today = localToday(settings && settings.timezone);
-  return String(row.daily_count_on).slice(0, 10) === today ? Number(row.daily_count) || 0 : 0;
-}
-
-function activityLine(values) {
-  const stamp = latestStamp(values);
-  return stamp ? "Last activity " + when(stamp) : "No activity yet";
-}
-
-function newestHeartbeat(workers) {
-  return latestStamp((workers || []).map((row) => row.last_heartbeat_at));
-}
-
-function latestStamp(values) {
-  const times = (values || []).filter(Boolean).map((value) => new Date(value).getTime()).filter((time) => !Number.isNaN(time));
-  if (!times.length) return "";
-  return new Date(Math.max(...times)).toISOString();
-}
-
-function localToday(timeZone) {
-  try {
-    return new Intl.DateTimeFormat("en-CA", { timeZone: timeZone || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  } catch {
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  }
-}
-
 function cleanHandle(value) {
   return String(value || "").trim().replace(/^@/, "");
-}
-
-function when(value) {
-  const date = new Date(value);
-  const time = date.getTime();
-  if (Number.isNaN(time)) return "never";
-  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
-  if (seconds < 45) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return minutes + " min ago";
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return hours + " h ago";
-  const days = Math.round(hours / 24);
-  if (days < 14) return days + " d ago";
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
-
-function pill(label, kind) {
-  return el("span", { class: "status-pill " + (kind || "off"), text: label });
 }
 
 function group(rows, key) {

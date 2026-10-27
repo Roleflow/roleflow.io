@@ -3,7 +3,7 @@ import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession 
 import { bindShell, markNav } from "../auth/ui.js";
 import { renderApplications } from "./applications.js";
 import { renderCrm } from "./crm.js";
-import { renderAcquisitionRoster, renderAddPreview, renderConnectPreview } from "./acquisition-admin.js";
+import { renderAcquisitionRoster, renderAddPreview, renderConnectPreview, renderRosterPreview } from "./acquisition-admin.js";
 import { bindAssistant } from "../acquire/assistant.js";
 
 bindShell();
@@ -47,10 +47,13 @@ const arriving = rememberCallback(window.location.href);
 const previewHost = location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.hostname.endsWith(".vercel.app");
 const previewAdmin = previewHost && new URLSearchParams(location.search).get("preview") === "1";
 if (previewAdmin) {
-  hello.textContent = "Preview";
+  hello.textContent = "Signed in as owner@example.com.";
+  logoutBtn.hidden = false;
   hideBoot();
-  if (new URLSearchParams(window.location.search).get("add") === "1") renderAddPreview(app);
-  else renderConnectPreview(app);
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("add") === "1") renderAddPreview(app);
+  else if (params.get("queue") === "1") renderConnectPreview(app);
+  else renderRosterPreview(app);
 } else if (arriving.type === "recovery") {
   window.location.replace("/reset/" + window.location.hash);
 } else if (!isConfigured()) {
