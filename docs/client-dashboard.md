@@ -5,6 +5,7 @@ Three migrations in this area are **NOT APPLIED**. Apply them yourself when you 
 - `supabase/migrations/20261026120000_client_dashboard_agents.sql` adds row-level security and does not delete TailorTalk rows. Until it is applied, every agent switch reads as off and no agent send leaves Roleflow.
 - `supabase/migrations/20261026140000_business_model_keys.sql` limits who can save or remove a model key. It does not recreate `private.business_llm_secrets` and does not delete a key. Until it is applied, the older save function still allows an editor to set a key.
 - `supabase/migrations/20261026160000_prompt_versions_and_comment_voice.sql` adds prompt version history, the comment-voice switch (default off), rule and decision tables, and copies a linked agent's deployed section instructions into `acq_agent_prompts` only when that body is empty. The instruction text is not rewritten. It does not drop tables. Until it is applied, version history and comment voice cannot be saved.
+- `supabase/migrations/20261027190000_setter_claude.sql` adds `acq_settings.setter_claude_mode` (`default` or `own`). It does not recreate the key table and does not delete a key. **NOT APPLIED**. Until it is applied, Settings cannot store the Claude choice and setter replies stay on the current model.
 
 ## What you set
 
@@ -23,8 +24,11 @@ Platform model keys. The reply engine and the try panel use the business's own s
 - `XAI_API_KEY` and optional `XAI_MODEL`
 - `OPENAI_API_KEY` and optional `OPENAI_MODEL`
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`, and optional `GEMINI_MODEL`
+- `ANTHROPIC_API_KEY` — platform Claude Sonnet key for setter replies. It is not set yet. If it is missing, the setter keeps its current model and the function logs that it fell back. Do not put a business key in this secret.
 
 Each business can save its own xAI, OpenAI, or Gemini key from Settings (linked from Agentic Setter). The key is encrypted with `extensions.pgp_sym_encrypt` and the server-held `llm_token_key`. After save, the browser receives only the last 4 characters. `acq_llm_read_key` is service-role only. Only the workspace owner, an owner member, or a platform admin can save or remove it. Test key calls `llm-check`, which asks the provider for the single word `pong` and returns OK or a redacted error. A typed key is used once for that check and is not stored.
+
+Setter replies use Claude Sonnet (`claude-sonnet-5-5`) when a key is available. Settings → AI model chooses Roleflow default or a business Claude key. Resolution order: the business key when the mode is `own` and a key is saved, then `ANTHROPIC_API_KEY`, then the setter's current model. An auth error on the business key is logged without the key, shown in the panel, and the next model answers. The practice thread keeps the same prompt and output. Token counts are logged without the reply text.
 
 The follow-up job and the outbox tick use the cron secret already stored in `private.acquisition_settings` (`cron_secret`), read with `acq_read_cron_secret`. There is no new cron env name.
 

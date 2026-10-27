@@ -39,7 +39,7 @@ const COPY = {
     followNumber: "Follow-up number",
     delay: "Simulate the reply delay. Leave this off to skip the wait. A wait of 0 is allowed.",
     empty: "The thread is empty. Write as the lead.",
-    configured: "Configured model: Gemini 3 Flash",
+    configured: "Configured model: Claude Sonnet",
     previewReply: "Preview reply. Nothing was sent.",
     businessLine: "Sent as the business in this preview. Nothing was sent on Instagram.",
     settings: "Agent settings",
@@ -60,7 +60,7 @@ const COPY = {
     imported: "Imported",
     team: "Team",
     quality: "Prompt quality",
-    model: "Gemini 3 Flash"
+    model: "Claude Sonnet"
   },
   es: {
     business: "Negocio",
@@ -95,7 +95,7 @@ const COPY = {
     followNumber: "Número de seguimiento",
     delay: "Simula la espera de respuesta. Déjalo apagado para saltarla. Una espera de 0 está permitida.",
     empty: "El hilo está vacío. Escribe como el lead.",
-    configured: "Modelo configurado: Gemini 3 Flash",
+    configured: "Modelo configurado: Claude Sonnet",
     previewReply: "Respuesta de vista previa. No se envió nada.",
     businessLine: "Enviado como el negocio en esta vista previa. No se envió nada en Instagram.",
     settings: "Ajustes del agente",
@@ -116,7 +116,7 @@ const COPY = {
     imported: "Importado",
     team: "Equipo",
     quality: "Calidad del prompt",
-    model: "Gemini 3 Flash"
+    model: "Claude Sonnet"
   }
 };
 

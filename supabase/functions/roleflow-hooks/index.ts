@@ -2,7 +2,7 @@
 // Conversions use a workspace API key. The signing secret is never returned.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
-import { completeChat, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { clientReplyView, completeChat, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
 import { flushSyncNotice, loadResendConfig, sendSyncNotice, SYNC_INBOX } from "../_shared/sync-notice.js";
 
 const cors = {
@@ -144,28 +144,47 @@ async function promptTest(req: Request, body: { business_id?: string; message?: 
   const fallback = "Test only. Nothing was sent to a lead.";
   const admin = adminClient();
   const env = Deno.env.toObject();
-  const loaded = await loadBusinessRuntime(admin, businessId, "setter", env);
-  if (!loaded.runtime) return json(200, { ok: true, reply: fallback, sent: false });
+  const loaded = await loadSetterReply(admin, businessId, env);
+  if (!loaded.chain.length) return json(200, clientReplyView({ ok: true, reply: fallback, sent: false }));
   const sections = body.sections && typeof body.sections === "object" ? body.sections : {};
   const system = "This is a private test of a setter. Nothing you write is sent to a lead or to Instagram. Reply in one short message, in the setter's voice.\n\n" +
     Object.entries(sections).map(([name, text]) => name + "\n" + String(text || "").slice(0, 3000)).join("\n\n");
+  let notice = "";
   try {
-    const runtime = loaded.runtime;
-    if (runtime.provider === "xai") runtime.endpoint = "https://api.x.ai/v1/chat/completions";
+    loaded.chain.forEach((step) => {
+      if (step.provider === "xai") step.endpoint = "https://api.x.ai/v1/chat/completions";
+    });
     const result = await completeChat({
-      runtime,
-      fallback: loaded.fallback,
+      chain: loaded.chain,
       system,
       messages: [{ role: "user", content: message }],
       temperature: 0.4,
       maxTokens: 300,
-      onError: (info) => logLlmError(admin, { businessId, purpose: "setter", ...info })
+      onError: async (info) => {
+        const authNotice = info.auth && info.source === "own";
+        await logLlmError(admin, {
+          businessId,
+          purpose: "setter",
+          ...info,
+          message: authNotice ? "This business's Claude API key was rejected. Fell back to the next model." : info.message
+        });
+        if (authNotice) notice = "This business's Claude API key was rejected. The setter used the next model.";
+      }
     });
     const reply = String(result.text || "").trim();
-    if (!reply) return json(200, { ok: true, reply: fallback, sent: false });
-    return json(200, { ok: true, reply: reply.slice(0, 800), sent: false });
+    if (!reply) return json(200, clientReplyView({ ok: true, reply: fallback, sent: false, notice }));
+    return json(200, clientReplyView({
+      ok: true,
+      reply: reply.slice(0, 800),
+      sent: false,
+      notice,
+      provider: result.provider,
+      model: result.model,
+      fell_back: result.fellBack === true,
+      usage: result.usage || undefined
+    }, loaded.chain.map((step) => step.apiKey)));
   } catch (_error) {
-    return json(200, { ok: true, reply: fallback, sent: false });
+    return json(200, clientReplyView({ ok: true, reply: fallback, sent: false }));
   }
 }
 
