@@ -317,11 +317,12 @@ html.js-motion [data-reveal].is-in{opacity:1;transform:none;transition:transform
 @media(max-width:720px){
   .top{top:8px;width:calc(100% - 16px);margin-top:8px;border-radius:16px}
   .top .in{grid-template-columns:1fr auto auto;min-height:56px;padding:6px 8px 6px 12px;gap:8px}
-  .nav-burger{display:inline-flex;grid-column:2}
-  .nav-actions{grid-column:3}
+  .brand{grid-column:1;grid-row:1}
+  .nav-burger{display:inline-flex;grid-column:2;grid-row:1}
+  .nav-actions{grid-column:3;grid-row:1}
   .nav-actions .nav-access{display:none}
   .top.is-open .nav-access-link{display:inline-flex}
-  .nav-links{display:none;grid-column:1 / -1;flex-direction:column;align-items:flex-start;gap:0;padding:4px 8px 10px}
+  .nav-links{display:none;grid-column:1 / -1;grid-row:2;flex-direction:column;align-items:flex-start;gap:0;padding:4px 8px 10px}
   .top.is-open .nav-links{display:flex}
   .nav-links a{min-height:44px;display:inline-flex;align-items:center;white-space:normal}
   .hero{padding:28px 0 8px}
