@@ -159,7 +159,7 @@ AG_EN = '''
 <p>Agency owners get pitched tools that promise to run every client's Instagram. That is not Roleflow. Roleflow runs the agency owner's own Instagram DMs: the ones where a founder asks if you can take on their account, what a retainer costs, and whether you have room this month. If you sell a high-ticket service from your personal brand, you have the same leak as a coach. Leads wait. Follow-ups slip because you are in a client delivery. Setters on your team get managed instead of you selling the next account.</p>
 <p>The conversation is commercial. Budget, scope, and timing. Roleflow replies in seconds, sends personal voice notes you record, follows up, and books a qualified call. It does not log into a client's profile. It does not post. It does not replace the operators who deliver the work you sell.</p>
 <h2>Qualification, stated plainly</h2>
-<p>20+ DMs a day on the Instagram account we would run, an offer above $1,000, a close rate above 20%, and $30k+ a month collected. An agency that sells $500 setup fees, or that lives in email and Upwork, does not qualify. Instagram DMs only.</p>
+<p>20+ DMs a day on the Instagram account we would run, an offer above $1,000, a close rate above 20%, and $30k+ a month collected. An agency whose offer is $500, or that lives in email and Upwork, does not qualify. Instagram DMs only.</p>
 <p>Delivery weeks are when agency DMs go cold. You are in a client Slack, and the founder who asked about a retainer on Monday has booked another shop by Thursday. Roleflow is the reply that still goes out on Tuesday night, in your voice, without you opening Instagram. It asks budget and timing. It does not pitch a package you do not sell. The call it books is for your offer, on your account, not for a client's. No client logo and no revenue claim is added here. If a founder asks for a proposal, the setter books the call and leaves the scope document to you. It does not send a price you have not approved. Quotes stay in your hands.</p>
 <p>Roleflow is the only done-for-you AI DM setter for Instagram with personal voice notes. We build the system on the agency owner's own Instagram and we run it. The first reply, the follow-up, and the booking stay with Roleflow. The delivery team stays on client work, and the closer takes the call. [CONFIRM: review/approval process.] [CONFIRM: official Meta API or not; messaging-window compliance.] Setup time: [CONFIRM]. See <a href="/for/consultants/">consultants</a> and <a href="/for/course-creators/">course creators</a>.</p>
 '''
@@ -222,6 +222,7 @@ RES_EN = '''
 <ul>
 <li><a href="/what-is-an-ai-dm-setter/">What is an AI DM setter</a></li>
 <li><a href="/faq/">FAQ</a></li>
+<li><a href="/pricing/">Pricing</a></li>
 <li><a href="/best-ai-dm-setters/">Best AI DM setters</a></li>
 <li><a href="/vs/ripdrip/">Roleflow vs RipDrip</a></li>
 <li><a href="/vs/mochi/">Roleflow vs Mochi</a></li>
@@ -293,6 +294,16 @@ PAGES = [
         body_en="<p>Placeholders stay until Diego confirms them. They are not guesses.</p>" + links_en(),
         body_es="<p>Los marcadores se quedan hasta que Diego los confirme. No son suposiciones.</p>" + links_es(),
         faq_en=FAQ_EN, faq_es=FAQ_ES),
+    D.P("pricing", "es/precios", "Pricing", "Precios", skip_es=True,
+        title_en="Pricing | Roleflow",
+        title_es="Precios | Roleflow",
+        desc_en="$0 upfront + 10% of revenue generated, no retainer. Roleflow replies to Instagram DMs in seconds, sends voice notes you record, and books qualified calls.",
+        desc_es="Roleflow responde DMs de Instagram en segundos, manda notas de voz que grabas, hace seguimiento y agenda llamadas. El precio en español no está publicado.",
+        h1_en="$0 upfront + 10% of revenue generated, no retainer",
+        h1_es="Precios",
+        answer_en="Roleflow replies to every Instagram DM in seconds, sends personal voice notes you record, follows up, and books qualified leads on your calendar. We build the system and we run it. Instagram DMs only. You qualify with 20+ DMs a day, an offer above $1,000, a close rate above 20%, and $30k+ a month collected.",
+        answer_es="Roleflow responde cada DM de Instagram en segundos, manda notas de voz personales que grabas, hace seguimiento y agenda a quien califica. Nosotros lo montamos y lo operamos. Solo DMs de Instagram. Califican más de 20 DMs al día, una oferta de más de $1.000, un cierre superior al 20 % y más de $30.000 cobrados al mes.",
+        body_en="", body_es=""),
     D.P("best-ai-dm-setters", "es/mejores-setters-con-ia", "Best AI DM setters", "Mejores setters con IA", updated=True, article=True,
         title_en="Best AI DM Setters (2026) | Roleflow", title_es="Mejores setters con IA (2026) | Roleflow",
         desc_en="A 2026 comparison of Roleflow, RipDrip, and Mochi for Instagram DMs. Only cited prices and features, with a wrong-for line on each tool, checked in October.",

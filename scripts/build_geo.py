@@ -48,7 +48,7 @@ def url(path):
 
 def footer():
     en_links = [(url_for(p, "en"), p["name_en"]) for p in PAGES]
-    es_links = [(url_for(p, "es"), p["name_es"]) for p in PAGES]
+    es_links = [(url_for(p, "es"), p["name_es"]) for p in PAGES if not p.get("skip_es")]
     en_links.append(("/signup/", "Sign up"))
     def lis(items):
         return "".join(f'<li><a href="{html.escape(href)}">{html.escape(name)}</a></li>' for href, name in items)
@@ -70,6 +70,8 @@ def footer():
 
 
 def url_for(page, lang):
+    if lang == "es" and page.get("skip_es"):
+        return "/es/"
     slug = page["en"] if lang == "en" else page["es"]
     if slug in ("", "/"):
         return "/"
@@ -301,6 +303,8 @@ def render(page, lang):
 def write_page(page, lang):
     if lang == "en" and page.get("skip_en"):
         return
+    if lang == "es" and page.get("skip_es"):
+        return
     path = ROOT / url_for(page, lang).strip("/") / "index.html"
     if url_for(page, lang) == "/":
         return
@@ -313,12 +317,14 @@ def sitemap():
     urls = []
     for page in PAGES:
         for lang in ("en", "es"):
+            if lang == "es" and page.get("skip_es"):
+                continue
             if lang == "en" and page.get("skip_en"):
                 loc = ORIGIN + "/"
             else:
                 loc = url(url_for(page, lang))
             en = url(url_for(page, "en"))
-            es = url(url_for(page, "es"))
+            es = url("/es/") if page.get("skip_es") else url(url_for(page, "es"))
             urls.append((loc, en, es))
     urls.append((ORIGIN + "/signup/", ORIGIN + "/signup/", None))
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
@@ -379,6 +385,8 @@ def llms():
     lines.append("")
     lines.append("## Español")
     for page in PAGES:
+        if page.get("skip_es"):
+            continue
         lines.append(f"- [{page['name_es']}]({url(url_for(page, 'es'))})")
     lines.append("")
     (ROOT / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
@@ -393,9 +401,6 @@ def vercel():
             {"source": "/admin/office", "destination": "/admin/hq/", "statusCode": 301},
             {"source": "/admin/office/", "destination": "/admin/hq/", "statusCode": 301},
             {"source": "/admin/office/index.html", "destination": "/admin/hq/", "statusCode": 301},
-            {"source": "/pricing", "destination": "/", "statusCode": 301},
-            {"source": "/pricing/", "destination": "/", "statusCode": 301},
-            {"source": "/pricing/index.html", "destination": "/", "statusCode": 301},
             {"source": "/es/precios", "destination": "/es/", "statusCode": 301},
             {"source": "/es/precios/", "destination": "/es/", "statusCode": 301},
             {"source": "/es/precios/index.html", "destination": "/es/", "statusCode": 301},

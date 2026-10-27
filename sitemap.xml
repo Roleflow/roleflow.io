@@ -43,6 +43,13 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://www.roleflow.io/faq/"/>
   </url>
   <url>
+    <loc>https://www.roleflow.io/pricing/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.roleflow.io/pricing/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.roleflow.io/es/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://www.roleflow.io/pricing/"/>
+  </url>
+  <url>
     <loc>https://www.roleflow.io/best-ai-dm-setters/</loc>
     <lastmod>2026-10-13</lastmod>
     <xhtml:link rel="alternate" hreflang="en" href="https://www.roleflow.io/best-ai-dm-setters/"/>

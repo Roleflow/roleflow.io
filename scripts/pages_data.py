@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from geo_pages import (
-    FAQ_EN, FAQ_ES, HOME_FAQ_EN, HOME_FAQ_ES, CHECKED, CHECKED_ES,
+    FAQ_EN, FAQ_ES, HOME_FAQ_EN, HOME_FAQ_ES, CHECKED, CHECKED_ES, PRICE_EN,
     table, src, src_es, links_en, links_es,
     RD_SOURCES, MO_SOURCES,
 )
@@ -74,7 +74,7 @@ BEST_EN = '''
 ''' + table(
     ["Tool", "Type", "Published price", "Channels", "Best for", "Wrong for"],
     [
-        ["Roleflow", "Done for you", "Not listed on this page", "Instagram DMs only", "High-ticket Instagram sellers with 20+ DMs/day who want it built and run", "WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume"],
+        ["Roleflow", "Done for you", PRICE_EN, "Instagram DMs only", "High-ticket Instagram sellers with 20+ DMs/day who want it built and run", "WhatsApp, email, or phone-first sellers, low-ticket offers, or low DM volume"],
         ["RipDrip", "A team builds a custom AI sales clone", "No price on dm.ripdrip.ai. [CONFIRM]", "Instagram DM funnel, in the page meta description. Other channels: [CONFIRM]", "Buyers who want that team-built clone and have confirmed the price", "Buyers who need a published price before they apply"],
         ["Mochi", "Workspace for an Instagram sales team. The Pro card also lists AI Setter.", "Homepage cards: Starter $149/month, Essential $297/month, Pro $497/month. 7-day trial. Checkout price: [CONFIRM]", "Instagram, connected through Meta's official API on that page. Other channels: [CONFIRM]", "Teams that will run setters inside that software on a monthly plan", "Buyers who want Roleflow to build and run the setter, rather than a monthly software plan"],
     ],

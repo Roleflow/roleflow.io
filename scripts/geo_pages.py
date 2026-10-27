@@ -9,6 +9,8 @@ def table(headers, rows):
         body.append(f"<tr><th scope=\"row\">{row[0]}</th>{tds}</tr>")
     return "<div class=\"table-wrap\"><table><thead><tr>" + th + "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>"
 
+PRICE_EN = "$0 upfront + 10% of revenue generated, no retainer"
+
 FAQ_EN = [
     ("What is an AI DM setter?", "Software that answers inbound DMs, qualifies leads, follows up and books calls, doing the job of a human appointment setter. Roleflow is a done-for-you AI DM setter for Instagram.", True),
     ("What does Roleflow do?", "It replies to every Instagram DM in seconds, 24/7, sends personal voice notes you record, follows up automatically, and books qualified leads on your calendar. We build and run it for you.", True),
@@ -20,6 +22,7 @@ FAQ_EN = [
     ("How long does setup take?", "[CONFIRM]", False),
     ("How does Roleflow compare with RipDrip?", "RipDrip's homepage says it builds a custom AI sales clone for an Instagram DM funnel, usually live in 72 hours, and that its team does the build. That page does not publish a price. Roleflow is done for you, with personal voice notes you record. See the comparison for sources.", True),
     ("How does Roleflow compare with Mochi?", "Mochi's homepage lists monthly plans at $149, $297, and $497, a 7-day trial, and an Instagram inbox your team uses. Voice notes that sound like you are on the Essential and Pro cards, and setters type the message. Roleflow builds and runs the setter. See the comparison for sources.", True),
+    ("How much does it cost?", PRICE_EN, False),
 ]
 FAQ_ES = [
     ("¿Qué es un setter con IA?", "Un software que responde los DMs entrantes, califica leads, hace seguimiento y agenda llamadas: el trabajo de un appointment setter humano. Roleflow es un setter con IA para Instagram, hecho para ti.", True),
@@ -57,7 +60,7 @@ def src_es(items):
     lis = "".join(f"<li>{item}</li>" for item in items)
     return f"<h2>Fuentes</h2><ol class=\"sources\">{lis}</ol>"
 
-ROLE_ROW = ["Roleflow", "Done for you", "Not listed on this page", "Instagram DMs only", "Yes, personal voice notes you record", "Yes, automatic", "Yes, qualified calls", "Roleflow builds and runs it"]
+ROLE_ROW = ["Roleflow", "Done for you", PRICE_EN, "Instagram DMs only", "Yes, personal voice notes you record", "Yes, automatic", "Yes, qualified calls", "Roleflow builds and runs it"]
 ROLE_ROW_ES = ["Roleflow", "Hecho para ti", "No figura en esta página", "Solo DMs de Instagram", "Sí, con grabaciones personales del dueño", "Sí, automáticos", "Sí, llamadas calificadas", "Roleflow lo monta y lo opera"]
 VS_HEADERS = ["", "Model", "Pricing model", "Channels", "Personal voice notes", "Follow-ups", "Calendar booking", "Setup effort"]
 VS_HEADERS_ES = ["", "Modelo", "Modelo de precio", "Canales", "Notas de voz personales", "Seguimientos", "Agenda", "Esfuerzo de puesta en marcha"]
