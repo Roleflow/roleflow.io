@@ -64,14 +64,32 @@
 
   var reveals = document.querySelectorAll("[data-reveal]");
   if (reveals.length && window.IntersectionObserver) {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add("is-in");
-        io.unobserve(entry.target);
-      });
-    }, { threshold: 0.14, rootMargin: "0px 0px -8% 0px" });
-    Array.prototype.forEach.call(reveals, function (el) { io.observe(el); });
+    var waiting = [];
+    Array.prototype.forEach.call(reveals, function (el) {
+      if (el.getBoundingClientRect().top < window.innerHeight * 0.92) {
+        el.classList.add("is-in");
+      } else {
+        el.classList.add("will-rise");
+        waiting.push(el);
+      }
+    });
+    if (waiting.length) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-in");
+          entry.target.classList.remove("will-rise");
+          io.unobserve(entry.target);
+        });
+      }, { threshold: 0.01 });
+      waiting.forEach(function (el) { io.observe(el); });
+      window.setTimeout(function () {
+        waiting.forEach(function (el) {
+          el.classList.add("is-in");
+          el.classList.remove("will-rise");
+        });
+      }, 1600);
+    }
   }
 
   if (fine) {
