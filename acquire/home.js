@@ -269,7 +269,7 @@ function navLink(ui, item) {
   link.append(iconTile(item.icon, item.tone), ui.el("span", { class: "nav-label", text: label }));
   if (item.soon) {
     const language = ui.language ? ui.language() : "en";
-    link.append(ui.el("span", { class: "soon-badge nav-label", text: language === "es" ? "Próximamente" : "Coming soon" }));
+    link.append(ui.el("span", { class: "soon-badge", text: language === "es" ? "Pronto" : "Soon" }));
   }
   link.addEventListener("click", (event) => {
     event.preventDefault();

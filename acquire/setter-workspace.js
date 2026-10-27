@@ -59,7 +59,8 @@ const COPY = {
     manual: "Manual",
     imported: "Imported",
     team: "Team",
-    quality: "Prompt quality"
+    quality: "Prompt quality",
+    model: "Gemini 3 Flash"
   },
   es: {
     business: "Negocio",
@@ -114,7 +115,8 @@ const COPY = {
     manual: "Manual",
     imported: "Importado",
     team: "Equipo",
-    quality: "Calidad del prompt"
+    quality: "Calidad del prompt",
+    model: "Gemini 3 Flash"
   }
 };
 
@@ -185,6 +187,71 @@ export function ensureSimulations(state) {
   return state.simConversations;
 }
 
+const MARKS = {
+  business: ["M4 20V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12", "M14 10h4a2 2 0 0 1 2 2v8", "M4 20h16", "M8 10h2", "M8 14h2"],
+  prompts: ["M7 3h8l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z", "M15 3v6h6", "M9 13h6", "M9 17h6"],
+  spark: ["M12 3l1.4 4.2L18 8.6 13.4 10 12 15l-1.4-5L6 8.6 10.6 7.2 12 3z", "M18 14l.7 2 2 .7-2 .7L18 20l-.7-2.1-2-.7 2-.7L18 14z"],
+  send: ["M5 12h14", "M13 6l6 6-6 6"],
+  hide: ["M15 6l-6 6 6 6"],
+  show: ["M9 6l6 6-6 6"],
+  chats: ["M5 6h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3V7a1 1 0 0 1 1-1z"],
+  reset: ["M4 12a8 8 0 1 0 2.3-5.6", "M4 4v5h5"],
+  clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"]
+};
+
+function mark(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  (MARKS[name] || []).forEach((d) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  });
+  return svg;
+}
+
+function ghost(ui, text, onClick) {
+  const node = ui.el("button", { type: "button", class: "desk-ghost" }, [text]);
+  if (onClick) node.addEventListener("click", onClick);
+  return node;
+}
+
+function iconButton(ui, name, label, onClick) {
+  const node = ui.el("button", {
+    type: "button",
+    class: "icon-btn",
+    title: label,
+    "aria-label": label
+  }, [mark(name)]);
+  if (onClick) node.addEventListener("click", onClick);
+  return node;
+}
+
+function roundSend(ui, label) {
+  return ui.el("button", { type: "submit", class: "desk-send", title: label, "aria-label": label }, [mark("send")]);
+}
+
+function segment(ui, options, current, onPick) {
+  const group = ui.el("div", { class: "seg", role: "group" });
+  options.forEach(([id, label]) => {
+    const button = ui.el("button", {
+      type: "button",
+      "aria-pressed": current === id ? "true" : "false"
+    }, [label]);
+    button.addEventListener("click", () => onPick(id));
+    group.append(button);
+  });
+  return group;
+}
+
 function plainPreview(text, markdown) {
   const escaped = String(text || "")
     .replace(/&/g, "&amp;")
@@ -215,7 +282,7 @@ function modeRail(ui, copy, desk) {
       role: "tab",
       "aria-selected": desk.mode === id ? "true" : "false",
       "aria-controls": "desk-editor"
-    }, [label]);
+    }, [mark(id), ui.el("span", { text: label })]);
     tab.addEventListener("click", () => {
       desk.mode = id;
       desk.editing = false;
@@ -233,12 +300,16 @@ function editorColumn(ui, copy, desk, es) {
   const prompts = desk.mode !== "business";
   const value = prompts ? savedPrompt(ui.state) : businessText(ui);
   const max = prompts ? PROMPT_MAX : MAX_CHARS;
-  column.append(ui.el("h2", { text: prompts ? copy.prompts : copy.business }));
+  const head = ui.el("div", { class: "editor-head" });
+  head.append(ui.el("h2", { text: prompts ? copy.prompts : copy.business }));
+  head.append(ui.el("span", { class: "desk-count", id: "desk-count", text: value.length.toLocaleString("en-US") + " / " + max.toLocaleString("en-US") }));
+  column.append(head);
   const tools = ui.el("div", { class: "desk-tools" });
-  tools.append(ui.el("span", { class: "desk-count", id: "desk-count", text: value.length.toLocaleString("en-US") + " / " + max.toLocaleString("en-US") }));
   if (desk.editing) {
-    tools.append(ui.button(copy.save, () => saveEditor(ui, prompts)));
-    tools.append(ui.button(copy.cancel, () => {
+    const save = ui.button(copy.save, () => saveEditor(ui, prompts));
+    save.classList.add("desk-save");
+    tools.append(save);
+    tools.append(ghost(ui, copy.cancel, () => {
       desk.editing = false;
       desk.showPreview = false;
       if (prompts) ui.state.setterDraft = ui.state.setterPrompt || "";
@@ -246,7 +317,7 @@ function editorColumn(ui, copy, desk, es) {
       ui.paint();
     }));
   } else {
-    const edit = ui.button(copy.edit, () => {
+    const edit = ghost(ui, copy.edit, () => {
       desk.editing = true;
       desk.showPreview = false;
       ui.paint();
@@ -254,20 +325,17 @@ function editorColumn(ui, copy, desk, es) {
     if (!ui.state.canEdit) edit.disabled = true;
     tools.append(edit);
   }
-  [["text", copy.text], ["markdown", copy.markdown]].forEach(([id, label]) => {
-    const button = ui.button(label, () => {
-      desk.format = id;
-      desk.showPreview = false;
-      ui.paint();
-    });
-    if (desk.format === id && !desk.showPreview) button.classList.add("on");
-    tools.append(button);
-  });
-  const preview = ui.button(copy.preview, () => {
+  tools.append(segment(ui, [["text", copy.text], ["markdown", copy.markdown]], desk.showPreview ? "" : desk.format, (id) => {
+    desk.format = id;
+    desk.showPreview = false;
+    ui.paint();
+  }));
+  const preview = ghost(ui, copy.preview, () => {
     desk.showPreview = !desk.showPreview;
     ui.paint();
   });
-  if (desk.showPreview) preview.classList.add("on");
+  if (desk.showPreview) preview.classList.add("is-on");
+  preview.setAttribute("aria-pressed", desk.showPreview ? "true" : "false");
   tools.append(preview);
   column.append(tools);
 
@@ -278,6 +346,7 @@ function editorColumn(ui, copy, desk, es) {
   } else {
     const area = ui.el("textarea", {
       id: prompts ? "setter-prompt" : "business-document",
+      class: "desk-input",
       rows: "14",
       maxlength: String(max),
       "aria-label": prompts ? copy.prompts : copy.business
@@ -306,11 +375,18 @@ function editorColumn(ui, copy, desk, es) {
 function qualityRow(ui, copy, desk) {
   const row = ui.el("div", { class: "quality-row" });
   const quality = desk.quality;
-  const label = quality && Number.isFinite(quality.score)
-    ? copy.quality + " " + quality.score + "/10"
-    : copy.notAnalyzed;
-  row.append(ui.el("strong", { text: label }));
-  row.append(ui.button(copy.analysis, async () => {
+  const score = quality && Number.isFinite(Number(quality.score)) ? Number(quality.score) : null;
+  if (score == null) row.append(ui.el("span", { class: "quality-chip", text: copy.notAnalyzed }));
+  else {
+    const ring = ui.el("span", {
+      class: "score-ring",
+      style: "--p:" + Math.round(Math.max(0, Math.min(10, score)) * 10),
+      title: copy.quality + " " + score + "/10",
+      "aria-label": copy.quality + " " + score + "/10"
+    }, [String(score)]);
+    row.append(ring);
+  }
+  row.append(ghost(ui, copy.analysis, async () => {
     const prompt = currentPromptValue(ui);
     if (!ui.analyzePrompt) return;
     const result = await ui.analyzePrompt(prompt);
@@ -318,11 +394,11 @@ function qualityRow(ui, copy, desk) {
     desk.quality = { score: result.score, items: result.items || [] };
     ui.paint();
   }));
-  const versions = ui.button(copy.versions, () => {
+  const versions = ghost(ui, copy.versions, () => {
     desk.panel = desk.panel === "versions" ? "" : "versions";
     ui.paint();
   });
-  if (desk.panel === "versions") versions.classList.add("on");
+  if (desk.panel === "versions") versions.classList.add("is-on");
   row.append(versions);
   if (quality && quality.items && quality.items.length) {
     const list = ui.el("ul", { class: "quality-items" });
@@ -346,7 +422,7 @@ function versionsPanel(ui, copy, desk) {
     const when = ui.when ? ui.when(row.created_at) : "";
     card.append(ui.el("strong", { text: "Version " + row.version + (when ? " · " + when : "") }));
     card.append(ui.el("p", { class: "mute", text: versionSource(ui, row, copy) + " · " + formatDelta(lengthDelta(row.body, previous ? previous.body : null)) }));
-    card.append(ui.button(copy.restore, () => {
+    card.append(ghost(ui, copy.restore, () => {
       if (!window.confirm(copy.restore + "?")) return;
       ui.state.setterDraft = row.body || "";
       desk.editing = false;
@@ -367,8 +443,9 @@ function aiBar(ui, copy, desk) {
     "aria-label": copy.editAi
   });
   input.addEventListener("input", () => { desk.aiInstruction = input.value; });
+  bar.append(ui.el("span", { class: "ai-spark", "aria-hidden": "true" }, [mark("spark")]));
   bar.append(input);
-  bar.append(ui.button(copy.apply, null, "submit"));
+  bar.append(roundSend(ui, copy.apply));
   bar.addEventListener("submit", async (event) => {
     event.preventDefault();
     const instruction = input.value.trim();
@@ -418,55 +495,54 @@ function simulatorColumn(ui, copy, desk) {
     id: "setter-trial",
     "aria-label": copy.simulator
   });
-  const toggle = ui.el("button", {
-    type: "button",
-    class: "sim-collapse",
-    "aria-expanded": desk.simCollapsed ? "false" : "true",
-    "aria-controls": "setter-trial"
-  }, [desk.simCollapsed ? copy.show : copy.hide]);
-  toggle.addEventListener("click", () => {
-    desk.simCollapsed = !desk.simCollapsed;
-    ui.paint();
-  });
-  sim.append(toggle);
-  if (desk.simCollapsed) return sim;
+  if (desk.simCollapsed) {
+    const show = iconButton(ui, "show", copy.show, () => {
+      desk.simCollapsed = false;
+      ui.paint();
+    });
+    show.setAttribute("aria-expanded", "false");
+    show.setAttribute("aria-controls", "setter-trial");
+    sim.append(show);
+    return sim;
+  }
 
-  const head = ui.el("div", { class: "sim-head" });
-  head.append(ui.el("h2", { text: copy.simulator }));
-  head.append(ui.el("a", { class: "btn ghost sm", href: "#settings/model" }, [ui.language && ui.language() === "es" ? "Clave del modelo" : "Model key"]));
   const versions = sortedVersions(ui);
   const badge = versions[0] ? "Version " + versions[0].version : "Unsaved draft";
-  head.append(ui.el("span", { class: "version-badge", text: badge }));
-  sim.append(head, ui.el("p", { class: "mute", text: copy.configured }));
+  const title = ui.el("div", { class: "sim-title" });
+  title.append(ui.el("h2", { text: copy.simulator }), ui.el("span", { class: "version-badge", text: badge }));
+  const hide = iconButton(ui, "hide", copy.hide, () => {
+    desk.simCollapsed = true;
+    ui.paint();
+  });
+  hide.setAttribute("aria-expanded", "true");
+  hide.setAttribute("aria-controls", "setter-trial");
+  const convos = iconButton(ui, "chats", copy.conversations, () => {
+    desk.panel = desk.panel === "conversations" ? "" : "conversations";
+    ui.paint();
+  });
+  if (desk.panel === "conversations") convos.classList.add("is-on");
+  const reset = iconButton(ui, "reset", copy.reset, () => resetConversation(ui));
+  const head = ui.el("div", { class: "sim-head" }, [title, ui.el("div", { class: "sim-actions" }, [hide, convos, reset])]);
+  sim.append(head);
 
-  const statePick = ui.el("select", { id: "sim-lead-state", "aria-label": copy.state });
+  const statePick = ui.el("select", { id: "sim-lead-state", class: "lead-pill", "aria-label": copy.state, "data-state": desk.leadState });
   const lang = ui.language && ui.language() === "es" ? "es" : "en";
   SIM_STATES.forEach(([id, en, es]) => {
     statePick.append(ui.el("option", { value: id, text: lang === "es" ? es : en, selected: desk.leadState === id ? true : null }));
   });
-  statePick.addEventListener("change", () => { desk.leadState = statePick.value; });
-  sim.append(statePick);
-
-  const convos = ui.button(copy.conversations, () => {
-    desk.panel = desk.panel === "conversations" ? "" : "conversations";
-    ui.paint();
+  statePick.addEventListener("change", () => {
+    desk.leadState = statePick.value;
+    statePick.setAttribute("data-state", statePick.value);
   });
-  if (desk.panel === "conversations") convos.classList.add("on");
-  const reset = ui.button(copy.reset, () => resetConversation(ui));
-  reset.setAttribute("aria-label", "New conversation");
-  sim.append(ui.el("div", { class: "desk-tools" }, [convos, reset]));
+  const meta = ui.el("div", { class: "sim-meta" });
+  meta.append(ui.el("a", { class: "model-chip", href: "#settings/model" }, [copy.model]), statePick);
+  sim.append(meta);
   if (desk.panel === "conversations") sim.append(conversationsPanel(ui, copy, desk));
 
-  const sender = ui.el("div", { class: "desk-tools", role: "group", "aria-label": copy.lead });
-  [["lead", copy.lead], ["business", copy.businessSender]].forEach(([id, label]) => {
-    const button = ui.button(label, () => {
-      desk.sender = id;
-      ui.paint();
-    });
-    if (desk.sender === id) button.classList.add("on");
-    sender.append(button);
-  });
-  sim.append(sender);
+  sim.append(segment(ui, [["lead", copy.lead], ["business", copy.businessSender]], desk.sender, (id) => {
+    desk.sender = id;
+    ui.paint();
+  }));
 
   const trial = ui.state.setterTrial || { messages: [] };
   const log = ui.el("div", { id: "setter-trial-log", class: "dm-thread sim-thread" });
@@ -474,12 +550,18 @@ function simulatorColumn(ui, copy, desk) {
   if (!(trial.messages || []).length) log.append(ui.el("p", { class: "mute", text: copy.empty }));
   sim.append(log);
 
+  const compose = ui.el("form", { class: "sim-compose" });
   const input = ui.el("input", { id: "setter-trial-input", type: "text", maxlength: "500", placeholder: copy.compose, "aria-label": copy.compose });
-  const send = ui.button(copy.send, () => submitSim(ui, input.value, false));
-  sim.append(ui.el("div", { class: "desk-tools" }, [input, send]));
+  compose.append(input, roundSend(ui, copy.send));
+  compose.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitSim(ui, input.value, false);
+  });
+  sim.append(compose);
 
   const follow = ui.el("input", {
     id: "followup-number",
+    class: "desk-num",
     type: "number",
     min: "1",
     max: "12",
@@ -487,10 +569,9 @@ function simulatorColumn(ui, copy, desk) {
     "aria-label": copy.followNumber
   });
   follow.addEventListener("input", () => { desk.followupNumber = Number(follow.value) || 1; });
-  sim.append(ui.el("div", { class: "desk-tools" }, [
-    ui.button(copy.follow, () => submitSim(ui, "", true)),
-    follow
-  ]));
+  const followBtn = ghost(ui, copy.follow, () => submitSim(ui, "", true));
+  followBtn.prepend(mark("clock"));
+  sim.append(ui.el("div", { class: "follow-row" }, [followBtn, follow]));
   sim.append(delayFields(ui, copy));
 
   const simulate = ui.el("input", { id: "practice-delay", type: "checkbox" });
@@ -498,7 +579,7 @@ function simulatorColumn(ui, copy, desk) {
   simulate.addEventListener("change", () => { ui.state.practiceSimulateDelay = simulate.checked; });
   sim.append(ui.el("label", { class: "switch" }, [simulate, " " + copy.delay]));
 
-  const settings = ui.button(copy.settings, () => {
+  const settings = ghost(ui, copy.settings, () => {
     desk.settingsOpen = !desk.settingsOpen;
     ui.paint();
   });
@@ -509,8 +590,8 @@ function simulatorColumn(ui, copy, desk) {
 
 function conversationsPanel(ui, copy, desk) {
   const panel = ui.el("div", { class: "desk-panel", id: "sim-conversations" });
-  const search = ui.el("input", { type: "search", value: desk.search || "", placeholder: copy.search, "aria-label": copy.search });
-  const filter = ui.el("select", { "aria-label": copy.state });
+  const search = ui.el("input", { class: "desk-field", type: "search", value: desk.search || "", placeholder: copy.search, "aria-label": copy.search });
+  const filter = ui.el("select", { class: "desk-field", "aria-label": copy.state });
   filter.append(ui.el("option", { value: "all", text: copy.all }));
   const lang = ui.language && ui.language() === "es" ? "es" : "en";
   SIM_STATES.forEach(([id, en, es]) => filter.append(ui.el("option", { value: id, text: lang === "es" ? es : en })));
@@ -531,7 +612,12 @@ function paintConversationList(ui, copy, desk, list) {
     return;
   }
   rows.forEach((row) => {
-    const button = ui.button(row.title || ((row.messages && row.messages[0] && row.messages[0].text) || row.leadState || "Conversation"), () => {
+    const button = ui.el("button", {
+      type: "button",
+      class: "sim-saved",
+      text: row.title || ((row.messages && row.messages[0] && row.messages[0].text) || row.leadState || "Conversation")
+    });
+    button.addEventListener("click", () => {
       ui.state.setterTrial = { scenario: "follower", messages: (row.messages || []).slice(), leadState: row.leadState };
       desk.leadState = row.leadState || desk.leadState;
       desk.panel = "";
@@ -592,7 +678,7 @@ function delayFields(ui, copy) {
     ui.el("label", { text: copy.waitFrom }, [min]),
     ui.el("label", { text: copy.waitTo }, [max]),
     ui.el("span", { class: "mute", text: copy.seconds }),
-    ui.button(copy.saveDelay, () => ui.saveReplyDelay(min.value, max.value))
+    ghost(ui, copy.saveDelay, () => ui.saveReplyDelay(min.value, max.value))
   );
   return row;
 }
@@ -630,8 +716,10 @@ function agentSettings(ui, copy, desk) {
   const when = ui.el("input", { type: "text", maxlength: "160", "aria-label": copy.when });
   const to = ui.el("input", { type: "text", maxlength: "80", "aria-label": copy.handoff });
   card.append(when, to);
-  card.append(ui.button(copy.saveAgent, null, "submit"));
-  card.append(ui.button(copy.close, () => {
+  const saveAgent = ui.button(copy.saveAgent, null, "submit");
+  saveAgent.classList.add("desk-save");
+  card.append(saveAgent);
+  card.append(ghost(ui, copy.close, () => {
     desk.settingsOpen = false;
     ui.paint();
   }));

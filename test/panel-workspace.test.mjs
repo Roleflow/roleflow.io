@@ -60,6 +60,8 @@ assert.equal(warmer.soon, true);
 assert.equal(outreacher.soon, true);
 assert.equal(canonicalTab("commentvoice"), "voice");
 assert.match(read("acquire/client-pages.js"), /Coming soon/);
+assert.match(read("acquire/home.js"), /"Soon"/);
+assert.match(read("acquire/home.js"), /"Pronto"/);
 assert.match(read("acquire/setter-workspace.js"), /Not analyzed/);
 assert.match(read("acquire/setter-workspace.js"), /Simulate follow-up/);
 assert.match(read("businesses/app.js"), /class: "biz-board"/);
