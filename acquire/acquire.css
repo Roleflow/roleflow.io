@@ -640,3 +640,32 @@ body.platform .next-step{left:calc(264px + 16px);transition:left 280ms ease-in-o
   body.platform .app-shell,body.platform .platform-side,body.platform .side-toggle,body.platform .side-brand,body.platform .pinned-biz,body.platform .nav-label,body.platform .nav-group-toggle,body.platform .nav-group-items,body.platform .nav-chevron,body.platform .next-step{animation:none !important;transition:none !important}
 }
 body.reduce-motion .platform-side,body.reduce-motion .side-toggle,body.reduce-motion .side-brand,body.reduce-motion .pinned-biz,body.reduce-motion .nav-label,body.reduce-motion .nav-group-toggle,body.reduce-motion .nav-group-items,body.reduce-motion .nav-chevron,body.reduce-motion .next-step{animation:none !important;transition:none !important}
+body.admin-panel .admin-bar{min-height:48px;padding:8px 20px}
+body.admin-panel .admin-bar .brand{font-size:1rem;font-weight:700;gap:8px}
+body.admin-panel .admin-bar .brand img{width:28px;height:28px}
+body.admin-panel .admin-page-title{margin:4px auto 20px;padding-bottom:12px;border-bottom:1px solid #243155;max-width:932px;font-size:1.65rem}
+body.admin-panel .biz-grid{display:grid;grid-template-columns:repeat(3,300px);gap:16px;justify-content:center;width:100%}
+body.admin-panel .biz-tile.biz-face,body.admin-panel .biz-card.biz-face{position:relative;display:flex;flex-direction:column;align-items:stretch;width:300px;height:280px;min-height:280px;max-width:300px;box-sizing:border-box;padding:16px 16px 8px;border:1px solid #243155;border-radius:16px;background:#101A33;color:#EEF1FA;overflow:hidden;text-align:left;box-shadow:none}
+body.admin-panel .biz-hit{position:absolute;inset:0;z-index:1;border-radius:inherit}
+body.admin-panel .biz-face > :not(.biz-hit):not(.biz-menu-wrap){position:relative;z-index:2;pointer-events:none}
+body.admin-panel .biz-menu-wrap{position:absolute;top:8px;right:8px;z-index:3}
+body.admin-panel .biz-face h2{margin:20px 8px 0;text-align:center;font:600 1.15rem/1.3 var(--h);color:#EEF1FA}
+body.admin-panel .biz-status .ai-dot.on{background:#3DDC97;box-shadow:0 0 0 3px rgba(61,220,151,.18)}
+body.admin-panel button.biz-tile.add-business{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;width:300px;height:280px;min-height:280px;padding:16px;border:0;border-radius:16px;text-align:center;background:var(--grad);color:#fff;box-shadow:none}
+.connect-banner{width:min(932px,100%);margin:0 auto 16px;padding:8px 14px;border:1px solid #243155;border-radius:12px;background:#101A33;display:grid;gap:4px}
+.connect-banner h2{margin:0;font:600 .9rem/1.3 var(--b)}
+body.admin-panel .connect-banner .roster-biz{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:0;min-height:0;padding:4px 0 0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.connect-banner .roster-biz h3,.connect-banner .roster-biz p{margin:0;font-size:.85rem}
+.connect-banner .filters{margin-left:auto}
+@media(max-width:980px){
+  body.admin-panel .biz-grid{grid-template-columns:300px}
+  body.admin-panel .admin-page-title{max-width:300px}
+  body.admin-panel .admin-bar{flex-wrap:wrap;row-gap:4px;padding:8px 16px}
+  body.admin-panel .admin-account{flex-wrap:wrap;gap:6px 12px}
+  body.admin-panel .admin-account .hello{max-width:100%;font-size:.82rem}
+  body.admin-panel main.wrap{width:min(1080px,calc(100% - 32px))}
+}
+@media(max-width:360px){
+  body.admin-panel .biz-grid{grid-template-columns:minmax(0,1fr)}
+  body.admin-panel .biz-tile.biz-face,body.admin-panel button.biz-tile.add-business{width:100%;max-width:none}
+}

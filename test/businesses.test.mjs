@@ -74,7 +74,8 @@ assert.match(app, /\["workflow", "Workflow"\],\n  \["workforce", "Workforce"\],\
 assert.match(app, /leads\|workflow\|workforce\|assets\|stats\|setup\|members/);
 assert.match(app, /id: "lead-pager"|id="lead-pager"/);
 assert.match(app, /range-control/);
-assert.match(app, /class: "ext"/);
+assert.match(app, /businessCard\(/);
+assert.match(createdAgo(new Date(Date.now() - 86400000 * 95).toISOString(), Date.now()), /3 months ago/);
 assert.match(app, /section-rail/);
 assert.match(read("signup/index.html"), /class="or-divider"/);
 assert.match(read("signup/index.html"), /href="\/privacy\/"/);
