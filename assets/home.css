@@ -35,7 +35,11 @@ main{overflow-x:clip}
 .nav-links a{color:rgba(255,255,255,.82);text-decoration:none;font-weight:500;font-size:.95rem;transition:color .25s ease;white-space:nowrap}
 .nav-links a:hover{color:#fff}
 .soon{margin-left:6px;color:#c4b6ef;font-size:.75rem;font-style:italic;font-family:var(--serif)}
-.nav-cta{justify-self:end;min-height:40px;padding:0 18px;border-radius:12px;background:#7B4DFF;color:#fff;font:600 .95rem var(--b);text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap;box-shadow:none;transition:transform .35s cubic-bezier(.22,.8,.24,1),background .35s ease}
+.nav-actions{display:flex;align-items:center;gap:8px;justify-self:end}
+.nav-access{min-height:40px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,255,255,.28);background:transparent;color:#fff;font:600 .95rem var(--b);text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap}
+.nav-access:hover{background:rgba(255,255,255,.08)}
+.nav-access-link{display:none}
+.nav-cta{min-height:40px;padding:0 18px;border-radius:12px;background:#7B4DFF;color:#fff;font:600 .95rem var(--b);text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap;box-shadow:none;transition:transform .35s cubic-bezier(.22,.8,.24,1),background .35s ease}
 .nav-cta:hover{transform:translateY(-1px);background:#8b62ff}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:56px;padding:0 26px;border-radius:14px;border:0;background:linear-gradient(180deg,#d2c2ff,#7b4dff 42%,#6840f2);color:#fff;font:600 1.05rem var(--b);text-decoration:none;cursor:pointer;box-shadow:0 0 0 1px rgba(255,255,255,.16),0 12px 36px rgba(123,77,255,.55);transition:transform .45s cubic-bezier(.22,.8,.24,1),box-shadow .45s ease}
@@ -314,7 +318,9 @@ html.js-motion [data-reveal].is-in{opacity:1;transform:none;transition:transform
   .top{top:8px;width:calc(100% - 16px);margin-top:8px;border-radius:16px}
   .top .in{grid-template-columns:1fr auto auto;min-height:56px;padding:6px 8px 6px 12px;gap:8px}
   .nav-burger{display:inline-flex;grid-column:2}
-  .nav-cta{grid-column:3}
+  .nav-actions{grid-column:3}
+  .nav-actions .nav-access{display:none}
+  .top.is-open .nav-access-link{display:inline-flex}
   .nav-links{display:none;grid-column:1 / -1;flex-direction:column;align-items:flex-start;gap:0;padding:4px 8px 10px}
   .top.is-open .nav-links{display:flex}
   .nav-links a{min-height:44px;display:inline-flex;align-items:center;white-space:normal}
