@@ -23,18 +23,69 @@ The Instagram connection used for setter replies is a different path. This login
 
 ## What runs on the box
 
-Do not provision a new server or a paid host. One shared Linux computer runs two kinds of process:
+Do not provision a new server or a paid host. One shared Linux computer runs two kinds of process. Both use the same session directory.
 
 1. **One login service for every workspace.** `node workers/roleflow-dm/login-service.mjs` listens on `127.0.0.1:8790` only. It is not started by the bots.
-2. **One worker per workspace, under that workspace's Grok Bot.** `node workers/roleflow-dm/run.mjs <workspace-id> <prospect-handle>`. The bot starts only its own workspace. A new business needs no extra login setup: its control row is created with the workspace, and the first successful connect writes `$ROLEFLOW_DM_SESSION_DIR/<workspace-id>.bin` and `<workspace-id>.key`.
-
-The login service checks a one-time link, opens Instagram in Playwright, and streams that page to the member's browser. Codes and challenges stay on that same page. When Instagram has finished login, the service encrypts the Playwright storage state with `openssl enc -aes-256-cbc -pbkdf2 -salt` and the workspace key file. It then sets `ig_handle` and `session_ready` on that workspace. It does not set `enabled`. Auto-DM stays off until someone turns it on in the panel.
-
-Disconnect deletes that workspace's `.bin` file and clears `ig_handle` and `session_ready`. It does not change `enabled`.
+2. **One long-running worker per workspace, under that workspace's Grok Bot.** `node workers/roleflow-dm/run.mjs <workspace-id>`. No recipient argument. The process wakes about every 3 minutes. A second start while the first is alive exits, so it is safe to launch it every few minutes as well.
 
 Roleflow's workspace id is `840b08a9-869c-4650-8dc7-f78fdfa0e112`. Value Add Marketing's is `1351d2ac-79bb-545d-8da0-c49ecff28a47`.
 
-Playwright in the worker starts only after `planDm` returns ready and that workspace's encrypted session is present. Leave `ROLEFLOW_DM_ENABLED` unset until that workspace should send. Set `ROLEFLOW_DM_KILL=1` to stop that process. On a block or a warning, set `ROLEFLOW_DM_PAUSED=1`. `/workers/` is not served by the public site.
+```
+node workers/roleflow-dm/run.mjs 840b08a9-869c-4650-8dc7-f78fdfa0e112
+node workers/roleflow-dm/run.mjs 1351d2ac-79bb-545d-8da0-c49ecff28a47
+```
+
+Each tick, when that workspace's panel switch is on and its kill switch is off, the worker uses that workspace's session to read the latest followers and the likers of the latest posts. The first successful read is a baseline: those people are remembered and are not messaged. Someone who shows up on a later tick is new. The worker reads their public profile, asks Claude Sonnet (`claude-sonnet-5-5`, no temperature) for an opener, and sends only when `planDm` allows it. The business Claude key is used when one is saved; otherwise `ANTHROPIC_API_KEY` is used. The send is written to `acq_dm_sends`. A restart keeps the same wait and does not message that person again.
+
+Sending needs the panel switch (`acq_dm_controls.enabled`) and a session file. It does not need a second environment flag. `ROLEFLOW_DM_KILL=1` stops that process. A block sets `paused_reason` and the worker stops opening Instagram until that is cleared.
+
+`supabase/migrations/20261028160000_roleflow_auto_dm.sql` is already applied in production (Supabase version `20261028150149`). Do not run that file again. Apply `20261028170000_dm_every_business.sql` if `acq_dm_sends` is not in the database yet, and apply `20261028190000_dm_instagram_login.sql` before the connect button can store a handle. This repo does not apply them.
+
+The login service checks a one-time link, opens Instagram in Playwright, and streams that page to the member's browser. Codes and challenges stay on that same page. When Instagram has finished login, the service encrypts the Playwright storage state and creates `<workspace-id>.key` if that file is missing. It sets `ig_handle` and `session_ready`. It does not set `enabled`. Disconnect deletes that workspace's `.bin` file and clears `ig_handle` and `session_ready`. `/workers/` is not served by the public site.
+
+## Session directory
+
+The only directory is `/opt/roleflow-dm/sessions`. Set `ROLEFLOW_DM_SESSION_DIR` to that path for the login service and for every worker.
+
+Each workspace has two files, mode 600:
+
+- `<workspace-id>.bin` — encrypted Playwright storage state (`openssl enc -aes-256-cbc -pbkdf2 -salt`)
+- `<workspace-id>.key` — the key for that file. The login service creates it on the first connect when it is missing.
+
+The worker also writes `<workspace-id>.feed.json` and `<workspace-id>.lock` in that directory so a restart keeps the baseline, the wait, and a single sender. Those files are mode 600. They do not contain a session or a key.
+
+Move the sessions the bots already have. Stop the old workers first.
+
+Value Add Marketing, from `/workspace/roleflow-dm/vam/session/`:
+
+```
+mkdir -p /opt/roleflow-dm/sessions
+chmod 700 /opt/roleflow-dm/sessions
+# encrypted state -> the .bin, key text -> the .key
+cp /workspace/roleflow-dm/vam/session/<session-file> /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.bin
+cp /workspace/roleflow-dm/vam/session/<key-file> /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.key
+chmod 600 /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.bin /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.key
+```
+
+Roleflow, from `/workspace/roleflow-dm/roleflow/.dm/sessions/`:
+
+```
+cp /workspace/roleflow-dm/roleflow/.dm/sessions/<session-file> /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.bin
+cp /workspace/roleflow-dm/roleflow/.dm/sessions/<key-file> /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.key
+chmod 600 /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.bin /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.key
+```
+
+If an old file is plain Playwright JSON, encrypt it and do not leave the plain file in place. `ROLEFLOW_DM_SESSION_KEY` is the contents of the `.key` file:
+
+```
+openssl enc -aes-256-cbc -pbkdf2 -salt \
+  -in state.json \
+  -out /opt/roleflow-dm/sessions/<workspace-id>.bin \
+  -pass env:ROLEFLOW_DM_SESSION_KEY
+rm state.json
+```
+
+Confirm with `openssl enc -d -aes-256-cbc -pbkdf2 -in <workspace-id>.bin -pass env:ROLEFLOW_DM_SESSION_KEY`. Then point the login service and both bots at `ROLEFLOW_DM_SESSION_DIR=/opt/roleflow-dm/sessions`.
 
 ## One-time setup
 
@@ -44,9 +95,9 @@ Diego does this once on the box. New workspaces do not need it again.
 2. Outside this git repo, install the browser the service launches:
 
    ```
-   sudo mkdir -p /opt/roleflow-dm /var/lib/roleflow/dm-sessions
-   sudo chown "$USER" /opt/roleflow-dm /var/lib/roleflow/dm-sessions
-   chmod 700 /var/lib/roleflow/dm-sessions
+   sudo mkdir -p /opt/roleflow-dm/sessions
+   sudo chown "$USER" /opt/roleflow-dm /opt/roleflow-dm/sessions
+   chmod 700 /opt/roleflow-dm/sessions
    cd /opt/roleflow-dm
    npm init -y
    npm install playwright
@@ -55,7 +106,7 @@ Diego does this once on the box. New workspaces do not need it again.
 
    Do not commit `package.json` or `node_modules`.
 
-3. Put the service environment in a file on the box that is not in git. `SUPABASE_URL` is the project URL. `SUPABASE_SERVICE_ROLE_KEY` stays only on this computer. `ROLEFLOW_DM_SESSION_DIR=/var/lib/roleflow/dm-sessions`. `ROLEFLOW_DM_PLAYWRIGHT_ROOT=/opt/roleflow-dm`. `ROLEFLOW_DM_LOGIN_HOST=127.0.0.1`. `ROLEFLOW_DM_LOGIN_PORT=8790`. Do not set `DEBUG`.
+3. Put the service environment in a file on the box that is not in git. `SUPABASE_URL` is the project URL. `SUPABASE_SERVICE_ROLE_KEY` stays only on this computer. `ROLEFLOW_DM_SESSION_DIR=/opt/roleflow-dm/sessions`. `ROLEFLOW_DM_PLAYWRIGHT_ROOT=/opt/roleflow-dm`. `ROLEFLOW_DM_LOGIN_HOST=127.0.0.1`. `ROLEFLOW_DM_LOGIN_PORT=8790`. `ANTHROPIC_API_KEY` is the fallback Claude key for openers. Do not set `DEBUG`. The same file is what each worker bot loads.
 4. Run the login service from a checkout of this repo so the worker files resolve. Example systemd unit:
 
    ```
@@ -87,7 +138,7 @@ Diego does this once on the box. New workspaces do not need it again.
 
    Use the real tunnel hostname. This is the only one-time database step. Members of a business can then click Connect Instagram for auto-DMs. The panel mints a link that expires in 10 minutes or when login succeeds, whichever comes first.
 
-Each Grok Bot, when that business has turned auto-DM on, runs only its own worker with the same `ROLEFLOW_DM_SESSION_DIR`.
+Each Grok Bot runs only its own `run.mjs <workspace-id>` with that same `ROLEFLOW_DM_SESSION_DIR`. The panel switch is what allows sending.
 
 ## Security trade-off
 

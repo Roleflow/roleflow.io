@@ -1,6 +1,6 @@
--- NOT APPLIED.
+-- APPLIED in production as version 20261028150149.
+-- Do not run this file again from the repo.
 -- Follow-to-DM settings for @roleflow.io. Off until enabled. The kill switch stops it.
--- Do not run this against production from the repo.
 -- It does not remove a table, does not store an Instagram login, and does not turn a setter on.
 
 create table if not exists public.acq_dm_controls (

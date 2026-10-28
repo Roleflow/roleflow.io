@@ -23,7 +23,9 @@ export function sessionPaths(dir, workspaceId) {
   return {
     file: root + "/" + id + ".bin",
     keyFile: root + "/" + id + ".key",
-    logFile: root + "/" + id + ".sends.jsonl"
+    logFile: root + "/" + id + ".sends.jsonl",
+    feedFile: root + "/" + id + ".feed.json",
+    lockFile: root + "/" + id + ".lock"
   };
 }
 
@@ -54,6 +56,27 @@ export function jitterMinutes(random) {
   const roll = typeof random === "function" ? random() : Math.random();
   const span = DM_WAIT_MAX - DM_WAIT_MIN + 1;
   return DM_WAIT_MIN + Math.floor(Math.min(0.999999, Math.max(0, roll)) * span);
+}
+
+export function readyAtFor(seenAt, random) {
+  const start = new Date(seenAt).getTime();
+  if (!Number.isFinite(start)) return "";
+  return new Date(start + jitterMinutes(random) * 60000).toISOString();
+}
+
+export function madridDay(date) {
+  const value = date instanceof Date ? date : new Date(date);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(value);
+}
+
+export function sentOnDay(rows, now) {
+  const day = madridDay(now);
+  return (rows || []).filter((row) => row && madridDay(row.created_at) === day).length;
 }
 
 export function spin(template, random) {
