@@ -104,7 +104,8 @@ export function renderAutoDm(ui) {
   card.append(ui.el("label", { text: copy.template }, [template]));
   card.append(ui.el("p", { class: "mute", text: copy.templateHelp }));
   card.append(ui.el("h3", { text: copy.exclusion }));
-  card.append(ui.el("label", { text: copy.exclusion }, [exclusions]));
+  exclusions.setAttribute("aria-label", copy.exclusion);
+  card.append(exclusions);
   card.append(ui.el("p", { class: "mute", text: copy.exclusionHelp }));
   card.append(ui.button(copy.save, null, "submit"));
   const saved = ui.state.dmCampaigns || [];
