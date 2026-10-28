@@ -98,8 +98,21 @@ grant execute on function public.acq_roleflow_sections(jsonb) to authenticated, 
 
 alter table public.acq_settings alter column onboarding_step set default 'live';
 
+alter table public.acq_workspaces
+  add column if not exists engine_business_id uuid;
+
+create unique index if not exists acq_workspaces_engine_business_idx
+  on public.acq_workspaces (engine_business_id)
+  where engine_business_id is not null;
+
+update public.acq_workspaces
+set engine_business_id = tailortalk_agent_id
+where engine_business_id is null
+  and tailortalk_agent_id is not null;
+
 update public.acq_workspaces as workspace
-set tailortalk_agent_id = engine.id
+set tailortalk_agent_id = engine.id,
+    engine_business_id = engine.id
 from public.engine_registry as engine
 join public.acq_setter_links as link
   on link.external_agent_id = engine.external_agent_id
@@ -110,12 +123,13 @@ where link.business_id = workspace.id
     where other.tailortalk_agent_id = engine.id
   );
 
-insert into public.acq_workspaces (id, owner_id, name, join_code, tailortalk_agent_id)
+insert into public.acq_workspaces (id, owner_id, name, join_code, tailortalk_agent_id, engine_business_id)
 select
   engine.id,
   coalesce(client.id, diego.id),
   left(btrim(coalesce(nullif(engine.agent_name, ''), nullif(engine.label, ''), 'Business')), 80),
   lower(substr(encode(extensions.gen_random_bytes(6), 'hex'), 1, 8)),
+  engine.id,
   engine.id
 from public.engine_registry as engine
 left join public.profiles as client on client.id = engine.client_id

@@ -320,7 +320,7 @@ async function boot() {
   }
   const adminRes = await state.supabase.from("admins").select("user_id").eq("user_id", state.user.id).maybeSingle();
   state.isAdmin = Boolean(adminRes.data);
-  let listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, tailortalk_agent_id").order("created_at", { ascending: true });
+  let listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").order("created_at", { ascending: true });
   if (listed.error && missing(listed.error)) {
     showMessage("Pipeline is not ready", "Apply the acquisition migrations, then refresh.");
     return;
@@ -337,7 +337,7 @@ async function boot() {
       showMessage("Could not open a workspace", opened.error.message);
       return;
     }
-    listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, tailortalk_agent_id").order("created_at", { ascending: true });
+    listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").order("created_at", { ascending: true });
   }
   state.businesses = (listed.data || []).map((row) => ({ ...row, agent_name: row.name || "Acquisition" }));
   if (!state.businesses.length) {
@@ -348,7 +348,7 @@ async function boot() {
   const requested = new URLSearchParams(location.search).get("business");
   let initial = findBusiness(state.businesses, requested);
   if (requested && !initial && /^[0-9a-f-]{36}$/i.test(requested)) {
-    const again = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, tailortalk_agent_id").or("id.eq." + requested + ",tailortalk_agent_id.eq." + requested).maybeSingle();
+    const again = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").or("id.eq." + requested + ",engine_business_id.eq." + requested).maybeSingle();
     if (again.data && again.data.id) {
       state.businesses = state.businesses.concat([{ ...again.data, agent_name: again.data.name || "Acquisition" }]);
       fillPicker();
@@ -4357,7 +4357,7 @@ function statusLine(leads) {
 function findBusiness(rows, requested) {
   if (!requested) return null;
   return (rows || []).find((row) => row.id === requested)
-    || (rows || []).find((row) => row.tailortalk_agent_id === requested)
+    || (rows || []).find((row) => row.engine_business_id === requested)
     || null;
 }
 

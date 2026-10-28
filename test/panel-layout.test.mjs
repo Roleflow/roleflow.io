@@ -44,7 +44,8 @@ assert.equal(sectionBucket("Style, Format and Tone"), "non_negotiables");
 assert.doesNotMatch(JSON.stringify(nodes), /10%|Roleflow takes/);
 
 const app = fs.readFileSync(new URL("../acquire/app.js", import.meta.url), "utf8");
-assert.match(app, /tailortalk_agent_id/);
+assert.match(app, /engine_business_id/);
+assert.doesNotMatch(app, /tailortalk/i);
 assert.match(app, /roleflowSections/);
 assert.doesNotMatch(app, /step !== "live" && !location.hash/);
 
