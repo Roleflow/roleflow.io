@@ -1,22 +1,22 @@
-import { DM_CAP_DEFAULT, DM_CAP_MAX, clampDmCap, dmModuleVisible } from "./auto-dm.js";
+import { DM_CAP_DEFAULT, DM_CAP_MAX, clampDmCap } from "./auto-dm.js";
 
 const COPY = {
   en: {
     title: "Outreacher",
-    body: "Follow-to-DM for @roleflow.io. It stays off until you turn it on. The kill switch stops it immediately.",
-    locked: "This module runs on @roleflow.io only.",
+    body: "Follow-to-DM for this business. It stays off until you turn it on. The kill switch stops it immediately.",
+    locked: "This module runs on this business only.",
     optIn: "Send follow-to-DMs",
     kill: "Kill switch",
     cap: "Daily cap",
     capHelp: "20 a day unless you set another number. 50 is the most.",
-    wait: "Each DM waits 30 to 240 minutes after the follow or like, and only between 09:00 and 21:00 Madrid.",
-    password: "The Instagram password is never stored. The worker keeps an encrypted session on its own computer.",
+    wait: "Each DM waits 5 to 30 minutes after the follow or like, and only between 09:00 and 21:00 Madrid. Claude writes a new opener from the public profile.",
+    password: "The Instagram password is never stored. The worker keeps this business's encrypted session on its own computer.",
     campaign: "Campaign",
     name: "Name",
     handles: "Handles",
     handlesHelp: "One Instagram handle per line.",
     template: "Message",
-    templateHelp: "Use {hi|hey} for a variation. Prices and commission are removed.",
+    templateHelp: "Notes for the opener. The sent text is written for that person. Prices and commission are removed.",
     save: "Save campaign",
     exclusion: "Do not message",
     exclusionHelp: "One handle per line. Anyone who says stop is added here.",
@@ -24,14 +24,14 @@ const COPY = {
   },
   es: {
     title: "Prospección",
-    body: "DM después de seguir, solo para @roleflow.io. Sigue apagado hasta que lo actives. El interruptor de parada lo corta al momento.",
-    locked: "Este módulo solo funciona en @roleflow.io.",
+    body: "DM después de seguir, para este negocio. Sigue apagado hasta que lo actives. El interruptor de parada lo corta al momento.",
+    locked: "Este módulo es solo de este negocio.",
     optIn: "Enviar DMs tras seguir",
     kill: "Interruptor de parada",
     cap: "Tope diario",
     capHelp: "20 al día salvo que pongas otro número. El máximo es 50.",
-    wait: "Cada DM espera de 30 a 240 minutos tras el follow o el like, y solo entre las 09:00 y las 21:00 de Madrid.",
-    password: "La contraseña de Instagram no se guarda. El worker conserva la sesión cifrada en su propio ordenador.",
+    wait: "Cada DM espera de 5 a 30 minutos tras el follow o el like, y solo entre las 09:00 y las 21:00 de Madrid. Claude escribe un primer mensaje nuevo a partir del perfil público.",
+    password: "La contraseña de Instagram no se guarda. El worker conserva la sesión cifrada de este negocio en su propio ordenador.",
     campaign: "Campaña",
     name: "Nombre",
     handles: "Usuarios",
@@ -65,12 +65,6 @@ export function renderAutoDm(ui) {
   const copy = COPY[lang];
   const wrap = ui.el("div", { class: "platform-home", id: "auto-dm" });
   wrap.append(ui.pageHeader(ui, copy.title, copy.body, "outbound", "send"));
-  if (!dmModuleVisible(ui.state)) {
-    const locked = ui.el("section", { class: "agent coming-card", role: "status" });
-    locked.append(ui.el("h3", { text: copy.locked }));
-    wrap.append(locked);
-    return wrap;
-  }
   const draft = box(ui.state);
   const card = ui.el("form", { class: "agent", id: "auto-dm-form" });
   const enabled = ui.el("input", { id: "auto-dm-enabled", type: "checkbox" });

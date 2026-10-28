@@ -299,7 +299,9 @@ export function normalizeEvent(payload, headerEventId) {
 
 export function shouldEnqueue(event, flags) {
   if (!event || event.ignored || event.standby || event.kind === "sent") return false;
-  if (!flags || flags.systemEnabled !== true) return false;
+  const setterOn = Boolean(flags && flags.setterOn === true);
+  const workspaceOn = Boolean(flags && flags.systemEnabled === true);
+  if (!setterOn && !workspaceOn) return false;
   if (event.event === "comment.received") {
     const allowed = flags.commentToDm === true || flags.commentVoice === true;
     return allowed && Boolean(event.commentId && event.postId && event.senderId);

@@ -294,6 +294,7 @@ const standby = normalizeEvent({ ...JSON.parse(raw), metadata: { standby: true }
 assert.equal(standby.standby, true);
 assert.equal(shouldEnqueue(standby, { systemEnabled: true, commentToDm: true }), false);
 assert.equal(shouldEnqueue(message, { systemEnabled: false, commentToDm: true }), false);
+assert.equal(shouldEnqueue(message, { systemEnabled: false, setterOn: true }), true);
 assert.equal(shouldEnqueue(message, { systemEnabled: true, commentToDm: false }), true);
 const inbound = normalizeEvent({
   id: "evt-live",

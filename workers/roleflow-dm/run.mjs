@@ -1,31 +1,48 @@
-// Follow-to-DM worker for @roleflow.io.
+// One follow-to-DM process per workspace.
 // Run it on a computer you already use. Do not buy a new host for this.
-// The Instagram password is not an argument and is not written to disk.
-// Put the encrypted Playwright session next to this file as session.bin.
-// Decrypt it with ROLEFLOW_DM_SESSION_KEY (openssl enc -aes-256-cbc -pbkdf2).
-// This process exits before opening Instagram unless every gate in planDm passes.
+// The Instagram password is not an argument and is not written anywhere.
+// Sessions live in ROLEFLOW_DM_SESSION_DIR, one encrypted file and one key file per workspace id.
 
-import { planDm, isRoleflowAccount } from "../../acquire/auto-dm.js";
+import { readFileSync } from "node:fs";
+import { planDm, sessionPaths } from "../../acquire/auto-dm.js";
 
-const account = process.env.ROLEFLOW_DM_ACCOUNT || "";
+const workspaceId = process.argv[2] || process.env.ROLEFLOW_DM_WORKSPACE || "";
+const handle = process.argv[3] || "";
+const dir = process.env.ROLEFLOW_DM_SESSION_DIR || "";
+const paths = sessionPaths(dir, workspaceId);
+
+let sessionKey = "";
+if (workspaceId && dir) {
+  try { sessionKey = readFileSync(paths.keyFile, "utf8").trim(); } catch (_error) { sessionKey = ""; }
+}
+
 const killed = process.env.ROLEFLOW_DM_KILL === "1";
 const enabled = process.env.ROLEFLOW_DM_ENABLED === "1";
 
-if (!isRoleflowAccount(account) || killed || !enabled) {
-  console.log(JSON.stringify({ ok: false, reason: !isRoleflowAccount(account) ? "not_roleflow" : killed ? "killed" : "off" }));
+if (!workspaceId) {
+  console.log(JSON.stringify({ ok: false, reason: "missing_workspace" }));
   process.exit(0);
 }
 
+const profile = {
+  name: process.env.ROLEFLOW_DM_PROFILE_NAME || "",
+  bio: process.env.ROLEFLOW_DM_PROFILE_BIO || "",
+  category: process.env.ROLEFLOW_DM_PROFILE_CATEGORY || "",
+  posts: String(process.env.ROLEFLOW_DM_PROFILE_POSTS || "").split("\n").filter(Boolean)
+};
+
 const job = {
-  account,
-  enabled: true,
-  killed: false,
+  workspaceId,
+  enabled,
+  killed,
   paused: process.env.ROLEFLOW_DM_PAUSED === "1",
-  handle: process.argv[2] || "",
+  handle,
   cap: process.env.ROLEFLOW_DM_CAP || 20,
   sentToday: Number(process.env.ROLEFLOW_DM_SENT_TODAY || 0),
   followedAt: process.env.ROLEFLOW_DM_FOLLOWED_AT || "",
-  template: process.env.ROLEFLOW_DM_TEMPLATE || "",
+  draft: process.env.ROLEFLOW_DM_DRAFT || "",
+  profile,
+  recent: String(process.env.ROLEFLOW_DM_RECENT || "").split("\n").filter(Boolean),
   exclusions: String(process.env.ROLEFLOW_DM_EXCLUSIONS || "").split(","),
   sentHandles: String(process.env.ROLEFLOW_DM_SENT || "").split(","),
   note: process.env.ROLEFLOW_DM_NOTE || "",
@@ -34,24 +51,25 @@ const job = {
 
 const plan = planDm(job);
 if (!plan.ok) {
-  console.log(JSON.stringify({ ok: false, reason: plan.reason, readyAt: plan.readyAt || "" }));
+  console.log(JSON.stringify({ ok: false, workspaceId, reason: plan.reason, readyAt: plan.readyAt || "" }));
   process.exit(0);
 }
 
-if (!process.env.ROLEFLOW_DM_SESSION_KEY || !process.env.ROLEFLOW_DM_SESSION_FILE) {
-  console.log(JSON.stringify({ ok: false, reason: "no_session" }));
+if (!sessionKey || !dir) {
+  console.log(JSON.stringify({ ok: false, workspaceId, reason: "no_session" }));
   process.exit(0);
 }
 
 if (process.env.ROLEFLOW_DM_SEND !== "1") {
-  console.log(JSON.stringify({ ok: true, reason: "ready", handle: job.handle, body: plan.body }));
+  console.log(JSON.stringify({ ok: true, reason: "ready", workspaceId, handle, body: plan.body }));
   process.exit(0);
 }
 
 const { sendPlanned } = await import("./send.mjs");
 const sent = await sendPlanned({
   ...job,
-  sessionKey: process.env.ROLEFLOW_DM_SESSION_KEY,
-  sessionFile: process.env.ROLEFLOW_DM_SESSION_FILE
+  sessionKey,
+  sessionFile: paths.file,
+  logFile: paths.logFile
 });
-console.log(JSON.stringify(sent));
+console.log(JSON.stringify({ ...sent, workspaceId, body: plan.body }));

@@ -30,3 +30,13 @@ export function routeByIgUser(igUserId, connections) {
   if (matches.length !== 1) return null;
   return matches[0].business_id;
 }
+
+export function assignInboundBusiness(igUserId, connections) {
+  const routed = routeByIgUser(igUserId, connections);
+  if (routed) return { businessId: routed, bindUserId: false };
+  const id = String(igUserId || "");
+  if (!id) return { businessId: null, bindUserId: false };
+  const unbound = (connections || []).filter((row) => row && row.status === "connected" && !row.ig_user_id);
+  if (unbound.length !== 1) return { businessId: null, bindUserId: false };
+  return { businessId: unbound[0].business_id, bindUserId: true };
+}

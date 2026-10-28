@@ -2,7 +2,7 @@
 // The password is not read. The session file is decrypted in a temp file and deleted.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planDm } from "../../acquire/auto-dm.js";
@@ -38,7 +38,15 @@ export async function sendPlanned(input) {
     await page.getByRole("button", { name: /^next$/i }).click();
     await page.getByRole("textbox").fill(plan.body);
     await page.getByRole("button", { name: /^send$/i }).click();
-    return { ok: true, reason: "sent" };
+    if (input.logFile) {
+      appendFileSync(input.logFile, JSON.stringify({
+        workspaceId: input.workspaceId,
+        handle: input.handle,
+        body: plan.body,
+        at: new Date().toISOString()
+      }) + "\n");
+    }
+    return { ok: true, reason: "sent", body: plan.body };
   } catch (error) {
     return { ok: false, reason: error && /blocked|challenge|warning/i.test(error.message || "") ? "paused" : "not_sent" };
   } finally {

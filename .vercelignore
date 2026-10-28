@@ -7,3 +7,4 @@ test
 admin/**/*.test.mjs
 docs/*
 !docs/brand-brain.md
+workers
