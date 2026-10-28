@@ -20,7 +20,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
 import { PROVIDERS, clientReplyView, completeChat, healthView, loadSetterReply, logLlmError, probeClaude, redactSecret } from "../_shared/llm-provider.js";
 import { buildInstruction as winningInstruction, draftBrief } from "../_shared/winning-conversations.js";
-import { advanceStatus, buildInstruction as intakeInstruction, hashToken, intakeBundle, normalizeDraft, textFromDocxXml, textFromUpload } from "../_shared/onboarding-build.js";
+import { advanceStatus, buildInstruction as intakeInstruction, hashToken, intakeBundle, normalizeDraft, playbookFromSources, textFromDocxXml, textFromUpload } from "../_shared/onboarding-build.js";
 import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
@@ -453,6 +453,9 @@ async function buildOnboarding(admin, businessId, userId) {
     materials: (materials.data || []).map((item) => ({ text: item.body, name: item.name })),
     conversations: wins.error ? [] : wins.data || []
   });
+  if (!bundle.materials && !bundle.conversations && !String((form.data && form.data.offer) || "").trim()) {
+    return json(200, { ok: false, error: "Add an SOP or a conversation before building the setter.", sent: false, draft: true });
+  }
   const env = Deno.env.toObject();
   const loaded = await loadSetterReply(admin, businessId, env);
   const runtime = loaded.chain[0];
@@ -466,7 +469,7 @@ async function buildOnboarding(admin, businessId, userId) {
       maxTokens: 4000,
       json: true,
       onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info }),
-      system: "You fill business sections and draft a setter prompt. Return JSON only. Do not save it and do not turn the setter on.",
+      system: "You extract a setter playbook and draft a prompt. Return JSON only with fields, sources, playbook, and prompt. Do not invent facts. If a section is not in the sources, leave it empty. Do not save it and do not turn the setter on.",
       messages: [{ role: "user", content: intakeInstruction(bundle) }]
     });
     parsed = parseDraft(result && result.text);
@@ -479,6 +482,10 @@ async function buildOnboarding(admin, businessId, userId) {
     }, loaded.chain.map((step) => step.apiKey)));
   }
   const draft = normalizeDraft(parsed, bundle);
+  const playbook = playbookFromSources(bundle, parsed && parsed.playbook);
+  draft.playbook = playbook.sections;
+  draft.checklist = playbook.missing;
+  draft.prompt = playbook.prompt;
   const status = advanceStatus(form.data && form.data.status, "drafted");
   await admin.from("acq_onboarding").upsert({
     business_id: businessId,
@@ -505,8 +512,8 @@ async function buildOnboarding(admin, businessId, userId) {
     provider: providerId,
     provider_label: spec ? spec.label : providerId,
     model: String(result && result.model || ""),
-    notice: draft.missing.length ? "needs input" : "",
-    prompt: JSON.stringify({ fields: draft.fields, sources: draft.sources, missing: draft.missing })
+    notice: playbook.missing.length ? "needs input" : "",
+    prompt: JSON.stringify({ fields: draft.fields, sources: draft.sources, missing: playbook.missing, playbook: playbook.sections })
   }, secrets));
 }
 

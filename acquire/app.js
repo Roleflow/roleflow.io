@@ -11,6 +11,8 @@ import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
+import { parseBulkThreads } from "./winning-conversations.js";
+import { localSopReview } from "./sop-page.js";
 import { previewOnboarding } from "./onboarding-panel.js";
 import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
@@ -912,6 +914,10 @@ function pageUi() {
     revokeOnboardingLink,
     buildOnboarding,
     approveOnboarding,
+    saveSopWorkflow,
+    saveBulkConversations,
+    buildSop,
+    applySopPrompt,
     reviewOnboardingPrompt,
     saveCommentSlot,
     sendTrial,
@@ -1337,7 +1343,7 @@ async function saveWinning(input) {
   }
   const row = {
     id: input.id || "",
-    title: raw.split("\n")[0].slice(0, 80),
+    title: String(input.title || raw.split("\n")[0]).slice(0, 80),
     raw_text: raw.slice(0, 20000),
     messages: Array.isArray(input.messages) ? input.messages : [],
     outcome: input.outcome === "booked" || input.outcome === "closed" ? input.outcome : "",
@@ -1555,6 +1561,109 @@ async function buildOnboarding(values) {
     toast(error.message, "bad");
     paint();
   }
+}
+
+async function saveSopWorkflow(text) {
+  const body = String(text || "").trim();
+  if (!body && !(document.getElementById("sop-file") && document.getElementById("sop-file").files[0])) {
+    toast(language() === "es" ? "Pega el SOP." : "Paste the SOP.", "bad");
+    return;
+  }
+  if (!state.onboardingMaterials) state.onboardingMaterials = [];
+  if (body) {
+    state.onboardingMaterials = [{ id: "sop-text", name: "SOP workflow", kind: "text" }].concat(state.onboardingMaterials.filter((item) => item.name !== "SOP workflow"));
+    state.sopWorkflow = body;
+  }
+  if (!state.onboarding) state.onboarding = {};
+  state.onboarding.status = advanceStatus(state.onboarding.status, "materials");
+  if (!state.supabase) {
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_onboarding_materials").insert({
+    business_id: state.businessId,
+    kind: "text",
+    name: "SOP workflow",
+    body: body.slice(0, 80000)
+  });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  const file = document.getElementById("sop-file") && document.getElementById("sop-file").files[0];
+  if (file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    bytes.forEach((part) => { binary += String.fromCharCode(part); });
+    await dashboardCall({ action: "upload_onboarding", name: file.name, data: btoa(binary) });
+  }
+  toast(agentText(language()).saved);
+  paint();
+}
+
+async function saveBulkConversations(text) {
+  const threads = parseBulkThreads(text);
+  if (!threads.length) {
+    toast(language() === "es" ? "Pega al menos una conversación." : "Paste at least one conversation.", "bad");
+    return;
+  }
+  if (!state.supabase) {
+    const rows = threads.map((thread, index) => ({
+      id: "bulk-" + index + "-" + Date.now(),
+      title: thread.label,
+      raw_text: thread.raw_text,
+      messages: thread.messages,
+      outcome: thread.outcome,
+      notes: thread.notes,
+      created_at: new Date().toISOString()
+    }));
+    state.winningConversations = rows.concat(state.winningConversations || []);
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  for (const thread of threads) {
+    await saveWinning({ raw_text: thread.raw_text, messages: thread.messages, outcome: thread.outcome, notes: thread.notes, title: thread.label });
+  }
+}
+
+async function buildSop(workflow) {
+  state.sopError = "";
+  try {
+    if (!state.supabase) {
+      state.sopReview = localSopReview(workflow || state.sopWorkflow, state.winningConversations || []);
+      if (!state.onboarding) state.onboarding = {};
+      state.onboarding.status = advanceStatus(state.onboarding.status, "drafted");
+      paint();
+      return;
+    }
+    if (String(workflow || "").trim()) await saveSopWorkflow(workflow);
+    const saved = await dashboardCall({ action: "build_onboarding" });
+    const details = saved.prompt ? JSON.parse(saved.prompt) : {};
+    state.sopReview = {
+      playbook: details.playbook || {},
+      missing: details.missing || [],
+      prompt: saved.reply || ""
+    };
+    state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "drafted") });
+    paint();
+  } catch (error) {
+    state.sopError = error.message || "The setter was not built.";
+    paint();
+  }
+}
+
+async function applySopPrompt(prompt) {
+  const saved = await saveSetterPrompt(prompt);
+  if (saved === false) {
+    state.sopError = language() === "es" ? "El prompt no se guardó." : "The prompt was not saved.";
+    paint();
+    return;
+  }
+  state.sopReview = null;
+  if (state.setterDesk) state.setterDesk.mode = "prompts";
+  go("setter");
 }
 
 function reviewOnboardingPrompt() {

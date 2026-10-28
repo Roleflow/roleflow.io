@@ -193,3 +193,69 @@ export function normalizeDraft(model, bundle) {
     missing: BRIEF_KEYS.filter((key) => fields[key] === "needs input")
   };
 }
+
+export const PLAYBOOK_KEYS = ["offer", "icp", "questions", "stages", "objections", "tone", "cta"];
+
+export function mentionsPrice(text) {
+  return /\$\s?\d|\bprice\b|\bpricing\b|\bcommission\b|\bprecio\b|\bcomisi[oó]n\b/i.test(String(text || ""));
+}
+
+export function playbookFromSources(bundle, modelPlaybook) {
+  const source = bundle || { form: {}, materials: "", conversations: "" };
+  const form = source.form || {};
+  const corpus = [source.materials, source.conversations, form.offer, form.price, form.ideal, form.criteria, form.disqualifiers, form.booking].filter(Boolean).join("\n");
+  const claimed = modelPlaybook && typeof modelPlaybook === "object" ? modelPlaybook : {};
+  const backed = {
+    offer: Boolean(form.offer || source.materials),
+    icp: Boolean(form.ideal || source.materials),
+    questions: Boolean(form.criteria || source.materials || source.conversations),
+    stages: Boolean(source.materials || source.conversations),
+    objections: Boolean(form.disqualifiers || source.materials || source.conversations),
+    tone: Boolean(source.materials || source.conversations),
+    cta: Boolean(form.booking || source.materials || source.conversations)
+  };
+  const lineAfter = (pattern) => {
+    const match = String(source.materials || "").match(pattern);
+    return match ? match[1].trim() : "";
+  };
+  const fallback = {
+    offer: form.offer || "",
+    icp: form.ideal || lineAfter(/ideal client:\s*([^.]*)/i),
+    questions: form.criteria || lineAfter(/qualif(?:y|ication)[^.]*:\s*([^.]*)/i),
+    stages: "",
+    objections: form.disqualifiers || lineAfter(/objections?:\s*([^.]*)/i),
+    tone: lineAfter(/tone:\s*([^.]*)/i),
+    cta: form.booking || ""
+  };
+  const sections = {};
+  const missing = [];
+  PLAYBOOK_KEYS.forEach((key) => {
+    const modelValue = String(claimed[key] || "").trim();
+    const value = backed[key]
+      ? (modelValue && modelValue.toLowerCase() !== "needs input" ? modelValue : fallback[key])
+      : "";
+    let clean = mentionsPrice(corpus) ? value : String(value || "").replace(/\$\s?\d[\d,.]*/g, "").replace(/\b(price|pricing|commission|precio|comisi[oó]n)\b/gi, "").trim();
+    if (!clean && backed[key] && (key === "offer" || key === "questions" || key === "tone") && source.materials) clean = String(source.materials).trim().slice(0, 400);
+    if (!clean && backed[key] && (key === "objections" || key === "stages") && source.conversations) clean = String(source.conversations).trim().slice(0, 400);
+    if (!clean) {
+      sections[key] = "";
+      missing.push(key);
+    } else sections[key] = clean.slice(0, 2000);
+  });
+  const rules = STANDING_RULES.slice();
+  if (!mentionsPrice(corpus)) rules.push("Do not mention price or commission in the opener.");
+  const prompt = [
+    "You are the setter for this business. Use only the facts below.",
+    rules.join("\n"),
+    sections.offer ? "Offer: " + sections.offer : "",
+    sections.icp ? "Ideal client: " + sections.icp : "",
+    sections.questions ? "Qualification: " + sections.questions : "",
+    sections.stages ? "Stages: " + sections.stages : "",
+    sections.objections ? "Objections: " + sections.objections : "",
+    sections.tone ? "Tone: " + sections.tone : "",
+    sections.cta ? "Booking: " + sections.cta : "",
+    source.conversations ? "Examples:\n" + source.conversations.slice(0, 2000) : "",
+    missing.length ? "Missing, do not invent: " + missing.join(", ") : ""
+  ].filter(Boolean).join("\n\n");
+  return { sections, missing, prompt, allowPrice: mentionsPrice(corpus) };
+}
