@@ -677,3 +677,8 @@ body.admin-panel .connect-banner .roster-biz{display:flex;flex-wrap:wrap;align-i
 .intake-check li{padding:6px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
 .intake-check li.is-done{color:#EEF1FA;border-color:#3DDC97}
 .win-preview{display:grid;gap:6px;padding:10px;border-radius:12px;background:#0A1226}
+.voice-slider{display:grid;gap:4px;margin:4px 0 8px}
+.voice-label{margin:0;font-weight:700}
+.voice-slider input{width:100%;accent-color:#7B4DFF}
+.voice-ends{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.78rem}
+.voice-ends span{color:var(--mute)}

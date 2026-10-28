@@ -1,3 +1,5 @@
+import { clampVoice, prepareVoice } from "./setter-voice.js";
+
 // One chat completion path for every Roleflow caller.
 // Platform keys stay in the function environment. A business key is passed in
 // already decrypted and is never written to the returned error text.
@@ -344,9 +346,12 @@ export async function loadSetterReply(admin, businessId, env) {
   const current = currentLoaded && currentLoaded.runtime;
   let mode = "default";
   let businessKey = "";
+  let voice = 50;
   if (admin && businessId) {
-    const row = await admin.from("acq_settings").select("setter_claude_mode").eq("agent_id", businessId).maybeSingle();
+    let row = await admin.from("acq_settings").select("setter_claude_mode, setter_voice").eq("agent_id", businessId).maybeSingle();
+    if (row && row.error) row = await admin.from("acq_settings").select("setter_claude_mode").eq("agent_id", businessId).maybeSingle();
     if (row && !row.error && row.data && row.data.setter_claude_mode === "own") mode = "own";
+    if (row && !row.error && row.data && row.data.setter_voice != null) voice = clampVoice(row.data.setter_voice);
     if (mode === "own") {
       const loaded = await admin.rpc("acq_llm_read_key", { p_business: businessId, p_provider: "anthropic" });
       const data = loaded && !loaded.error ? loaded.data : null;
@@ -354,6 +359,7 @@ export async function loadSetterReply(admin, businessId, env) {
     }
   }
   const plan = setterReplyPlan({ mode, businessKey, env, current });
+  plan.voice = voice;
   if (plan.fellBack && admin && businessId) {
     await logLlmError(admin, {
       businessId,
@@ -419,6 +425,7 @@ export function clientReplyView(result, secrets) {
   ["reply", "error", "notice"].forEach((key) => {
     if (typeof view[key] === "string") view[key] = redactListed(view[key], secrets);
   });
+  if (Number.isFinite(Number(source.voice))) view.voice = clampVoice(source.voice);
   if (source.usage && typeof source.usage === "object") {
     view.usage = {
       input: Math.max(0, Number(source.usage.input) || 0),
@@ -465,16 +472,23 @@ async function once(runtime, input) {
 }
 
 async function sendOnce(runtime, input) {
+  const prepared = prepareVoice({
+    provider: runtime.provider,
+    model: runtime.model,
+    system: input.system || "",
+    voice: input.voice,
+    temperature: input.temperature
+  });
   const request = chatRequest({
     runtime,
-    system: input.system || "",
+    system: prepared.system,
     messages: input.messages || [],
     json: input.json === true,
     tools: input.tools,
     responseFormat: input.responseFormat,
     maxTokens: input.maxTokens,
-    temperature: input.temperature,
-    omitTemperature: input.omitTemperature === true
+    temperature: prepared.temperature,
+    omitTemperature: prepared.omitTemperature || input.omitTemperature === true
   });
   const fetchFn = input.fetchImpl || fetch;
   const response = await fetchFn(request.url, request.init);
@@ -497,7 +511,8 @@ async function sendOnce(runtime, input) {
     provider: runtime.provider,
     model: String(runtime.model || ""),
     keySource: runtime.source === "own" ? "business" : "platform",
-    usage: readUsage(runtime.provider, payload)
+    usage: readUsage(runtime.provider, payload),
+    voice: input.voice == null || input.voice === "" ? undefined : clampVoice(input.voice)
   };
 }
 

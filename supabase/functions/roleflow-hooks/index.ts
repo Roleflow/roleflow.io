@@ -156,6 +156,7 @@ async function promptTest(req: Request, body: { business_id?: string; message?: 
     });
     const result = await completeChat({
       chain: loaded.chain,
+      voice: loaded.voice,
       system,
       messages: [{ role: "user", content: message }],
       temperature: 0.4,
