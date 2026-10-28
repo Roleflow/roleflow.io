@@ -398,7 +398,7 @@ export async function renderCrm(supabase, user, { app, hello }) {
       const agent = agents.find((item) => item.id === picker.value);
       if (!agent) return;
       slot.append(el("p", {}, [
-        el("a", { href: "/businesses/#" + agent.id + "/leads" }, ["Open leads, workflow, and stats"])
+        el("a", { href: "/account/acquisition/?business=" + encodeURIComponent(agent.id) + "#dashboard" }, ["Open this business"])
       ]));
       slot.append(channelPanel(agent));
       slot.append(sendsPanel(agent));
