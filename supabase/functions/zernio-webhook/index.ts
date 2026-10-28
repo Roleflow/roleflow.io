@@ -4,6 +4,7 @@
 
 import { completeJson, systemPrompt } from "../roleflow-acquisition/ig/llm.js";
 import { bookingTool, loadBusinessRuntime, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
+import { splitReply } from "../_shared/split-reply.js";
 import { chooseClip, clipFromSlot, clipInstructions } from "../_shared/clip-plan.js";
 import { sentMessage, withAttachment } from "../_shared/clip-send.js";
 import {
@@ -312,7 +313,22 @@ async function planJob(admin, job) {
     return;
   }
   const wait = delaySeconds(prefs.reply_delay_seconds, prefs.reply_delay_max_seconds, Math.random);
-  const payload = enqueueBody({ ...job.event, text }, text, current.data.payload.conversationRowId);
+  const splitLookup = await admin.from("acq_settings").select("reply_split_words").eq("agent_id", job.account.businessId).maybeSingle();
+  const splitWords = splitLookup.error || !splitLookup.data || splitLookup.data.reply_split_words == null ? 15 : Number(splitLookup.data.reply_split_words);
+  const parts = splitReply(text, splitWords);
+  const payload = enqueueBody({ ...job.event, text: parts[0] || text }, parts[0] || text, current.data.payload.conversationRowId);
+  for (let index = 1; index < parts.length; index += 1) {
+    await admin.from("ig_outbox").insert({
+      business_id: job.account.businessId,
+      thread_id: job.threadId,
+      kind: current.data.kind || "reply",
+      transport: "official",
+      payload: enqueueBody(job.event, parts[index], current.data.payload.conversationRowId),
+      run_at: new Date(Date.now() + (wait + index * 4) * 1000).toISOString(),
+      status: "pending",
+      idempotency_key: String(job.id) + ":part:" + index
+    });
+  }
   if (chosen) {
     payload.clip = {
       id: chosen.id,

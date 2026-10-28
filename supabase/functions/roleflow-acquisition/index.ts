@@ -7,6 +7,7 @@ import { hubChallenge, verifySignature, extractEvents, eventId } from "./ig/webh
 import { planTurn } from "./ig/engine.js";
 import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/llm.js";
 import { bookingTool, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
+import { splitReply } from "../_shared/split-reply.js";
 import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
@@ -305,7 +306,8 @@ async function runOutbox(db, row) {
   if (plan.escalate) await escalate(db, businessId, thread.target_id, plan.escalateReason || plan.state, plan.escalateReason || plan.state);
   if (plan.noResponse) return finish("done");
   const bubbles = (await maybeBook(db, businessId, thread, settings, plan, booking)).map((text) => resolveOutgoing(text, { voices: catalog, bookingLink }));
-  const spoken = bubbles.map((item) => item.text).filter(Boolean);
+  const splitWords = Number.isFinite(Number(settings.reply_split_words)) ? Number(settings.reply_split_words) : 15;
+  const spoken = bubbles.flatMap((item) => splitReply(item.text, splitWords)).filter(Boolean);
   const tokenNote = row.kind === "comment_private" ? null : (bubbles.find((item) => item.voices && item.voices[0]) || { voices: [] }).voices[0] || null;
   const decision = messagingDecision({
     lastUserMessageAt: thread.last_user_message_at,
@@ -393,7 +395,9 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
     }
   }
   const chunks = texts.length ? texts : [];
-  for (const text of chunks) {
+  for (let index = 0; index < chunks.length; index += 1) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
+    const text = chunks[index];
     const body = kind === "comment_private" && commentId
       ? privateReplyBody({ commentId, text })
       : withPolicy(textBody({ recipientId: thread.igsid, text }), decision);
