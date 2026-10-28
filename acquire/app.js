@@ -11,7 +11,7 @@ import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { clampDmCap } from "./auto-dm.js";
-import { disconnectUrl, hashLoginToken, LOGIN_TTL_MS, loginExpiry, loginUrl, mintLoginToken } from "./dm-login.js";
+import { hashLoginToken, heartbeatFresh, LOGIN_TTL_MS, loginExpiry, mintLoginToken, panelLoginHash } from "./dm-login.js";
 import { roleflowSections } from "./setter-sections.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
 import { parseBulkThreads } from "./winning-conversations.js";
@@ -509,7 +509,7 @@ async function loadAll(id, token) {
   state.setterLink = setterLink.error ? null : setterLink.data;
   let dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason, ig_handle, session_ready").eq("business_id", id).maybeSingle();
   if (dmControls.error) dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason").eq("business_id", id).maybeSingle();
-  const dmLoginConfig = await q.from("acq_dm_login_config").select("public_origin").eq("id", 1).maybeSingle();
+  const dmLoginBeat = await q.from("acq_dm_login_service").select("seen_at").eq("id", 1).maybeSingle();
   const dmCampaigns = await q.from("acq_dm_campaigns").select("id, name, template, handles, exclusions, enabled").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
   if (!live()) return false;
   if (!dmControls.error && dmControls.data) {
@@ -520,7 +520,7 @@ async function loadAll(id, token) {
       paused: dmControls.data.paused_reason || "",
       igHandle: dmControls.data.ig_handle || "",
       sessionReady: dmControls.data.session_ready === true,
-      loginOrigin: !dmLoginConfig.error && dmLoginConfig.data ? dmLoginConfig.data.public_origin || "" : "",
+      loginLive: !dmLoginBeat.error && dmLoginBeat.data ? heartbeatFresh(dmLoginBeat.data.seen_at, new Date()) : false,
       name: "",
       handles: "",
       template: "",
@@ -1328,22 +1328,10 @@ function rememberPrompt(body, version, testedAt) {
 let dmLoginWatch = 0;
 
 async function startDmLogin() {
-  const copyMissing = language() === "es"
-    ? "La dirección de acceso todavía no está puesta."
-    : "The login address is not set yet.";
-  const origin = state.autoDm && state.autoDm.loginOrigin;
-  if (!state.supabase || state.businessId === "preview" || !origin) {
-    state.autoDm = Object.assign({}, state.autoDm, { loginError: copyMissing });
-    paint();
-    return;
-  }
+  if (!state.supabase || state.businessId === "preview" || !state.autoDm || state.autoDm.loginLive !== true) return;
   const token = mintLoginToken();
-  const url = loginUrl(origin, token);
-  if (!url) {
-    state.autoDm = Object.assign({}, state.autoDm, { loginError: copyMissing });
-    paint();
-    return;
-  }
+  const url = panelLoginHash(token);
+  if (!url) return;
   const tokenHash = await hashLoginToken(token);
   const saved = await state.supabase.from("acq_dm_login_links").insert({
     business_id: state.businessId,
@@ -1383,18 +1371,12 @@ async function watchDmLogin(generation, businessId) {
 }
 
 async function disconnectDm() {
-  const origin = state.autoDm && state.autoDm.loginOrigin;
-  if (!state.supabase || !origin || state.businessId === "preview") {
+  if (!state.supabase || state.businessId === "preview") {
     state.autoDm = Object.assign({}, state.autoDm, { sessionReady: false, igHandle: "" });
     paint();
     return;
   }
   const token = mintLoginToken();
-  const endpoint = disconnectUrl(origin, token);
-  if (!endpoint) {
-    toast(language() === "es" ? "No se pudo desconectar." : "Could not disconnect.", "bad");
-    return;
-  }
   const tokenHash = await hashLoginToken(token);
   const saved = await state.supabase.from("acq_dm_login_links").insert({
     business_id: state.businessId,
@@ -1406,13 +1388,17 @@ async function disconnectDm() {
     toast(saved.error.message, "bad");
     return;
   }
-  const response = await fetch(endpoint, { method: "POST" });
-  if (!response.ok) {
-    toast(language() === "es" ? "No se pudo desconectar." : "Could not disconnect.", "bad");
-    return;
+  const started = Date.now();
+  while (Date.now() - started < 20000) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const row = await state.supabase.from("acq_dm_controls").select("ig_handle, session_ready").eq("business_id", state.businessId).maybeSingle();
+    if (row && !row.error && row.data && row.data.session_ready !== true) {
+      state.autoDm = Object.assign({}, state.autoDm, { sessionReady: false, igHandle: "", enabled: state.autoDm.enabled === true });
+      paint();
+      return;
+    }
   }
-  state.autoDm = Object.assign({}, state.autoDm, { sessionReady: false, igHandle: "", enabled: state.autoDm.enabled === true });
-  paint();
+  toast(language() === "es" ? "No se pudo desconectar." : "Could not disconnect.", "bad");
 }
 
 async function saveAutoDm(draft) {

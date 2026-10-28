@@ -136,6 +136,56 @@ function publicOrigin(origin) {
   return parsed.origin;
 }
 
+export const HEARTBEAT_FRESH_MS = 45 * 1000;
+export const LOGIN_CHANNEL_PREFIX = "dm-login:";
+
+export function loginChannel(tokenHash) {
+  if (!/^[a-f0-9]{64}$/.test(String(tokenHash || ""))) return "";
+  return LOGIN_CHANNEL_PREFIX + tokenHash;
+}
+
+export function panelLoginHash(token) {
+  if (!/^[a-f0-9]{64}$/.test(String(token || ""))) return "";
+  return "/account/ig-login/#" + token;
+}
+
+export function mayJoinLoginChannel({ canEdit, link, topic, now }) {
+  if (canEdit !== true || !link) return false;
+  const expected = loginChannel(link.token_hash);
+  if (!expected || topic !== expected) return false;
+  if (link.purpose !== "login") return false;
+  return loginLinkOpen(link, now || new Date());
+}
+
+export function heartbeatBody(now) {
+  const clock = now instanceof Date ? now : new Date(now || Date.now());
+  return { seen_at: clock.toISOString() };
+}
+
+export function heartbeatFresh(seenAt, now, windowMs = HEARTBEAT_FRESH_MS) {
+  const at = new Date(seenAt).getTime();
+  const clock = now instanceof Date ? now.getTime() : new Date(now || Date.now()).getTime();
+  return Number.isFinite(at) && Math.abs(clock - at) < windowMs;
+}
+
+export function statusPayload(status, handle) {
+  const name = String(handle || "").trim().replace(/^@+/, "");
+  return {
+    status: status === "connected" ? "connected" : "closed",
+    handle: name
+  };
+}
+
+export function framePayload(encoded) {
+  const value = String(encoded || "");
+  if (value.length < 8 || value.length > 120000) return null;
+  return { j: value };
+}
+
+export function inputFromBroadcast(body) {
+  return forwardClientMessage(body);
+}
+
 export function loginUrl(origin, token) {
   const base = publicOrigin(origin);
   if (!base || !/^[a-f0-9]{64}$/.test(String(token || ""))) return "";

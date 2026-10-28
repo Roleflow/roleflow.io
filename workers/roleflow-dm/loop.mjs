@@ -3,7 +3,7 @@
 
 import { mkdirSync } from "node:fs";
 import { planDm, sentOnDay, sessionPaths, madridActive } from "../../acquire/auto-dm.js";
-import { restRequest } from "./login-service.mjs";
+import { restRequest } from "./rest.mjs";
 import { draftOpener } from "./opener.mjs";
 import { sendPlanned } from "./send.mjs";
 import { readSessionKey } from "./session-file.mjs";

