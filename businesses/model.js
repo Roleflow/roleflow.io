@@ -1,3 +1,15 @@
+export function gridStageLabel(stage, language) {
+  const labels = {
+    materials: ["Materials received", "Materiales recibidos"],
+    drafted: ["Prompt drafted", "Prompt en borrador"],
+    tested: ["Simulator tested", "Simulador probado"],
+    approved: ["Approved", "Aprobado"]
+  };
+  const row = labels[stage];
+  if (!row) return language === "es" ? "IA activa" : "AI active";
+  return language === "es" ? row[1] : row[0];
+}
+
 export function nameKey(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }

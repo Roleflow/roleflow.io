@@ -673,3 +673,7 @@ body.admin-panel .connect-banner .roster-biz{display:flex;flex-wrap:wrap;align-i
 .claude-choice input{width:auto;accent-color:#7B4DFF}
 .claude-mask{margin:8px 0;font-family:ui-monospace,SFMono-Regular,monospace;letter-spacing:.03em}
 .claude-notice{margin:0 0 12px;padding:10px 12px;border-radius:12px;background:rgba(255,138,61,.16);color:#EEF1FA}
+.intake-check{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
+.intake-check li{padding:6px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}
+.intake-check li.is-done{color:#EEF1FA;border-color:#3DDC97}
+.win-preview{display:grid;gap:6px;padding:10px;border-radius:12px;background:#0A1226}

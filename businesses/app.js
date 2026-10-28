@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
 import { liveSections } from "../account/setter-model.js";
-import { activitySeries, categoryTone, createdPhrase, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
+import { activitySeries, categoryTone, createdPhrase, gridStageLabel, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
 import { openAddBusiness } from "../acquire/add-business.js";
@@ -308,7 +308,7 @@ if (readGridPreview() && !preview) {
       { day: new Date(now - 86400000).toISOString().slice(0, 10), count: 2 },
       { day: new Date(now).toISOString().slice(0, 10), count: 1 }
     ] }]
-  ]), new Map(), false, "", new Set(), true, false, new Set(["second"]));
+  ]), new Map(), false, "", new Set(), true, false, new Set(["second"]), new Map([["third", "drafted"]]));
 } else if (preview) {
   hideBoot();
   heading.textContent = preview.agent.agent_name || "Workforce";
@@ -422,6 +422,10 @@ async function boot(supabase, user) {
     }
   }
 
+  const stages = new Map();
+  const stageRes = await supabase.from("acq_onboarding").select("business_id, status");
+  if (!stageRes.error) (stageRes.data || []).forEach((row) => stages.set(row.business_id, row.status));
+
   function paint() {
     cancelWorkforce();
     const route = parseRoute();
@@ -430,7 +434,7 @@ async function boot(supabase, user) {
       go("#" + route.id + "/leads");
       return;
     }
-    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds);
+    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds, stages);
     else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles);
     paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin, roles);
   }
@@ -515,7 +519,7 @@ function paintSide(user, agents, route, isAdmin, roles) {
   else nav.prepend(block);
 }
 
-function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds) {
+function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds, stages) {
   const es = gridLanguage() === "es";
   heading.classList.add("biz-title");
   heading.textContent = isAdmin ? "Businesses" : (es ? "Tus negocios" : "Your businesses");
@@ -524,10 +528,10 @@ function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, stats
   sub.textContent = agents.length
     ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : (es ? "Cada tarjeta abre leads, workflow, equipo y archivos." : "Each card opens leads, workflow, workforce, and assets."))
     : (isAdmin ? "No setters are in the cache yet." : (es ? "Ningún negocio está vinculado a esta cuenta." : "No business is linked to this account yet."));
-  paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, false, owned, sharedIds || new Set());
+  paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, false, owned, sharedIds || new Set(), stages);
 }
 
-function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sample, owned, sharedIds) {
+function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sample, owned, sharedIds, stages) {
   const es = gridLanguage() === "es";
   app.innerHTML = "";
   if (statsError) app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
@@ -545,7 +549,7 @@ function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, stat
     const card = businessCard({
       name: agent.agent_name || "AI Setter",
       active,
-      activeText: es ? "IA activa" : "AI active",
+      activeText: stages && stages.get(agent.id) ? gridStageLabel(stages.get(agent.id), es ? "es" : "en") : (es ? "IA activa" : "AI active"),
       shared: Boolean(sharedIds && sharedIds.has(agent.id)),
       sharedText: es ? "Compartido" : "Shared",
       created: createdPhrase(agent.created_at, es ? "es" : "en"),

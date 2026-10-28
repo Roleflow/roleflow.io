@@ -18,7 +18,9 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
-import { PROVIDERS, clientReplyView, completeChat, loadSetterReply, logLlmError, redactSecret } from "../_shared/llm-provider.js";
+import { PROVIDERS, clientReplyView, completeChat, healthView, loadSetterReply, logLlmError, probeClaude, redactSecret } from "../_shared/llm-provider.js";
+import { buildInstruction as winningInstruction, draftBrief } from "../_shared/winning-conversations.js";
+import { advanceStatus, buildInstruction as intakeInstruction, hashToken, intakeBundle, normalizeDraft, textFromDocxXml, textFromUpload } from "../_shared/onboarding-build.js";
 import { clientSafeText } from "../_shared/client-safe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
@@ -59,6 +61,12 @@ Deno.serve(async (req) => {
   if (action === "save_prompt") return savePrompt(admin, businessId, user.data.user.id, body.prompt);
   if (action === "restore_prompt") return restorePrompt(admin, businessId, user.data.user.id, body.version_id);
   if (action === "preview_setter") return previewSetter(admin, businessId, user.data.user.id, body);
+  if (action === "claude_health") return claudeHealth();
+  if (action === "build_setter_prompt") return buildSetterPrompt(admin, businessId);
+  if (action === "create_onboarding_link") return createOnboardingLink(admin, businessId, user.data.user.id);
+  if (action === "revoke_onboarding_link") return revokeOnboardingLink(admin, businessId, body.link_id);
+  if (action === "build_onboarding") return buildOnboarding(admin, businessId, user.data.user.id);
+  if (action === "upload_onboarding") return uploadOnboarding(admin, businessId, body);
   if (action === "save_booking_link") return saveBookingLink(admin, businessId, body.booking_link);
   if (action === "save_comment_voice") return saveCommentVoice(admin, businessId, body);
   if (action === "set_agent") return setAgent(admin, businessId, user.data.user.id, body);
@@ -354,3 +362,214 @@ async function saveLanguage(admin, userId, language) {
   if (saved.error) return json(200, { ok: false, error: "The language was not saved. Apply the client dashboard migration first." });
   return json(200, { ok: true, language: next });
 }
+
+async function fileText(name, bytes) {
+  if (String(name || "").toLowerCase().endsWith(".docx")) {
+    try {
+      const { unzipSync, strFromU8 } = await import("npm:fflate@0.8.2");
+      const files = unzipSync(bytes);
+      const xml = files["word/document.xml"];
+      return xml ? textFromDocxXml(strFromU8(xml)) : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+  const found = textFromUpload(name, bytes);
+  return found.note === "screenshot" ? "" : found.text;
+}
+
+async function uploadOnboarding(admin, businessId, body) {
+  const name = String(body.name || "notes.txt").slice(0, 180);
+  if (/\.(png|jpe?g|webp|gif)$/i.test(name)) return json(200, { ok: false, error: "Paste the conversation. Screenshots are not read.", sent: false });
+  let bytes: Uint8Array;
+  try { bytes = Uint8Array.from(atob(String(body.data || "")), (char) => char.charCodeAt(0)); }
+  catch (_error) { return json(200, { ok: false, error: "That file could not be read.", sent: false }); }
+  if (!bytes.length || bytes.length > 1500000) return json(200, { ok: false, error: "Use a file under 1.5 MB, or paste the text.", sent: false });
+  const text = await fileText(name, bytes);
+  if (!text) return json(200, { ok: false, error: "No text could be read from that file. Paste it instead.", sent: false });
+  const path = businessId + "/" + crypto.randomUUID() + "/" + name.replace(/[^\w.\- ]+/g, "").slice(0, 80);
+  await admin.storage.from("onboarding-materials").upload(path, bytes, { contentType: "application/octet-stream", upsert: false });
+  const inserted = await admin.from("acq_onboarding_materials").insert({
+    business_id: businessId, kind: "file", name, body: text.slice(0, 80000), storage_path: path
+  }).select("id, name, kind").single();
+  if (inserted.error) return json(200, { ok: false, error: "The file was not saved.", sent: false });
+  const current = await admin.from("acq_onboarding").select("status").eq("business_id", businessId).maybeSingle();
+  await admin.from("acq_onboarding").upsert({
+    business_id: businessId,
+    status: advanceStatus(current.data && current.data.status, "materials"),
+    updated_at: new Date().toISOString()
+  });
+  return json(200, { ok: true, sent: false, material: inserted.data });
+}
+
+async function createOnboardingLink(admin, businessId, userId) {
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const tokenHash = await hashToken(token);
+  const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const inserted = await admin.from("acq_onboarding_links").insert({
+    business_id: businessId,
+    token_hash: tokenHash,
+    expires_at: expires
+  }).select("id, expires_at").single();
+  if (inserted.error) return json(200, { ok: false, error: "The client link was not created. Apply the onboarding migration first.", sent: false });
+  void userId;
+  return json(200, {
+    ok: true,
+    sent: false,
+    link_id: inserted.data.id,
+    expires_at: inserted.data.expires_at,
+    token,
+    path: "/account/onboarding/?token=" + encodeURIComponent(token)
+  });
+}
+
+async function revokeOnboardingLink(admin, businessId, linkId) {
+  const id = String(linkId || "");
+  if (!UUID.test(id)) return json(200, { ok: false, error: "That link is not on this business.", sent: false });
+  const revoked = await admin.from("acq_onboarding_links").update({ revoked_at: new Date().toISOString() }).eq("id", id).eq("business_id", businessId);
+  if (revoked.error) return json(200, { ok: false, error: "The link was not revoked.", sent: false });
+  return json(200, { ok: true, sent: false });
+}
+
+async function buildOnboarding(admin, businessId, userId) {
+  const [form, materials, wins] = await Promise.all([
+    admin.from("acq_onboarding").select("offer, price, ideal, booking_link, criteria, disqualifiers, status").eq("business_id", businessId).maybeSingle(),
+    admin.from("acq_onboarding_materials").select("name, body").eq("business_id", businessId).order("created_at", { ascending: false }).limit(20),
+    admin.from("acq_winning_conversations").select("raw_text, messages, outcome, notes").eq("business_id", businessId).order("created_at", { ascending: false }).limit(20)
+  ]);
+  if (form.error || materials.error) return json(200, { ok: false, error: "Onboarding is not ready. Apply the migration first.", sent: false, draft: true });
+  const bundle = intakeBundle({
+    form: form.data || {},
+    materials: (materials.data || []).map((item) => ({ text: item.body, name: item.name })),
+    conversations: wins.error ? [] : wins.data || []
+  });
+  const env = Deno.env.toObject();
+  const loaded = await loadSetterReply(admin, businessId, env);
+  const runtime = loaded.chain[0];
+  if (!runtime || !runtime.apiKey) return json(200, clientReplyView({ ok: false, error: "No model key is configured.", sent: false, draft: true }));
+  let parsed = null;
+  let result = null;
+  try {
+    result = await completeChat({
+      chain: loaded.chain,
+      maxTokens: 4000,
+      json: true,
+      onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info }),
+      system: "You fill business sections and draft a setter prompt. Return JSON only. Do not save it and do not turn the setter on.",
+      messages: [{ role: "user", content: intakeInstruction(bundle) }]
+    });
+    parsed = parseDraft(result && result.text);
+  } catch (error) {
+    return json(200, clientReplyView({
+      ok: false,
+      error: practiceError(error, loaded.chain.map((step) => step.apiKey)),
+      sent: false,
+      draft: true
+    }, loaded.chain.map((step) => step.apiKey)));
+  }
+  const draft = normalizeDraft(parsed, bundle);
+  const status = advanceStatus(form.data && form.data.status, "drafted");
+  await admin.from("acq_onboarding").upsert({
+    business_id: businessId,
+    offer: form.data ? form.data.offer || "" : "",
+    price: form.data ? form.data.price || "" : "",
+    ideal: form.data ? form.data.ideal || "" : "",
+    booking_link: form.data ? form.data.booking_link || "" : "",
+    criteria: form.data ? form.data.criteria || "" : "",
+    disqualifiers: form.data ? form.data.disqualifiers || "" : "",
+    status,
+    sources: draft.sources,
+    draft,
+    updated_at: new Date().toISOString(),
+    updated_by: userId
+  });
+  const providerId = String(result && result.provider || "");
+  const spec = PROVIDERS[providerId];
+  const secrets = loaded.chain.map((step) => step.apiKey);
+  return json(200, clientReplyView({
+    ok: true,
+    draft: true,
+    sent: false,
+    reply: draft.prompt,
+    provider: providerId,
+    provider_label: spec ? spec.label : providerId,
+    model: String(result && result.model || ""),
+    notice: draft.missing.length ? "needs input" : "",
+    prompt: JSON.stringify({ fields: draft.fields, sources: draft.sources, missing: draft.missing })
+  }, secrets));
+}
+
+function parseDraft(text) {
+  const trimmed = String(text || "").trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "");
+  try { return JSON.parse(trimmed); } catch (_error) {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    try { return JSON.parse(trimmed.slice(start, end + 1)); } catch (_again) { return null; }
+  }
+}
+
+async function claudeHealth() {
+  const report = await probeClaude({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") || "", fetchImpl: fetch });
+  return json(200, healthView(report));
+}
+
+async function buildSetterPrompt(admin, businessId) {
+  const [wins, brief, current] = await Promise.all([
+    admin.from("acq_winning_conversations").select("raw_text, messages, outcome, notes").eq("business_id", businessId).order("created_at", { ascending: false }).limit(20),
+    admin.from("acq_business_briefs").select("fields").eq("business_id", businessId).maybeSingle(),
+    admin.from("acq_agent_prompts").select("body").eq("business_id", businessId).maybeSingle()
+  ]);
+  if (wins.error) return json(200, { ok: false, error: "Winning conversations are not ready. Apply the migration first.", sent: false });
+  const conversations = wins.data || [];
+  if (!conversations.length) return json(200, { ok: false, error: "Paste a winning conversation first.", sent: false });
+  const env = Deno.env.toObject();
+  const loaded = await loadSetterReply(admin, businessId, env);
+  const runtime = loaded.chain[0];
+  if (!runtime || !runtime.apiKey) return json(200, clientReplyView({ ok: false, error: "No model key is configured.", sent: false, draft: true }));
+  const instruction = winningInstruction({
+    brief: draftBrief(brief.data && brief.data.fields),
+    currentPrompt: current.data ? current.data.body : "",
+    conversations
+  });
+  let result;
+  try {
+    result = await completeChat({
+      chain: loaded.chain,
+      maxTokens: 4000,
+      onError: async (info) => {
+        const authNotice = info.auth && info.source === "own";
+        await logLlmError(admin, {
+          businessId,
+          purpose: "prompt",
+          ...info,
+          message: authNotice ? "This business's Claude API key was rejected. Fell back to the next model." : info.message
+        });
+      },
+      system: "You draft a setter system prompt. Return only the prompt. Do not save it and do not turn the setter on.",
+      messages: [{ role: "user", content: instruction }]
+    });
+  } catch (error) {
+    return json(200, clientReplyView({
+      ok: false,
+      error: practiceError(error, loaded.chain.map((step) => step.apiKey)),
+      sent: false,
+      draft: true
+    }, loaded.chain.map((step) => step.apiKey)));
+  }
+  const text = String(result && result.text || "").trim().replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/, "").trim();
+  if (!text) return json(200, { ok: false, error: "The model returned an empty prompt.", sent: false, draft: true });
+  const providerId = String(result.provider || "");
+  const spec = PROVIDERS[providerId];
+  return json(200, clientReplyView({
+    ok: true,
+    reply: text.slice(0, 80000),
+    draft: true,
+    sent: false,
+    provider: providerId,
+    provider_label: spec ? spec.label : providerId,
+    model: String(result.model || ""),
+    key_source: result.keySource === "business" ? "business" : "platform"
+  }, loaded.chain.map((step) => step.apiKey)));
+}
+

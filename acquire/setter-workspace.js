@@ -1,7 +1,7 @@
 // Agentic Setter workspace. Practice stays in the browser until the signed-in
 // preview calls the selected model. Nothing here sends an Instagram message.
 
-import { PROMPT_MAX } from "./prompt-history.js";
+import { PROMPT_MAX, diffLines } from "./prompt-history.js";
 import { MAX_CHARS, briefDocument, formatDelta, parseBriefDocument } from "./studio-model.js";
 import { SIM_STATES, blankConversation, filterSimulations, lengthDelta, loadSimulations, saveSimulations } from "./sim-log.js";
 
@@ -60,7 +60,9 @@ const COPY = {
     imported: "Imported",
     team: "Team",
     quality: "Prompt quality",
-    model: "Claude Sonnet"
+    model: "Claude Sonnet",
+    draftNote: "This is a draft. Save it to keep a new version. The setter stays off until you turn it on.",
+    promptNote: "This is the setter system prompt. The simulator uses this text. Saving keeps a version and does not turn the setter on."
   },
   es: {
     business: "Negocio",
@@ -116,7 +118,9 @@ const COPY = {
     imported: "Importado",
     team: "Equipo",
     quality: "Calidad del prompt",
-    model: "Claude Sonnet"
+    model: "Claude Sonnet",
+    draftNote: "Esto es un borrador. Guárdalo para crear una versión. El setter sigue apagado hasta que lo actives.",
+    promptNote: "Este es el prompt de sistema del setter. El simulador usa este texto. Guardar crea una versión y no activa el setter."
   }
 };
 
@@ -363,6 +367,8 @@ function editorColumn(ui, copy, desk, es) {
   }
 
   if (prompts) {
+    column.append(ui.el("p", { class: "mute", text: copy.promptNote }));
+    if (ui.state.promptDraft) column.append(draftDiff(ui, copy, value));
     column.append(qualityRow(ui, copy, desk));
     const versions = versionsPanel(ui, copy, desk);
     if (versions) column.append(versions);
@@ -470,14 +476,41 @@ function currentPromptValue(ui) {
   return savedPrompt(ui.state);
 }
 
+function draftDiff(ui, copy, value) {
+  const wrap = ui.el("div", { id: "prompt-draft" });
+  wrap.append(ui.el("p", { class: "claude-notice", text: copy.draftNote }));
+  const host = ui.el("div", { class: "prompt-diff", id: "prompt-draft-diff" });
+  const base = ui.state.promptDraft && ui.state.promptDraft.base != null ? ui.state.promptDraft.base : (ui.state.setterPrompt || "");
+  const rows = diffLines(base, value).filter((row) => row.type !== "same");
+  if (!rows.length) host.append(ui.el("p", { class: "mute", text: copy.noVersions }));
+  rows.slice(0, 80).forEach((row) => {
+    host.append(ui.el("p", { class: "diff-line diff-" + row.type, text: (row.type === "add" ? "+ " : "− ") + row.text }));
+  });
+  wrap.append(host);
+  return wrap;
+}
+
+function answeredChip(ui, copy) {
+  const messages = ((ui.state.setterTrial || {}).messages || []).slice().reverse();
+  const hit = messages.find((item) => item.role === "assistant" && item.providerLabel);
+  if (!hit) return copy.model;
+  return hit.model ? hit.providerLabel + " · " + hit.model : hit.providerLabel;
+}
+
 async function saveEditor(ui, prompts) {
   const desk = deskState(ui.state);
   if (prompts) {
     const area = document.getElementById("setter-prompt");
     const value = area ? area.value : savedPrompt(ui.state);
     ui.state.setterDraft = value;
-    await ui.saveSetterPrompt(value);
     desk.editing = false;
+    desk.panel = "versions";
+    const saved = await ui.saveSetterPrompt(value);
+    if (saved === false) {
+      desk.editing = true;
+      desk.panel = "";
+      ui.paint();
+    }
     return;
   }
   const area = document.getElementById("business-document");
@@ -535,7 +568,7 @@ function simulatorColumn(ui, copy, desk) {
     statePick.setAttribute("data-state", statePick.value);
   });
   const meta = ui.el("div", { class: "sim-meta" });
-  meta.append(ui.el("a", { class: "model-chip", href: "#settings/model" }, [copy.model]), statePick);
+  meta.append(ui.el("a", { class: "model-chip", id: "sim-model-chip", href: "#settings/model" }, [answeredChip(ui, copy)]), statePick);
   sim.append(meta);
   if (desk.panel === "conversations") sim.append(conversationsPanel(ui, copy, desk));
 
@@ -691,7 +724,7 @@ function trialBubble(ui, message, copy) {
     return bubble;
   }
   if (message.text) bubble.append(ui.el("p", { text: message.text }));
-  const line = message.preview ? copy.previewReply : (message.business ? copy.businessLine : message.modelLine);
+  const line = message.modelLine || (message.preview ? copy.previewReply : (message.business ? copy.businessLine : ""));
   if (line) bubble.append(ui.el("p", { class: "mute dm-model", text: line }));
   if (message.versionLabel) bubble.append(ui.el("p", { class: "mute", text: message.versionLabel }));
   if (message.delayLine) bubble.append(ui.el("p", { class: "mute", text: message.delayLine }));

@@ -426,6 +426,10 @@ verify_jwt = false
 [functions.llm-check]
 verify_jwt = true
 
+# onboarding-link checks a hashed, expiring, revocable token for one business.
+[functions.onboarding-link]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327
