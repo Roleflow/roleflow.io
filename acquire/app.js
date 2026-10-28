@@ -11,6 +11,7 @@ import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { clampDmCap } from "./auto-dm.js";
+import { roleflowSections } from "./setter-sections.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
 import { parseBulkThreads } from "./winning-conversations.js";
 import { localSopReview } from "./sop-page.js";
@@ -320,7 +321,7 @@ async function boot() {
   }
   const adminRes = await state.supabase.from("admins").select("user_id").eq("user_id", state.user.id).maybeSingle();
   state.isAdmin = Boolean(adminRes.data);
-  let listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").order("created_at", { ascending: true });
+  let listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").order("created_at", { ascending: true });
   if (listed.error && missing(listed.error)) {
     showMessage("Pipeline is not ready", "Apply the acquisition migrations, then refresh.");
     return;
@@ -337,7 +338,7 @@ async function boot() {
       showMessage("Could not open a workspace", opened.error.message);
       return;
     }
-    listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").order("created_at", { ascending: true });
+    listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").order("created_at", { ascending: true });
   }
   state.businesses = (listed.data || []).map((row) => ({ ...row, agent_name: row.name || "Acquisition" }));
   if (!state.businesses.length) {
@@ -346,9 +347,9 @@ async function boot() {
   }
   fillPicker();
   const requested = new URLSearchParams(location.search).get("business");
-  let initial = state.businesses.find((row) => row.id === requested);
+  let initial = findBusiness(state.businesses, requested);
   if (requested && !initial && /^[0-9a-f-]{36}$/i.test(requested)) {
-    const again = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code").eq("id", requested).maybeSingle();
+    const again = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").or("id.eq." + requested + ",engine_business_id.eq." + requested).maybeSingle();
     if (again.data && again.data.id) {
       state.businesses = state.businesses.concat([{ ...again.data, agent_name: again.data.name || "Acquisition" }]);
       fillPicker();
@@ -361,6 +362,11 @@ async function boot() {
   }
   const owned = state.businesses.find((row) => row.owner_id === state.user.id);
   initial = initial || owned || state.businesses[0];
+  if (initial && requested && initial.id !== requested) {
+    const url = new URL(location.href);
+    url.searchParams.set("business", initial.id);
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
   await bootBusiness(initial.id);
 }
 
@@ -415,11 +421,7 @@ async function bootBusiness(id, options) {
     const messages = await state.supabase.from("ig_messages").select("id, thread_id, direction, body, kind, created_at").eq("thread_id", state.openThread).eq("business_id", id).order("created_at", { ascending: true });
     state.messages = messages.error ? [] : messages.data || [];
   }
-  if (loaded) {
-    const step = state.settings && state.settings.onboarding_step;
-    if (!quiet && step && step !== "live" && !location.hash) {
-      history.replaceState(null, "", location.pathname + location.search + "#onboarding");
-    }
+    if (loaded) {
     state.tab = tabFromHash();
     const adminHome = document.getElementById("nav-admin-home");
     if (adminHome) adminHome.hidden = !state.isAdmin;
@@ -609,7 +611,7 @@ async function loadAll(id, token) {
     q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
   ]);
   if (!live()) return false;
-  state.setterPrompts = setterPrompts.error ? [] : setterPrompts.data || [];
+  state.setterPrompts = setterPrompts.error ? [] : (setterPrompts.data || []).map((row) => ({ ...row, sections: roleflowSections(row.sections) }));
   state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
   state.agentTools = agentTools.error ? [] : agentTools.data || [];
   state.setterOutbox = setterOutbox.error ? [] : setterOutbox.data || [];
@@ -4406,6 +4408,13 @@ function statusLine(leads) {
     if (counts[key] != null) counts[key] += 1;
   });
   return "Cold " + counts.cold + " · Warm " + counts.warm + " · Hot " + counts.hot + " · Converted " + counts.converted + " · Dead " + counts.dead;
+}
+
+function findBusiness(rows, requested) {
+  if (!requested) return null;
+  return (rows || []).find((row) => row.id === requested)
+    || (rows || []).find((row) => row.engine_business_id === requested)
+    || null;
 }
 
 function hideBoot() {
