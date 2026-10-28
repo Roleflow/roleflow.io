@@ -3,7 +3,7 @@
 // This function never messages a lead and never calls a messaging provider.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
-import { completeChat, loadBusinessRuntime, logLlmError, platformDefault } from "../_shared/llm-provider.js";
+import { completeChat, loadBusinessRuntime, loadSetterReply, logLlmError, platformDefault } from "../_shared/llm-provider.js";
 
 const HOUR_LIMIT = 15;
 const XAI_URL = "https://api.x.ai/v1/chat/completions";
@@ -66,21 +66,33 @@ Deno.serve(async (req) => {
   const prompt = promptFor(action, fields, body);
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const env = Deno.env.toObject();
-  const loaded = await loadBusinessRuntime(admin, businessId, "prompt", env);
-  const runtime = loaded.runtime || platformDefault(env);
+  const promptEdit = (action === "edit" || action === "score") && String(body.prompt || "").trim();
+  const planned = promptEdit ? await loadSetterReply(admin, businessId, env) : null;
+  const setter = planned && planned.chain && planned.chain.length ? planned : null;
+  const loaded = setter ? null : await loadBusinessRuntime(admin, businessId, "prompt", env);
+  const runtime = loaded ? (loaded.runtime || platformDefault(env)) : null;
   if (runtime && runtime.provider === "xai" && !runtime.endpoint) runtime.endpoint = XAI_URL;
-  if (!runtime) return json(503, { error: "The assistant is not available yet. The model key is not set." });
+  if (!setter && !runtime) return json(503, { error: "The assistant is not available yet. The model key is not set." });
   let text = "";
   try {
-    const result = await completeChat({
-      runtime,
-      fallback: loaded.fallback,
-      system: SYSTEM,
-      messages: [{ role: "user", content: prompt }],
-      json: true,
-      temperature: 0.2,
-      onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info })
-    });
+    const result = setter
+      ? await completeChat({
+        chain: setter.chain,
+        system: SYSTEM,
+        messages: [{ role: "user", content: prompt }],
+        json: true,
+        maxTokens: 8000,
+        onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info })
+      })
+      : await completeChat({
+        runtime,
+        fallback: loaded && loaded.fallback,
+        system: SYSTEM,
+        messages: [{ role: "user", content: prompt }],
+        json: true,
+        temperature: 0.2,
+        onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info })
+      });
     text = result.text || "";
   } catch (error) {
     const detail = error instanceof Error ? error.message : "The model did not answer.";
@@ -110,7 +122,7 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
   if (action === "score") {
     const prompt = String(body.prompt || "").trim();
     if (prompt) {
-      return "Score this agent prompt from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Prompt:\n" + prompt.slice(0, 8000);
+      return "Score this agent prompt from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Prompt:\n" + prompt.slice(0, 30000);
     }
     return "Score this business brief from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Brief JSON:\n" + JSON.stringify(fields);
   }
@@ -122,7 +134,7 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
     const instruction = String(body.instruction || "").slice(0, 500);
     const prompt = String(body.prompt || "").trim();
     if (prompt) {
-      return "Apply this edit to the agent prompt. Return {\"prompt\": string}. Do not add facts that are not implied by the prompt. Edit: " + instruction + "\nPrompt:\n" + prompt.slice(0, 8000);
+      return "Apply this edit to the agent prompt. Return {\"prompt\": string} with the full rewritten prompt. Do not add facts that are not implied by the prompt. Edit: " + instruction + "\nPrompt:\n" + prompt.slice(0, 30000);
     }
     return "Apply this edit to the brief and return {\"fields\": {same keys}}. Edit: " + instruction + "\nBrief JSON:\n" + JSON.stringify(fields);
   }

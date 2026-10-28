@@ -9,6 +9,7 @@ Three migrations in this area are **NOT APPLIED**. Apply them yourself when you 
 - `supabase/migrations/20261028070000_winning_conversations.sql` stores pasted DM transcripts per business. **NOT APPLIED**.
 - `supabase/migrations/20261028080000_onboarding_intake.sql` stores the intake, the share-link hash, and a private `onboarding-materials` bucket. **NOT APPLIED**. It does not turn a setter on.
 - `supabase/migrations/20261028093000_setter_voice.sql` stores the Human ↔ AI slider on the business and on each prompt version. **NOT APPLIED**. Claude 5 does not receive `temperature`, `top_p`, or `top_k`.
+- `supabase/migrations/20261028110000_reply_split_words.sql` adds `acq_settings.reply_split_words` (default 15). **NOT APPLIED**. Replies over that many words are sent as consecutive messages. 0 sends one message.
 
 ## What you set
 

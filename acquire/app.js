@@ -5,6 +5,7 @@ import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
+import { splitReply } from "./split-reply.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
@@ -899,6 +900,7 @@ function pageUi() {
     saveBookingLink,
     saveReplyDelay,
     saveVoice,
+    saveReplySplit,
     analyzePrompt,
     editPrompt,
     saveWinning,
@@ -1628,6 +1630,18 @@ async function saveReplyDelay(min, max) {
   await patchSettings(patch);
 }
 
+async function saveReplySplit(value) {
+  const words = Math.max(0, Math.min(80, Math.round(Number(value) || 0)));
+  const patch = { reply_split_words: words };
+  if (!state.supabase) {
+    state.settings = Object.assign({}, state.settings, patch);
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  await patchSettings(patch);
+}
+
 async function saveBookingLink(value) {
   if (!state.canEdit) {
     toast("You can't edit this business.", "bad");
@@ -1770,19 +1784,23 @@ async function sendTrial(prompt, message, options) {
   const waited = practiceDelaySeconds(minValue, maxValue, state.practiceSimulateDelay === true, Math.random);
   if (waited > 0) await new Promise((resolve) => setTimeout(resolve, waited * 1000));
   if (result.provider) state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "tested") });
-  trial.messages = trial.messages.concat([{
-    role: "assistant",
-    text: result.reply || "",
-    voices,
-    preview: result.preview === true,
-    modelLine: result.model ? trialModelLine(result) : (result.preview ? "" : ""),
-    providerLabel: result.provider_label || "",
-    model: result.model || "",
-    versionLabel: label,
-    prompt: result.prompt || body,
-    delayLine: waited > 0 ? "Waited " + waited + " seconds." : "Delay skipped."
-  }]);
-  paint();
+  const parts = splitReply(result.reply || "", state.settings && state.settings.reply_split_words != null ? state.settings.reply_split_words : 15);
+  for (let index = 0; index < parts.length; index += 1) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 700));
+    trial.messages = trial.messages.concat([{
+      role: "assistant",
+      text: parts[index],
+      voices: index === 0 ? voices : [],
+      preview: index === 0 && result.preview === true,
+      modelLine: index === 0 && result.model ? trialModelLine(result) : "",
+      providerLabel: result.provider_label || "",
+      model: result.model || "",
+      versionLabel: index === 0 ? label : "",
+      prompt: result.prompt || body,
+      delayLine: index === parts.length - 1 ? (waited > 0 ? "Waited " + waited + " seconds." : "Delay skipped.") : "Next message"
+    }]);
+    paint();
+  }
 }
 
 function commentWhenForTrial() {
@@ -1799,6 +1817,9 @@ function previewPracticeReply(input) {
   const voice = (body.match(/\{\{\s*voice\s*:\s*[a-z0-9_-]+\s*\}\}/i) || [""])[0];
   const booking = /\{\{\s*booking_link\s*\}\}/i.test(body) ? "{{booking_link}}" : "";
   let text = "Hey. What are you working on right now?";
+  if (new URLSearchParams(location.search).get("split") === "1" && prior === 0) {
+    text = "Thanks for the note. I can walk through the first part with you. Then I can ask what you want to change next.";
+  }
   if (prior === 1) text = "That helps. What do you want to change first?";
   if (prior >= 2) text = ["We can look at that together.", voice, booking].filter(Boolean).join(" ");
   const resolved = resolveOutgoing(text, { voices: catalog, bookingLink: input.bookingLink });
@@ -2050,15 +2071,19 @@ async function callStudio(action, extra) {
 }
 
 async function analyzePrompt(prompt) {
+  if (!state.supabase) return { score: 7, items: ["Split replies that run past 15 words.", "Keep one question in each message."] };
   const data = await callStudio("score", { prompt, fields: (state.brief && state.brief.fields) || {} });
-  if (!data || data.score == null) return null;
+  if (!data || data.score == null) return { error: "Analysis did not run." };
   return { score: Number(data.score), items: Array.isArray(data.items) ? data.items : [] };
 }
 
 async function editPrompt(prompt, instruction) {
+  if (!state.supabase) {
+    return { prompt: String(prompt || "").trim() + "\n\n" + String(instruction || "").trim() };
+  }
   const data = await callStudio("edit", { prompt, instruction, fields: (state.brief && state.brief.fields) || {} });
-  if (!data || !data.prompt) return null;
-  return String(data.prompt);
+  if (!data || !data.prompt) return { error: "The edit did not run." };
+  return { prompt: String(data.prompt) };
 }
 
 async function scoreWithModel(fields) {
