@@ -10,6 +10,7 @@ import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voic
 import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
+import { clampDmCap } from "./auto-dm.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
 import { parseBulkThreads } from "./winning-conversations.js";
 import { localSopReview } from "./sop-page.js";
@@ -503,6 +504,22 @@ async function loadAll(id, token) {
   state.workers = workers.error ? [] : workers.data || [];
   state.dnc = dnc.error ? [] : dnc.data || [];
   state.setterLink = setterLink.error ? null : setterLink.data;
+  const dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason").eq("business_id", id).maybeSingle();
+  const dmCampaigns = await q.from("acq_dm_campaigns").select("id, name, template, handles, exclusions, enabled").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
+  if (!live()) return false;
+  if (!dmControls.error && dmControls.data) {
+    state.autoDm = {
+      enabled: dmControls.data.enabled === true,
+      killed: dmControls.data.killed === true,
+      cap: dmControls.data.daily_cap,
+      paused: dmControls.data.paused_reason || "",
+      name: "",
+      handles: "",
+      template: "",
+      exclusions: ""
+    };
+  }
+  state.dmCampaigns = dmCampaigns.error ? [] : dmCampaigns.data || [];
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
@@ -898,6 +915,7 @@ function pageUi() {
     language,
     setAgent,
     saveSetterPrompt,
+    saveAutoDm,
     restoreSetterPrompt,
     saveBookingLink,
     saveReplyDelay,
@@ -1295,6 +1313,44 @@ function rememberPrompt(body, version, testedAt) {
     state.promptVersions = [version].concat((state.promptVersions || []).filter((row) => row.id !== version.id && Number(row.version) !== Number(version.version)));
     if (version.setter_voice != null) state.setterVoice = clampVoice(version.setter_voice);
   }
+}
+
+async function saveAutoDm(draft) {
+  const next = draft || {};
+  state.autoDm = next;
+  if (!state.supabase || state.businessId === "preview") {
+    toast(language() === "es" ? "Guardado. No se envía nada mientras esté apagado." : "Saved. Nothing sends while this is off.");
+    paint();
+    return;
+  }
+  const controls = await state.supabase.from("acq_dm_controls").upsert({
+    business_id: state.businessId,
+    enabled: next.enabled === true,
+    killed: next.killed === true,
+    daily_cap: clampDmCap(next.cap),
+    updated_at: new Date().toISOString()
+  });
+  if (controls.error) {
+    toast(controls.error.message, "bad");
+    return;
+  }
+  if (String(next.name || "").trim() || String(next.template || "").trim()) {
+    const saved = await state.supabase.from("acq_dm_campaigns").insert({
+      business_id: state.businessId,
+      name: String(next.name || "Campaign").slice(0, 80),
+      template: String(next.template || "").slice(0, 1000),
+      handles: String(next.handles || "").slice(0, 8000),
+      exclusions: String(next.exclusions || "").slice(0, 8000),
+      enabled: next.enabled === true && next.killed !== true
+    }).select("id, name, template, handles, exclusions, enabled").single();
+    if (saved.error) {
+      toast(saved.error.message, "bad");
+      return;
+    }
+    state.dmCampaigns = [saved.data].concat(state.dmCampaigns || []);
+  }
+  toast(language() === "es" ? "Guardado. El setter no se enciende con esto." : "Saved. This does not turn the setter on.");
+  paint();
 }
 
 async function saveSetterPrompt(value) {
@@ -4400,7 +4456,7 @@ function readPreview() {
     settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120, setter_voice: params.get("voice") == null || params.get("voice") === "" ? 50 : clampVoice(params.get("voice")), setter_claude_mode: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? "own" : "default" },
     llmKeys: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? [{ provider: "anthropic", last4: "abcd" }] : [],
     claudeNotice: params.get("claude") === "bad" ? "This business's Claude API key was rejected." : "",
-    setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : null,
+    setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : params.get("dm") === "1" ? { requested_handle: "roleflow.io", status: "disconnected" } : null,
     outbox: [],
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
     targets: [

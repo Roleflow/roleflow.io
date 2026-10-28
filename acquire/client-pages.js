@@ -6,6 +6,7 @@ import { BOOKING_TOKEN, TRIAL_SCENARIOS, voiceCatalog, voiceToken } from "./prom
 import { renderRoleflowCalendar } from "./calendar-page.js";
 import { sectionText } from "./section-copy.js";
 import { renderSetterDesk } from "./setter-workspace.js";
+import { renderAutoDm } from "./auto-dm-page.js";
 
 const COPY = {
   en: {
@@ -238,6 +239,7 @@ export function renderCalendar(ui) {
 }
 
 export function renderGrokAgent(ui, kind) {
+  if (kind === "outreacher") return renderAutoDm(ui);
   const lang = ui.language ? ui.language() : "en";
   const es = lang === "es";
   const title = kind === "warmer" ? (es ? "Calentador" : "Lead Warmer") : (es ? "Prospección" : "Outreacher");
