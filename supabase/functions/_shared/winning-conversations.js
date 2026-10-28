@@ -147,3 +147,35 @@ export function buildInstruction(input) {
     examples || "(none)"
   ].join("\n\n");
 }
+
+export function parseBulkThreads(raw) {
+  const text = String(raw || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return [];
+  const chunks = text.split(/\n(?:---|===)\n|\n---\s*$|^(?:---|===)\n/).map((part) => part.trim()).filter(Boolean);
+  return chunks.map((chunk) => {
+    const lines = chunk.split("\n");
+    let label = "";
+    let outcome = "";
+    let notes = "";
+    const body = [];
+    lines.forEach((line) => {
+      const labelMatch = line.match(/^(?:label|título|titulo)\s*:\s*(.*)$/i);
+      const outcomeMatch = line.match(/^(?:outcome|resultado)\s*:\s*(.*)$/i);
+      const noteMatch = line.match(/^(?:note|notes|nota)\s*:\s*(.*)$/i);
+      if (labelMatch && !body.length) label = labelMatch[1].trim();
+      else if (outcomeMatch && !body.length) outcome = outcomeMatch[1].trim().toLowerCase();
+      else if (noteMatch && !body.length) notes = noteMatch[1].trim();
+      else body.push(line);
+    });
+    const rawText = body.join("\n").trim();
+    const parsed = parseTranscript(rawText);
+    const allowed = outcome === "booked" || outcome === "closed" ? outcome : "";
+    return {
+      label: label.slice(0, 80) || rawText.split("\n")[0].slice(0, 80),
+      outcome: allowed,
+      notes: (allowed ? notes : [outcome && outcome !== "booked" && outcome !== "closed" ? outcome : "", notes].filter(Boolean).join(". ")).slice(0, 1000),
+      raw_text: rawText,
+      messages: parsed.messages
+    };
+  }).filter((row) => row.raw_text);
+}
