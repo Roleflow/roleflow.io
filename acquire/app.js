@@ -11,6 +11,7 @@ import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { clampDmCap } from "./auto-dm.js";
+import { disconnectUrl, hashLoginToken, LOGIN_TTL_MS, loginExpiry, loginUrl, mintLoginToken } from "./dm-login.js";
 import { roleflowSections } from "./setter-sections.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
 import { parseBulkThreads } from "./winning-conversations.js";
@@ -506,7 +507,9 @@ async function loadAll(id, token) {
   state.workers = workers.error ? [] : workers.data || [];
   state.dnc = dnc.error ? [] : dnc.data || [];
   state.setterLink = setterLink.error ? null : setterLink.data;
-  const dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason").eq("business_id", id).maybeSingle();
+  let dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason, ig_handle, session_ready").eq("business_id", id).maybeSingle();
+  if (dmControls.error) dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason").eq("business_id", id).maybeSingle();
+  const dmLoginConfig = await q.from("acq_dm_login_config").select("public_origin").eq("id", 1).maybeSingle();
   const dmCampaigns = await q.from("acq_dm_campaigns").select("id, name, template, handles, exclusions, enabled").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
   if (!live()) return false;
   if (!dmControls.error && dmControls.data) {
@@ -515,6 +518,9 @@ async function loadAll(id, token) {
       killed: dmControls.data.killed === true,
       cap: dmControls.data.daily_cap,
       paused: dmControls.data.paused_reason || "",
+      igHandle: dmControls.data.ig_handle || "",
+      sessionReady: dmControls.data.session_ready === true,
+      loginOrigin: !dmLoginConfig.error && dmLoginConfig.data ? dmLoginConfig.data.public_origin || "" : "",
       name: "",
       handles: "",
       template: "",
@@ -918,6 +924,8 @@ function pageUi() {
     setAgent,
     saveSetterPrompt,
     saveAutoDm,
+    startDmLogin,
+    disconnectDm,
     restoreSetterPrompt,
     saveBookingLink,
     saveReplyDelay,
@@ -1317,8 +1325,99 @@ function rememberPrompt(body, version, testedAt) {
   }
 }
 
+let dmLoginWatch = 0;
+
+async function startDmLogin() {
+  const copyMissing = language() === "es"
+    ? "La dirección de acceso todavía no está puesta."
+    : "The login address is not set yet.";
+  const origin = state.autoDm && state.autoDm.loginOrigin;
+  if (!state.supabase || state.businessId === "preview" || !origin) {
+    state.autoDm = Object.assign({}, state.autoDm, { loginError: copyMissing });
+    paint();
+    return;
+  }
+  const token = mintLoginToken();
+  const url = loginUrl(origin, token);
+  if (!url) {
+    state.autoDm = Object.assign({}, state.autoDm, { loginError: copyMissing });
+    paint();
+    return;
+  }
+  const tokenHash = await hashLoginToken(token);
+  const saved = await state.supabase.from("acq_dm_login_links").insert({
+    business_id: state.businessId,
+    token_hash: tokenHash,
+    purpose: "login",
+    expires_at: loginExpiry(new Date())
+  });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  const popup = window.open(url, "roleflow-ig-login", "popup,width=480,height=860");
+  if (!popup) {
+    toast(language() === "es" ? "Permite la ventana de acceso." : "Allow the login window.", "bad");
+    return;
+  }
+  state.autoDm = Object.assign({}, state.autoDm, { loginError: "" });
+  watchDmLogin(++dmLoginWatch, state.businessId);
+}
+
+async function watchDmLogin(generation, businessId) {
+  const started = Date.now();
+  while (generation === dmLoginWatch && Date.now() - started < LOGIN_TTL_MS) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    if (generation !== dmLoginWatch || state.businessId !== businessId || !state.supabase) return;
+    const row = await state.supabase.from("acq_dm_controls").select("ig_handle, session_ready").eq("business_id", businessId).maybeSingle();
+    if (!row || row.error || !row.data || row.data.session_ready !== true || !row.data.ig_handle) continue;
+    state.autoDm = Object.assign({}, state.autoDm, {
+      igHandle: row.data.ig_handle,
+      sessionReady: true,
+      loginError: "",
+      enabled: state.autoDm.enabled === true
+    });
+    paint();
+    return;
+  }
+}
+
+async function disconnectDm() {
+  const origin = state.autoDm && state.autoDm.loginOrigin;
+  if (!state.supabase || !origin || state.businessId === "preview") {
+    state.autoDm = Object.assign({}, state.autoDm, { sessionReady: false, igHandle: "" });
+    paint();
+    return;
+  }
+  const token = mintLoginToken();
+  const endpoint = disconnectUrl(origin, token);
+  if (!endpoint) {
+    toast(language() === "es" ? "No se pudo desconectar." : "Could not disconnect.", "bad");
+    return;
+  }
+  const tokenHash = await hashLoginToken(token);
+  const saved = await state.supabase.from("acq_dm_login_links").insert({
+    business_id: state.businessId,
+    token_hash: tokenHash,
+    purpose: "disconnect",
+    expires_at: loginExpiry(new Date())
+  });
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  const response = await fetch(endpoint, { method: "POST" });
+  if (!response.ok) {
+    toast(language() === "es" ? "No se pudo desconectar." : "Could not disconnect.", "bad");
+    return;
+  }
+  state.autoDm = Object.assign({}, state.autoDm, { sessionReady: false, igHandle: "", enabled: state.autoDm.enabled === true });
+  paint();
+}
+
 async function saveAutoDm(draft) {
-  const next = draft || {};
+  const previous = state.autoDm || {};
+  const next = Object.assign({}, previous, draft || {});
   state.autoDm = next;
   if (!state.supabase || state.businessId === "preview") {
     toast(language() === "es" ? "Guardado. No se envía nada mientras esté apagado." : "Saved. Nothing sends while this is off.");

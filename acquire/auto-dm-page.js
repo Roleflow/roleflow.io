@@ -10,7 +10,13 @@ const COPY = {
     cap: "Daily cap",
     capHelp: "20 a day unless you set another number. 50 is the most.",
     wait: "Each DM waits 5 to 30 minutes after the follow or like, and only between 09:00 and 21:00 Madrid. Claude writes a new opener from the public profile.",
-    password: "The Instagram password is never stored. The worker keeps this business's encrypted session on its own computer.",
+    password: "The Instagram password is never stored. You type it only on Instagram's own page. This business's worker keeps the encrypted session on its computer.",
+    connect: "Connect Instagram for auto-DMs",
+    connecting: "Opening Instagram…",
+    connected: "Connected as @{handle}",
+    disconnect: "Disconnect",
+    loginMissing: "The login address is not set yet. The setup note is in the auto-DM docs.",
+    loginNote: "The window is Instagram's login page, including any code or challenge. This page has no password field.",
     campaign: "Campaign",
     name: "Name",
     handles: "Handles",
@@ -31,7 +37,13 @@ const COPY = {
     cap: "Tope diario",
     capHelp: "20 al día salvo que pongas otro número. El máximo es 50.",
     wait: "Cada DM espera de 5 a 30 minutos tras el follow o el like, y solo entre las 09:00 y las 21:00 de Madrid. Claude escribe un primer mensaje nuevo a partir del perfil público.",
-    password: "La contraseña de Instagram no se guarda. El worker conserva la sesión cifrada de este negocio en su propio ordenador.",
+    password: "La contraseña de Instagram no se guarda. La escribes solo en la página de Instagram. El worker de este negocio guarda la sesión cifrada en su ordenador.",
+    connect: "Conectar Instagram para los auto-DMs",
+    connecting: "Abriendo Instagram…",
+    connected: "Conectado como @{handle}",
+    disconnect: "Desconectar",
+    loginMissing: "La dirección de acceso todavía no está puesta. El paso está en la documentación de auto-DM.",
+    loginNote: "La ventana es la página de acceso de Instagram, incluidos códigos y comprobaciones. Esta página no tiene un campo de contraseña.",
     campaign: "Campaña",
     name: "Nombre",
     handles: "Usuarios",
@@ -44,6 +56,25 @@ const COPY = {
     saved: "Guardado. No se envía nada mientras esté apagado o el interruptor de parada esté activo."
   }
 };
+
+function loginCard(ui, copy) {
+  const draft = box(ui.state);
+  const card = ui.el("section", { class: "agent", id: "auto-dm-login" });
+  const handle = String(draft.igHandle || "").replace(/^@+/, "");
+  if (draft.sessionReady && handle) {
+    card.append(ui.el("p", { id: "auto-dm-connected", text: copy.connected.replace("{handle}", handle) }));
+    const disconnect = ui.button(copy.disconnect, () => ui.disconnectDm && ui.disconnectDm());
+    disconnect.id = "auto-dm-disconnect";
+    card.append(disconnect);
+  } else {
+    const connect = ui.button(copy.connect, () => ui.startDmLogin && ui.startDmLogin());
+    connect.id = "auto-dm-connect";
+    card.append(connect);
+    card.append(ui.el("p", { class: "mute", text: copy.loginNote }));
+  }
+  if (draft.loginError) card.append(ui.el("p", { class: "claude-notice", role: "status", text: draft.loginError }));
+  return card;
+}
 
 function box(state) {
   if (!state.autoDm) {
@@ -65,6 +96,7 @@ export function renderAutoDm(ui) {
   const copy = COPY[lang];
   const wrap = ui.el("div", { class: "platform-home", id: "auto-dm" });
   wrap.append(ui.pageHeader(ui, copy.title, copy.body, "outbound", "send"));
+  wrap.append(loginCard(ui, copy));
   const draft = box(ui.state);
   const card = ui.el("form", { class: "agent", id: "auto-dm-form" });
   const enabled = ui.el("input", { id: "auto-dm-enabled", type: "checkbox" });
@@ -111,7 +143,8 @@ export function renderAutoDm(ui) {
   }
   card.addEventListener("submit", (event) => {
     event.preventDefault();
-    const next = {
+    const previous = box(ui.state);
+    const next = Object.assign({}, previous, {
       enabled: enabled.checked,
       killed: killed.checked,
       cap: clampDmCap(cap.value),
@@ -119,7 +152,7 @@ export function renderAutoDm(ui) {
       handles: handles.value,
       template: template.value,
       exclusions: exclusions.value
-    };
+    });
     ui.state.autoDm = next;
     if (ui.saveAutoDm) ui.saveAutoDm(next);
     else if (ui.toast) ui.toast(copy.saved);
