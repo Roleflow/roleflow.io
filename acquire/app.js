@@ -7,6 +7,9 @@ import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollow
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
+import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
+import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
+import { previewOnboarding } from "./onboarding-panel.js";
 import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
@@ -149,6 +152,8 @@ const state = {
   refreshTimer: 0,
   agentSwitches: [],
   setterPrompt: "",
+  winningConversations: [],
+  promptDraft: null,
   setterTestedAt: null,
   followupPolicy: null,
   language: "en"
@@ -217,6 +222,26 @@ async function boot() {
     }
     state.canEdit = preview.canEdit === true;
     state.canManageKeys = state.canEdit === true;
+    if (preview.promptDraft) {
+      state.setterDraft = preview.promptDraft.body;
+      state.setterDesk = {
+        businessId: preview.businessId,
+        mode: "prompts",
+        editing: true,
+        format: "text",
+        showPreview: false,
+        panel: "",
+        simCollapsed: false,
+        sender: "lead",
+        leadState: "discovering",
+        followupNumber: 1,
+        search: "",
+        stateFilter: "all",
+        quality: null,
+        aiInstruction: "",
+        settingsOpen: false
+      };
+    }
     const seed = await import("./setter-seed.js");
     state.setterPrompts = [{ id: "preview-v1", role: "inbound_manager", version: 1, sections: seed.sections, created_at: "2026-10-23T06:00:00Z" }];
     state.setterCurrentId = "preview-v1";
@@ -576,6 +601,20 @@ async function loadAll(id, token) {
   state.agentSwitches = switches.error ? [] : switches.data || [];
   state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
+  const winning = await q.from("acq_winning_conversations").select("id, title, raw_text, messages, outcome, notes, created_at, updated_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30);
+  if (!live()) return false;
+  state.winningConversations = winning.error ? [] : winning.data || [];
+  state.sectionErrors.winning = Boolean(winning.error);
+  const [intake, intakeFiles, intakeLinks] = await Promise.all([
+    q.from("acq_onboarding").select("offer, price, ideal, booking_link, criteria, disqualifiers, status, sources, draft").eq("business_id", id).maybeSingle(),
+    q.from("acq_onboarding_materials").select("id, name, kind, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
+    q.from("acq_onboarding_links").select("id, expires_at, revoked_at, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(10)
+  ]);
+  if (!live()) return false;
+  state.onboarding = intake.error || !intake.data ? (state.onboarding || null) : intake.data;
+  state.onboardingMaterials = intakeFiles.error ? [] : intakeFiles.data || [];
+  state.onboardingLinks = intakeLinks.error ? [] : intakeLinks.data || [];
+  state.onboardingDraft = intake.data && intake.data.draft && intake.data.draft.prompt ? intake.data.draft : state.onboardingDraft;
   state.bookingLink = bookingLinkFor(state.settings && state.settings.booking_fallback_url);
   const [promptVersions, voiceRules, voiceSettings, voiceLog, commentSlot] = await Promise.all([
     q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", id).order("version", { ascending: false }).limit(30),
@@ -855,6 +894,16 @@ function pageUi() {
     saveReplyDelay,
     analyzePrompt,
     editPrompt,
+    saveWinning,
+    deleteWinning,
+    buildWinningPrompt,
+    checkClaude,
+    saveOnboarding,
+    createOnboardingLink,
+    revokeOnboardingLink,
+    buildOnboarding,
+    approveOnboarding,
+    reviewOnboardingPrompt,
     saveCommentSlot,
     sendTrial,
     startTrial,
@@ -1210,6 +1259,11 @@ async function setAgent(key, enabled) {
     return;
   }
   try {
+    if (key === "setter" && enabled === true) {
+      const status = advanceStatus(state.onboarding && state.onboarding.status, "live");
+      state.onboarding = Object.assign({}, state.onboarding || {}, { status });
+      await state.supabase.from("acq_onboarding").update({ status, updated_at: new Date().toISOString() }).eq("business_id", state.businessId);
+    }
     const saved = await dashboardCall({ action: "set_agent", agent_key: key, enabled: enabled === true });
     state.agentSwitches = next.map((row) => row.agent_key === key ? { agent_key: key, enabled: saved.enabled === true } : row);
     paint();
@@ -1230,7 +1284,7 @@ function rememberPrompt(body, version, testedAt) {
 async function saveSetterPrompt(value) {
   if (!state.canEdit) {
     toast("You can't edit this business.", "bad");
-    return;
+    return false;
   }
   const body = String(value || "").trim();
   if (!state.supabase) {
@@ -1243,18 +1297,292 @@ async function saveSetterPrompt(value) {
       state.setterTestedAt = null;
     }
     state.setterPrompt = body;
+    state.promptDraft = null;
     toast(agentText(language()).saved);
     paint();
-    return;
+    return true;
   }
   try {
     const saved = await dashboardCall({ action: "save_prompt", prompt: body });
     rememberPrompt(saved.prompt || body, saved.version, saved.tested_at);
     toast(agentText(language()).saved);
+    state.promptDraft = null;
+    paint();
+    return true;
+  } catch (error) {
+    toast(error.message, "bad");
+    return false;
+  }
+}
+
+async function saveWinning(input) {
+  if (!state.canEdit) {
+    toast("You can't edit this business.", "bad");
+    return;
+  }
+  const raw = String(input && input.raw_text || "").trim();
+  if (!raw) {
+    toast(language() === "es" ? "Pega una conversación." : "Paste a conversation.", "bad");
+    return;
+  }
+  const row = {
+    id: input.id || "",
+    title: raw.split("\n")[0].slice(0, 80),
+    raw_text: raw.slice(0, 20000),
+    messages: Array.isArray(input.messages) ? input.messages : [],
+    outcome: input.outcome === "booked" || input.outcome === "closed" ? input.outcome : "",
+    notes: String(input.notes || "").slice(0, 1000)
+  };
+  if (!state.supabase) {
+    const saved = { ...row, id: row.id || "win-" + Date.now(), created_at: new Date().toISOString() };
+    state.winningConversations = [saved].concat((state.winningConversations || []).filter((item) => item.id !== saved.id));
+    state.winningEdit = null;
+    state.winningRaw = "";
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  const payload = {
+    business_id: state.businessId,
+    title: row.title,
+    raw_text: row.raw_text,
+    messages: row.messages,
+    outcome: row.outcome,
+    notes: row.notes,
+    updated_at: new Date().toISOString(),
+    updated_by: state.user && state.user.id
+  };
+  const query = row.id
+    ? state.supabase.from("acq_winning_conversations").update(payload).eq("id", row.id).eq("business_id", state.businessId).select("id, title, raw_text, messages, outcome, notes, created_at, updated_at").single()
+    : state.supabase.from("acq_winning_conversations").insert(payload).select("id, title, raw_text, messages, outcome, notes, created_at, updated_at").single();
+  const saved = await query;
+  if (saved.error) {
+    toast(saved.error.message || "The conversation was not saved.", "bad");
+    return;
+  }
+  state.winningConversations = [saved.data].concat((state.winningConversations || []).filter((item) => item.id !== saved.data.id));
+  state.winningEdit = null;
+  state.winningRaw = "";
+  toast(agentText(language()).saved);
+  paint();
+}
+
+async function deleteWinning(row) {
+  if (!state.canEdit || !row) return;
+  if (!state.supabase) {
+    state.winningConversations = (state.winningConversations || []).filter((item) => item.id !== row.id);
+    if (state.winningEdit && state.winningEdit.id === row.id) state.winningEdit = null;
+    paint();
+    return;
+  }
+  const removed = await state.supabase.from("acq_winning_conversations").delete().eq("id", row.id).eq("business_id", state.businessId);
+  if (removed.error) {
+    toast(removed.error.message || "The conversation was not deleted.", "bad");
+    return;
+  }
+  state.winningConversations = (state.winningConversations || []).filter((item) => item.id !== row.id);
+  paint();
+}
+
+function openPromptDraft(body) {
+  const next = String(body || "").trim();
+  if (!next) return;
+  state.promptDraft = { body: next, base: state.setterPrompt || "" };
+  state.setterDraft = next;
+  state.setterDesk = Object.assign({}, state.setterDesk || {}, {
+    businessId: state.businessId,
+    mode: "prompts",
+    editing: true,
+    showDiff: true,
+    format: "text",
+    showPreview: false,
+    panel: ""
+  });
+  go("setter");
+}
+
+async function buildWinningPrompt() {
+  const rows = state.winningConversations || [];
+  if (!rows.length && !String(state.winningRaw || "").trim()) {
+    toast(language() === "es" ? "Pega una conversación." : "Paste a conversation.", "bad");
+    return;
+  }
+  if (!state.supabase) {
+    const conversations = rows.length ? rows : [{ raw_text: state.winningRaw, messages: state.winningParse && state.winningParse.messages, outcome: "", notes: "" }];
+    const examples = transcriptsForModel(conversations).flatMap((row) => row.lines).slice(0, 8).join("\n");
+    openPromptDraft([
+      "You are the setter for this business. Match the winning conversations: short lines, the same casing, and one question at a time.",
+      "Business:\n" + (draftBrief(state.brief && state.brief.fields) || "needs input"),
+      STANDING_RULES.join("\n"),
+      "Examples:\n" + (examples || "needs input")
+    ].join("\n\n"));
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "build_setter_prompt" });
+    openPromptDraft(saved.reply || "");
+    if (saved.provider_label) toast(saved.provider_label + (saved.model ? " · " + saved.model : ""));
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+function readIntakeForm(values) {
+  return {
+    offer: String(values.offer || "").trim(),
+    price: String(values.price || "").trim(),
+    ideal: String(values.ideal || "").trim(),
+    booking_link: String(values.booking_link || "").trim(),
+    criteria: String(values.criteria || "").trim(),
+    disqualifiers: String(values.disqualifiers || "").trim()
+  };
+}
+
+async function persistOnboarding(patch) {
+  const next = Object.assign({}, state.onboarding || {}, patch);
+  state.onboarding = next;
+  if (!state.supabase) return true;
+  const saved = await state.supabase.from("acq_onboarding").upsert({
+    business_id: state.businessId,
+    offer: next.offer || "",
+    price: next.price || "",
+    ideal: next.ideal || "",
+    booking_link: next.booking_link || "",
+    criteria: next.criteria || "",
+    disqualifiers: next.disqualifiers || "",
+    status: next.status || "",
+    sources: next.sources || {},
+    draft: state.onboardingDraft || next.draft || {},
+    updated_at: new Date().toISOString(),
+    updated_by: state.user && state.user.id
+  });
+  if (saved.error) {
+    toast(saved.error.message || "Onboarding was not saved.", "bad");
+    return false;
+  }
+  return true;
+}
+
+async function saveOnboarding(values, docs, transcript) {
+  if (!state.canEdit) return;
+  const form = readIntakeForm(values);
+  state.onboarding = Object.assign({}, state.onboarding || {}, form, { status: advanceStatus(state.onboarding && state.onboarding.status, "materials") });
+  if (!state.supabase) {
+    if (String(docs || "").trim()) state.onboardingMaterials = [{ id: "local-doc", name: "Pasted notes", kind: "text" }].concat(state.onboardingMaterials || []);
+    if (String(transcript || "").trim()) {
+      state.winningConversations = [{ id: "local-win", raw_text: transcript, messages: [], outcome: "", notes: "" }].concat(state.winningConversations || []);
+    }
+    toast(agentText(language()).saved);
+    paint();
+    return;
+  }
+  const ok = await persistOnboarding(state.onboarding);
+  if (!ok) return;
+  if (String(docs || "").trim()) {
+    await state.supabase.from("acq_onboarding_materials").insert({ business_id: state.businessId, kind: "text", name: "Pasted notes", body: String(docs).slice(0, 80000) });
+  }
+  if (String(transcript || "").trim()) await saveWinning({ raw_text: transcript, messages: [], outcome: "", notes: "" });
+  toast(agentText(language()).saved);
+  paint();
+}
+
+async function createOnboardingLink() {
+  if (!state.canEdit) return;
+  if (!state.supabase) {
+    state.onboardingShare = location.origin + "/account/onboarding/?preview=1";
+    paint();
+    return;
+  }
+  try {
+    const created = await dashboardCall({ action: "create_onboarding_link" });
+    state.onboardingShare = location.origin + created.path;
+    state.onboardingLinks = [{ id: created.link_id, expires_at: created.expires_at, revoked_at: null }].concat(state.onboardingLinks || []);
     paint();
   } catch (error) {
     toast(error.message, "bad");
   }
+}
+
+async function revokeOnboardingLink(link) {
+  if (!state.canEdit || !link) return;
+  if (!state.supabase) {
+    state.onboardingLinks = (state.onboardingLinks || []).map((item) => item.id === link.id ? { ...item, revoked_at: new Date().toISOString() } : item);
+    paint();
+    return;
+  }
+  try {
+    await dashboardCall({ action: "revoke_onboarding_link", link_id: link.id });
+    state.onboardingLinks = (state.onboardingLinks || []).map((item) => item.id === link.id ? { ...item, revoked_at: new Date().toISOString() } : item);
+    paint();
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+async function buildOnboarding(values) {
+  const form = readIntakeForm(values || state.onboarding || {});
+  if (!state.supabase) {
+    const draft = normalizeDraft(null, intakeBundle({
+      form,
+      materials: [{ text: "A bilingual growth system for real estate agents." }],
+      conversations: state.winningConversations || []
+    }));
+    state.onboardingDraft = draft;
+    state.onboarding = Object.assign({}, state.onboarding || {}, form, { status: advanceStatus(state.onboarding && state.onboarding.status, "drafted"), sources: draft.sources });
+    state.promptDraft = { body: draft.prompt, base: state.setterPrompt || "" };
+    toast(language() === "es" ? "Borrador listo. Nada se activó." : "Draft ready. Nothing was turned on.");
+    paint();
+    return;
+  }
+  try {
+    const saved = await dashboardCall({ action: "build_onboarding" });
+    const details = saved.prompt ? JSON.parse(saved.prompt) : {};
+    state.onboardingDraft = { fields: details.fields || {}, sources: details.sources || {}, missing: details.missing || [], prompt: saved.reply || "" };
+    state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "drafted") });
+    state.promptDraft = { body: saved.reply || "", base: state.setterPrompt || "" };
+    paint();
+  } catch (error) {
+    toast(error.message, "bad");
+    paint();
+  }
+}
+
+function reviewOnboardingPrompt() {
+  const draft = state.onboardingDraft;
+  if (!draft || !draft.prompt) return;
+  openPromptDraft(draft.prompt);
+}
+
+async function approveOnboarding() {
+  const draft = state.onboardingDraft;
+  if (!state.canEdit || !draft) return;
+  const versions = state.promptVersions || [];
+  const latest = versions.reduce((max, row) => Math.max(max, Number(row.version) || 0), 0);
+  if (!state.supabase) {
+    state.brief = { fields: Object.assign({}, (state.brief && state.brief.fields) || {}, draft.fields || {}) };
+    state.setterPrompt = draft.prompt;
+    state.setterDraft = draft.prompt;
+    state.promptVersions = [{ id: "local-" + (latest + 1), version: latest + 1, body: draft.prompt, created_at: new Date().toISOString(), created_by: state.user && state.user.id }].concat(versions);
+    state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "approved") });
+    state.promptDraft = { body: draft.prompt, base: state.setterPrompt };
+    toast(language() === "es" ? "Borradores aprobados. El setter sigue apagado." : "Drafts approved. The setter stays off.");
+    paint();
+    return;
+  }
+  await saveBrief(draft.fields || {}, state.agentCards || [], "Onboarding");
+  await saveSetterPrompt(draft.prompt);
+  state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "approved"), sources: draft.sources || {} });
+  await persistOnboarding(state.onboarding);
+  paint();
+}
+
+async function checkClaude() {
+  if (!state.supabase) {
+    const health = new URLSearchParams(location.search).get("health");
+    if (health === "fail") return { ok: false, provider: "anthropic", model: "claude-sonnet-5-5", key_present: true, key_kind: "usr", status: 401, error: "The platform key was rejected." };
+    return { ok: true, provider: "anthropic", model: "claude-sonnet-5-5", key_present: true, key_kind: "usr", status: 200, error: "" };
+  }
+  return dashboardCall({ action: "claude_health" });
 }
 
 async function restoreSetterPrompt(version) {
@@ -1430,12 +1758,15 @@ async function sendTrial(prompt, message, options) {
     : "Version " + ((result.version && result.version.version) || 1);
   const waited = practiceDelaySeconds(minValue, maxValue, state.practiceSimulateDelay === true, Math.random);
   if (waited > 0) await new Promise((resolve) => setTimeout(resolve, waited * 1000));
+  if (result.provider) state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "tested") });
   trial.messages = trial.messages.concat([{
     role: "assistant",
     text: result.reply || "",
     voices,
     preview: result.preview === true,
-    modelLine: result.preview ? "" : trialModelLine(result),
+    modelLine: result.model ? trialModelLine(result) : (result.preview ? "" : ""),
+    providerLabel: result.provider_label || "",
+    model: result.model || "",
     versionLabel: label,
     prompt: result.prompt || body,
     delayLine: waited > 0 ? "Waited " + waited + " seconds." : "Delay skipped."
@@ -1464,11 +1795,11 @@ function previewPracticeReply(input) {
     ok: true,
     reply: resolved.text,
     voices: resolved.voices,
-    provider: "gemini",
-    provider_label: "Google Gemini",
-    model: "gemini-3-flash-preview",
+    provider: new URLSearchParams(location.search).get("reply") === "claude" ? "anthropic" : "gemini",
+    provider_label: new URLSearchParams(location.search).get("reply") === "claude" ? "Anthropic" : "Google Gemini",
+    model: new URLSearchParams(location.search).get("reply") === "claude" ? "claude-sonnet-5-5" : "gemini-3-flash-preview",
     key_source: "platform",
-    preview: true,
+    preview: new URLSearchParams(location.search).get("reply") !== "claude",
     version: promptVersionLabel(input.versions, body),
     prompt: body,
     sent: false,
@@ -3948,7 +4279,22 @@ function readPreview() {
       { id: "preview-prompt-1", version: 1, body: "You are the setter for this business. Ask one question at a time.", created_at: "2026-10-23T06:00:00Z", created_by: null },
       { id: "preview-prompt-2", version: 2, body: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}.", created_at: "2026-10-26T08:00:00Z", created_by: null }
     ],
-    setterTrial: {
+    setterTrial: params.get("reply") === "claude" ? {
+      scenario: "follower",
+      leadState: "discovering",
+      messages: [
+        { role: "user", text: "Hey" },
+        {
+          role: "assistant",
+          text: "hey, what are you working on right now?",
+          providerLabel: "Anthropic",
+          model: "claude-sonnet-5-5",
+          modelLine: "Anthropic · claude-sonnet-5-5 · Platform key",
+          versionLabel: "Version 2",
+          delayLine: "Delay skipped."
+        }
+      ]
+    } : {
       scenario: "follower",
       leadState: "discovering",
       messages: [
@@ -3956,6 +4302,10 @@ function readPreview() {
         { role: "assistant", text: "I can walk you through it. What are you working on right now?", preview: true, versionLabel: "Version 2", delayLine: "Delay skipped." }
       ]
     },
+    promptDraft: params.get("draft") === "1" ? {
+      body: "You are the setter for this business. Short lines, lowercase, one question at a time.\nDo not guarantee income or results.\nDo not invent results, clients, or numbers.\nStop when the person asks you to stop.\nShare the booking link only after the lead agrees to a call.\nLead: hey\nSetter: hey, what are you working on right now?",
+      base: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}."
+    } : null,
     previewSimulations: [
       {
         id: "sim-saved",
@@ -3998,6 +4348,7 @@ function readPreview() {
       deals: [],
       outreach: []
     } : {}),
+    ...previewOnboarding(params),
     ...(params.get("fail") === "1" ? {
       sectionErrors: {
         performance: true,

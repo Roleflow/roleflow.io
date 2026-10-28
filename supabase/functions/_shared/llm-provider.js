@@ -178,14 +178,26 @@ export function redactSecret(text, secret) {
     .slice(0, 240);
 }
 
-export function chatRequest({ runtime, system, messages, json, tools, responseFormat, maxTokens, temperature }) {
+export function anthropicAcceptsTemperature(model) {
+  return !/^claude-(opus|sonnet|haiku)-5(?:[^0-9]|$)/i.test(String(model || ""));
+}
+
+export function anthropicKeyKind(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (!key) return "missing";
+  if (key.startsWith("sk-ant-usr")) return "usr";
+  if (key.startsWith("sk-ant-api")) return "api";
+  return "other";
+}
+
+export function chatRequest({ runtime, system, messages, json, tools, responseFormat, maxTokens, temperature, omitTemperature }) {
   const spec = PROVIDERS[runtime.provider];
   if (!spec) throw new Error("Choose a provider.");
   const model = String(runtime.model || spec.defaultModel || "").trim();
   if (!model) throw new Error("Enter a model id.");
   const heat = Number.isFinite(Number(temperature)) ? Number(temperature) : 0.4;
   const toolList = Array.isArray(tools) ? tools.filter((tool) => tool && tool.name) : [];
-  if (spec.kind === "anthropic") return anthropicRequest({ runtime, spec, model, system, messages, json, toolList, heat, maxTokens });
+  if (spec.kind === "anthropic") return anthropicRequest({ runtime, spec, model, system, messages, json, toolList, heat, maxTokens, omitTemperature: omitTemperature === true });
   if (spec.kind === "gemini") return geminiRequest({ runtime, model, system, messages, json, toolList, heat });
   return openaiRequest({ runtime, spec, model, system, messages, json, toolList, responseFormat, heat, maxTokens });
 }
@@ -355,7 +367,48 @@ export async function loadSetterReply(admin, businessId, env) {
   return plan;
 }
 
-const CLIENT_REPLY_KEYS = ["ok", "reply", "error", "provider", "provider_label", "model", "key_source", "tested_at", "sent", "notice", "fell_back", "version", "prompt", "voices", "booking_link", "preview"];
+const CLIENT_REPLY_KEYS = ["ok", "reply", "error", "provider", "provider_label", "model", "key_source", "tested_at", "sent", "notice", "fell_back", "version", "prompt", "voices", "booking_link", "preview", "draft"];
+
+export function healthView(result) {
+  const source = result && typeof result === "object" ? result : {};
+  const kind = ["missing", "usr", "api", "other"].includes(source.key_kind) ? source.key_kind : "other";
+  return {
+    ok: source.ok === true,
+    provider: "anthropic",
+    model: String(source.model || CLAUDE_SONNET_MODEL),
+    key_present: source.key_present === true,
+    key_kind: kind,
+    status: source.status == null || source.status === "" ? null : Number(source.status),
+    error: redactSecret(source.error, "")
+  };
+}
+
+export async function probeClaude({ apiKey, model, fetchImpl }) {
+  const chosen = String(model || CLAUDE_SONNET_MODEL);
+  const kind = anthropicKeyKind(apiKey);
+  if (kind === "missing") {
+    return healthView({ ok: false, model: chosen, key_present: false, key_kind: "missing", error: "ANTHROPIC_API_KEY is not set." });
+  }
+  try {
+    const result = await once({ provider: "anthropic", model: chosen, apiKey: String(apiKey), source: "platform" }, {
+      system: "Reply with the single word pong.",
+      messages: [{ role: "user", content: "ping" }],
+      maxTokens: 16,
+      omitTemperature: true,
+      fetchImpl
+    });
+    return healthView({ ok: true, model: result.model || chosen, key_present: true, key_kind: kind, status: 200, error: "" });
+  } catch (error) {
+    return healthView({
+      ok: false,
+      model: chosen,
+      key_present: true,
+      key_kind: kind,
+      status: error && error.status ? error.status : null,
+      error: redactSecret(error && error.message, apiKey)
+    });
+  }
+}
 
 export function clientReplyView(result, secrets) {
   const source = result && typeof result === "object" ? result : {};
@@ -395,7 +448,23 @@ function usableFallback(primary, fallback) {
   return fallback;
 }
 
+function temperatureRejected(error) {
+  const message = String(error && error.message || "");
+  return /temperature/i.test(message) && /deprecated/i.test(message);
+}
+
 async function once(runtime, input) {
+  try {
+    return await sendOnce(runtime, input || {});
+  } catch (error) {
+    if (runtime && runtime.provider === "anthropic" && !(input && input.omitTemperature) && temperatureRejected(error)) {
+      return sendOnce(runtime, { ...(input || {}), omitTemperature: true });
+    }
+    throw error;
+  }
+}
+
+async function sendOnce(runtime, input) {
   const request = chatRequest({
     runtime,
     system: input.system || "",
@@ -404,7 +473,8 @@ async function once(runtime, input) {
     tools: input.tools,
     responseFormat: input.responseFormat,
     maxTokens: input.maxTokens,
-    temperature: input.temperature
+    temperature: input.temperature,
+    omitTemperature: input.omitTemperature === true
   });
   const fetchFn = input.fetchImpl || fetch;
   const response = await fetchFn(request.url, request.init);
@@ -465,15 +535,15 @@ function openaiRequest({ runtime, spec, model, system, messages, json, toolList,
   return { url, init: { method: "POST", headers, body: JSON.stringify(body) } };
 }
 
-function anthropicRequest({ runtime, spec, model, system, messages, json, toolList, heat, maxTokens }) {
+function anthropicRequest({ runtime, spec, model, system, messages, json, toolList, heat, maxTokens, omitTemperature }) {
   const prompt = json ? String(system || "") + "\n\nReply with JSON only." : String(system || "");
   const body = {
     model,
     max_tokens: Math.min(16000, Math.max(1, Math.round(Number(maxTokens) || 1024))),
-    temperature: heat,
     system: prompt,
     messages: anthropicMessages(messages)
   };
+  if (!omitTemperature && anthropicAcceptsTemperature(model)) body.temperature = heat;
   if (toolList.length) {
     body.tools = toolList.map((tool) => ({
       name: String(tool.name).slice(0, 64),

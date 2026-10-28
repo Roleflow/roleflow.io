@@ -5,6 +5,8 @@ import {
   validateAsset, validateLink, validateSchedule, versionDelta
 } from "./studio-model.js";
 import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
+import { renderWinningConversations } from "./winning-panel.js";
+import { renderOnboarding } from "./onboarding-panel.js";
 
 export { SETTER_SYNC };
 
@@ -152,6 +154,8 @@ export function renderBusiness(ui) {
   }
   wrap.append(score);
 
+  wrap.append(renderOnboarding(ui));
+  wrap.append(renderWinningConversations(ui));
   wrap.append(agentEditor(ui, cards, readCards));
   wrap.append(versionList(ui, brief));
   wrap.append(simulator(ui));

@@ -110,6 +110,12 @@ export function openAddBusiness({ supabase, preview }) {
     next.textContent = step === STEPS.length - 1 ? "Create business" : "Continue";
     actions.append(next);
     form.append(actions);
+    const intake = document.createElement("a");
+    intake.className = "btn sm ghost";
+    intake.id = "open-onboarding";
+    intake.href = "/account/acquisition/?intake=1#sops";
+    intake.textContent = "Onboarding intake";
+    form.append(intake);
     const note = document.createElement("p");
     note.className = "mute";
     note.id = "add-business-note";

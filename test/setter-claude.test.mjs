@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { CLAUDE_SONNET_MODEL, clientReplyView, completeChat, loadSetterReply, setterReplyPlan } from "../supabase/functions/_shared/llm-provider.js";
+import { CLAUDE_SONNET_MODEL, anthropicAcceptsTemperature, chatRequest, clientReplyView, completeChat, healthView, loadSetterReply, setterReplyPlan } from "../supabase/functions/_shared/llm-provider.js";
 import { CLAUDE_SONNET_MODEL as clientModel, maskedKey, publicKeyView } from "../acquire/model-key.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -161,5 +161,46 @@ assert.match(read("supabase/functions/llm-check/index.ts"), /clientReplyView/);
 assert.match(read("docs/client-dashboard.md"), /20261027190000_setter_claude\.sql/);
 assert.match(read("docs/client-dashboard.md"), /ANTHROPIC_API_KEY/);
 assert.match(read("docs/client-dashboard.md"), /NOT APPLIED/);
+
+assert.equal(anthropicAcceptsTemperature("claude-sonnet-5-5"), false);
+assert.equal(anthropicAcceptsTemperature("claude-sonnet-4-5"), true);
+const sonnet5 = JSON.parse(chatRequest({
+  runtime: { provider: "anthropic", model: "claude-sonnet-5-5", apiKey: "sk-ant-usr-testkey" },
+  messages: [{ role: "user", content: "ping" }]
+}).init.body);
+assert.equal(Object.hasOwn(sonnet5, "temperature"), false);
+const older = JSON.parse(chatRequest({
+  runtime: { provider: "anthropic", model: "claude-sonnet-4-5", apiKey: "sk-ant-api-testkey" },
+  messages: [{ role: "user", content: "ping" }]
+}).init.body);
+assert.equal(older.temperature, 0.4);
+
+let heatCalls = 0;
+const recovered = await completeChat({
+  chain: [
+    { provider: "anthropic", model: "claude-sonnet-4-5", apiKey: platformKey, source: "platform" },
+    current
+  ],
+  messages: [{ role: "user", content: "ping" }],
+  fetchImpl: async (_url, init) => {
+    heatCalls += 1;
+    const body = JSON.parse(init.body);
+    if (body.temperature != null) {
+      return { ok: false, status: 400, json: async () => ({ error: { type: "invalid_request_error", message: "`temperature` is deprecated for this model." } }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "pong" }], usage: { input_tokens: 3, output_tokens: 1 } }) };
+  }
+});
+assert.equal(recovered.text, "pong");
+assert.equal(recovered.provider, "anthropic");
+assert.equal(recovered.fellBack, false);
+assert.equal(heatCalls, 2);
+assert.equal(JSON.stringify(recovered).includes(platformKey), false);
+
+const health = healthView({ ok: true, model: CLAUDE_SONNET_MODEL, key_present: true, key_kind: "usr", status: 200, apiKey: platformKey, error: "bad " + platformKey });
+assert.equal(JSON.stringify(health).includes(platformKey), false);
+assert.equal(health.key_kind, "usr");
+assert.equal(health.provider, "anthropic");
+assert.equal(Object.hasOwn(health, "apiKey"), false);
 
 console.log("setter claude tests passed");

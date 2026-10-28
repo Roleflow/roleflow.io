@@ -50,6 +50,7 @@ const COPY = {
     aiOk: "Claude answered.",
     aiRejected: "That Claude API key was rejected.",
     aiFallback: "This business's Claude API key was rejected. The setter used the next model.",
+    aiHealth: "Check Roleflow key",
     igTitle: "Connect Instagram",
     igOn: "Instagram is connected for this business.",
     igOff: "Instagram is not connected for this business.",
@@ -139,6 +140,7 @@ const COPY = {
     aiOk: "Claude respondió.",
     aiRejected: "Esa clave de Claude fue rechazada.",
     aiFallback: "La clave de Claude de este negocio fue rechazada. El setter usó el siguiente modelo.",
+    aiHealth: "Comprobar clave de Roleflow",
     igTitle: "Conectar Instagram",
     igOn: "Instagram está conectado para este negocio.",
     igOff: "Instagram no está conectado para este negocio.",
@@ -653,6 +655,17 @@ export function renderModelKey(ui) {
   card.append(ui.el("h3", { text: copy.aiTitle }));
   card.append(ui.el("p", { text: copy.aiBody }));
   if (ui.state.claudeNotice) card.append(ui.el("p", { class: "claude-notice", role: "status", text: copy.aiFallback }));
+  const health = ui.el("p", { id: "claude-health", class: "mute", role: "status" });
+  card.append(health);
+  if (ui.state.canEdit && ui.checkClaude) {
+    card.append(ui.button(copy.aiHealth, async (event) => {
+      event.preventDefault();
+      health.textContent = copy.keyChecking;
+      const report = await ui.checkClaude();
+      const line = (report && report.provider ? report.provider : "anthropic") + " · " + (report && report.model ? report.model : "") + " · " + (report && report.ok ? "ok" : "fail");
+      health.textContent = report && report.error ? line + " · " + report.error : line;
+    }));
+  }
   const savedMode = ui.state.settings && ui.state.settings.setter_claude_mode === "own" ? "own" : "default";
   const last4 = keyHint(ui.state.llmKeys, "anthropic");
   let mode = savedMode;
