@@ -4,6 +4,7 @@
 import { PROMPT_MAX, diffLines } from "./prompt-history.js";
 import { MAX_CHARS, briefDocument, formatDelta, parseBriefDocument } from "./studio-model.js";
 import { SIM_STATES, blankConversation, filterSimulations, lengthDelta, loadSimulations, saveSimulations } from "./sim-log.js";
+import { splitReply } from "./split-reply.js";
 
 const COPY = {
   en: {
@@ -21,6 +22,14 @@ const COPY = {
     restore: "Restore",
     noVersions: "No saved versions yet.",
     editAi: "Edit with AI",
+    working: "Working…",
+    discard: "Discard",
+    view: "View",
+    compare: "Compare",
+    unsaved: "Unsaved changes",
+    splitLabel: "Split replies over this many words",
+    editFailed: "The edit did not run.",
+    analyzeFailed: "Analysis did not run.",
     apply: "Apply",
     simulator: "Simulator",
     hide: "Hide simulator",
@@ -79,6 +88,14 @@ const COPY = {
     restore: "Restaurar",
     noVersions: "Todavía no hay versiones.",
     editAi: "Editar con IA",
+    working: "Trabajando…",
+    discard: "Descartar",
+    view: "Ver",
+    compare: "Comparar",
+    unsaved: "Cambios sin guardar",
+    splitLabel: "Parte las respuestas de más de estas palabras",
+    editFailed: "La edición no se hizo.",
+    analyzeFailed: "El análisis no se hizo.",
     apply: "Aplicar",
     simulator: "Simulador",
     hide: "Ocultar simulador",
@@ -306,7 +323,8 @@ function editorColumn(ui, copy, desk, es) {
   const max = prompts ? PROMPT_MAX : MAX_CHARS;
   const head = ui.el("div", { class: "editor-head" });
   head.append(ui.el("h2", { text: prompts ? copy.prompts : copy.business }));
-  head.append(ui.el("span", { class: "desk-count", id: "desk-count", text: value.length.toLocaleString("en-US") + " / " + max.toLocaleString("en-US") }));
+  const dirty = prompts && desk.editing && value.trim() !== String(ui.state.setterPrompt || "").trim();
+  head.append(ui.el("span", { class: "desk-count", id: "desk-count", text: value.length.toLocaleString("en-US") + " / " + max.toLocaleString("en-US") + (dirty ? " · " + copy.unsaved : "") }));
   column.append(head);
   const tools = ui.el("div", { class: "desk-tools" });
   if (desk.editing) {
@@ -395,17 +413,26 @@ function qualityRow(ui, copy, desk) {
   row.append(ghost(ui, copy.analysis, async () => {
     const prompt = currentPromptValue(ui);
     if (!ui.analyzePrompt) return;
+    const button = row.querySelector("[data-analysis]");
+    if (button) button.textContent = copy.working;
     const result = await ui.analyzePrompt(prompt);
-    if (!result) return;
+    if (!result || result.error) {
+      desk.analyzeError = (result && result.error) || copy.analyzeFailed;
+      ui.paint();
+      return;
+    }
+    desk.analyzeError = "";
     desk.quality = { score: result.score, items: result.items || [] };
     ui.paint();
   }));
+  row.querySelector("button") && row.lastChild.setAttribute && row.lastChild.setAttribute("data-analysis", "1");
   const versions = ghost(ui, copy.versions, () => {
     desk.panel = desk.panel === "versions" ? "" : "versions";
     ui.paint();
   });
   if (desk.panel === "versions") versions.classList.add("is-on");
   row.append(versions);
+  if (desk.analyzeError) row.append(ui.el("p", { class: "claude-notice", role: "status", text: desk.analyzeError }));
   if (quality && quality.items && quality.items.length) {
     const list = ui.el("ul", { class: "quality-items" });
     quality.items.forEach((item) => list.append(ui.el("li", { text: item })));
@@ -428,15 +455,39 @@ function versionsPanel(ui, copy, desk) {
     const when = ui.when ? ui.when(row.created_at) : "";
     card.append(ui.el("strong", { text: "Version " + row.version + (when ? " · " + when : "") }));
     card.append(ui.el("p", { class: "mute", text: versionSource(ui, row, copy) + " · " + formatDelta(lengthDelta(row.body, previous ? previous.body : null)) }));
-    card.append(ghost(ui, copy.restore, () => {
+    const actions = ui.el("div", { class: "filters" });
+    actions.append(ghost(ui, copy.view, () => {
+      desk.viewVersion = desk.viewVersion === row.id ? "" : row.id;
+      desk.compareVersion = "";
+      ui.paint();
+    }));
+    actions.append(ghost(ui, copy.compare, () => {
+      desk.compareVersion = desk.compareVersion === row.id ? "" : row.id;
+      desk.viewVersion = "";
+      ui.paint();
+    }));
+    actions.append(ghost(ui, copy.restore, () => {
       if (!window.confirm(copy.restore + "?")) return;
       ui.state.setterDraft = row.body || "";
       desk.editing = false;
       ui.restoreSetterPrompt(row);
     }));
+    card.append(actions);
+    if (desk.viewVersion === row.id) card.append(ui.el("pre", { class: "prompt-diff", text: row.body || "" }));
+    if (desk.compareVersion === row.id) card.append(versionDiff(ui, row.body || ""));
     panel.append(card);
   });
   return panel;
+}
+
+function versionDiff(ui, body) {
+  const host = ui.el("div", { class: "prompt-diff" });
+  const rows = diffLines(ui.state.setterPrompt || "", body).filter((row) => row.type !== "same");
+  if (!rows.length) host.append(ui.el("p", { class: "mute", text: "This matches the saved prompt." }));
+  rows.slice(0, 80).forEach((row) => {
+    host.append(ui.el("p", { class: "diff-line diff-" + row.type, text: (row.type === "add" ? "+ " : "− ") + row.text }));
+  });
+  return host;
 }
 
 function aiBar(ui, copy, desk) {
@@ -452,19 +503,57 @@ function aiBar(ui, copy, desk) {
   bar.append(ui.el("span", { class: "ai-spark", "aria-hidden": "true" }, [mark("spark")]));
   bar.append(input);
   bar.append(roundSend(ui, copy.apply));
+  const status = ui.el("p", { id: "prompt-edit-status", class: "claude-notice", role: "status" });
+  if (!desk.editError) status.hidden = true;
+  else status.textContent = desk.editError;
   bar.addEventListener("submit", async (event) => {
     event.preventDefault();
     const instruction = input.value.trim();
-    if (!instruction || !ui.editPrompt) return;
-    const next = await ui.editPrompt(currentPromptValue(ui), instruction);
-    if (!next) return;
-    ui.state.setterDraft = next;
+    if (!instruction) return;
+    if (!ui.editPrompt) {
+      desk.editError = copy.editFailed;
+      status.hidden = false;
+      status.textContent = desk.editError;
+      return;
+    }
+    input.disabled = true;
+    status.hidden = false;
+    status.textContent = copy.working;
+    const result = await ui.editPrompt(currentPromptValue(ui), instruction);
+    input.disabled = false;
+    if (!result || result.error || !result.prompt) {
+      desk.editError = (result && result.error) || copy.editFailed;
+      status.textContent = desk.editError;
+      return;
+    }
+    desk.editError = "";
+    status.hidden = true;
+    ui.state.promptDraft = { body: result.prompt, base: ui.state.setterPrompt || "" };
+    ui.state.setterDraft = result.prompt;
     desk.editing = true;
     desk.aiInstruction = "";
     desk.quality = null;
     ui.paint();
   });
-  return bar;
+  const wrap = ui.el("div", { class: "ai-edit" });
+  wrap.append(bar, status);
+  if (ui.state.promptDraft) {
+    const actions = ui.el("div", { class: "filters", id: "prompt-draft-actions" });
+    actions.append(ui.button(copy.apply, async () => {
+      desk.editing = false;
+      desk.panel = "versions";
+      await ui.saveSetterPrompt(ui.state.setterDraft || (ui.state.promptDraft && ui.state.promptDraft.body));
+    }));
+    actions.append(ghost(ui, copy.discard, () => {
+      ui.state.promptDraft = null;
+      ui.state.setterDraft = ui.state.setterPrompt || "";
+      desk.editing = false;
+      desk.editError = "";
+      ui.paint();
+    }));
+    wrap.append(actions);
+  }
+  return wrap;
 }
 
 function currentPromptValue(ui) {
@@ -681,7 +770,7 @@ function resetConversation(ui) {
 
 function submitSim(ui, text, followup) {
   const desk = deskState(ui.state);
-  const prompt = currentPromptValue(ui);
+  const prompt = String(ui.state.setterPrompt || "").trim() || currentPromptValue(ui);
   if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [] };
   ui.state.setterTrial.leadState = desk.leadState;
   if (followup) ui.sendTrial(prompt, "", { followup: Number(desk.followupNumber) || 1, leadState: desk.leadState });
@@ -713,6 +802,15 @@ function delayFields(ui, copy) {
     ui.el("span", { class: "mute", text: copy.seconds }),
     ghost(ui, copy.saveDelay, () => ui.saveReplyDelay(min.value, max.value))
   );
+  const split = ui.el("input", {
+    id: "reply-split-words",
+    type: "number",
+    min: "0",
+    max: "80",
+    value: String(settings.reply_split_words == null ? 15 : settings.reply_split_words),
+    "aria-label": copy.splitLabel
+  });
+  row.append(ui.el("label", { text: copy.splitLabel }, [split]), ghost(ui, copy.save, () => ui.saveReplySplit(split.value)));
   return row;
 }
 
