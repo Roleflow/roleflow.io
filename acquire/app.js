@@ -8,6 +8,7 @@ import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
+import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
 import { previewOnboarding } from "./onboarding-panel.js";
 import { bindAssistant } from "./assistant.js";
@@ -222,6 +223,7 @@ async function boot() {
     }
     state.canEdit = preview.canEdit === true;
     state.canManageKeys = state.canEdit === true;
+    state.setterVoice = clampVoice(preview.settings && preview.settings.setter_voice);
     if (preview.promptDraft) {
       state.setterDraft = preview.promptDraft.body;
       state.setterDesk = {
@@ -617,14 +619,18 @@ async function loadAll(id, token) {
   state.onboardingDraft = intake.data && intake.data.draft && intake.data.draft.prompt ? intake.data.draft : state.onboardingDraft;
   state.bookingLink = bookingLinkFor(state.settings && state.settings.booking_fallback_url);
   const [promptVersions, voiceRules, voiceSettings, voiceLog, commentSlot] = await Promise.all([
-    q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", id).order("version", { ascending: false }).limit(30),
+    q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by, setter_voice").eq("business_id", id).order("version", { ascending: false }).limit(30),
     q.from("acq_comment_voice_rules").select("id, keywords, intent, message, clip_id, position").eq("business_id", id).order("position", { ascending: true }),
     q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
     q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
     q.from("acq_comment_slots").select("when_to_send, voice_note_id").eq("business_id", id).maybeSingle()
   ]);
   if (!live()) return false;
-  state.promptVersions = promptVersions.error ? (state.promptVersions || []) : promptVersions.data || [];
+  if (promptVersions.error) {
+    const plainVersions = await q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", id).order("version", { ascending: false }).limit(30);
+    state.promptVersions = plainVersions.error ? (state.promptVersions || []) : plainVersions.data || [];
+  } else state.promptVersions = promptVersions.data || [];
+  if (state.settings && state.settings.setter_voice != null) state.setterVoice = clampVoice(state.settings.setter_voice);
   state.commentVoiceRules = voiceRules.error ? [] : voiceRules.data || [];
   state.commentVoiceCap = voiceSettings.error || !voiceSettings.data ? 30 : voiceSettings.data.daily_cap;
   state.commentVoiceLog = voiceLog.error ? [] : voiceLog.data || [];
@@ -892,6 +898,7 @@ function pageUi() {
     restoreSetterPrompt,
     saveBookingLink,
     saveReplyDelay,
+    saveVoice,
     analyzePrompt,
     editPrompt,
     saveWinning,
@@ -1278,6 +1285,7 @@ function rememberPrompt(body, version, testedAt) {
   if (testedAt !== undefined) state.setterTestedAt = testedAt;
   if (version) {
     state.promptVersions = [version].concat((state.promptVersions || []).filter((row) => row.id !== version.id && Number(row.version) !== Number(version.version)));
+    if (version.setter_voice != null) state.setterVoice = clampVoice(version.setter_voice);
   }
 }
 
@@ -1303,7 +1311,7 @@ async function saveSetterPrompt(value) {
     return true;
   }
   try {
-    const saved = await dashboardCall({ action: "save_prompt", prompt: body });
+    const saved = await dashboardCall({ action: "save_prompt", prompt: body, voice: clampVoice(state.setterVoice) });
     rememberPrompt(saved.prompt || body, saved.version, saved.tested_at);
     toast(agentText(language()).saved);
     state.promptDraft = null;
@@ -1593,6 +1601,7 @@ async function restoreSetterPrompt(version) {
   }
   try {
     const saved = await dashboardCall({ action: "restore_prompt", version_id: version.id });
+    if (saved.voice != null) state.setterVoice = clampVoice(saved.voice);
     rememberPrompt(saved.prompt || version.body, saved.version, saved.tested_at);
     toast(agentText(language()).saved);
     paint();
@@ -1712,7 +1721,8 @@ async function sendTrial(prompt, message, options) {
       bookingLink: state.bookingLink,
       versions: state.promptVersions,
       testedAt: state.setterTestedAt,
-      savedPrompt: state.setterPrompt
+      savedPrompt: state.setterPrompt,
+      voice: clampVoice(state.setterVoice)
     });
   } else {
     try {
@@ -1724,7 +1734,8 @@ async function sendTrial(prompt, message, options) {
         scenario: trial.scenario,
         followup: followup || 0,
         lead_state: (options && options.leadState) || (trial.leadState || ""),
-        comment_when: commentWhenForTrial()
+        comment_when: commentWhenForTrial(),
+        voice: clampVoice(state.setterVoice)
       });
     } catch (error) {
       result = { ok: false, error: error.message };
@@ -1793,12 +1804,13 @@ function previewPracticeReply(input) {
   const resolved = resolveOutgoing(text, { voices: catalog, bookingLink: input.bookingLink });
   return {
     ok: true,
-    reply: resolved.text,
+    reply: previewVoiceReply(input.voice, resolved.text, prior),
     voices: resolved.voices,
     provider: new URLSearchParams(location.search).get("reply") === "claude" ? "anthropic" : "gemini",
     provider_label: new URLSearchParams(location.search).get("reply") === "claude" ? "Anthropic" : "Google Gemini",
     model: new URLSearchParams(location.search).get("reply") === "claude" ? "claude-sonnet-5-5" : "gemini-3-flash-preview",
     key_source: "platform",
+    voice: clampVoice(input.voice),
     preview: new URLSearchParams(location.search).get("reply") !== "claude",
     version: promptVersionLabel(input.versions, body),
     prompt: body,
@@ -1807,12 +1819,30 @@ function previewPracticeReply(input) {
   };
 }
 
+function previewVoiceReply(voice, fallback, prior) {
+  if (prior) return fallback;
+  const value = clampVoice(voice);
+  if (value <= 12) return "hey, whatre you working on rn?";
+  if (value >= 88) return "What are you working on right now?";
+  return fallback;
+}
+
 function trialModelLine(result) {
   if (!result || !result.model) return "";
   const provider = result.provider_label || result.provider || "Model";
   const key = result.key_source === "business" ? "Business key" : "Platform key";
+  const mark = result.voice == null ? "" : " · " + voiceFooter(result.voice, language());
   const usage = result.usage ? " · " + result.usage.input + " in · " + result.usage.output + " out" : "";
-  return provider + " · " + result.model + " · " + key + usage;
+  return provider + " · " + result.model + " · " + key + mark + usage;
+}
+
+async function saveVoice(value) {
+  const voice = clampVoice(value);
+  state.setterVoice = voice;
+  if (!state.settings) state.settings = {};
+  state.settings.setter_voice = voice;
+  if (!state.supabase) return;
+  await patchSettings({ setter_voice: voice });
 }
 
 function safeTrialError(message) {
@@ -4233,7 +4263,7 @@ function readPreview() {
     canEdit: params.get("edit") === "1",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
-    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120, setter_claude_mode: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? "own" : "default" },
+    settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120, setter_voice: params.get("voice") == null || params.get("voice") === "" ? 50 : clampVoice(params.get("voice")), setter_claude_mode: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? "own" : "default" },
     llmKeys: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? [{ provider: "anthropic", last4: "abcd" }] : [],
     claudeNotice: params.get("claude") === "bad" ? "This business's Claude API key was rejected." : "",
     setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : null,
@@ -4286,10 +4316,10 @@ function readPreview() {
         { role: "user", text: "Hey" },
         {
           role: "assistant",
-          text: "hey, what are you working on right now?",
+          text: previewVoiceReply(params.get("voice"), "hey, what are you working on right now?", 0),
           providerLabel: "Anthropic",
           model: "claude-sonnet-5-5",
-          modelLine: "Anthropic · claude-sonnet-5-5 · Platform key",
+          modelLine: "Anthropic · claude-sonnet-5-5 · Platform key · " + voiceFooter(params.get("voice") == null || params.get("voice") === "" ? 50 : params.get("voice"), "en"),
           versionLabel: "Version 2",
           delayLine: "Delay skipped."
         }

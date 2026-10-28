@@ -245,7 +245,8 @@ const migrationNames = [
   "20261027120000_comment_recording_slot.sql",
   "20261027190000_setter_claude.sql",
   "20261028070000_winning_conversations.sql",
-  "20261028080000_onboarding_intake.sql"
+  "20261028080000_onboarding_intake.sql",
+  "20261028093000_setter_voice.sql"
 ];
 assert.deepEqual(
   migrationNames,

@@ -2,6 +2,7 @@
 // preview calls the selected model. Nothing here sends an Instagram message.
 
 import { PROMPT_MAX, diffLines } from "./prompt-history.js";
+import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { MAX_CHARS, briefDocument, formatDelta, parseBriefDocument } from "./studio-model.js";
 import { SIM_STATES, blankConversation, filterSimulations, lengthDelta, loadSimulations, saveSimulations } from "./sim-log.js";
 
@@ -61,6 +62,11 @@ const COPY = {
     team: "Team",
     quality: "Prompt quality",
     model: "Claude Sonnet",
+    voice: "Human ↔ AI",
+    voiceHuman: "Human",
+    voiceAi: "AI",
+    voiceHumanHint: "More varied, casual, and short. Slang can match the winning conversations.",
+    voiceAiHint: "More consistent, structured, and predictable.",
     draftNote: "This is a draft. Save it to keep a new version. The setter stays off until you turn it on.",
     promptNote: "This is the setter system prompt. The simulator uses this text. Saving keeps a version and does not turn the setter on."
   },
@@ -119,6 +125,11 @@ const COPY = {
     team: "Equipo",
     quality: "Calidad del prompt",
     model: "Claude Sonnet",
+    voice: "Humano ↔ IA",
+    voiceHuman: "Humano",
+    voiceAi: "IA",
+    voiceHumanHint: "Más variado, casual y corto. La jerga puede seguir las conversaciones que convirtieron.",
+    voiceAiHint: "Más consistente, estructurado y predecible.",
     draftNote: "Esto es un borrador. Guárdalo para crear una versión. El setter sigue apagado hasta que lo actives.",
     promptNote: "Este es el prompt de sistema del setter. El simulador usa este texto. Guardar crea una versión y no activa el setter."
   }
@@ -490,6 +501,42 @@ function draftDiff(ui, copy, value) {
   return wrap;
 }
 
+function voiceControl(ui, copy, suffix) {
+  const lang = ui.language && ui.language() === "es" ? "es" : "en";
+  const current = clampVoice(ui.state.setterVoice != null ? ui.state.setterVoice : (ui.state.settings && ui.state.settings.setter_voice));
+  const wrap = ui.el("div", { class: "voice-slider" });
+  const readout = ui.el("strong", { "data-voice-readout": "1", text: voiceFooter(current, lang) });
+  const input = ui.el("input", {
+    id: "voice-slider" + suffix,
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "25",
+    value: String(current),
+    "data-voice-slider": "1",
+    "aria-label": copy.voice
+  });
+  if (!ui.state.canEdit) input.disabled = true;
+  input.addEventListener("input", () => {
+    const next = clampVoice(input.value);
+    ui.state.setterVoice = next;
+    const label = voiceFooter(next, lang);
+    document.querySelectorAll("[data-voice-readout]").forEach((node) => { node.textContent = label; });
+    document.querySelectorAll("[data-voice-slider]").forEach((node) => { if (node !== input) node.value = String(next); });
+  });
+  input.addEventListener("change", () => { if (ui.saveVoice) ui.saveVoice(input.value); });
+  wrap.append(ui.el("p", { class: "voice-label", text: copy.voice }));
+  wrap.append(ui.el("div", { class: "voice-ends" }, [
+    ui.el("span", { text: copy.voiceHuman }),
+    readout,
+    ui.el("span", { text: copy.voiceAi })
+  ]));
+  wrap.append(input);
+  wrap.append(ui.el("p", { class: "mute", text: copy.voiceHumanHint }));
+  wrap.append(ui.el("p", { class: "mute", text: copy.voiceAiHint }));
+  return wrap;
+}
+
 function answeredChip(ui, copy) {
   const messages = ((ui.state.setterTrial || {}).messages || []).slice().reverse();
   const hit = messages.find((item) => item.role === "assistant" && item.providerLabel);
@@ -570,6 +617,7 @@ function simulatorColumn(ui, copy, desk) {
   const meta = ui.el("div", { class: "sim-meta" });
   meta.append(ui.el("a", { class: "model-chip", id: "sim-model-chip", href: "#settings/model" }, [answeredChip(ui, copy)]), statePick);
   sim.append(meta);
+  sim.append(voiceControl(ui, copy, ""));
   if (desk.panel === "conversations") sim.append(conversationsPanel(ui, copy, desk));
 
   sim.append(segment(ui, [["lead", copy.lead], ["business", copy.businessSender]], desk.sender, (id) => {
@@ -734,6 +782,7 @@ function trialBubble(ui, message, copy) {
 function agentSettings(ui, copy, desk) {
   const card = ui.el("form", { class: "agent agent-settings", id: "setter-agent-settings" });
   card.append(ui.el("h3", { text: copy.settings }));
+  card.append(voiceControl(ui, copy, "-settings"));
   const cards = ui.state.agentCards || [];
   const current = cards[0] || { role: "qualification", name: "", instructions: "", delegations: [] };
   const name = ui.el("input", { id: "setter-agent-name", type: "text", maxlength: "80", value: current.name || desk.agentName || "", "aria-label": copy.name });

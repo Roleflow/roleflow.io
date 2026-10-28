@@ -244,6 +244,7 @@ async function planJob(admin, job) {
       llm: () => completeJson({
         env,
         chain: loaded.chain,
+        voice: loaded.voice,
         onError: (info) => logLlmError(admin, {
           businessId: job.account.businessId,
           purpose: "setter",

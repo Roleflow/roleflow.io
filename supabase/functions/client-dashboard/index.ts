@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
   const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
   if (allowed.error || allowed.data !== true) return json(403, { ok: false, error: "You can't edit this business." });
   if (action === "load") return load(admin, businessId, user.data.user.id);
-  if (action === "save_prompt") return savePrompt(admin, businessId, user.data.user.id, body.prompt);
+  if (action === "save_prompt") return savePrompt(admin, businessId, user.data.user.id, body.prompt, body.voice);
   if (action === "restore_prompt") return restorePrompt(admin, businessId, user.data.user.id, body.version_id);
   if (action === "preview_setter") return previewSetter(admin, businessId, user.data.user.id, body);
   if (action === "claude_health") return claudeHealth();
@@ -92,19 +92,20 @@ async function load(admin, businessId, userId) {
   });
 }
 
-async function savePrompt(admin, businessId, userId, prompt) {
-  const written = await writePrompt(admin, businessId, userId, prompt, { tested: false });
+async function savePrompt(admin, businessId, userId, prompt, voice) {
+  const written = await writePrompt(admin, businessId, userId, prompt, { tested: false, voice });
   if (written.error) return json(200, { ok: false, error: "The prompt was not saved. Apply the client dashboard migration first." });
   return json(200, { ok: true, prompt: written.prompt, tested_at: written.tested_at, version: written.version, sent: false });
 }
 
 async function restorePrompt(admin, businessId, userId, versionId) {
   if (!UUID.test(String(versionId || ""))) return json(200, { ok: false, error: "That version is not on this business." });
-  const row = await admin.from("acq_agent_prompt_versions").select("body").eq("id", versionId).eq("business_id", businessId).maybeSingle();
+  let row = await admin.from("acq_agent_prompt_versions").select("body, setter_voice").eq("id", versionId).eq("business_id", businessId).maybeSingle();
+  if (row.error) row = await admin.from("acq_agent_prompt_versions").select("body").eq("id", versionId).eq("business_id", businessId).maybeSingle();
   if (row.error || !row.data) return json(200, { ok: false, error: "That version is not on this business." });
-  const written = await writePrompt(admin, businessId, userId, row.data.body, { tested: false });
+  const written = await writePrompt(admin, businessId, userId, row.data.body, { tested: false, voice: row.data.setter_voice });
   if (written.error) return json(200, { ok: false, error: "The prompt was not restored." });
-  return json(200, { ok: true, prompt: written.prompt, tested_at: written.tested_at, version: written.version, sent: false });
+  return json(200, { ok: true, prompt: written.prompt, tested_at: written.tested_at, version: written.version, voice: row.data.setter_voice, sent: false });
 }
 
 async function writePrompt(admin, businessId, userId, prompt, options) {
@@ -122,12 +123,19 @@ async function writePrompt(admin, businessId, userId, prompt, options) {
     const latest = await admin.from("acq_agent_prompt_versions").select("version").eq("business_id", businessId).order("version", { ascending: false }).limit(1);
     if (latest.error) return { error: latest.error };
     const number = ((latest.data && latest.data[0] && latest.data[0].version) || 0) + 1;
-    const inserted = await admin.from("acq_agent_prompt_versions").insert({
+    const voice = options && options.voice != null && options.voice !== "" ? Math.max(0, Math.min(100, Math.round(Number(options.voice)))) : null;
+    const payload = {
       business_id: businessId,
       version: number,
       body,
       created_by: userId
-    }).select("id, version, body, created_at, created_by").single();
+    };
+    if (voice != null && Number.isFinite(voice)) payload.setter_voice = voice;
+    let inserted = await admin.from("acq_agent_prompt_versions").insert(payload).select("id, version, body, created_at, created_by, setter_voice").single();
+    if (inserted.error && payload.setter_voice != null) {
+      delete payload.setter_voice;
+      inserted = await admin.from("acq_agent_prompt_versions").insert(payload).select("id, version, body, created_at, created_by").single();
+    }
     if (inserted.error) return { error: inserted.error };
     version = inserted.data;
   }
@@ -181,6 +189,7 @@ async function previewSetter(admin, businessId, userId, body) {
   try {
     result = await completeChat({
       chain: loaded.chain,
+      voice: body.voice == null || body.voice === "" ? loaded.voice : body.voice,
       onError: async (info) => {
         const authNotice = info.auth && info.source === "own";
         await logLlmError(admin, {
@@ -233,6 +242,7 @@ async function previewSetter(admin, businessId, userId, body) {
     provider_label: spec ? spec.label : providerId,
     model: String(result.model || runtime.model || ""),
     key_source: result.keySource === "business" ? "business" : "platform",
+    voice: result.voice,
     tested_at: testedAt,
     sent: false,
     notice,
@@ -452,6 +462,7 @@ async function buildOnboarding(admin, businessId, userId) {
   try {
     result = await completeChat({
       chain: loaded.chain,
+      voice: loaded.voice,
       maxTokens: 4000,
       json: true,
       onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info }),
@@ -536,6 +547,7 @@ async function buildSetterPrompt(admin, businessId) {
   try {
     result = await completeChat({
       chain: loaded.chain,
+      voice: loaded.voice,
       maxTokens: 4000,
       onError: async (info) => {
         const authNotice = info.auth && info.source === "own";

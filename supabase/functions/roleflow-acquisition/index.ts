@@ -268,6 +268,7 @@ async function runOutbox(db, row) {
       llm: (input) => completeJson({
         env,
         chain: loaded.chain,
+        voice: loaded.voice,
         onError: (info) => logLlmError(db, {
           businessId,
           purpose: "setter",
@@ -571,6 +572,7 @@ async function playground(db, businessId, body) {
       llm: () => completeJson({
         env,
         chain: loaded.chain,
+        voice: loaded.voice,
         onError: (info) => logLlmError(db, {
           businessId,
           purpose: "setter",
