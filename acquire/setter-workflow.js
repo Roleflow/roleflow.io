@@ -1,4 +1,4 @@
-import { SETTER_SECTION_DEFS } from "./setter-sections.js";
+import { roleflowSections, SETTER_SECTION_DEFS } from "./setter-sections.js";
 import { businessSync, queueSyncNotice } from "./sync-state.js";
 
 const TOOL_KINDS = [
@@ -22,7 +22,7 @@ export function renderSetterStudio(ui) {
   const currentId = versionId || ui.state.setterCurrentId || (versions[0] && versions[0].id) || "";
   const current = versions.find((row) => row.id === currentId) || versions[0] || null;
   if (!draft || draft.id !== (current && current.id)) {
-    draft = { id: current && current.id || "new", sections: Object.assign(emptySections(), current && current.sections || {}) };
+    draft = { id: current && current.id || "new", sections: roleflowSections(current && current.sections) };
     versionId = current && current.id || "";
   }
   const tools = (ui.state.agentTools || []).filter((row) => !row.agent_role || row.agent_role === "inbound_manager");
