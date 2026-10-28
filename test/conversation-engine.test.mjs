@@ -5,7 +5,7 @@ import { canTransition, resolveNextState } from "../supabase/functions/roleflow-
 import { verifySignature, hubChallenge, extractEvents, eventId, signBody } from "../supabase/functions/roleflow-acquisition/ig/webhook.js";
 import { withPolicy, textBody, retryPlan, underRateLimit } from "../supabase/functions/roleflow-acquisition/ig/send.js";
 import { recoveryDue } from "../supabase/functions/roleflow-acquisition/ig/recovery.js";
-import { scopeBusiness, routeByIgUser, connectionHealth } from "../supabase/functions/roleflow-acquisition/ig/tenant.js";
+import { assignInboundBusiness, scopeBusiness, routeByIgUser, connectionHealth } from "../supabase/functions/roleflow-acquisition/ig/tenant.js";
 import { planTurn } from "../supabase/functions/roleflow-acquisition/ig/engine.js";
 import { qualifiersPass } from "../supabase/functions/roleflow-acquisition/ig/qualify.js";
 import { parseSignedRequest, signRequest } from "../supabase/functions/roleflow-acquisition/ig/deletion.js";
@@ -76,6 +76,13 @@ assert.equal(routeByIgUser("ig-b", [
   { ig_user_id: "ig-a", status: "connected", business_id: "biz-a" },
   { ig_user_id: "ig-b", status: "disconnected", business_id: "biz-b" }
 ]), null);
+assert.deepEqual(assignInboundBusiness("ig-new", [
+  { ig_user_id: null, status: "connected", business_id: "840b08a9-869c-4650-8dc7-f78fdfa0e112" }
+]), { businessId: "840b08a9-869c-4650-8dc7-f78fdfa0e112", bindUserId: true });
+assert.equal(assignInboundBusiness("ig-new", [
+  { ig_user_id: null, status: "connected", business_id: "a" },
+  { ig_user_id: null, status: "connected", business_id: "b" }
+]).businessId, null);
 assert.equal(scopeBusiness("biz-a", "biz-b").status, 403);
 assert.equal(scopeBusiness("biz-a", "biz-a").businessId, "biz-a");
 assert.equal(scopeBusiness("", "biz-a").ok, false);

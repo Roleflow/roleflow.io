@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    { "source": "/workers/:path*", "destination": "/404" }
+  ],
   "redirects": [
     {
       "source": "/favicon.ico",

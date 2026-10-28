@@ -132,10 +132,12 @@ async function lookupAccount(admin, accountId) {
   const settings = await admin.from("acq_settings").select("system_enabled").eq("agent_id", row.data.business_id).maybeSingle();
   const role = await admin.rpc("acq_role_on", { p_agent: row.data.business_id, p_role: "comment_to_dm" });
   const commentVoice = await agentEnabled(admin, row.data.business_id, "comment_voice");
+  const setterOn = await agentEnabled(admin, row.data.business_id, "setter");
   return {
     businessId: row.data.business_id,
     accountId: row.data.account_id,
     systemEnabled: Boolean(settings.data && settings.data.system_enabled),
+    setterOn,
     commentToDm: role.data === true,
     commentVoice
   };

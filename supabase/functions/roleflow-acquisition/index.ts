@@ -4,6 +4,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { hubChallenge, verifySignature, extractEvents, eventId } from "./ig/webhook.js";
+import { assignInboundBusiness } from "./ig/tenant.js";
 import { planTurn } from "./ig/engine.js";
 import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/llm.js";
 import { bookingTool, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
@@ -21,7 +22,6 @@ import { agentEnabled, agentKeyForKind, followupDue, followupLead, normalizePoli
 import { clientSafeText } from "../_shared/client-safe.js";
 import { replyDelayMs } from "./ig/delay.js";
 import { parseSignedRequest } from "./ig/deletion.js";
-import { routeByIgUser } from "./ig/tenant.js";
 import { qualifiersPass } from "./ig/qualify.js";
 
 const cors = {
@@ -115,7 +115,11 @@ async function webhook(req) {
   const { data: connections } = await db.from("ig_connections").select("business_id, ig_user_id, status").eq("status", "connected");
   for (const event of extractEvents(body)) {
     const id = eventId(event);
-    const businessId = routeByIgUser(event.igUserId, connections || []);
+    const assigned = assignInboundBusiness(event.igUserId, connections || []);
+    const businessId = assigned.businessId;
+    if (assigned.bindUserId && businessId) {
+      await db.from("ig_connections").update({ ig_user_id: String(event.igUserId) }).eq("business_id", businessId).is("ig_user_id", null);
+    }
     const inserted = await db.from("ig_webhook_events").insert({
       event_id: id,
       business_id: businessId,
@@ -185,9 +189,8 @@ async function acceptInbound(db, businessId, event) {
   });
   if (event.kind === "reaction" || event.kind === "mention" || event.kind === "postback") return;
   if (thread.human_locked) return;
-  if (!settings?.system_enabled) return;
   if (!await agentEnabled(db, businessId, "setter")) return;
-  const delay = replyDelayMs(settings.reply_delay_seconds ?? 30, settings.reply_delay_max_seconds ?? 120, Math.random);
+  const delay = replyDelayMs(settings?.reply_delay_seconds ?? 30, settings?.reply_delay_max_seconds ?? 120, Math.random);
   await db.from("ig_outbox").insert({
     business_id: businessId,
     thread_id: thread.id,
@@ -220,8 +223,9 @@ async function runOutbox(db, row) {
   const settings = await loadSettings(db, businessId);
   const finish = (status, last_error = null) => db.from("ig_outbox").update({ status, last_error }).eq("id", row.id).eq("business_id", businessId);
   if (!thread || !settings) return finish("failed", "missing thread");
-  if (!settings.system_enabled && row.kind !== "human") return finish("blocked", "system_off");
   const agentKey = agentKeyForKind(row.kind);
+  const setterReply = agentKey === "setter";
+  if (!settings.system_enabled && row.kind !== "human" && !setterReply) return finish("blocked", "system_off");
   if (agentKey !== "human" && !await agentEnabled(db, businessId, agentKey)) return finish("blocked", "agent_off");
   const role = row.kind === "recovery" ? "conversation_recovery" : row.kind === "comment_private" ? "comment_to_dm" : "qualification";
   const savedPrompt = agentKey === "human" ? "" : await setterPromptBody(db, businessId);
@@ -730,7 +734,7 @@ async function metaCallback(req, url) {
     headers: { Authorization: "Bearer " + access }
   });
   const me = await profile.json();
-  const igUserId = String(me.user_id || me.id || "");
+  const igUserId = String(me.user_id || me.id || short.user_id || "");
   const cipher = await encryptToken(access, Deno.env.get("META_TOKEN_KEY") || "");
   await db.rpc("acq_put_ig_token", { p_business: row.business_id, p_token: cipher });
   await db.from("ig_connections").upsert({

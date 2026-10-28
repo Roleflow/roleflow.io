@@ -249,7 +249,9 @@ const migrationNames = [
   "20261028093000_setter_voice.sql",
   "20261028110000_reply_split_words.sql",
   "20261028150000_uniform_panel.sql",
-  "20261028160000_roleflow_auto_dm.sql"
+  "20261028160000_roleflow_auto_dm.sql",
+  "20261028170000_dm_every_business.sql",
+  "20261028180000_delete_four_businesses.sql"
 ];
 assert.deepEqual(
   migrationNames,
