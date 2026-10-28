@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { sessionPaths } from "../../acquire/auto-dm.js";
+import { restRequest } from "./rest.mjs";
+import { runLoginRelay } from "./relay.mjs";
 import {
   connectStatusPatch,
   controlPatchIsSafe,
@@ -25,7 +27,7 @@ import {
   workspaceIdOk
 } from "../../acquire/dm-login.js";
 
-export const LOGIN_PORT = 8790;
+export const LOGIN_PORT = 8796;
 const BODY_LIMIT = 4096;
 
 export function loginPageHtml() {
@@ -147,22 +149,7 @@ export function encryptStorageState({ state, file, key }) {
   }
 }
 
-export function restRequest(env, path, options = {}) {
-  const root = String(env.SUPABASE_URL || "").replace(/\/$/, "");
-  const key = env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!root || !key || !path) return null;
-  const headers = {
-    apikey: key,
-    authorization: "Bearer " + key,
-    accept: "application/json"
-  };
-  const init = { method: options.method || "GET", headers };
-  if (options.body) {
-    headers["content-type"] = "application/json";
-    init.body = JSON.stringify(options.body);
-  }
-  return { url: root + "/rest/v1/" + path, init };
-}
+export { restRequest };
 
 function logStatus(log, status) {
   const known = status === "listen" || status === "closed" || status === "connected" || status === "disconnect" || status === "missing_env" || status === "browser_missing";
@@ -581,6 +568,14 @@ export function startLoginService(env = process.env) {
   const port = Number(env.ROLEFLOW_DM_LOGIN_PORT || LOGIN_PORT);
   server.listen(port, host, () => {
     console.log(JSON.stringify({ login: "listen" }));
+  });
+  runLoginRelay({
+    env,
+    launch: () => launchInstagramBrowser(env),
+    encryptStorageState,
+    ensureSessionKey
+  }).catch(() => {
+    console.log(JSON.stringify({ login: "relay_closed" }));
   });
   return server;
 }

@@ -25,7 +25,7 @@ The Instagram connection used for setter replies is a different path. This login
 
 Do not provision a new server or a paid host. One shared Linux computer runs two kinds of process. Both use the same session directory.
 
-1. **One login service for every workspace.** `node workers/roleflow-dm/login-service.mjs` listens on `127.0.0.1:8790` only. It is not started by the bots.
+1. **One login service for every workspace.** It runs under Node 24 in `/opt/roleflow-dm`, in the tmux session `roleflow-dm`, and binds only `127.0.0.1:8796` for a local health check. `8790` is already taken. The stream does not use that port. The service's only network path is outbound TLS to the existing Supabase project on port 443. It is not started by the bots.
 2. **One long-running worker per workspace, under that workspace's Grok Bot.** `node workers/roleflow-dm/run.mjs <workspace-id>`. No recipient argument. The process wakes about every 3 minutes. A second start while the first is alive exits, so it is safe to launch it every few minutes as well.
 
 Roleflow's workspace id is `840b08a9-869c-4650-8dc7-f78fdfa0e112`. Value Add Marketing's is `1351d2ac-79bb-545d-8da0-c49ecff28a47`.
@@ -41,7 +41,9 @@ Sending needs the panel switch (`acq_dm_controls.enabled`) and a session file. I
 
 `supabase/migrations/20261028160000_roleflow_auto_dm.sql` is already applied in production (Supabase version `20261028150149`). Do not run that file again. Apply `20261028170000_dm_every_business.sql` if `acq_dm_sends` is not in the database yet, and apply `20261028190000_dm_instagram_login.sql` before the connect button can store a handle. This repo does not apply them.
 
-The login service checks a one-time link, opens Instagram in Playwright, and streams that page to the member's browser. Codes and challenges stay on that same page. When Instagram has finished login, the service encrypts the Playwright storage state and creates `<workspace-id>.key` if that file is missing. It sets `ig_handle` and `session_ready`. It does not set `enabled`. Disconnect deletes that workspace's `.bin` file and clears `ig_handle` and `session_ready`. `/workers/` is not served by the public site.
+The login service polls Supabase for a one-time link, opens Instagram in Playwright, and joins a private Realtime channel named `dm-login:` plus the SHA-256 of that link. Screencast frames (Chrome `Page.screencastFrame`, JPEG, at most a few a second) go out on that channel. Typed input and clicks come back on the same channel. Codes and challenges stay in that Chrome. Nothing in the channel is written to a table: Realtime checks the policy and rolls the check back. When Instagram has finished login, the service encrypts the Playwright storage state and creates `<workspace-id>.key` if that file is missing. It sets `ig_handle` and `session_ready`. It does not set `enabled`. Disconnect is another one-time link. The service deletes that workspace's `.bin` file and clears `ig_handle` and `session_ready`. `/workers/` is not served by the public site.
+
+The Connect button is shown only while `acq_dm_login_service.seen_at` is less than 45 seconds old. The service calls `acq_dm_login_beat` about every 2 seconds. `public_origin` is unused. No tunnel is required.
 
 ## Session directory
 
@@ -91,7 +93,7 @@ Confirm with `openssl enc -d -aes-256-cbc -pbkdf2 -in <workspace-id>.bin -pass e
 
 Diego does this once on the box. New workspaces do not need it again.
 
-1. Install Node, OpenSSL, and cloudflared (the free Cloudflare tunnel client).
+1. Use the Node 24 install already on the box, plus OpenSSL. Do not add a tunnel client or a new Supabase project.
 2. Outside this git repo, install the browser the service launches:
 
    ```
@@ -106,42 +108,21 @@ Diego does this once on the box. New workspaces do not need it again.
 
    Do not commit `package.json` or `node_modules`.
 
-3. Put the service environment in a file on the box that is not in git. `SUPABASE_URL` is the project URL. `SUPABASE_SERVICE_ROLE_KEY` stays only on this computer. `ROLEFLOW_DM_SESSION_DIR=/opt/roleflow-dm/sessions`. `ROLEFLOW_DM_PLAYWRIGHT_ROOT=/opt/roleflow-dm`. `ROLEFLOW_DM_LOGIN_HOST=127.0.0.1`. `ROLEFLOW_DM_LOGIN_PORT=8790`. `ANTHROPIC_API_KEY` is the fallback Claude key for openers. Do not set `DEBUG`. The same file is what each worker bot loads.
-4. Run the login service from a checkout of this repo so the worker files resolve. Example systemd unit:
+3. Put the service environment in a file on the box that is not in git. `SUPABASE_URL` is the existing project URL. `SUPABASE_SERVICE_ROLE_KEY` stays only on this computer. `ROLEFLOW_DM_SESSION_DIR=/opt/roleflow-dm/sessions`. `ROLEFLOW_DM_PLAYWRIGHT_ROOT=/opt/roleflow-dm`. `ROLEFLOW_DM_LOGIN_HOST=127.0.0.1`. `ROLEFLOW_DM_LOGIN_PORT=8796`. `ANTHROPIC_API_KEY` is the fallback Claude key for openers. Do not set `DEBUG`. The same file is what each worker bot loads.
+4. Restart the login service inside the existing tmux session `roleflow-dm`. Pull this repo first. From the checkout on the box:
 
    ```
-   [Service]
-   WorkingDirectory=/opt/roleflow
-   EnvironmentFile=/etc/roleflow-dm.env
-   ExecStart=/usr/bin/node /opt/roleflow/workers/roleflow-dm/login-service.mjs
-   Restart=on-failure
+   tmux send-keys -t roleflow-dm C-c
+   tmux send-keys -t roleflow-dm 'cd /opt/roleflow && set -a && . /etc/roleflow-dm.env && set +a && node workers/roleflow-dm/login-service.mjs' C-m
    ```
 
-   If Instagram refuses the headless browser, run it under `xvfb-run -a` and set `ROLEFLOW_DM_LOGIN_HEADED=1`.
-5. Open a tunnel to that localhost port. A free named cloudflared tunnel is enough:
-
-   ```
-   cloudflared tunnel login
-   cloudflared tunnel create roleflow-ig-login
-   cloudflared tunnel route dns roleflow-ig-login ig-login.example.com
-   cloudflared tunnel run --url http://127.0.0.1:8790 roleflow-ig-login
-   ```
-
-   The hostname must be HTTPS. Leave cloudflared's log level quiet so the one-time link is less likely to land in a tunnel log. An SSH reverse tunnel is the other free option. Do not open port 8790 on the public internet.
-6. After the auto-DM login migration is applied, set the origin once in the SQL editor:
-
-   ```
-   update public.acq_dm_login_config
-   set public_origin = 'https://ig-login.example.com'
-   where id = 1;
-   ```
-
-   Use the real tunnel hostname. This is the only one-time database step. Members of a business can then click Connect Instagram for auto-DMs. The panel mints a link that expires in 10 minutes or when login succeeds, whichever comes first.
+   If Instagram refuses the headless browser, run it under `xvfb-run -a` and set `ROLEFLOW_DM_LOGIN_HEADED=1`. Do not open port 8796 on the public internet. The health check is only for the box: `curl -s http://127.0.0.1:8796/health`.
+5. Apply `20261028190000_dm_instagram_login.sql` if it is not in the database yet, then `20261028200000_dm_login_realtime.sql`. In the Supabase dashboard, Realtime settings, turn **Allow public access** off so a channel can be joined only when `realtime.messages` allows it. That is the one-time step in the dashboard. No new account, and no `public_origin` value.
 
 Each Grok Bot runs only its own `run.mjs <workspace-id>` with that same `ROLEFLOW_DM_SESSION_DIR`. The panel switch is what allows sending.
 
 ## Security trade-off
 
-Keystrokes have to reach the Chrome process on the box or Instagram cannot receive them. They travel over the HTTPS tunnel into the login service and then into Chrome, in memory, for that short-lived link. They are not stored, not written to logs, not saved as screenshots, and not sent to Roleflow's database. The database stores the SHA-256 of the link, the public tunnel origin, the Instagram handle, and `session_ready`. The session file and its key stay on the box.
+Keystrokes have to reach the Chrome process on the box or Instagram cannot receive them. They travel from the member's browser to Supabase Realtime on port 443, then out to the login service, then into Chrome, in memory, for that 10-minute link. The same path carries frames the other way, a few JPEG frames a second, so the picture can lag by a few hundred milliseconds and typing can feel slightly late. They are not stored, not written to logs, not saved as screenshots, and not kept in Realtime history. The database stores the SHA-256 of the link, the heartbeat time, the Instagram handle, and `session_ready`. The session file and its key stay on the box.
 
-Someone who can read the login service's memory during those 10 minutes could see what was typed. The box is not reachable except through the tunnel, and the link only exists for members who can edit that business. The live picture shows Instagram's page; Instagram masks its own secret field. The frames are not written to disk.
+Someone who can read the login service's memory during those 10 minutes could see what was typed. Supabase's Realtime process also sees the frames and the typed events while it forwards them, then drops them. Only a member who can edit that business, and who holds that one link, can join the channel. The live picture shows Instagram's page; Instagram masks its own secret field. The frames are not written to disk.

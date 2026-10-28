@@ -66,7 +66,7 @@ function loginCard(ui, copy) {
     const disconnect = ui.button(copy.disconnect, () => ui.disconnectDm && ui.disconnectDm());
     disconnect.id = "auto-dm-disconnect";
     card.append(disconnect);
-  } else {
+  } else if (draft.loginLive === true) {
     const connect = ui.button(copy.connect, () => ui.startDmLogin && ui.startDmLogin());
     connect.id = "auto-dm-connect";
     card.append(connect);
