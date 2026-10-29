@@ -18,7 +18,7 @@ The inbox audio list is AAC, M4A, WAV, and MP4, up to 25 MB. MP3 and OGG are rej
 
 Outside 24 hours the reply, including the voice note, is not sent. The human-agent tag is for a person typing a reply, not for this automatic note, so it is not set.
 
-Secret name already in the stack: `ZERNIO_API_KEY`. No new secret.
+The inbox connection is already configured. No new secret.
 
 ## Box worker
 

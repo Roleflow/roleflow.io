@@ -4846,6 +4846,7 @@ function readPreview() {
     engineMessages: [
       { id: "m-ada-1", conversation_id: "cv-ada", role: "user", sender: "adanorth", body: "How does the offer work?", sent_at: "2026-10-25T18:00:00Z" },
       { id: "m-ada-2", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Happy to walk you through it on a call.", sent_at: "2026-10-25T18:04:00Z", delivery_status: "sent" },
+      { id: "m-ada-voice", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Voice note: Intro", sent_at: "2026-10-25T18:05:00Z", delivery_status: "sent", playbackUrl: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" },
       { id: "m-ada-3", conversation_id: "cv-ada", role: "assistant", sender: "human", body: "I can take this one.", sent_at: "2026-10-25T18:06:00Z", delivery_status: "sent" }
     ],
     performance: [{ id: "v1", sends: 8, replies: 3, bookings: 1 }],

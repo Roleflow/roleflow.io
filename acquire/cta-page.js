@@ -236,20 +236,27 @@ function keywordForm(ui, copy, close) {
   const voice = voiceField(ui, copy, editing);
   const libraryNotes = (ui.state.voices || []).filter((note) => note && !note.deleted_at && note.storage_path);
   const library = select(ui, "Library note", [["", "No library note / custom file"]].concat(libraryNotes.map((note) => [note.id, note.title || "Voice note"])), editing && editing.voice_note_id || "");
+  const voiceHelp = ui.el("p", { class: "mute", text: copy.voiceHelp });
+  const syncVoice = () => {
+    const on = kind.value === "voice";
+    const picked = Boolean(library.value);
+    voice.hidden = !on;
+    libraryLabel.hidden = !on;
+    voiceHelp.hidden = !on || picked;
+    if (voice.custom) voice.custom.hidden = !on || picked;
+    if (voice.preview) voice.preview.hidden = !on || !picked;
+  };
   library.addEventListener("change", () => {
     const note = libraryNotes.find((item) => item.id === library.value);
     voice.libraryId = note ? note.id : "";
     voice.path = note ? note.storage_path : "";
     voice.mime = note ? note.mime_type || "audio/wav" : "";
-    const picked = Boolean(note);
-    if (voice.custom) voice.custom.hidden = picked;
     if (voice.preview) {
-      voice.preview.hidden = !picked;
-      if (picked && ui.signAudio) ui.signAudio(note.storage_path).then((url) => { if (url) voice.preview.src = url; });
-      if (!picked) voice.preview.removeAttribute("src");
+      if (note && ui.signAudio) ui.signAudio(note.storage_path).then((url) => { if (url) voice.preview.src = url; });
+      if (!note) voice.preview.removeAttribute("src");
     }
+    syncVoice();
   });
-  const voiceHelp = ui.el("p", { class: "mute", text: copy.voiceHelp });
   const buttonText = ui.field(copy.buttonText, editing ? editing.button_label || "" : "");
   const buttonLink = ui.field(copy.buttonLink, editing ? editing.button_url || "" : "");
   const agent = select(ui, copy.agent, [["", copy.anyAgent]].concat(ROLES.map((role) => [role.id, role.name])), editing ? editing.agent_role || "" : "");
@@ -257,19 +264,10 @@ function keywordForm(ui, copy, close) {
   const publication = ui.field(copy.publication, editing ? editing.publication_ref || "" : "");
   publication.label.classList.add("cta-publication");
   const libraryLabel = labeled(ui, "Library note", library);
-  const showVoice = () => {
-    const on = kind.value === "voice";
-    voice.hidden = !on;
-    libraryLabel.hidden = !on;
-    const picked = Boolean(library.value);
-    voiceHelp.hidden = !on || picked;
-    if (voice.custom) voice.custom.hidden = !on || picked;
-    if (voice.preview) voice.preview.hidden = !on || !picked;
-  };
   const showPublication = () => { publication.label.hidden = scope.value !== "post"; };
-  kind.addEventListener("change", showVoice);
+  kind.addEventListener("change", syncVoice);
   scope.addEventListener("change", showPublication);
-  showVoice();
+  syncVoice();
   showPublication();
   if (library.value) library.dispatchEvent(new Event("change"));
   form.append(keyword.label, labeled(ui, copy.match, mode), labeled(ui, copy.dm, dm), ui.el("p", { class: "mute", text: copy.dmHelp }));

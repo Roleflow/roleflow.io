@@ -79,7 +79,9 @@ assert.match(page, /audio\/mp4/);
 assert.match(page, /contentType: mime/);
 assert.match(read("acquire/voice-audio.js"), /mp4a\.40\.2/);
 assert.match(read("acquire/voice-audio.js"), /16000/);
-assert.match(read("acquire/acquire.css"), /min-width:min\(280px,100%\)/);
+assert.match(read("acquire/acquire.css"), /\.bubble audio\{display:block;width:280px;max-width:100%\}/);
+assert.match(read("acquire/acquire.css"), /\.bubble:has\(audio\)\{min-width:min\(300px,80vw\)\}/);
+assert.match(read("acquire/acquire.css"), /\.voice-tools\{display:flex;gap:10px;flex-wrap:wrap;align-items:center\}/);
 assert.match(read("acquire/acquire.css"), /\.voice-tools \.cta-upload/);
 assert.match(read("acquire/acquire.css"), /\.voice-card input/);
 assert.match(read("acquire/acquire.css"), /\.voice-card-actions\{display:flex;flex-wrap:nowrap/);
@@ -88,6 +90,8 @@ assert.match(read("acquire/studio-flow.js"), /Voice notes are chosen in Voice Ge
 assert.match(read("acquire/home.js"), /"ctas", "chats", "voice"/);
 assert.match(read("acquire/send-badge.js"), /cta-send-state/);
 assert.match(read("acquire/cta-page.js"), /No library note \/ custom file/);
+assert.match(read("acquire/cta-page.js"), /voiceHelp\.hidden = !on \|\| picked/);
+assert.match(read("acquire/cta-page.js"), /syncVoice\(\)/);
 assert.match(read("acquire/studio-flow.js"), /Voice Gen/);
 assert.doesNotMatch(read("acquire/studio-flow.js"), /chosen in Content/);
 assert.match(read("acquire/acquire.css"), /button\.cta-secondary/);
@@ -114,6 +118,8 @@ assert.match(sql, /deleted_at/);
 assert.match(sql, /voice_note_id/);
 assert.doesNotMatch(sql, /drop table/i);
 assert.match(read("docs/voice-notes.md"), /UNVERIFIED/);
+assert.doesNotMatch(read("docs/voice-notes.md"), /zernio/i);
+assert.match(read("docs/voice-notes.md"), /inbox connection/);
 assert.match(read("docs/voice-notes.md"), /aac, m4a, wav, and mp4/);
 
 console.log("voice library tests passed");
