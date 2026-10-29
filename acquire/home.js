@@ -10,6 +10,7 @@ const ICONS = {
   link: ["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"],
   folder: ["M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"],
   send: ["M14.5 21.5a.5.5 0 0 0 .94 0l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0 0 .94l7.9 3.16a2 2 0 0 1 1.12 1.11z", "M21.9 2.1 11 13"],
+  comment: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
   inbox: ["M22 12h-6l-2 3H10l-2-3H2", "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"],
   users: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
   chart: ["M3 3v18h18", "M18 17V9", "M13 17V5", "M8 17v-3"],
@@ -34,7 +35,7 @@ const HOW = {
   pipeline: "CRM states are Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board show the leads stored for this business. Filters, notes, and the message queue stay here. Nothing in the queue is sent while live sync is off.",
   followups: "Follow-ups stay inside the 24-hour messaging window. Steps run from 1 to 23 hours, as AI instructions or literal text, with a variant per lead state. Welcome messages are two at most. The 7-day list is drafted here and sent by a person.",
   reminders: "Reminders are tasks or a conversation to resume. Overdue, today, and the next 7 days are counted from the due time. A suggestion from the model is saved only after you add it.",
-  ctas: "A comment keyword can send a private message, with an optional button of 20 characters, and a public reply drawn from the lines you wrote. A story keyword hands the reply to one agent.",
+  ctas: "Posts and Reels hold the comment keywords. A public reply is chosen from the lines you wrote. The private message is prepared from the commenter's profile and is not sent while DMs are off. Stories hand a keyword to one agent.",
   inbox: "Chats lists the leads stored for this business. The thread shows messages we have. A scheduled message stays in the queue. Live sync is off, so nothing is sent.",
   stats: "Stats counts leads, agents, tags, links, the funnel, follow-ups, and reply time for the range you pick. Explain with assistant asks about that chart. Empty means that event has not happened.",
   performance: "Performance groups leads by origin: story, post, reel, ad, or a keyword you name. The 12-month figure is a projection from numbers you type, not revenue already earned.",
@@ -194,7 +195,7 @@ export function renderConfiguration(ui) {
 
 const STRATEGY_TABS = [
   { tab: "sops", en: "SOPs", es: "SOPs" },
-  { tab: "content", en: "Content", es: "Contenido" },
+  { tab: "ctas", en: "CTAs", es: "CTAs" },
   { tab: "voice", en: "Voice Gen", es: "Voz" }
 ];
 
@@ -227,7 +228,7 @@ export function pageHeader(ui, title, text, how, iconName) {
   const button = ui.button(sectionText(lang, "howWorks"), () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
   const actions = ui.el("div", { class: "page-actions" });
-  const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup"]);
+  const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup", "ctas"]);
   if (ui.businessSync && !(ui.state && quietSync.has(ui.state.tab))) {
     const sync = ui.businessSync();
     actions.append(ui.el("span", { id: "sync-state", class: "integration-status " + sync.tone, "data-sync": sync.key, text: sync.label }));

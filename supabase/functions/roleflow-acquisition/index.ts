@@ -13,6 +13,7 @@ import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
+import { keyLinksBlock } from "../_shared/key-links.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
@@ -261,6 +262,7 @@ async function runOutbox(db, row) {
   const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
   const bookingLink = bookingLinkFor(settings.booking_fallback_url || "");
   const commentGuide = await loadCommentGuide(db, businessId, catalog);
+  const keyLinks = await loadKeyLinks(db, businessId);
   let plan;
   try {
     plan = await planTurn({
@@ -283,7 +285,7 @@ async function runOutbox(db, row) {
             : info.message
         }),
         tools: [bookingTool()],
-        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide),
+        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide, keyLinks),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -343,7 +345,7 @@ async function sendHuman(db, row, thread, settings) {
   }).eq("id", row.id).eq("business_id", row.business_id);
 }
 
-function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide) {
+function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide, keyLinks) {
   const knowledge = knowledgeBlock(settings);
   const sections = savedPrompt
     ? { notes: knowledge }
@@ -352,7 +354,16 @@ function setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, b
     ? expandPrompt(savedPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n"
     : "";
   const comment = commentGuide ? "\n\n" + commentGuide : "";
-  return saved + systemPrompt(sections, booking) + clipInstructions(clips) + comment;
+  const links = keyLinks ? "\n\n" + keyLinks : "";
+  return saved + systemPrompt(sections, booking) + clipInstructions(clips) + comment + links;
+}
+
+async function loadKeyLinks(db, businessId) {
+  const [assets, links] = await Promise.all([
+    db.from("acq_value_assets").select("kind, title, url, label").eq("business_id", businessId),
+    db.from("acq_offer_links").select("name, url").eq("business_id", businessId)
+  ]);
+  return keyLinksBlock(assets.error ? [] : assets.data || [], links.error ? [] : links.data || []);
 }
 
 async function loadCommentGuide(db, businessId, catalog) {

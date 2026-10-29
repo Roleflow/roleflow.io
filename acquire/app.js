@@ -36,7 +36,8 @@ import {
   renderStats,
   renderTeam
 } from "./home.js";
-import { renderBusiness, renderCrm, renderSalesLinks, renderValueContent } from "./studio.js";
+import { renderBusiness, renderCrm, renderSalesLinks } from "./studio.js";
+import { renderCtaPage } from "./cta-page.js";
 import { MAX_CHARS, charCount, collectLeads } from "./studio-model.js";
 import { THREAD_PAGE, senderLabel } from "./studio-flow-model.js";
 import { prepareOwnerFile } from "./clip-file.js";
@@ -276,6 +277,7 @@ async function boot() {
       { id: "tool-voice", agent_role: "inbound_manager", kind: "media", name: "Gap building", config: { media_type: "voice" } },
       { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "" } }
     ];
+    if (new URLSearchParams(location.search).get("cta") === "add") state.ctaDesk = { tab: "posts", dialog: true, editing: "" };
     if (new URLSearchParams(location.search).get("sheet") === "1" && state.contacts && state.contacts[0]) {
       state.studio = { view: "board", page: 1, query: {}, open: "contact:" + state.contacts[0].id, schedule: "calendly", sim: { as: "lead", state: "open", version: "", lines: [] }, proposal: null, edit: "" };
     }
@@ -570,7 +572,7 @@ async function loadAll(id, token) {
     q.from("acq_welcome_steps").select("id, position, delay_hours, mode, body").eq("business_id", id).order("position", { ascending: true }),
     q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(100),
     q.from("acq_reminders").select("id, contact_id, target_id, kind, source, title, due_at, status, created_at").eq("business_id", id).order("due_at", { ascending: true }).limit(200),
-    q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies").eq("business_id", id).order("created_at", { ascending: false }),
+    q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies, scope, publication_ref, reply_kind, voice_path, voice_mime").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
   ]);
   if (!live()) return false;
@@ -580,6 +582,12 @@ async function loadAll(id, token) {
   state.reminders = reminders.error ? [] : reminders.data || [];
   state.commentCtas = commentCtas.error ? [] : commentCtas.data || [];
   state.storyCtas = storyCtas.error ? [] : storyCtas.data || [];
+  if (commentCtas.error) {
+    const plainCtas = await q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies").eq("business_id", id).order("created_at", { ascending: false });
+    state.commentCtas = plainCtas.error ? [] : plainCtas.data || [];
+  }
+  const commentSettings = await q.from("acq_comment_settings").select("auto_reply, dm_without_keyword, public_replies").eq("business_id", id).maybeSingle();
+  state.commentSettings = commentSettings.error || !commentSettings.data ? { auto_reply: false, dm_without_keyword: false, public_replies: [] } : commentSettings.data;
   const [stateRules, tagRules, webhooks, apiKeys, invites, notifications, origins] = await Promise.all([
     q.from("acq_state_rules").select("crm_state, condition").eq("business_id", id),
     q.from("acq_tag_rules").select("id, name, rule_kind, rule_text, notify_email").eq("business_id", id).order("created_at", { ascending: false }),
@@ -774,7 +782,7 @@ function paint() {
   if (state.tab === "opportunities") root.append(renderCrm(ui));
   if (state.tab === "calendar") root.append(renderCalendar(ui));
   if (state.tab === "sops") root.append(renderBusiness(ui));
-  if (state.tab === "content") root.append(renderValueContent(ui));
+  if (state.tab === "ctas") root.append(renderCtaPage(ui));
   if (state.tab === "voice") root.append(voiceLibrary());
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
   if (state.tab === "outreacher") root.append(renderGrokAgent(ui, "outreacher"));
@@ -934,6 +942,8 @@ function pageUi() {
     saveReminder,
     finishReminder,
     saveCommentCta,
+    saveCommentSettings,
+    storeCtaVoice,
     saveStoryCta,
     deleteFlowRow,
     draftReply,
@@ -2679,12 +2689,67 @@ async function finishReminder(id) {
 
 async function saveCommentCta(row) {
   if (!readyToSave()) return toast("This preview does not save.", "bad");
-  const saved = await state.supabase.from("acq_comment_ctas").insert({ ...row, business_id: state.businessId });
+  const payload = {
+    keyword: row.keyword,
+    match_mode: row.match_mode === "equals" ? "equals" : "contains",
+    dm_text: row.dm_text || "",
+    button_label: String(row.button_label || "").slice(0, 20),
+    button_url: row.button_url || "",
+    agent_role: row.agent_role || "",
+    reply_to_comments: row.reply_to_comments === true,
+    dm_anyone: row.dm_anyone === true,
+    public_replies: Array.isArray(row.public_replies) ? row.public_replies : [],
+    scope: row.scope === "post" ? "post" : "any",
+    publication_ref: row.publication_ref || "",
+    reply_kind: row.reply_kind === "voice" ? "voice" : "text",
+    voice_path: row.voice_path || "",
+    voice_mime: row.voice_mime || ""
+  };
+  const saved = row.id
+    ? await state.supabase.from("acq_comment_ctas").update(payload).eq("id", row.id).eq("business_id", state.businessId)
+    : await state.supabase.from("acq_comment_ctas").insert({ ...payload, business_id: state.businessId });
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Keyword saved.");
     await bootBusiness(state.businessId, { quiet: true });
   }
+}
+
+async function saveCommentSettings(row) {
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  const saved = await state.supabase.from("acq_comment_settings").upsert({
+    business_id: state.businessId,
+    auto_reply: row.auto_reply === true,
+    dm_without_keyword: row.dm_without_keyword === true,
+    public_replies: Array.isArray(row.public_replies) ? row.public_replies : [],
+    updated_at: new Date().toISOString()
+  });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast("Comment settings saved.");
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function storeCtaVoice(file) {
+  if (!file) return null;
+  if (file.size > 20 * 1024 * 1024) {
+    toast("Audio is 20 MB at most.", "bad");
+    return null;
+  }
+  if (!readyToSave()) {
+    toast("This preview does not save the recording.", "bad");
+    return null;
+  }
+  const mime = file.type || "audio/webm";
+  const ext = mime.includes("mpeg") || mime.includes("mp3") ? "mp3" : mime.includes("mp4") || mime.includes("m4a") ? "m4a" : mime.includes("wav") ? "wav" : mime.includes("ogg") ? "ogg" : "webm";
+  const path = state.businessId + "/cta-" + crypto.randomUUID() + "." + ext;
+  const uploaded = await state.supabase.storage.from("acq-voice").upload(path, file, { contentType: mime, upsert: false });
+  if (uploaded.error) {
+    toast(uploaded.error.message, "bad");
+    return null;
+  }
+  return { path, mime };
 }
 
 async function saveStoryCta(row) {
@@ -4803,6 +4868,11 @@ function readPreview() {
     accountProfile: { full_name: "Preview owner", email: "owner@example.com" },
     commentVoiceCap: 30,
     commentVoiceRules: [{ id: "rule-1", keywords: ["SYSTEM", "SYSTEMS", "SISTEM"], intent: "Someone asking how the system works", message: "Thanks for the comment.", clip_id: "v1" }],
+    commentSettings: { auto_reply: true, dm_without_keyword: false, public_replies: ["On it.", "Sending that over."] },
+    commentCtas: [
+      { id: "cta-1", keyword: "INFO", match_mode: "equals", dm_text: "Send the guide in their words.", button_label: "Open guide", button_url: "https://roleflow.io", agent_role: "", scope: "any", publication_ref: "", reply_kind: "text", voice_path: "", public_replies: [] }
+    ],
+    storyCtas: [],
     commentVoiceLog: [{ id: "log-1", matched: false, queued: false, reason: "no_match", comment_text: "Nice post", commenter_username: "ada", created_at: "2026-10-26T09:00:00Z" }],
     followupPolicy: null,
     workers: [{ id: "w1", label: "Outreach worker", key_prefix: "rfw_preview", enabled: true, status: "offline", last_heartbeat_at: null, pause_reason: null }],

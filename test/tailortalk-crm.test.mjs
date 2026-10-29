@@ -255,7 +255,8 @@ const migrationNames = [
   "20261028190000_dm_instagram_login.sql",
   "20261028200000_dm_login_realtime.sql",
   "20261029120000_chat_summary.sql",
-  "20261029140000_opportunity_stages.sql"
+  "20261029140000_opportunity_stages.sql",
+  "20261029180000_comment_cta_desk.sql"
 ];
 assert.deepEqual(
   migrationNames,
