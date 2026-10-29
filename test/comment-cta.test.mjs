@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buttonError, cleanComment, keywordConflict, keywordHits, pickPublicReply, pickWinningCta, prepareCommentPlan, SHORT_KEYWORD_MAX } from "../acquire/comment-cta.js";
+import { buttonError, cleanComment, dmSendBadge, keywordConflict, keywordHits, pickPublicReply, pickWinningCta, prepareCommentPlan, SHORT_KEYWORD_MAX } from "../acquire/comment-cta.js";
 import { keyLinksBlock } from "../acquire/key-links.js";
 import { holdComment } from "../workers/roleflow-dm/comment-cta.mjs";
 import { canonicalTab, NAV_GROUPS } from "../acquire/client-nav.mjs";
@@ -58,6 +58,9 @@ assert.equal(keywordConflict([{ id: "1", keyword: "info", scope: "post", publica
 assert.match(buttonError("Open", ""), /both/i);
 assert.equal(buttonError("Open the guide", "https://roleflow.io"), "");
 assert.equal(pickPublicReply(["A", "B"], () => 0.9), "B");
+assert.deepEqual(dmSendBadge({ enabled: false }), { label: "Sending off", tone: "wait" });
+assert.deepEqual(dmSendBadge({ enabled: true, killed: true }), { label: "Sending off", tone: "wait" });
+assert.deepEqual(dmSendBadge({ enabled: true, killed: false }), { label: "Live", tone: "on" });
 
 assert.match(keyLinksBlock([{ kind: "link", title: "Booking", url: "https://roleflow.io/book" }], [{ name: "Offer", url: "https://roleflow.io/offer" }]), /Booking: https:\/\/roleflow.io\/book/);
 assert.equal(keyLinksBlock([{ kind: "image", title: "Photo", url: "https://roleflow.io/p" }], []), "");
@@ -85,6 +88,18 @@ const page = read("acquire/cta-page.js") + read("acquire/app.js");
 assert.match(page, /Posts and Reels/);
 assert.match(page, /Voice note/);
 assert.match(page, /renderCtaPage/);
+assert.match(page, /cta-keyword-dialog/);
+assert.match(page, /cta-add-keyword/);
+assert.match(page, /kind.value === "voice"/);
+assert.match(page, /scope.value !== "post"/);
+assert.match(page, /cta-send-state/);
+assert.match(page, /class: "cta-file"/);
+assert.match(page, /cta-audio/);
+assert.match(page, /cta-danger/);
+const ctasNav = strategy.items.find((item) => item.tab === "ctas");
+const voiceNav = strategy.items.find((item) => item.tab === "voice");
+assert.equal(ctasNav.icon, "comment");
+assert.notEqual(ctasNav.icon, voiceNav.icon);
 assert.doesNotMatch(page, /zernio/i);
 assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /loadKeyLinks/);
 assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /acq_value_assets/);

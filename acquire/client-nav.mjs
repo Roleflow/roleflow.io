@@ -11,7 +11,7 @@ export const NAV_GROUPS = [
   ] },
   { id: "strategy", label: { en: "Strategy", es: "Estrategia" }, items: [
     { tab: "sops", icon: "clipboard", tone: "t1", label: { en: "SOPs", es: "SOPs" } },
-    { tab: "ctas", icon: "send", tone: "t3", label: { en: "CTAs", es: "CTAs" } },
+    { tab: "ctas", icon: "comment", tone: "t3", label: { en: "CTAs", es: "CTAs" } },
     { tab: "voice", icon: "send", tone: "t5", label: { en: "Voice Gen", es: "Voz" } }
   ] },
   { id: "workforce", label: { en: "Agent Workforce", es: "Equipo de agentes" }, items: [

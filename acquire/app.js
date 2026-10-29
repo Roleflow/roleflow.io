@@ -277,6 +277,7 @@ async function boot() {
       { id: "tool-voice", agent_role: "inbound_manager", kind: "media", name: "Gap building", config: { media_type: "voice" } },
       { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "" } }
     ];
+    if (new URLSearchParams(location.search).get("cta") === "add") state.ctaDesk = { tab: "posts", dialog: true, editing: "" };
     if (new URLSearchParams(location.search).get("sheet") === "1" && state.contacts && state.contacts[0]) {
       state.studio = { view: "board", page: 1, query: {}, open: "contact:" + state.contacts[0].id, schedule: "calendly", sim: { as: "lead", state: "open", version: "", lines: [] }, proposal: null, edit: "" };
     }

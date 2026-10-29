@@ -2,7 +2,7 @@
 // A voice reply is a file recorded or uploaded here. Nothing on this page is sent.
 
 import { ROLES } from "./model.js";
-import { buttonError, keywordConflict } from "./comment-cta.js";
+import { buttonError, dmSendBadge, keywordConflict } from "./comment-cta.js";
 
 const COPY = {
   en: {
@@ -106,7 +106,7 @@ function copyFor(ui) {
 }
 
 function desk(ui) {
-  if (!ui.state.ctaDesk) ui.state.ctaDesk = { tab: "posts", editing: "", recording: false };
+  if (!ui.state.ctaDesk) ui.state.ctaDesk = { tab: "posts", dialog: false, editing: "" };
   return ui.state.ctaDesk;
 }
 
@@ -114,9 +114,16 @@ export function renderCtaPage(ui) {
   const copy = copyFor(ui);
   const lang = ui.language && ui.language() === "es" ? "es" : "en";
   const wrap = ui.el("div", { class: "studio cta-page" });
-  wrap.append(ui.pageHeader
-    ? ui.pageHeader(ui, lang === "es" ? "CTAs" : "CTAs", copy.held, "ctas", "send")
-    : ui.el("h2", { text: "CTAs" }));
+  const header = ui.pageHeader
+    ? ui.pageHeader(ui, "CTAs", copy.held, "ctas", "comment")
+    : ui.el("h2", { text: "CTAs" });
+  const actions = header.querySelector ? header.querySelector(".page-actions") : null;
+  if (actions) {
+    const badge = dmSendBadge(ui.state.autoDm);
+    const label = badge.tone === "on" ? (lang === "es" ? "En vivo" : "Live") : (lang === "es" ? "Envío apagado" : badge.label);
+    actions.prepend(ui.el("span", { id: "cta-send-state", class: "integration-status " + badge.tone, text: label }));
+  }
+  wrap.append(header);
   const tabs = ui.el("div", { class: "cta-tabs", role: "tablist" });
   [["posts", copy.posts], ["stories", copy.stories]].forEach(([id, label]) => {
     const button = ui.el("button", { type: "button", "aria-pressed": desk(ui).tab === id ? "true" : "false" }, [label]);
@@ -132,7 +139,7 @@ function posts(ui, copy) {
   const host = ui.el("div", { class: "cta-stack" });
   host.append(settingsCard(ui, copy));
   host.append(keywordTable(ui, copy));
-  if (ui.state.canEdit) host.append(keywordForm(ui, copy));
+  if (desk(ui).dialog) host.append(keywordDialog(ui, copy));
   return host;
 }
 
@@ -161,7 +168,14 @@ function settingsCard(ui, copy) {
 
 function keywordTable(ui, copy) {
   const card = ui.el("section", { class: "agent cta-card" });
-  card.append(ui.el("h3", { text: copy.list }));
+  const headRow = ui.el("div", { class: "cta-list-head" });
+  headRow.append(ui.el("h3", { text: copy.list }));
+  if (ui.state.canEdit) {
+    const add = ui.button(copy.add, () => { desk(ui).dialog = true; desk(ui).editing = ""; ui.paint(); });
+    add.id = "cta-add-keyword";
+    headRow.append(add);
+  }
+  card.append(headRow);
   const rows = ui.state.commentCtas || [];
   if (!rows.length) {
     card.append(ui.el("p", { text: copy.empty }));
@@ -186,8 +200,12 @@ function keywordTable(ui, copy) {
     );
     const actions = ui.el("td");
     if (ui.state.canEdit) {
-      actions.append(ui.button(copy.edit, () => { desk(ui).editing = row.id; ui.paint(); }));
-      actions.append(ui.button(copy.remove, () => ui.deleteFlowRow("acq_comment_ctas", row.id)));
+      const bar = ui.el("div", { class: "cta-actions" });
+      bar.append(ui.button(copy.edit, () => { desk(ui).dialog = true; desk(ui).editing = row.id; ui.paint(); }));
+      const remove = ui.button(copy.remove, () => ui.deleteFlowRow("acq_comment_ctas", row.id));
+      remove.classList.add("cta-danger");
+      bar.append(remove);
+      actions.append(bar);
     }
     line.append(actions);
     body.append(line);
@@ -197,7 +215,21 @@ function keywordTable(ui, copy) {
   return card;
 }
 
-function keywordForm(ui, copy) {
+function keywordDialog(ui, copy) {
+  const shell = ui.el("div", { class: "cta-dialog" });
+  const backdrop = ui.el("button", { type: "button", class: "cta-dialog-backdrop", "aria-label": copy.cancel });
+  const close = () => { desk(ui).dialog = false; desk(ui).editing = ""; ui.paint(); };
+  backdrop.addEventListener("click", close);
+  const form = keywordForm(ui, copy, close);
+  form.classList.add("cta-dialog-card");
+  form.setAttribute("role", "dialog");
+  form.setAttribute("aria-modal", "true");
+  form.id = "cta-keyword-dialog";
+  shell.append(backdrop, form);
+  return shell;
+}
+
+function keywordForm(ui, copy, close) {
   const editing = (ui.state.commentCtas || []).find((row) => row.id === desk(ui).editing) || null;
   const form = ui.el("form", { class: "agent cta-card", id: "cta-keyword-form" });
   form.append(ui.el("h3", { text: editing ? copy.edit : copy.add }));
@@ -207,13 +239,25 @@ function keywordForm(ui, copy) {
   dm.value = editing ? editing.dm_text || "" : "";
   const kind = select(ui, copy.kind, [["text", copy.text], ["voice", copy.voice]], editing && editing.reply_kind === "voice" ? "voice" : "text");
   const voice = voiceField(ui, copy, editing);
+  const voiceHelp = ui.el("p", { class: "mute", text: copy.voiceHelp });
   const buttonText = ui.field(copy.buttonText, editing ? editing.button_label || "" : "");
   const buttonLink = ui.field(copy.buttonLink, editing ? editing.button_url || "" : "");
   const agent = select(ui, copy.agent, [["", copy.anyAgent]].concat(ROLES.map((role) => [role.id, role.name])), editing ? editing.agent_role || "" : "");
   const scope = select(ui, copy.scope, [["any", copy.anyPost], ["post", copy.onePost]], editing && editing.scope === "post" ? "post" : "any");
   const publication = ui.field(copy.publication, editing ? editing.publication_ref || "" : "");
+  publication.label.classList.add("cta-publication");
+  const showVoice = () => {
+    const on = kind.value === "voice";
+    voice.hidden = !on;
+    voiceHelp.hidden = !on;
+  };
+  const showPublication = () => { publication.label.hidden = scope.value !== "post"; };
+  kind.addEventListener("change", showVoice);
+  scope.addEventListener("change", showPublication);
+  showVoice();
+  showPublication();
   form.append(keyword.label, labeled(ui, copy.match, mode), labeled(ui, copy.dm, dm), ui.el("p", { class: "mute", text: copy.dmHelp }));
-  form.append(labeled(ui, copy.kind, kind), ui.el("p", { class: "mute", text: copy.voiceHelp }), voice);
+  form.append(labeled(ui, copy.kind, kind), voiceHelp, voice);
   form.append(buttonText.label, buttonLink.label, labeled(ui, copy.agent, agent), labeled(ui, copy.scope, scope), publication.label);
   form.append(ui.button(copy.save, async (event) => {
     event.preventDefault();
@@ -245,23 +289,26 @@ function keywordForm(ui, copy) {
       next.voice_mime = stored.mime;
     }
     if (next.reply_kind === "voice" && !next.voice_path) return ui.toast(copy.voiceHelp, "bad");
+    desk(ui).dialog = false;
     desk(ui).editing = "";
     await ui.saveCommentCta(next);
   }));
-  if (editing) form.append(ui.button(copy.cancel, () => { desk(ui).editing = ""; ui.paint(); }));
+  form.append(ui.button(copy.cancel, close));
   form.addEventListener("submit", (event) => event.preventDefault());
   return form;
 }
 
 function voiceField(ui, copy, editing) {
   const box = ui.el("div", { class: "cta-voice" });
-  const file = ui.el("input", { type: "file", accept: "audio/*", "aria-label": copy.upload });
-  const status = ui.el("p", { class: "mute", text: editing && editing.voice_path ? editing.voice_path : "" });
+  const file = ui.el("input", { type: "file", accept: "audio/*", class: "cta-file", "aria-label": copy.upload });
+  const upload = ui.el("button", { type: "button", class: "cta-upload" }, [copy.upload]);
+  upload.addEventListener("click", () => file.click());
+  const status = ui.el("p", { class: "mute", text: editing && editing.voice_path ? editing.voice_path.split("/").pop() : "" });
+  const player = ui.el("audio", { class: "cta-audio", controls: "controls" });
+  player.hidden = true;
   box.file = null;
   box.mime = "";
-  file.addEventListener("change", () => {
-    const picked = file.files && file.files[0];
-    if (!picked) return;
+  const showFile = (picked) => {
     if (picked.size > 20 * 1024 * 1024) {
       ui.toast("Audio is 20 MB at most.", "bad");
       file.value = "";
@@ -270,8 +317,14 @@ function voiceField(ui, copy, editing) {
     box.file = picked;
     box.mime = picked.type || "audio/webm";
     status.textContent = picked.name;
+    player.src = URL.createObjectURL(picked);
+    player.hidden = false;
+  };
+  file.addEventListener("change", () => {
+    const picked = file.files && file.files[0];
+    if (picked) showFile(picked);
   });
-  const record = ui.el("button", { type: "button", class: "btn sm" }, [copy.record]);
+  const record = ui.el("button", { type: "button", class: "cta-record" }, [copy.record]);
   let recorder = null;
   let chunks = [];
   record.addEventListener("click", async () => {
@@ -288,14 +341,12 @@ function voiceField(ui, copy, editing) {
     recorder.addEventListener("stop", () => {
       stream.getTracks().forEach((track) => track.stop());
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      box.file = new File([blob], "cta-voice.webm", { type: blob.type });
-      box.mime = blob.type;
-      status.textContent = "cta-voice.webm";
+      showFile(new File([blob], "cta-voice.webm", { type: blob.type }));
     });
     recorder.start();
     record.textContent = copy.stop;
   });
-  box.append(file, record, status);
+  box.append(file, upload, record, status, player);
   return box;
 }
 

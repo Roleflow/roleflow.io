@@ -104,6 +104,11 @@ export function buttonError(label, url) {
   return "";
 }
 
+export function dmSendBadge(controls) {
+  const on = Boolean(controls && controls.enabled === true && controls.killed !== true);
+  return on ? { label: "Live", tone: "on" } : { label: "Sending off", tone: "wait" };
+}
+
 export function prepareCommentPlan(input) {
   const source = input || {};
   const settings = source.settings || {};
