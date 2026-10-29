@@ -239,6 +239,15 @@ function keywordForm(ui, copy, close) {
   dm.value = editing ? editing.dm_text || "" : "";
   const kind = select(ui, copy.kind, [["text", copy.text], ["voice", copy.voice]], editing && editing.reply_kind === "voice" ? "voice" : "text");
   const voice = voiceField(ui, copy, editing);
+  const libraryNotes = (ui.state.voices || []).filter((note) => note && !note.deleted_at && note.storage_path);
+  const library = select(ui, "Library note", [["", "Record or upload"]].concat(libraryNotes.map((note) => [note.id, note.title || "Voice note"])), editing && editing.voice_note_id || "");
+  library.addEventListener("change", () => {
+    const note = libraryNotes.find((item) => item.id === library.value);
+    voice.libraryId = note ? note.id : "";
+    voice.path = note ? note.storage_path : "";
+    voice.mime = note ? note.mime_type || "audio/wav" : voice.mime;
+  });
+  if (library.value) library.dispatchEvent(new Event("change"));
   const voiceHelp = ui.el("p", { class: "mute", text: copy.voiceHelp });
   const buttonText = ui.field(copy.buttonText, editing ? editing.button_label || "" : "");
   const buttonLink = ui.field(copy.buttonLink, editing ? editing.button_url || "" : "");
@@ -246,10 +255,12 @@ function keywordForm(ui, copy, close) {
   const scope = select(ui, copy.scope, [["any", copy.anyPost], ["post", copy.onePost]], editing && editing.scope === "post" ? "post" : "any");
   const publication = ui.field(copy.publication, editing ? editing.publication_ref || "" : "");
   publication.label.classList.add("cta-publication");
+  const libraryLabel = labeled(ui, "Library note", library);
   const showVoice = () => {
     const on = kind.value === "voice";
     voice.hidden = !on;
     voiceHelp.hidden = !on;
+    libraryLabel.hidden = !on;
   };
   const showPublication = () => { publication.label.hidden = scope.value !== "post"; };
   kind.addEventListener("change", showVoice);
@@ -257,7 +268,8 @@ function keywordForm(ui, copy, close) {
   showVoice();
   showPublication();
   form.append(keyword.label, labeled(ui, copy.match, mode), labeled(ui, copy.dm, dm), ui.el("p", { class: "mute", text: copy.dmHelp }));
-  form.append(labeled(ui, copy.kind, kind), voiceHelp, voice);
+  libraryLabel.classList.add("voice-choice");
+  form.append(labeled(ui, copy.kind, kind), voiceHelp, libraryLabel, voice);
   form.append(buttonText.label, buttonLink.label, labeled(ui, copy.agent, agent), labeled(ui, copy.scope, scope), publication.label);
   const save = ui.button(copy.save, async (event) => {
     event.preventDefault();
@@ -269,6 +281,7 @@ function keywordForm(ui, copy, close) {
       reply_kind: kind.value,
       voice_path: voice.path || (editing && editing.voice_path) || "",
       voice_mime: voice.mime || (editing && editing.voice_mime) || "",
+      voice_note_id: voice.libraryId || (editing && editing.voice_note_id) || null,
       button_label: buttonText.input.value.trim(),
       button_url: buttonLink.input.value.trim(),
       agent_role: agent.value,

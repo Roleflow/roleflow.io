@@ -686,6 +686,8 @@ function summarySection(ui, lead, leads) {
   section.append(counts);
   const outcomes = aggregate.byOutcome || {};
   section.append(ui.el("p", { text: "New " + (outcomes.new || 0) + " · Qualified " + (outcomes.qualified || 0) + " · Booked " + (outcomes.booked || 0) + " · Lost " + (outcomes.lost || 0) }));
+  const sentVoices = (ui.state.voiceSends || []).filter((row) => row.result === "sent");
+  if (sentVoices.length) section.append(ui.el("p", { text: "Voice notes sent: " + sentVoices.length }));
   section.append(ui.el("p", { text: "Common objections: " + ((aggregate.objections || []).join("; ") || "—") }));
   section.append(ui.el("p", { text: "Top questions: " + ((aggregate.questions || []).join("; ") || "—") }));
   if (lead) {

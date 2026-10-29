@@ -579,6 +579,7 @@ body.assistant-page .assistant-fab{display:none}
 #assistant-mode{background-color:transparent;color:var(--ink);border:1px solid rgba(154,166,198,.28);border-radius:12px;padding:8px 36px 8px 12px}
 body.platform .agent label:not(.switch),body.admin-panel .agent label:not(.switch){display:grid;gap:6px}
 body.platform .agent label.cta-publication[hidden],body.admin-panel .agent label.cta-publication[hidden],
+body.platform .agent label.voice-choice[hidden],body.admin-panel .agent label.voice-choice[hidden],
 body.platform .cta-dialog .cta-voice[hidden],body.admin-panel .cta-dialog .cta-voice[hidden],
 body.platform .cta-dialog p[hidden],body.admin-panel .cta-dialog p[hidden]{display:none}
 body.platform .agent input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),

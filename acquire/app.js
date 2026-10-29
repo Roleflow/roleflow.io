@@ -5,6 +5,7 @@ import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
+import { renderVoiceDesk } from "./voice-desk.js";
 import { splitReply } from "./split-reply.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
@@ -497,7 +498,9 @@ async function loadAll(id, token) {
   state.reports = reports.error ? [] : reports.data || [];
   state.exceptions = exceptions.error ? [] : exceptions.data || [];
   state.activity = activity.error ? [] : activity.data || [];
-  state.voices = voices.data || [];
+  state.voices = voices.error ? [] : voices.data || [];
+  const voiceSends = await q.from("acq_voice_sends").select("voice_note_id, result, target_id, notes").eq("agent_id", id).order("sent_at", { ascending: false }).limit(500);
+  state.voiceSends = voiceSends.error ? [] : voiceSends.data || [];
   const clips = await q.from("acq_owner_clips").select("id, label, when_to_use, kind, mime_type, byte_size, active, storage_path, speech_provider, created_at").eq("business_id", id).order("created_at", { ascending: false });
   if (!live()) return false;
   state.ownerClips = clips.error ? [] : clips.data || [];
@@ -717,7 +720,8 @@ async function loadThread(conversationId, mode) {
   for (const row of chronological) {
     const path = row.metadata && row.metadata.media_path;
     if (!path) continue;
-    const signed = await state.supabase.storage.from("owner-clips").createSignedUrl(path, 3600);
+    const bucket = row.metadata.bucket || "owner-clips";
+    const signed = await state.supabase.storage.from(bucket).createSignedUrl(path, 3600);
     row.playbackUrl = signed.data && signed.data.signedUrl ? signed.data.signedUrl : "";
     row.mediaKind = row.metadata.media_kind || "audio";
   }
@@ -2703,7 +2707,8 @@ async function saveCommentCta(row) {
     publication_ref: row.publication_ref || "",
     reply_kind: row.reply_kind === "voice" ? "voice" : "text",
     voice_path: row.voice_path || "",
-    voice_mime: row.voice_mime || ""
+    voice_mime: row.voice_mime || "",
+    voice_note_id: row.voice_note_id || null
   };
   const saved = row.id
     ? await state.supabase.from("acq_comment_ctas").update(payload).eq("id", row.id).eq("business_id", state.businessId)
@@ -3648,43 +3653,12 @@ function voiceQueue() {
 }
 
 function voiceLibrary() {
-  const wrap = el("div", { class: "acq" });
-  const es = language() === "es";
-  wrap.append(el("section", { class: "banner gold" }, [
-    el("p", { text: es
-      ? "Tú grabas las notas. Los agentes eligen la grabación activa de cada hueco. No se usa una voz clonada."
-      : "You record the notes. Agents pick the active recording for the slot — opener, gap, follow-up, booking, reminder, and comment. A cloned voice is not used." })
-  ]));
+  const wrap = renderVoiceDesk({
+    state, el, button, field, toast, paint, language, collectLeads, signAudio,
+    saveLibraryNote, renameVoice, rerecordVoice, deleteVoice
+  });
   wrap.append(commentSlotCard());
   wrap.append(voiceQueue());
-  if (state.canEdit) wrap.append(voiceForm());
-  const grid = el("div", { class: "agents" });
-  const notes = (state.voices || []).filter((note) => note.slot !== COMMENT_SLOT);
-  if (!notes.length) grid.append(el("p", { class: "mute", text: es ? "Todavía no hay notas de voz." : "No personal voice notes yet." }));
-  notes.forEach((note) => {
-    const perf = voiceRates(state.performance.find((row) => row.id === note.id) || {});
-    const card = el("article", { class: "voice-card" });
-    const slot = SLOTS.find((item) => item.id === note.slot);
-    card.append(el("h3", { text: note.title }));
-    card.append(el("p", { text: (slot ? slot.label : note.slot) + (note.niche ? " · " + note.niche : "") + (note.variant ? " · " + note.variant : "") + (note.active ? " · active" : " · inactive") }));
-    card.append(el("p", { text: perf.sends + " sends · reply " + percent(perf.replyRate) + " · booked " + percent(perf.bookingRate) }));
-    if (note.script_hint) card.append(el("p", { class: "mute", text: note.script_hint }));
-    const audio = el("audio", { controls: true, preload: "none" });
-    card.append(audio);
-    signAudio(note.storage_path).then((url) => {
-      if (url) audio.src = url;
-    });
-    if (state.canEdit) {
-      const tools = el("div", { class: "filters" });
-      tools.append(button(note.active ? "Deactivate" : "Activate", () => setVoiceActive(note, !note.active)));
-      tools.append(button("Delete", () => deleteVoice(note)));
-      card.append(tools);
-    }
-    const picked = pickVoiceNote(state.voices, note.slot, note.niche, note.variant);
-    if (picked && picked.id === note.id) card.append(el("p", { class: "mute", text: "This is the note the bot would pick for this slot." }));
-    grid.append(card);
-  });
-  wrap.append(grid);
   return wrap;
 }
 
@@ -4477,13 +4451,78 @@ async function setVoiceActive(note, active) {
 }
 
 async function deleteVoice(note) {
-  await state.supabase.storage.from("acq-voice").remove([note.storage_path]);
-  const saved = await state.supabase.from("acq_voice_library").delete().eq("id", note.id);
+  if (!note) return;
+  if (!state.supabase) {
+    note.deleted_at = new Date().toISOString();
+    note.active = false;
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_voice_library").update({
+    deleted_at: new Date().toISOString(),
+    active: false
+  }).eq("id", note.id).eq("agent_id", state.businessId);
   if (saved.error) toast(saved.error.message, "bad");
   else {
     toast("Voice note deleted.");
     await bootBusiness(state.businessId);
   }
+}
+
+function rerecordVoice(note) {
+  state.voiceReplace = note && note.id;
+  toast(language() === "es" ? "Graba la nueva toma y guarda. El nombre se queda." : "Record the new take, then save. The name stays.");
+  const form = document.getElementById("voice-recorder");
+  if (form) form.scrollIntoView({ block: "start" });
+}
+
+async function renameVoice(note, title) {
+  const name = String(title || "").trim();
+  if (!name) return toast(language() === "es" ? "Ponle un nombre." : "Name the note.", "bad");
+  if (!state.supabase) {
+    note.title = name;
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_voice_library").update({ title: name }).eq("id", note.id).eq("agent_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId);
+}
+
+async function saveLibraryNote(file, meta) {
+  if (!file || file.size > MAX_BYTES) return toast("Keep the recording under 20 MB.", "bad");
+  const mime = mimeOf(file);
+  if (!AUDIO_TYPES.has(mime)) return toast("Use wav, m4a, or mp3.", "bad");
+  const row = {
+    slot: "library",
+    title: meta.title,
+    assignment_kind: meta.assignment_kind === "step" || meta.assignment_kind === "person" ? meta.assignment_kind : "none",
+    step_name: meta.step_name || "",
+    lead_handle: String(meta.lead_handle || "").replace(/^@/, ""),
+    duration_ms: meta.duration_ms || null,
+    active: true,
+    script_hint: ""
+  };
+  if (!state.supabase) {
+    const id = meta.id || "preview-" + Date.now();
+    const next = { ...row, id, mime_type: mime, storage_path: "", created_at: new Date().toISOString(), deleted_at: null };
+    state.voices = (state.voices || []).filter((item) => item.id !== id).concat([next]);
+    state.voiceReplace = "";
+    toast(language() === "es" ? "Guardado en esta vista previa." : "Saved in this preview.");
+    paint();
+    return;
+  }
+  const id = meta.id || crypto.randomUUID();
+  const ext = mime.includes("wav") ? "wav" : mime.includes("mpeg") || mime.includes("mp3") ? "mp3" : "m4a";
+  const path = state.businessId + "/" + id + "." + ext;
+  const uploaded = await state.supabase.storage.from("acq-voice").upload(path, file, { contentType: mime, upsert: Boolean(meta.id) });
+  if (uploaded.error) return toast(uploaded.error.message, "bad");
+  const saved = meta.id
+    ? await state.supabase.from("acq_voice_library").update({ ...row, storage_path: path, mime_type: mime, byte_size: file.size }).eq("id", meta.id).eq("agent_id", state.businessId)
+    : await state.supabase.from("acq_voice_library").insert({ ...row, id, agent_id: state.businessId, storage_path: path, mime_type: mime, byte_size: file.size, created_by: state.user && state.user.id });
+  if (saved.error) return toast(saved.error.message, "bad");
+  toast("Voice note saved.");
+  await bootBusiness(state.businessId);
 }
 
 async function signAudio(path) {
@@ -4778,9 +4817,11 @@ function readPreview() {
     exceptions: [{ id: "e1", message: "4 leads stuck in warmup for more than 3 days." }],
     activity: [{ id: "a1", target_id: "t1", action: "voice.sent", result: "sent", actor: "bot", notes: "Opener", created_at: "2026-10-21T09:05:00Z" }],
     voices: [
-      { id: "v1", slot: "outreach_opener", title: "Opener — coaching", niche: "coaching", variant: null, active: true, script_hint: "Hey, I listened to the reel.", storage_path: "", updated_at: "2026-10-21" },
-      { id: "v-comment", slot: "comment", title: "Comment", niche: "", variant: null, active: true, script_hint: "", storage_path: "", updated_at: "2026-10-26" }
+      { id: "v1", slot: "library", title: "Intro", assignment_kind: "step", step_name: "Intro", lead_handle: "", duration_ms: 12000, active: true, script_hint: "", storage_path: "", created_at: "2026-10-21T09:00:00Z", deleted_at: null },
+      { id: "v-ada", slot: "library", title: "Ada follow-up", assignment_kind: "person", step_name: "", lead_handle: "adanorth", duration_ms: 8000, active: true, script_hint: "", storage_path: "", created_at: "2026-10-26T09:00:00Z", deleted_at: null },
+      { id: "v-open", slot: "library", title: "Unused take", assignment_kind: "none", step_name: "", lead_handle: "", duration_ms: 4000, active: true, script_hint: "", storage_path: "", created_at: "2026-10-27T09:00:00Z", deleted_at: null }
     ],
+    voiceSends: [{ voice_note_id: "v1", result: "sent" }],
     contacts: params.get("chats") === "empty" ? [] : [
       { id: "c-ada", name: "Ada North", ig_handle: "adanorth", crm_state: "discovering", ai_enabled: true, automated: true, is_verified: true, tags: ["warm"], unread_count: 1, message_count: 2, follower_count: 1200, they_follow: true, we_follow: false, last_message_at: "2026-10-25T18:00:00Z", attributes: { bio: "Coach in Austin.", summary: "Asked how the offer works." } },
       { id: "c-sam", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "lost", ai_enabled: false, automated: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z", attributes: { summary: "Went quiet after the first reply." } }

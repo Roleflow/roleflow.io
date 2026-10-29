@@ -14,6 +14,7 @@ import { clipInstructions } from "../_shared/clip-plan.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
 import { keyLinksBlock } from "../_shared/key-links.js";
+import { pickRoutedNote } from "../_shared/voice-route.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
@@ -323,8 +324,69 @@ async function runOutbox(db, row) {
     humanLocked: false
   });
   if (!decision.allow) return finish("blocked", decision.reason);
-  const sent = await deliver(db, businessId, thread, settings, spoken, tokenNote ? null : plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id, tokenNote);
+  const routed = await routedVoice(db, businessId, thread, plan.state);
+  if (routed && !routed.send) {
+    await db.from("acq_voice_sends").insert({
+      agent_id: businessId,
+      voice_note_id: routed.note.id,
+      target_id: thread.target_id,
+      slot: "library",
+      result: "skipped",
+      notes: "dm_disabled"
+    });
+  }
+  const attachment = routed && routed.send
+    ? { path: routed.note.storage_path, bucket: "acq-voice" }
+    : tokenNote;
+  const sent = await deliver(db, businessId, thread, settings, spoken, tokenNote ? null : plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id, attachment);
+  if (sent.ok && routed && routed.send) await rememberVoice(db, businessId, thread, routed.note);
   return finish(sent.ok ? "done" : "failed", sent.error || null);
+}
+
+async function routedVoice(db, businessId, thread, state) {
+  const notes = await db.from("acq_voice_library").select("id, title, storage_path, assignment_kind, step_name, lead_handle, active, deleted_at").eq("agent_id", businessId).eq("active", true);
+  if (notes.error) return null;
+  const prior = thread.target_id
+    ? await db.from("acq_voice_sends").select("voice_note_id").eq("agent_id", businessId).eq("target_id", thread.target_id).eq("result", "sent")
+    : { data: [] };
+  const sentIds = (prior.data || []).map((row) => row.voice_note_id);
+  const note = pickRoutedNote({
+    notes: notes.data || [],
+    handle: thread.username || "",
+    state,
+    sentIds
+  });
+  if (!note || !note.storage_path) return null;
+  const controls = await db.from("acq_dm_controls").select("enabled, killed").eq("business_id", businessId).maybeSingle();
+  const send = !controls.error && controls.data && controls.data.enabled === true && controls.data.killed !== true;
+  return { note, send };
+}
+
+async function rememberVoice(db, businessId, thread, note) {
+  await db.from("acq_voice_sends").insert({
+    agent_id: businessId,
+    voice_note_id: note.id,
+    target_id: thread.target_id,
+    slot: "library",
+    result: "sent",
+    notes: ""
+  });
+  const handle = String(thread.username || "").replace(/^@/, "");
+  if (!handle) return;
+  const contact = await db.from("acq_contacts").select("id").eq("business_id", businessId).ilike("ig_handle", handle).maybeSingle();
+  if (contact.error || !contact.data) return;
+  const conversation = await db.from("acq_conversations").select("id").eq("business_id", businessId).eq("contact_id", contact.data.id).limit(1);
+  const conversationId = conversation.data && conversation.data[0] && conversation.data[0].id;
+  if (!conversationId) return;
+  await db.from("acq_messages").insert({
+    business_id: businessId,
+    conversation_id: conversationId,
+    role: "assistant",
+    sender: "ai",
+    body: "Voice note: " + (note.title || "Voice note"),
+    metadata: { media_path: note.storage_path, media_kind: "audio", bucket: "acq-voice", voice_note_id: note.id },
+    delivery_status: "sent"
+  });
 }
 
 async function sendHuman(db, row, thread, settings) {
