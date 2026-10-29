@@ -1,7 +1,7 @@
 // Voice Gen library. A name is either a SOP step or one person.
 
 import { SUGGESTED_STEPS, usedCounts, workflowSteps } from "./voice-route.js";
-import { transcodeToWav } from "./wav-encode.js";
+import { prepareVoiceNote, recorderStartOptions, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
 import { mountSendBadge } from "./send-badge.js";
 
 export function renderVoiceDesk(ui) {
@@ -71,6 +71,7 @@ function assignmentLabel(note, es) {
 function recorder(ui, es) {
   const form = ui.el("form", { class: "agent", id: "voice-recorder" });
   form.append(ui.el("h3", { text: es ? "Nueva nota" : "New note" }));
+  form.append(ui.el("p", { class: "mute", text: es ? "Máximo 60 segundos." : "60 seconds max." }));
   const title = ui.field(es ? "Nombre" : "Name", "");
   const kind = ui.el("select", { "aria-label": es ? "Tipo de nombre" : "Name kind" });
   [["none", es ? "Sin asignar" : "Unassigned"], ["step", es ? "Paso del SOP" : "SOP step"], ["person", es ? "Una persona" : "One person"]].forEach(([value, label]) => {
@@ -120,7 +121,13 @@ function recorder(ui, es) {
   };
   file.addEventListener("change", () => {
     const picked = file.files && file.files[0];
-    if (picked) preview(picked, picked.name);
+    if (!picked) return;
+    if (picked.size > VOICE_MAX_BYTES) {
+      file.value = "";
+      ui.toast(voiceError("too_big", es), "bad");
+      return;
+    }
+    preview(picked, picked.name);
   });
   record.addEventListener("click", async () => {
     if (recorder && recorder.state === "recording") {
@@ -129,21 +136,29 @@ function recorder(ui, es) {
       return;
     }
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
     } catch {
-      ui.toast(es ? "El micrófono no está disponible." : "The microphone is not available.", "bad");
-      return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        ui.toast(es ? "El micrófono no está disponible." : "The microphone is not available.", "bad");
+        return;
+      }
     }
     const chunks = [];
-    const mime = window.MediaRecorder && MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const options = recorderStartOptions((type) => window.MediaRecorder && MediaRecorder.isTypeSupported(type));
+    recorder = new MediaRecorder(stream, options);
     recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+    let hitLimit = false;
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
       clearInterval(clock);
       timer.hidden = true;
       if (saveBtn) saveBtn.disabled = false;
-      preview(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }), es ? "Grabación" : "Recording");
+      const recorded = recorder.mimeType || "";
+      const type = recorded.includes("mp4") ? "audio/mp4" : (recorded || "audio/webm");
+      preview(new Blob(chunks, { type }), es ? "Grabación" : "Recording");
+      if (hitLimit) ui.toast(es ? "Se paró a los 60 segundos." : "Stopped at 60 seconds.");
     };
     const started = Date.now();
     timer.hidden = false;
@@ -153,6 +168,11 @@ function recorder(ui, es) {
       const seconds = Math.floor((Date.now() - started) / 1000);
       const text = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
       timer.replaceChildren(ui.el("span", { class: "rec-dot" }), text);
+      if (seconds * 1000 >= VOICE_MAX_MS && recorder.state === "recording") {
+        hitLimit = true;
+        recorder.stop();
+        record.textContent = es ? "Grabar" : "Record";
+      }
     }, 250);
     recorder.start();
     record.textContent = es ? "Parar" : "Stop";
@@ -176,14 +196,12 @@ function recorder(ui, es) {
     let prepared = held;
     let durationMs = null;
     try {
-      const wav = await transcodeToWav(held);
-      prepared = wav.file;
-      durationMs = wav.durationMs;
+      const ready = await prepareVoiceNote(held);
+      prepared = ready.file;
+      durationMs = ready.durationMs;
     } catch (error) {
-      if (!/audio\/(wav|mpeg|mp4|m4a|x-m4a|aac)/i.test(held.type || "")) {
-        ui.toast(error.message || (es ? "No se pudo convertir a WAV." : "Could not convert to WAV."), "bad");
-        return;
-      }
+      ui.toast(voiceError(error && error.code, es), "bad");
+      return;
     }
     await ui.saveLibraryNote(prepared, {
       id: ui.state.voiceReplace || "",

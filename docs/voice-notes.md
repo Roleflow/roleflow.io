@@ -1,8 +1,6 @@
 # Voice notes
 
-Recordings are stored as WAV (`audio/wav`, 16-bit PCM) in the private `acq-voice` bucket. Instagram's send-message docs list audio formats as aac, m4a, wav, and mp4, up to 25 MB: https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message/
-
-A browser recording is often WebM. The panel decodes it and writes WAV before upload. An uploaded file that is already wav, m4a, or mp3 is stored as itself when the bucket allows that type. WebM is converted.
+A new recording is AAC in an M4A container, stored as `audio/mp4`, mono, about 64 kbps. The recorder prefers `audio/mp4` from MediaRecorder. Otherwise it encodes AAC-LC (`mp4a.40.2`) and muxes an M4A. The last fallback is 16 kHz mono WAV. The recorder stops at 60 seconds. A file over 4.5 MB or longer than 60 seconds is refused with an error. Instagram's send-message docs list audio formats as aac, m4a, wav, and mp4, up to 25 MB: https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api
 
 ## Who gets which note
 
@@ -16,7 +14,7 @@ A note is either a workflow step (the name matches a line in the SOP workflow, s
 
 A matched library note, a prompt voice token, and a slot note all use the same send. The stored file is uploaded, then sent as an inbox audio attachment (`attachmentType: audio`) on that conversation. The request does not set the WhatsApp-only voice-note flag. Text stays on the existing reply path. The web composer on the box is not used for voice, and the reply function does not post a Graph audio attachment.
 
-The inbox audio list is AAC, M4A, WAV, and MP4, up to 25 MB. MP3 and OGG are rejected. A browser recording is stored as WAV. An uploaded m4a or aac file is sent as that container (`audio/mp4` for m4a). The bytes are uploaded first so the inbox fetches a public URL. A signed storage URL is not the URL we send, because the inbox requires a public URL with no login and no redirect. The direct upload used here rejects a file over 4.5 MB.
+The inbox audio list is AAC, M4A, WAV, and MP4, up to 25 MB. MP3 and OGG are rejected. A browser recording is stored as M4A and uploaded with Content-Type `audio/mp4`. An uploaded m4a file uses that same type. The bytes are uploaded first so the inbox fetches a public URL. A signed storage URL is not the URL we send, because the inbox requires a public URL with no login and no redirect. The direct upload used here rejects a file over 4.5 MB. At about 64 kbps, 60 seconds of M4A is well under that cap. A 16 kHz mono WAV fallback for the same length is about 1.9 MB.
 
 Outside 24 hours the reply, including the voice note, is not sent. The human-agent tag is for a person typing a reply, not for this automatic note, so it is not set.
 
@@ -26,4 +24,4 @@ Secret name already in the stack: `ZERNIO_API_KEY`. No new secret.
 
 `workers/roleflow-dm/send.mjs` still sends text only, after `planDm` allows it. It does not attach a voice file. No webhook is registered.
 
-UNVERIFIED: whether an Instagram audio attachment in WAV is drawn as the in-app voice-message waveform, or as a generic audio file. The inbox marks a WhatsApp voice note separately, and that flag is ignored for Instagram.
+UNVERIFIED: whether an Instagram audio attachment is drawn as the in-app voice-message waveform, or as a generic audio file. M4A (`audio/mp4`) is the container we send because it is the format most likely to render as a voice message. The inbox marks a WhatsApp voice note separately, and that flag is ignored for Instagram.

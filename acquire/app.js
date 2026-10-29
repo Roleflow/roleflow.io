@@ -6,6 +6,7 @@ import { practiceDelaySeconds } from "./setter-delay.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
+import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
 import { splitReply } from "./split-reply.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
@@ -4492,9 +4493,11 @@ async function renameVoice(note, title) {
 }
 
 async function saveLibraryNote(file, meta) {
-  if (!file || file.size > MAX_BYTES) return toast("Keep the recording under 20 MB.", "bad");
-  const mime = mimeOf(file);
-  if (!AUDIO_TYPES.has(mime)) return toast("Use wav, m4a, or mp3.", "bad");
+  const es = language() === "es";
+  if (!file || file.size > VOICE_MAX_BYTES) return toast(voiceError("too_big", es), "bad");
+  if (meta.duration_ms > VOICE_MAX_MS) return toast(voiceError("too_long", es), "bad");
+  const mime = storageContentType(file);
+  if (mime !== "audio/mp4" && mime !== "audio/aac" && mime !== "audio/wav") return toast(voiceError("unreadable", es), "bad");
   const row = {
     slot: "library",
     title: meta.title,
@@ -4515,7 +4518,7 @@ async function saveLibraryNote(file, meta) {
     return;
   }
   const id = meta.id || crypto.randomUUID();
-  const ext = mime.includes("wav") ? "wav" : mime.includes("mpeg") || mime.includes("mp3") ? "mp3" : "m4a";
+  const ext = mime === "audio/wav" ? "wav" : mime === "audio/aac" ? "aac" : "m4a";
   const path = state.businessId + "/" + id + "." + ext;
   const uploaded = await state.supabase.storage.from("acq-voice").upload(path, file, { contentType: mime, upsert: Boolean(meta.id) });
   if (uploaded.error) return toast(uploaded.error.message, "bad");

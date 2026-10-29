@@ -1,6 +1,5 @@
-// Browser recordings are often WebM. Instagram DM audio accepts aac, m4a, wav, and mp4.
-// https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message/
-// This writes 16-bit PCM WAV, which is on that list and in the acq-voice bucket.
+// 16-bit PCM WAV. Voice notes use this only when AAC in an M4A container is unavailable.
+// The fallback recording is 16 kHz mono so a 60 second note stays under 4.5 MB.
 
 export const VOICE_MIME = "audio/wav";
 
