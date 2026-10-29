@@ -125,7 +125,10 @@ assert.doesNotMatch(app, /setter_sync:\s*true/);
 
 const studio = fs.readFileSync(path.join(root, "acquire/studio.js"), "utf8");
 const model = fs.readFileSync(path.join(root, "acquire/studio-model.js"), "utf8");
-assert.match(studio, /Live setter sync is off/);
+const business = studio.match(/export function renderBusiness[\s\S]*?\n}\n\nfunction proposalCard/);
+assert.ok(business);
+assert.match(business[0], /renderSopPage/);
+assert.doesNotMatch(business[0], /Live setter sync is off|Conversation simulator|Prompt quality|Save business/);
 assert.match(studio, /Conversation simulator/);
 assert.match(studio, /Export CSV/);
 assert.match(studio, /Automatic scheduling/);

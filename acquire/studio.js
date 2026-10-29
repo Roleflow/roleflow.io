@@ -1,7 +1,7 @@
 import { ROLES } from "./model.js";
 import {
-  BRIEF_FIELDS, CRM_STATES, CONTENT_TYPES, MAX_CHARS, PAGE_SIZE, PLACEMENTS, SCHEDULE_PROVIDERS, SETTER_SYNC,
-  charCount, collectLeads, emptyBrief, exportCsv, exportJson, filterLeads, formatDelta, paginate, scoreBrief,
+  BRIEF_FIELDS, CRM_STATES, CONTENT_TYPES, PAGE_SIZE, PLACEMENTS, SCHEDULE_PROVIDERS, SETTER_SYNC,
+  collectLeads, exportCsv, exportJson, filterLeads, formatDelta, paginate,
   validateAsset, validateLink, validateSchedule, versionDelta
 } from "./studio-model.js";
 import { columnSummary, presentLeads } from "./pipeline.js";
@@ -90,95 +90,12 @@ function download(name, text, type) {
 }
 
 export function renderBusiness(ui) {
-  const studio = box(ui);
   const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
   wrap.append(header(ui, sectionText(lang, "sopsTitle"), sectionText(lang, "sopsBody"), "brief", "clipboard"));
   const alert = sectionAlert(ui, "sops");
   if (alert) wrap.append(alert);
-  const brief = { ...emptyBrief(), ...((ui.state.brief && ui.state.brief.fields) || {}) };
-  const cards = ui.state.agentCards || [];
-  const count = charCount(brief, cards);
-  const counter = ui.el("p", { class: "char-count" + (count > MAX_CHARS ? " over" : ""), text: count.toLocaleString("en-US") + " / " + MAX_CHARS.toLocaleString("en-US") });
-  wrap.append(counter);
-  wrap.append(ui.el("p", { class: "mute", text: SETTER_SYNC ? "Live setter sync is on." : "Live setter sync is off. Saves stay in this panel." }));
-  wrap.append(syncCard(ui));
-
-  const form = ui.el("form", { class: "brief-grid" });
-  const inputs = {};
-  BRIEF_FIELDS.forEach(([key, label]) => {
-    const area = ui.el("label", { text: label });
-    const input = ui.el("textarea", { rows: "4" });
-    input.value = brief[key] || "";
-    input.addEventListener("input", () => {
-      brief[key] = input.value;
-      const next = charCount(brief, readCards());
-      counter.textContent = next.toLocaleString("en-US") + " / " + MAX_CHARS.toLocaleString("en-US");
-      counter.classList.toggle("over", next > MAX_CHARS);
-    });
-    area.append(input);
-    inputs[key] = input;
-    form.append(area);
-  });
-  form.addEventListener("submit", (event) => event.preventDefault());
-  wrap.append(form);
-
-  const edit = ui.el("form", { class: "agent edit-bar" });
-  edit.append(ui.el("h3", { text: "Edit with AI" }));
-  const instruction = ui.el("input", { type: "text", placeholder: "Say what to change", "aria-label": "Edit with AI" });
-  instruction.value = studio.edit || "";
-  edit.append(instruction);
-  if (ui.state.canEdit) {
-    edit.append(ui.button("Edit with AI", async (event) => {
-      event.preventDefault();
-      studio.edit = instruction.value.trim();
-      if (!studio.edit) return ui.toast("Write what to change.", "bad");
-      await ui.studioEdit(readFields(), studio.edit);
-    }));
-  }
-  edit.addEventListener("submit", (event) => event.preventDefault());
-  wrap.append(edit);
-  if (studio.proposal && studio.proposal.fields) wrap.append(proposalCard(ui, studio));
-
-  const local = scoreBrief(brief);
-  const score = ui.el("section", { class: "agent" });
-  score.append(ui.el("h3", { text: "Prompt quality " + (ui.state.studioScore && ui.state.studioScore.score != null ? ui.state.studioScore.score : local.score) + " / 10" }));
-  const items = (ui.state.studioScore && ui.state.studioScore.items) || local.items;
-  if (!items.length) score.append(ui.el("p", { text: "The required sections are filled." }));
-  items.forEach((item) => score.append(ui.el("p", { text: item })));
-  if (ui.state.canEdit) {
-    const row = ui.el("div", { class: "actions" });
-    row.append(ui.button("Score with AI", () => ui.studioScore(readFields())));
-    row.append(ui.button("Fix with AI", () => ui.studioFix(readFields(), items)));
-    score.append(row);
-  }
-  wrap.append(score);
-
   wrap.append(renderSopPage(ui));
-  wrap.append(agentEditor(ui, cards, readCards));
-  wrap.append(versionList(ui, brief));
-  wrap.append(simulator(ui));
-
-  if (ui.state.canEdit) {
-    wrap.append(ui.button("Save business", async () => {
-      const fields = readFields();
-      const nextCards = readCards();
-      if (charCount(fields, nextCards) > MAX_CHARS) {
-        ui.toast("Shorten the text before saving.", "bad");
-        return;
-      }
-      await ui.saveBrief(fields, nextCards, "Saved");
-    }));
-  }
-
-  function readFields() {
-    const fields = {};
-    BRIEF_FIELDS.forEach(([key]) => { fields[key] = inputs[key].value; });
-    return fields;
-  }
-  function readCards() {
-    return cards;
-  }
   return wrap;
 }
 

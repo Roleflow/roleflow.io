@@ -26,7 +26,7 @@ const ICONS = {
 const HOW = {
   dashboard: "This is the home for one business. Accounts shows whether Instagram is connected. Alerts lists pauses, pending sync, and exceptions. Nothing here is a sample number.",
   onboarding: "These questions describe the niche, offer, Instagram, worker, and voice notes. Saving them updates this business. Open the prompt preview when you want to read the setter prompt and send it to the engine.",
-  brief: "Business is the shared brief every agent reads: what you sell, who you help, the offer, and the rest of the template. Each save keeps a version you can restore. The quality score and the simulator stay in this panel. Live setter sync is off, so a save does not change the live inbound setter.",
+  brief: "Paste the SOP workflow and the top-converting conversations. Build my setter drafts a prompt from those two. Missing sections are flagged. Nothing goes live until you save it as a new prompt version.",
   links: "Sales links have a name, text, URL, coupon, average ticket, and sending instructions. A link can be sent as a button and limited to chosen agents. Scheduling endpoints for Calendly, GoHighLevel, or a custom URL are stored here. An optional key is saved privately and is not shown again.",
   content: "Value content can be an image, audio, video, link, or button, with sending instructions and a placement: before the messages, after the messages, or left to the AI. Upload limits are 8 MB, 20 MB, and 50 MB. Voice notes stay in the library below.",
   outbound: "Outbound Manager runs ICP Target Acquisition, Engagement Warm-Up, and Personalised Outreach. The daily cap is 20 to 30 new targets. Pending openers are drafts waiting in the queue.",
