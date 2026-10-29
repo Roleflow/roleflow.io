@@ -228,7 +228,7 @@ export function pageHeader(ui, title, text, how, iconName) {
   const button = ui.button(sectionText(lang, "howWorks"), () => openHow(title, HOW[how] || text));
   button.classList.add("ghost");
   const actions = ui.el("div", { class: "page-actions" });
-  const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup", "ctas"]);
+  const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup", "ctas", "chats", "voice"]);
   if (ui.businessSync && !(ui.state && quietSync.has(ui.state.tab))) {
     const sync = ui.businessSync();
     actions.append(ui.el("span", { id: "sync-state", class: "integration-status " + sync.tone, "data-sync": sync.key, text: sync.label }));

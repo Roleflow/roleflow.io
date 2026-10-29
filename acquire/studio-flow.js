@@ -1,6 +1,7 @@
 import { ROLES } from "./model.js";
 import { CRM_STATES, filterLeads } from "./studio-model.js";
 import { aggregateFromLeads, bubbleKind, bubbleLabel, emptySummary, summaryFields } from "./chat-summary.js";
+import { mountSendBadge } from "./send-badge.js";
 import { exportThread, matchKeyword, reminderBucket, reminderKpis, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
 import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
@@ -324,7 +325,9 @@ export function renderChats(ui) {
   const flow = box(ui);
   const lang = ui.language ? ui.language() : "en";
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, sectionText(lang, "chatsTitle"), sectionText(lang, "chatsBody"), "inbox", "inbox"));
+  const chatsHeader = header(ui, sectionText(lang, "chatsTitle"), sectionText(lang, "chatsBody"), "inbox", "inbox");
+  mountSendBadge(chatsHeader, ui);
+  wrap.append(chatsHeader);
   const alert = sectionAlert(ui, "chats");
   if (alert) wrap.append(alert);
   const leads = ui.collectLeads ? ui.collectLeads(ui.state.contacts, ui.state.targets) : [];
@@ -549,7 +552,7 @@ function composer(ui, lead, messages, lang) {
   follow.value = flow.followHours || "4";
   follow.addEventListener("change", () => { flow.followHours = follow.value; });
   const voice = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Nota de voz" : "Voice note" }, ["♫"]);
-  voice.addEventListener("click", () => ui.toast(lang === "es" ? "Las notas de voz se eligen en Contenido. Desde aquí no se graba nada." : "Voice notes are chosen in Content. Nothing is recorded here."));
+  voice.addEventListener("click", () => ui.toast(lang === "es" ? "Las notas de voz se eligen en Voice Gen. Desde aquí no se graba nada." : "Voice notes are chosen in Voice Gen. Nothing is recorded here."));
   const text = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Texto" : "Text" }, ["T"]);
   text.addEventListener("click", () => reply.focus());
   const assign = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Asignar" : "Assign" }, ["@" ]);
@@ -686,6 +689,8 @@ function summarySection(ui, lead, leads) {
   section.append(counts);
   const outcomes = aggregate.byOutcome || {};
   section.append(ui.el("p", { text: "New " + (outcomes.new || 0) + " · Qualified " + (outcomes.qualified || 0) + " · Booked " + (outcomes.booked || 0) + " · Lost " + (outcomes.lost || 0) }));
+  const sentVoices = (ui.state.voiceSends || []).filter((row) => row.result === "sent");
+  if (sentVoices.length) section.append(ui.el("p", { text: "Voice notes sent: " + sentVoices.length }));
   section.append(ui.el("p", { text: "Common objections: " + ((aggregate.objections || []).join("; ") || "—") }));
   section.append(ui.el("p", { text: "Top questions: " + ((aggregate.questions || []).join("; ") || "—") }));
   if (lead) {

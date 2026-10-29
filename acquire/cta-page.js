@@ -2,7 +2,8 @@
 // A voice reply is a file recorded or uploaded here. Nothing on this page is sent.
 
 import { ROLES } from "./model.js";
-import { buttonError, dmSendBadge, keywordConflict } from "./comment-cta.js";
+import { buttonError, keywordConflict } from "./comment-cta.js";
+import { mountSendBadge } from "./send-badge.js";
 
 const COPY = {
   en: {
@@ -112,17 +113,11 @@ function desk(ui) {
 
 export function renderCtaPage(ui) {
   const copy = copyFor(ui);
-  const lang = ui.language && ui.language() === "es" ? "es" : "en";
   const wrap = ui.el("div", { class: "studio cta-page" });
   const header = ui.pageHeader
     ? ui.pageHeader(ui, "CTAs", copy.held, "ctas", "comment")
     : ui.el("h2", { text: "CTAs" });
-  const actions = header.querySelector ? header.querySelector(".page-actions") : null;
-  if (actions) {
-    const badge = dmSendBadge(ui.state.autoDm);
-    const label = badge.tone === "on" ? (lang === "es" ? "En vivo" : "Live") : (lang === "es" ? "Envío apagado" : badge.label);
-    actions.prepend(ui.el("span", { id: "cta-send-state", class: "integration-status " + badge.tone, text: label }));
-  }
+  mountSendBadge(header, ui);
   wrap.append(header);
   const tabs = ui.el("div", { class: "cta-tabs", role: "tablist" });
   [["posts", copy.posts], ["stories", copy.stories]].forEach(([id, label]) => {
@@ -239,25 +234,45 @@ function keywordForm(ui, copy, close) {
   dm.value = editing ? editing.dm_text || "" : "";
   const kind = select(ui, copy.kind, [["text", copy.text], ["voice", copy.voice]], editing && editing.reply_kind === "voice" ? "voice" : "text");
   const voice = voiceField(ui, copy, editing);
+  const libraryNotes = (ui.state.voices || []).filter((note) => note && !note.deleted_at && note.storage_path);
+  const library = select(ui, "Library note", [["", "No library note / custom file"]].concat(libraryNotes.map((note) => [note.id, note.title || "Voice note"])), editing && editing.voice_note_id || "");
   const voiceHelp = ui.el("p", { class: "mute", text: copy.voiceHelp });
+  const syncVoice = () => {
+    const on = kind.value === "voice";
+    const picked = Boolean(library.value);
+    voice.hidden = !on;
+    libraryLabel.hidden = !on;
+    voiceHelp.hidden = !on || picked;
+    if (voice.custom) voice.custom.hidden = !on || picked;
+    if (voice.preview) voice.preview.hidden = !on || !picked;
+  };
+  library.addEventListener("change", () => {
+    const note = libraryNotes.find((item) => item.id === library.value);
+    voice.libraryId = note ? note.id : "";
+    voice.path = note ? note.storage_path : "";
+    voice.mime = note ? note.mime_type || "audio/wav" : "";
+    if (voice.preview) {
+      if (note && ui.signAudio) ui.signAudio(note.storage_path).then((url) => { if (url) voice.preview.src = url; });
+      if (!note) voice.preview.removeAttribute("src");
+    }
+    syncVoice();
+  });
   const buttonText = ui.field(copy.buttonText, editing ? editing.button_label || "" : "");
   const buttonLink = ui.field(copy.buttonLink, editing ? editing.button_url || "" : "");
   const agent = select(ui, copy.agent, [["", copy.anyAgent]].concat(ROLES.map((role) => [role.id, role.name])), editing ? editing.agent_role || "" : "");
   const scope = select(ui, copy.scope, [["any", copy.anyPost], ["post", copy.onePost]], editing && editing.scope === "post" ? "post" : "any");
   const publication = ui.field(copy.publication, editing ? editing.publication_ref || "" : "");
   publication.label.classList.add("cta-publication");
-  const showVoice = () => {
-    const on = kind.value === "voice";
-    voice.hidden = !on;
-    voiceHelp.hidden = !on;
-  };
+  const libraryLabel = labeled(ui, "Library note", library);
   const showPublication = () => { publication.label.hidden = scope.value !== "post"; };
-  kind.addEventListener("change", showVoice);
+  kind.addEventListener("change", syncVoice);
   scope.addEventListener("change", showPublication);
-  showVoice();
+  syncVoice();
   showPublication();
+  if (library.value) library.dispatchEvent(new Event("change"));
   form.append(keyword.label, labeled(ui, copy.match, mode), labeled(ui, copy.dm, dm), ui.el("p", { class: "mute", text: copy.dmHelp }));
-  form.append(labeled(ui, copy.kind, kind), voiceHelp, voice);
+  libraryLabel.classList.add("voice-choice");
+  form.append(labeled(ui, copy.kind, kind), voiceHelp, libraryLabel, voice);
   form.append(buttonText.label, buttonLink.label, labeled(ui, copy.agent, agent), labeled(ui, copy.scope, scope), publication.label);
   const save = ui.button(copy.save, async (event) => {
     event.preventDefault();
@@ -269,6 +284,7 @@ function keywordForm(ui, copy, close) {
       reply_kind: kind.value,
       voice_path: voice.path || (editing && editing.voice_path) || "",
       voice_mime: voice.mime || (editing && editing.voice_mime) || "",
+      voice_note_id: voice.libraryId || (editing && editing.voice_note_id) || null,
       button_label: buttonText.input.value.trim(),
       button_url: buttonLink.input.value.trim(),
       agent_role: agent.value,
@@ -304,12 +320,17 @@ function keywordForm(ui, copy, close) {
 
 function voiceField(ui, copy, editing) {
   const box = ui.el("div", { class: "cta-voice" });
+  const custom = ui.el("div", { class: "cta-voice-custom" });
   const file = ui.el("input", { type: "file", accept: "audio/*", class: "cta-file", "aria-label": copy.upload });
   const upload = ui.el("button", { type: "button", class: "cta-upload" }, [copy.upload]);
   upload.addEventListener("click", () => file.click());
   const status = ui.el("p", { class: "mute", text: editing && editing.voice_path ? editing.voice_path.split("/").pop() : "" });
   const player = ui.el("audio", { class: "cta-audio", controls: "controls" });
   player.hidden = true;
+  const picked = ui.el("audio", { class: "cta-audio", controls: "controls" });
+  picked.hidden = true;
+  box.custom = custom;
+  box.preview = picked;
   box.file = null;
   box.mime = "";
   const showFile = (picked) => {
@@ -350,7 +371,8 @@ function voiceField(ui, copy, editing) {
     recorder.start();
     record.textContent = copy.stop;
   });
-  box.append(file, upload, record, status, player);
+  custom.append(file, upload, record);
+  box.append(custom, status, player, picked);
   return box;
 }
 
