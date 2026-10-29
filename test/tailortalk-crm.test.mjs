@@ -254,7 +254,8 @@ const migrationNames = [
   "20261028180000_delete_four_businesses.sql",
   "20261028190000_dm_instagram_login.sql",
   "20261028200000_dm_login_realtime.sql",
-  "20261029120000_chat_summary.sql"
+  "20261029120000_chat_summary.sql",
+  "20261029140000_opportunity_stages.sql"
 ];
 assert.deepEqual(
   migrationNames,

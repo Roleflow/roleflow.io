@@ -179,6 +179,9 @@ export function contactLead(row) {
     unread: Number(row.unread_count) || 0,
     followups: Number(row.followups) || 0,
     lastMessageAt: row.last_message_at || null,
+    updatedAt: row.updated_at || null,
+    source: String(row.source || (row.ig_handle ? "instagram" : "")),
+    targetId: row.target_id || "",
     salesLinkId: row.sales_link_id || null,
     bio: String(attributes.bio || row.bio || ""),
     report: String(attributes.summary || attributes.ai_report || "")
@@ -205,6 +208,9 @@ export function targetLead(row) {
     unread: Number(row.unread_count) || 0,
     followups: Number(row.followups) || 0,
     lastMessageAt: row.updated_at || null,
+    updatedAt: row.updated_at || null,
+    source: String(row.source || ""),
+    targetId: row.id,
     bio: String(row.bio || ""),
     report: row.score_summary || ""
   };
@@ -233,6 +239,7 @@ export function filterLeads(leads, query) {
     if (q.unread === "no" && Number(lead.unread) > 0) return false;
     if (q.agent && lead.agent !== q.agent) return false;
     if (q.tag && !(lead.tags || []).includes(q.tag)) return false;
+    if (q.source && String(lead.source || "") !== q.source) return false;
     if (q.automated === "yes" && !lead.automated) return false;
     if (q.automated === "no" && lead.automated) return false;
     if (q.verified === "yes" && !lead.verified) return false;
