@@ -26,7 +26,7 @@ Client-facing copy stays Roleflow. This note names the reference product only so
 | Sales links | partial | Name, URL, ticket, instructions, per-agent flag, saved | The setter does not send them. No calendar connect |
 | Scheduling endpoints | partial | Availability and booking URL fields saved | No Calendly or GoHighLevel connect, and nothing books |
 | Contents library | partial | Image, audio, video, link, button rows and upload | The setter does not attach them. No voice cloning |
-| Follow-up ladders | partial | 24-hour steps, welcome steps, restart and before-close flags, saved | No worker sends them. Copy still says nothing is sent while sync is off |
+| Follow-up ladders | draft | 24-hour steps, welcome steps, restart and before-close flags, saved. A worker queues the ladder and resume reminders on the official inbox and refuses anything outside 24 hours | Not deployed and not on the cron. AI steps wait for a planned reply before send. The before-close flag is stored and not applied yet |
 | 7-day manual follow-ups | partial | Pending list and “mark sent by you” | A person sends from Instagram. No draft queue tied to a clock |
 | Reminders | partial | Create, list, overdue/today/week counts, AI-detection flag stored | Nothing creates a reminder from a chat thread, and detection does not run |
 | Chats inbox | partial | Three panes, search, state, thread from `acq_messages`, export, AI flag saved on the lead | Filters omit tags, AI, and unread. A reply is a draft, not a send. Pausing AI does not stop the live setter |
