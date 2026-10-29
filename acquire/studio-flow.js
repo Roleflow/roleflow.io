@@ -1,6 +1,7 @@
 import { ROLES } from "./model.js";
 import { CRM_STATES, filterLeads } from "./studio-model.js";
-import { exportThread, matchKeyword, reminderBucket, reminderKpis, senderLabel, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { aggregateFromLeads, bubbleKind, bubbleLabel, emptySummary, summaryFields } from "./chat-summary.js";
+import { exportThread, matchKeyword, reminderBucket, reminderKpis, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
 import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 function box(ui) {
@@ -333,7 +334,8 @@ export function renderChats(ui) {
     state: flow.chatState || "all",
     tag: flow.chatTag || "",
     ai: flow.chatAi || "all",
-    unread: flow.chatUnread || "all"
+    unread: flow.chatUnread || "all",
+    desk: flow.desk || "all"
   });
   if (!flow.chat && matched[0]) flow.chat = matched[0].kind + ":" + matched[0].id;
   const layout = ui.el("div", { class: "chats" + (flow.analysisShut ? " analysis-shut" : "") });
@@ -369,7 +371,7 @@ export function renderChats(ui) {
     ui.paint();
   });
   state.addEventListener("change", () => filters.requestSubmit());
-  list.append(filters, more);
+  list.append(filters, more, deskChips(ui, flow));
   if (ui.state.chatsPending) {
     const skel = ui.el("div", { class: "chat-skel", role: "status", "aria-busy": "true" });
     for (let index = 0; index < 6; index += 1) skel.append(ui.el("span", { class: "skel" }));
@@ -380,8 +382,28 @@ export function renderChats(ui) {
   }
   const open = matched.find((lead) => lead.kind + ":" + lead.id === flow.chat) || null;
   layout.append(list, threadPane(ui, open), leadPane(ui, open));
-  wrap.append(layout);
+  wrap.append(layout, summarySection(ui, open, leads));
   return wrap;
+}
+
+function deskChips(ui, flow) {
+  const row = ui.el("div", { class: "desk-filters" });
+  [["all", "All"], ["new", "New"], ["qualified", "Qualified"], ["booked", "Booked"], ["lost", "Lost"], ["ai", "AI"], ["manual", "Manual"], ["unread", "Unread"]].forEach(([id, label]) => {
+    const pressed = id === "unread" ? flow.chatUnread === "yes" && (flow.desk || "all") === "all" : (flow.desk || "all") === id && flow.chatUnread !== "yes";
+    const button = ui.el("button", { type: "button", "aria-pressed": pressed ? "true" : "false" }, [label]);
+    button.addEventListener("click", () => {
+      if (id === "unread") {
+        flow.chatUnread = "yes";
+        flow.desk = "all";
+      } else {
+        flow.desk = id;
+        flow.chatUnread = "all";
+      }
+      ui.paint();
+    });
+    row.append(button);
+  });
+  return row;
 }
 
 function chatRow(ui, flow, lead) {
@@ -438,6 +460,15 @@ function threadPane(ui, lead) {
   status.addEventListener("change", () => {
     if (ui.saveLead && ui.state.canEdit) ui.saveLead(lead, { crm_state: status.value, assigned_agent: lead.agent, ai_enabled: lead.ai, tags: lead.tags || [] });
   });
+  const takeover = ui.el("button", {
+    type: "button",
+    id: "chat-ai-toggle",
+    class: "status-pill",
+    "aria-pressed": lead.ai ? "false" : "true"
+  }, [lead.ai ? "AI on" : "Manual"]);
+  takeover.addEventListener("click", () => {
+    if (ui.saveLead && ui.state.canEdit) ui.saveLead(lead, { crm_state: status.value, assigned_agent: lead.agent, ai_enabled: !lead.ai, tags: lead.tags || [] });
+  });
   const tools = ui.el("div", { class: "composer-tools" });
   const find = ui.el("button", { type: "button", class: "icon-btn", "aria-label": "Search" }, ["⌕"]);
   find.addEventListener("click", () => { const boxNode = document.getElementById("chat-search"); if (boxNode) boxNode.focus(); });
@@ -448,7 +479,7 @@ function threadPane(ui, lead) {
   const toggle = ui.el("button", { type: "button", class: "icon-btn", "aria-label": sectionText(lang, "analysis") }, ["☰"]);
   toggle.addEventListener("click", () => { flow.analysisShut = !flow.analysisShut; ui.paint(); });
   tools.append(find, bell, refresh, toggle);
-  head.append(who, status, tools);
+  head.append(who, status, takeover, tools);
   pane.append(head);
   const messages = threadMessages(ui, lead);
   const log = ui.el("div", { class: "bubbles" });
@@ -460,12 +491,30 @@ function threadPane(ui, lead) {
       day = stamp;
       log.append(ui.el("p", { class: "day-sep", text: stamp }));
     }
-    const line = ui.el("div", { class: "bubble " + (message.role === "assistant" ? "out" : "in") });
-    const text = message.body ? senderLabel(message) + ": " + message.body : senderLabel(message);
-    line.append(ui.el("p", { text }));
+    const kind = bubbleKind(message);
+    const failed = message.delivery_status === "failed";
+    const line = ui.el("div", { class: "bubble " + kind + (failed ? " failed" : "") });
+    line.append(ui.el("span", { class: "who", text: bubbleLabel(kind) }));
+    if (message.body) line.append(ui.el("p", { text: message.body }));
+    if (message.at) line.append(ui.el("time", { text: ui.when ? ui.when(message.at) : String(message.at).slice(0, 16).replace("T", " ") }));
+    if (message.delivery_status === "sending") line.append(ui.el("span", { class: "send-state", text: "Sending" }));
+    if (message.delivery_status === "sent" && kind !== "lead") line.append(ui.el("span", { class: "send-state", text: "Sent" }));
+    if (failed) {
+      line.append(ui.el("span", { class: "send-state", text: "Failed" }));
+      if (ui.sendInboxReply) line.append(ui.button("Retry", () => ui.sendInboxReply(lead, message.body, message.id)));
+    }
     if (message.playbackUrl) line.append(ui.el("audio", { controls: true, preload: "none", src: message.playbackUrl }));
     log.append(line);
   });
+  const pending = ui.state.chatSend;
+  if (pending && pending.contactId === lead.id && pending.status !== "sent") {
+    const pendingLine = ui.el("div", { class: "bubble human" + (pending.status === "failed" ? " failed" : "") });
+    pendingLine.append(ui.el("span", { class: "who", text: "You" }));
+    pendingLine.append(ui.el("p", { text: pending.body || "" }));
+    pendingLine.append(ui.el("span", { class: "send-state", text: pending.status === "failed" ? "Failed" : "Sending" }));
+    if (pending.status === "failed" && ui.sendInboxReply) pendingLine.append(ui.button("Retry", () => ui.sendInboxReply(lead, pending.body, pending.messageId)));
+    log.append(pendingLine);
+  }
   pane.append(log);
   if (ui.state.threadMore && ui.loadEarlier) pane.append(ui.button("Load earlier", () => ui.loadEarlier()));
   if (ui.state.canEdit && lead.kind === "contact") pane.append(composer(ui, lead, messages, lang));
@@ -549,7 +598,7 @@ function leadPane(ui, lead) {
     lead.weFollow ? (lang === "es" ? "lo sigues" : "you follow") : ""
   ].filter(Boolean).join(" · ");
   followers.append(ui.el("span", { text: lang === "es" ? "Seguidores" : "Followers" }), ui.el("strong", { text: followBits || "—" }));
-  info.append(person, automated.label, channel, followers, ui.el("p", { text: (lang === "es" ? "IA asignada: " : "Assigned AI: ") + (roleName(lead.agent) || "—") }));
+  info.append(person, automated.label, channel, followers, ui.el("p", { text: lead.bio || (lang === "es" ? "Sin perfil público guardado." : "No public profile stored.") }), ui.el("p", { text: (lang === "es" ? "Etapa: " : "Stage: ") + stateName(lead.state) }));
   const tags = ui.field("Tags", (lead.tags || []).join(", "));
   info.append(tags.label);
   if (ui.state.canEdit) {
@@ -581,14 +630,17 @@ function leadPane(ui, lead) {
       });
     }));
   }
+  const noteBox = ui.el("textarea", { rows: "3", "aria-label": "Notes" });
+  const savedNotes = (ui.state.leadNotes || []).filter((note) => lead.kind === "contact" ? note.contact_id === lead.id : note.target_id === lead.id);
+  savedNotes.forEach((note) => notes.append(ui.el("p", { text: note.body })));
   const report = ui.el("details");
-  report.append(ui.el("summary", { text: lang === "es" ? "Informe" : "Report" }));
+  report.append(ui.el("summary", { text: "Conversation summary" }));
   const reportBody = ui.el("p", { text: lead.report || (lang === "es" ? "Todavía no hay informe." : "No report yet.") });
   const getReport = ui.button(sectionText(lang, "getReport"), () => {
     if (lead.report) reportBody.textContent = lead.report;
     else window.dispatchEvent(new CustomEvent("roleflow-ask", { detail: { message: "Summarize this conversation.", mode: "report" } }));
   });
-  report.append(reportBody, getReport);
+  report.hidden = true;
   const exp = ui.el("details");
   exp.append(ui.el("summary", { text: sectionText(lang, "exportChat") }));
   const row = ui.el("div", { class: "filters" });
@@ -597,8 +649,61 @@ function leadPane(ui, lead) {
   row.append(ui.button("TXT", () => download("chat.txt", exportThread(messages, "txt"), "text/plain")));
   row.append(ui.button("XML", () => download("chat.xml", exportXml(messages), "application/xml")));
   exp.append(row);
-  pane.append(info, notes, report, exp);
+  if (ui.state.canEdit && ui.addLeadNote) notes.append(noteBox, ui.button("Save note", () => ui.addLeadNote(lead, noteBox.value)));
+  pane.append(info, notes, exp);
   return pane;
+}
+
+function summarySection(ui, lead, leads) {
+  const section = ui.el("section", { class: "chat-summary", id: "conversation-summary" });
+  const flow = box(ui);
+  const days = flow.summaryDays || 7;
+  section.append(ui.el("h3", { text: "Conversation summary" }));
+  const chips = ui.el("div", { class: "desk-filters" });
+  [7, 30].forEach((span) => {
+    const button = ui.el("button", { type: "button", "aria-pressed": days === span ? "true" : "false" }, [span + " days"]);
+    button.addEventListener("click", () => {
+      flow.summaryDays = span;
+      if (ui.loadChatSummary) ui.loadChatSummary(lead, false);
+      else ui.paint();
+    });
+    chips.append(button);
+  });
+  section.append(chips);
+  if (ui.loadChatSummary) section.append(ui.button("Regenerate", () => ui.loadChatSummary(lead, true)));
+  const summary = ui.state.chatSummary || emptySummary(leads);
+  if (!leads.length || summary.empty) {
+    section.append(ui.el("p", { text: "No conversations in this period." }));
+    return section;
+  }
+  const aggregate = summary.aggregate || aggregateFromLeads(leads);
+  const counts = ui.el("div", { class: "kpi-row" });
+  [["Conversations", aggregate.conversations], ["Booked calls", aggregate.booked], ["Need a person", aggregate.needsHuman]].forEach(([label, value]) => {
+    const card = ui.el("article", { class: "kpi" });
+    card.append(ui.el("span", { text: label }), ui.el("strong", { text: String(value || 0) }));
+    counts.append(card);
+  });
+  section.append(counts);
+  const outcomes = aggregate.byOutcome || {};
+  section.append(ui.el("p", { text: "New " + (outcomes.new || 0) + " · Qualified " + (outcomes.qualified || 0) + " · Booked " + (outcomes.booked || 0) + " · Lost " + (outcomes.lost || 0) }));
+  section.append(ui.el("p", { text: "Common objections: " + ((aggregate.objections || []).join("; ") || "—") }));
+  section.append(ui.el("p", { text: "Top questions: " + ((aggregate.questions || []).join("; ") || "—") }));
+  if (lead) {
+    const fields = summaryFields(summary.conversation);
+    const card = ui.el("article", { class: "agent" });
+    card.append(ui.el("h3", { text: "This conversation" }));
+    if (!summary.conversation) card.append(ui.el("p", { text: "No summary for this conversation yet." }));
+    else {
+      card.append(ui.el("p", { text: "Situation: " + (fields.situation || "—") }));
+      card.append(ui.el("p", { text: "Goal: " + (fields.goal || "—") }));
+      card.append(ui.el("p", { text: "Objections: " + (fields.objections.length ? fields.objections.join("; ") : "—") }));
+      card.append(ui.el("p", { text: "Offer: " + (fields.offer || "—") }));
+      card.append(ui.el("p", { text: "Outcome: " + (fields.outcome || "—") }));
+      card.append(ui.el("p", { text: "Next step: " + (fields.next || "—") }));
+    }
+    section.append(card);
+  }
+  return section;
 }
 
 function exportXml(messages) {

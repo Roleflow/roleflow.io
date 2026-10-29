@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   const userClient = userClientFrom(req);
   const { data: userData, error: userError } = await userClient.auth.getUser();
   if (userError || !userData.user) return json(401, { ok: false, error: "Sign in required." });
-  let body: { business_id?: string; contact_id?: string; text?: string } = {};
+  let body: { business_id?: string; contact_id?: string; text?: string; message_id?: string } = {};
   try { body = await req.json(); } catch (_error) { body = {}; }
   const businessId = String(body.business_id || "");
   const contactId = String(body.contact_id || "");
@@ -44,20 +44,56 @@ Deno.serve(async (req) => {
       body: JSON.stringify(request.body)
     });
   } catch (_error) {
-    return json(200, { ok: false, error: "The reply was not sent." });
+    const stored = await storeHumanReply(admin, {
+      businessId,
+      conversationId: conversation.data.id,
+      messageId: String(body.message_id || ""),
+      text,
+      status: "failed"
+    });
+    return json(200, { ok: false, error: "The reply was not sent.", message_id: stored.id || "" });
   }
   let payload: unknown = {};
   try { payload = await response.json(); } catch (_error) { payload = {}; }
   const failure = manualSendError(response.status, payload);
-  if (failure) return json(200, { ok: false, error: failure });
-  const saved = await admin.from("acq_messages").insert({
-    business_id: businessId,
-    conversation_id: conversation.data.id,
+  const messageId = String(body.message_id || "");
+  const stored = await storeHumanReply(admin, {
+    businessId,
+    conversationId: conversation.data.id,
+    messageId,
+    text,
+    status: failure ? "failed" : "sent"
+  });
+  if (failure) return json(200, { ok: false, error: failure, message_id: stored.id || "" });
+  if (!stored.ok) return json(200, { ok: false, error: "The reply was sent, but the chat copy was not stored.", message_id: stored.id || "" });
+  return json(200, { ok: true, message_id: stored.id || "" });
+});
+
+async function storeHumanReply(admin: ReturnType<typeof adminClient>, input: { businessId: string; conversationId: string; messageId: string; text: string; status: "sent" | "failed" }) {
+  const stamp = new Date().toISOString();
+  const row = {
+    business_id: input.businessId,
+    conversation_id: input.conversationId,
     external_id: ("manual:" + crypto.randomUUID()).slice(0, 200),
     role: "assistant",
-    body: text.slice(0, 4000),
-    sent_at: new Date().toISOString()
-  });
-  if (saved.error) return json(200, { ok: false, error: "The reply was sent, but the chat copy was not stored." });
-  return json(200, { ok: true });
-});
+    sender: "human",
+    body: input.text.slice(0, 4000),
+    sent_at: stamp,
+    delivery_status: input.status
+  };
+  if (UUID.test(input.messageId)) {
+    const updated = await admin.from("acq_messages").update({
+      body: row.body,
+      sender: "human",
+      sent_at: stamp,
+      delivery_status: input.status
+    }).eq("id", input.messageId).eq("business_id", input.businessId).select("id").maybeSingle();
+    if (!updated.error && updated.data) return { ok: true, id: updated.data.id };
+  }
+  let saved = await admin.from("acq_messages").insert(row).select("id").maybeSingle();
+  if (saved.error && /delivery_status/.test(saved.error.message || "")) {
+    const { delivery_status: _status, ...without } = row;
+    saved = await admin.from("acq_messages").insert(without).select("id").maybeSingle();
+  }
+  return { ok: !saved.error, id: saved.data && saved.data.id ? saved.data.id : "" };
+}

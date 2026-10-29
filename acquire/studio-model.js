@@ -180,6 +180,7 @@ export function contactLead(row) {
     followups: Number(row.followups) || 0,
     lastMessageAt: row.last_message_at || null,
     salesLinkId: row.sales_link_id || null,
+    bio: String(attributes.bio || row.bio || ""),
     report: String(attributes.summary || attributes.ai_report || "")
   };
 }
@@ -204,6 +205,7 @@ export function targetLead(row) {
     unread: Number(row.unread_count) || 0,
     followups: Number(row.followups) || 0,
     lastMessageAt: row.updated_at || null,
+    bio: String(row.bio || ""),
     report: row.score_summary || ""
   };
 }
@@ -219,6 +221,12 @@ export function filterLeads(leads, query) {
   return (leads || []).filter((lead) => {
     if (text && !(lead.name || "").toLowerCase().includes(text) && !(lead.handle || "").toLowerCase().includes(text)) return false;
     if (q.state && q.state !== "all" && lead.state !== q.state) return false;
+    if (q.desk && q.desk !== "all") {
+      const groups = { new: ["open", "discovering"], qualified: ["qualifying", "proposal"], booked: ["booked", "paid"], lost: ["lost", "unqualified"] };
+      if (q.desk === "ai" && !lead.ai) return false;
+      if (q.desk === "manual" && lead.ai) return false;
+      if (groups[q.desk] && !groups[q.desk].includes(lead.state)) return false;
+    }
     if (q.ai === "on" && !lead.ai) return false;
     if (q.ai === "off" && lead.ai) return false;
     if (q.unread === "yes" && !(Number(lead.unread) > 0)) return false;
