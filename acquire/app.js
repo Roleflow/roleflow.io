@@ -41,6 +41,7 @@ import { MAX_CHARS, charCount, collectLeads } from "./studio-model.js";
 import { THREAD_PAGE, senderLabel } from "./studio-flow-model.js";
 import { prepareOwnerFile } from "./clip-file.js";
 import { scorePrompt } from "./workforce-model.js";
+import { aggregateFromLeads, emptySummary, mergeSummary } from "./chat-summary.js";
 import { renderChats, renderCtas, renderFollowups, renderReminders } from "./studio-flow.js";
 import {
   ENGINE_HINT,
@@ -682,12 +683,15 @@ async function loadThread(conversationId, mode) {
     return;
   }
   const offset = mode === "earlier" ? (state.engineMessages || []).length : 0;
-  const result = await state.supabase.from("acq_messages")
-    .select("id, conversation_id, role, sender, body, sent_at, created_at, metadata")
+  const query = (columns) => state.supabase.from("acq_messages")
+    .select(columns)
     .eq("conversation_id", conversationId)
+    .eq("business_id", state.businessId)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .range(offset, offset + THREAD_PAGE - 1);
+  let result = await query("id, conversation_id, role, sender, body, sent_at, created_at, metadata, delivery_status");
+  if (result.error) result = await query("id, conversation_id, role, sender, body, sent_at, created_at, metadata");
   const page = result.error ? [] : result.data || [];
   const chronological = page.slice().reverse();
   for (const row of chronological) {
@@ -795,6 +799,30 @@ function paint() {
     }
   }
   armRefresh();
+  watchChats();
+}
+
+function watchChats() {
+  if (state.chatTimer) return;
+  state.chatTimer = setInterval(() => {
+    if (state.tab !== "chats" || !state.supabase || !state.threadConversationId) return;
+    refreshOpenThread();
+  }, 4000);
+  if (state.supabase && state.businessId && state.businessId !== "preview" && !state.chatChannel) {
+    state.chatChannel = state.supabase.channel("chats-" + state.businessId)
+      .on("postgres_changes", { event: "*", schema: "public", table: "acq_messages", filter: "business_id=eq." + state.businessId }, () => refreshOpenThread())
+      .subscribe();
+  }
+}
+
+async function refreshOpenThread() {
+  if (!state.threadConversationId || state.chatRefreshing) return;
+  state.chatRefreshing = true;
+  const before = (state.engineMessages || []).map((row) => row.id + ":" + (row.delivery_status || "")).join(",");
+  await loadThread(state.threadConversationId, "newest");
+  const after = (state.engineMessages || []).map((row) => row.id + ":" + (row.delivery_status || "")).join(",");
+  state.chatRefreshing = false;
+  if (before !== after && state.tab === "chats") paint();
 }
 
 function engineCtx() {
@@ -896,6 +924,7 @@ function pageUi() {
     deleteFlowRow,
     draftReply,
     sendInboxReply,
+    loadChatSummary,
     ignoreHandles,
     importDnc,
     openChat,
@@ -2594,24 +2623,61 @@ async function deleteFlowRow(table, id) {
   else await bootBusiness(state.businessId, { quiet: true });
 }
 
-async function sendInboxReply(lead, text) {
+async function sendInboxReply(lead, text, messageId) {
   const body = String(text || "").trim();
   if (!body) return toast("Write a reply first.", "bad");
   if (!lead || lead.kind !== "contact") return toast("This chat has no Instagram thread yet.", "bad");
   if (!readyToSave()) {
     state.chatDraft = body;
-    toast("Preview only. Nothing was sent.");
+    state.chatSend = { contactId: lead.id, body, status: "failed", messageId: messageId || "" };
+    toast("Preview only. Nothing was sent.", "bad");
     paint();
     return;
   }
+  state.chatSend = { contactId: lead.id, body, status: "sending", messageId: messageId || "" };
+  state.chatDraft = "";
+  paint();
   const invoked = await state.supabase.functions.invoke("inbox-reply", {
-    body: { business_id: state.businessId, contact_id: lead.id, text: body }
+    body: { business_id: state.businessId, contact_id: lead.id, text: body, message_id: messageId || "" }
   });
   const payload = invoked.data || {};
-  if (invoked.error || payload.ok !== true) return toast(payload.error || "The reply was not sent.", "bad");
-  state.chatDraft = "";
+  if (invoked.error || payload.ok !== true) {
+    state.chatSend = { contactId: lead.id, body, status: "failed", messageId: payload.message_id || messageId || "" };
+    toast(payload.error || "The reply was not sent.", "bad");
+    paint();
+    return;
+  }
+  state.chatSend = null;
   toast("Reply sent.");
   await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function loadChatSummary(lead, regenerate) {
+  const leads = collectLeads(state.contacts, state.targets);
+  const local = emptySummary(leads);
+  if (!state.supabase || state.businessId === "preview") {
+    state.chatSummary = local;
+    paint();
+    return;
+  }
+  const days = state.flow && state.flow.summaryDays ? state.flow.summaryDays : 7;
+  const invoked = await state.supabase.functions.invoke("conversation-summary", {
+    body: {
+      business_id: state.businessId,
+      contact_id: lead && lead.kind === "contact" ? lead.id : "",
+      days,
+      regenerate: regenerate === true
+    }
+  });
+  const payload = invoked.data || {};
+  if (invoked.error || payload.ok === false) {
+    state.chatSummary = local;
+    toast(payload.error || "The summary was not generated.", "bad");
+    paint();
+    return;
+  }
+  state.chatSummary = mergeSummary(local, payload.summary || payload);
+  paint();
 }
 
 async function draftReply(lead, messages) {
@@ -4553,7 +4619,7 @@ function readPreview() {
     setterLink: params.get("sync") === "ready" ? { status: "connected", external_agent_id: "preview-agent", provider: "engine" } : params.get("dm") === "1" ? { requested_handle: "roleflow.io", status: "disconnected" } : null,
     outbox: [],
     workforce: ROLES.map((role) => ({ role: role.id, status: role.id === "chief_of_staff" ? "active" : "paused", parameters: {}, daily_count: role.id === "icp_acquisition" ? 12 : 0, last_run_at: "2026-10-21T09:00:00Z" })),
-    targets: [
+    targets: params.get("chats") === "empty" ? [] : [
       { id: "t1", handle: "northstar", stage: "outreach", peak_stage: "outreach", lead_status: "warm", icp_score: 90, source: "competitor_followers", bio: "Coach. DM me to apply.", cta_detected: true, updated_at: "2026-10-21T09:00:00Z", budget: "", timeline: "", fit: "", qual_score: null, decision_maker: null },
       { id: "t2", handle: "slowreply", stage: "booked", peak_stage: "booked", lead_status: "hot", icp_score: 85, source: "keyword", bio: "Agency systems.", cta_detected: true, updated_at: "2026-10-20T09:00:00Z" }
     ],
@@ -4568,14 +4634,15 @@ function readPreview() {
       { id: "v1", slot: "outreach_opener", title: "Opener — coaching", niche: "coaching", variant: null, active: true, script_hint: "Hey, I listened to the reel.", storage_path: "", updated_at: "2026-10-21" },
       { id: "v-comment", slot: "comment", title: "Comment", niche: "", variant: null, active: true, script_hint: "", storage_path: "", updated_at: "2026-10-26" }
     ],
-    contacts: [
-      { id: "c-ada", name: "Ada North", ig_handle: "adanorth", crm_state: "discovering", ai_enabled: true, automated: true, is_verified: true, tags: ["warm"], unread_count: 1, message_count: 2, follower_count: 1200, they_follow: true, we_follow: false, last_message_at: "2026-10-25T18:00:00Z", attributes: { summary: "Asked how the offer works." } },
+    contacts: params.get("chats") === "empty" ? [] : [
+      { id: "c-ada", name: "Ada North", ig_handle: "adanorth", crm_state: "discovering", ai_enabled: true, automated: true, is_verified: true, tags: ["warm"], unread_count: 1, message_count: 2, follower_count: 1200, they_follow: true, we_follow: false, last_message_at: "2026-10-25T18:00:00Z", attributes: { bio: "Coach in Austin.", summary: "Asked how the offer works." } },
       { id: "c-sam", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "lost", ai_enabled: false, automated: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z", attributes: { summary: "Went quiet after the first reply." } }
     ],
-    conversations: [{ id: "cv-ada", contact_id: "c-ada" }, { id: "cv-sam", contact_id: "c-sam" }],
+    conversations: params.get("chats") === "empty" ? [] : [{ id: "cv-ada", contact_id: "c-ada" }, { id: "cv-sam", contact_id: "c-sam" }],
     engineMessages: [
       { id: "m-ada-1", conversation_id: "cv-ada", role: "user", sender: "adanorth", body: "How does the offer work?", sent_at: "2026-10-25T18:00:00Z" },
-      { id: "m-ada-2", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Happy to walk you through it on a call.", sent_at: "2026-10-25T18:04:00Z" }
+      { id: "m-ada-2", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Happy to walk you through it on a call.", sent_at: "2026-10-25T18:04:00Z", delivery_status: "sent" },
+      { id: "m-ada-3", conversation_id: "cv-ada", role: "assistant", sender: "human", body: "I can take this one.", sent_at: "2026-10-25T18:06:00Z", delivery_status: "sent" }
     ],
     performance: [{ id: "v1", sends: 8, replies: 3, bookings: 1 }],
     stats: null,

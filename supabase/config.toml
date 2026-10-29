@@ -414,6 +414,10 @@ verify_jwt = false
 [functions.inbox-reply]
 verify_jwt = true
 
+# conversation-summary checks the signed-in reader. The browser sends the user JWT.
+[functions.conversation-summary]
+verify_jwt = true
+
 # client-dashboard checks the signed-in editor. The browser sends the user JWT.
 [functions.client-dashboard]
 verify_jwt = true
