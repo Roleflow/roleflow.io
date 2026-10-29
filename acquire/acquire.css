@@ -406,6 +406,17 @@ body.platform main.wrap:has(.pipe-board){width:min(1280px,calc(100% - 32px));max
 .manual-badge{margin-left:auto;border-radius:99px;padding:2px 8px;border:1px solid var(--gold);color:var(--gold);font-size:.72rem;font-weight:700}
 .pipe-move{display:none;width:100%}
 .pipe-search{min-width:180px;font:400 .95rem var(--b);color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.cta-page{display:grid;gap:16px}
+.cta-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.cta-tabs button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:8px 14px;cursor:pointer;font:600 .85rem var(--b)}
+.cta-tabs button[aria-pressed="true"]{background:var(--grad);color:#fff;border-color:transparent}
+.cta-stack{display:grid;gap:16px}
+.cta-card{display:grid;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:16px}
+.cta-table{width:100%;border-collapse:collapse}
+.cta-table th,.cta-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:.9rem}
+.cta-table th{color:var(--mute);font-weight:600}
+.cta-voice{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cta-story{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--line)}
 @media(max-width:860px){.pipe-move,.pipe-stage{display:block}.pipe-card{touch-action:auto;cursor:pointer}}
 .stage-history{display:grid;gap:4px}
 .role-picker{border:1px solid var(--line);border-radius:16px;display:grid;gap:6px;padding:12px}

@@ -34,7 +34,7 @@ const HOW = {
   pipeline: "CRM states are Open, Discovering, Qualifying, Proposal, Booked, Paid, Lost, Unqualified, and Postponed. List and board show the leads stored for this business. Filters, notes, and the message queue stay here. Nothing in the queue is sent while live sync is off.",
   followups: "Follow-ups stay inside the 24-hour messaging window. Steps run from 1 to 23 hours, as AI instructions or literal text, with a variant per lead state. Welcome messages are two at most. The 7-day list is drafted here and sent by a person.",
   reminders: "Reminders are tasks or a conversation to resume. Overdue, today, and the next 7 days are counted from the due time. A suggestion from the model is saved only after you add it.",
-  ctas: "A comment keyword can send a private message, with an optional button of 20 characters, and a public reply drawn from the lines you wrote. A story keyword hands the reply to one agent.",
+  ctas: "Posts and Reels hold the comment keywords. A public reply is chosen from the lines you wrote. The private message is prepared from the commenter's profile and is not sent while DMs are off. Stories hand a keyword to one agent.",
   inbox: "Chats lists the leads stored for this business. The thread shows messages we have. A scheduled message stays in the queue. Live sync is off, so nothing is sent.",
   stats: "Stats counts leads, agents, tags, links, the funnel, follow-ups, and reply time for the range you pick. Explain with assistant asks about that chart. Empty means that event has not happened.",
   performance: "Performance groups leads by origin: story, post, reel, ad, or a keyword you name. The 12-month figure is a projection from numbers you type, not revenue already earned.",
@@ -194,7 +194,7 @@ export function renderConfiguration(ui) {
 
 const STRATEGY_TABS = [
   { tab: "sops", en: "SOPs", es: "SOPs" },
-  { tab: "content", en: "Content", es: "Contenido" },
+  { tab: "ctas", en: "CTAs", es: "CTAs" },
   { tab: "voice", en: "Voice Gen", es: "Voz" }
 ];
 

@@ -11,7 +11,7 @@ export const NAV_GROUPS = [
   ] },
   { id: "strategy", label: { en: "Strategy", es: "Estrategia" }, items: [
     { tab: "sops", icon: "clipboard", tone: "t1", label: { en: "SOPs", es: "SOPs" } },
-    { tab: "content", icon: "folder", tone: "t3", label: { en: "Content", es: "Contenido" } },
+    { tab: "ctas", icon: "send", tone: "t3", label: { en: "CTAs", es: "CTAs" } },
     { tab: "voice", icon: "send", tone: "t5", label: { en: "Voice Gen", es: "Voz" } }
   ] },
   { id: "workforce", label: { en: "Agent Workforce", es: "Equipo de agentes" }, items: [
@@ -37,7 +37,7 @@ const ALIASES = {
   overview: "outreacher",
   followups: "followup",
   reminders: "followup",
-  ctas: "setter",
+  content: "ctas",
   stats: "performance",
   reports: "performance",
   links: "settings",
