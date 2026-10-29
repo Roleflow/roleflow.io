@@ -7,16 +7,6 @@ import { decryptSessionFile } from "./session-file.mjs";
 
 const BLOCK = /challenge|checkpoint|action blocked|try again later|we limit|we restrict|confirm it.?s you/i;
 
-export async function attachVoiceFile(page, filePath) {
-  if (!page || !filePath) return { ok: false, reason: "no_file" };
-  const input = page.locator('input[type="file"]');
-  if (!input || typeof input.count !== "function") return { ok: false, reason: "no_file_input" };
-  const count = await input.count();
-  if (!count) return { ok: false, reason: "no_file_input" };
-  await input.first().setInputFiles(filePath);
-  return { ok: true, reason: "attached" };
-}
-
 export async function sendPlanned(input) {
   const plan = planDm(input);
   if (!plan.ok) return { ok: false, reason: plan.reason };
@@ -35,8 +25,6 @@ export async function sendPlanned(input) {
     await page.getByLabel(/search/i).fill(input.handle);
     await page.getByRole("button", { name: /^next$/i }).click();
     await page.getByRole("textbox").fill(plan.body);
-    let voice = null;
-    if (input.voicePath) voice = await attachVoiceFile(page, input.voicePath);
     await page.getByRole("button", { name: /^send$/i }).click();
     if (input.logFile) {
       appendFileSync(input.logFile, JSON.stringify({
@@ -47,7 +35,7 @@ export async function sendPlanned(input) {
       }) + "\n");
       try { chmodSync(input.logFile, 0o600); } catch (_error) { /* the directory is already private */ }
     }
-    return { ok: true, reason: "sent", body: plan.body, voice: voice && voice.reason };
+    return { ok: true, reason: "sent", body: plan.body };
   } catch (error) {
     return { ok: false, reason: error && /blocked|challenge|warning/i.test(error.message || "") ? "paused" : "not_sent" };
   } finally {

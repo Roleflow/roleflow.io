@@ -15,9 +15,13 @@ import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
 import { keyLinksBlock } from "../_shared/key-links.js";
 import { pickRoutedNote } from "../_shared/voice-route.js";
+import { API_BASE, interpretSend, sendRequest } from "../_shared/ig-gateway.js";
+import { uploadDirect } from "../_shared/clip-send.js";
+import { deliveryMime, sniffAudio } from "../_shared/clip-audio.js";
+import { loadGatewayConfig } from "../_shared/gateway-http.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
-import { textBody, audioBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
+import { textBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
 import { agentEnabled, agentKeyForKind, followupDue, followupLead, normalizePolicy, recoveryKey } from "../_shared/agent-control.js";
@@ -335,16 +339,85 @@ async function runOutbox(db, row) {
       notes: "dm_disabled"
     });
   }
-  const attachment = routed && routed.send
-    ? { path: routed.note.storage_path, bucket: "acq-voice" }
-    : tokenNote;
-  const sent = await deliver(db, businessId, thread, settings, spoken, tokenNote ? null : plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id, attachment);
-  if (sent.ok && routed && routed.send) await rememberVoice(db, businessId, thread, routed.note);
+  if (routed && routed.send) {
+    const audio = await sendLibraryAudio(db, businessId, thread, routed.note);
+    await db.from("acq_voice_sends").insert({
+      agent_id: businessId,
+      voice_note_id: routed.note.id,
+      target_id: thread.target_id,
+      slot: "library",
+      result: audio.ok ? "sent" : "skipped",
+      notes: audio.ok ? "" : String(audio.error || "outside_24h").slice(0, 200)
+    });
+    if (audio.conversationId) await rememberVoice(db, businessId, audio.conversationId, routed.note, audio.ok ? "sent" : "failed");
+  }
+  const sent = await deliver(db, businessId, thread, settings, spoken, tokenNote ? null : plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id, tokenNote);
   return finish(sent.ok ? "done" : "failed", sent.error || null);
 }
 
+async function sendLibraryAudio(db, businessId, thread, note) {
+  const config = await loadGatewayConfig(db);
+  if (!config.apiKey) return { ok: false, error: "Instagram is not connected yet.", conversationId: "" };
+  const account = await db.from("ig_gateway_accounts").select("account_id").eq("business_id", businessId).eq("status", "connected").maybeSingle();
+  if (account.error || !account.data || !account.data.account_id) return { ok: false, error: "Instagram is not connected yet.", conversationId: "" };
+  const handle = String(thread.username || "").replace(/^@/, "");
+  const contact = handle
+    ? await db.from("acq_contacts").select("id").eq("business_id", businessId).ilike("ig_handle", handle).maybeSingle()
+    : { data: null, error: null };
+  if (!contact.data) return { ok: false, error: "This chat has no Instagram thread yet.", conversationId: "" };
+  const conversation = await db.from("acq_conversations").select("id, external_id").eq("business_id", businessId).eq("contact_id", contact.data.id).limit(1);
+  const row = conversation.data && conversation.data[0];
+  if (!row || !row.external_id) return { ok: false, error: "This chat has no Instagram thread yet.", conversationId: row && row.id || "" };
+  const downloaded = await db.storage.from("acq-voice").download(note.storage_path);
+  if (downloaded.error || !downloaded.data) return { ok: false, error: "The voice note was not sent.", conversationId: row.id };
+  const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
+  const file = audioUploadFile(note, bytes);
+  const uploaded = await uploadDirect({
+    apiKey: config.apiKey,
+    fetchImpl: fetch,
+    file: { bytes, mime: file.mime, filename: file.filename, kind: "audio" }
+  });
+  if (!uploaded.url) return { ok: false, error: uploaded.error || "The voice note was not sent.", conversationId: row.id };
+  const request = sendRequest({
+    kind: "reply",
+    payload: {
+      accountId: account.data.account_id,
+      conversationId: row.external_id,
+      text: "",
+      attachmentUrl: uploaded.url,
+      attachmentType: "audio"
+    }
+  });
+  let response;
+  try {
+    response = await fetch(API_BASE + request.path, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + config.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(request.body)
+    });
+  } catch (_error) {
+    return { ok: false, error: "The voice note was not sent.", conversationId: row.id };
+  }
+  const payload = await response.json().catch(() => ({}));
+  const result = interpretSend(response.status, payload);
+  return { ok: result.ok, error: result.error, conversationId: row.id };
+}
+
+function audioUploadFile(note, bytes) {
+  const name = String((note && note.storage_path) || "voice-note.wav");
+  const sniffed = sniffAudio(bytes);
+  const mime = sniffed || deliveryMime((note && note.mime_type) || "", name);
+  const filename = mime === "audio/mp4" ? "voice-note.m4a" : mime === "audio/aac" ? "voice-note.aac" : "voice-note.wav";
+  return { mime, filename };
+}
+
+async function voiceSendingOn(db, businessId) {
+  const controls = await db.from("acq_dm_controls").select("enabled, killed").eq("business_id", businessId).maybeSingle();
+  return !controls.error && Boolean(controls.data) && controls.data.enabled === true && controls.data.killed !== true;
+}
+
 async function routedVoice(db, businessId, thread, state) {
-  const notes = await db.from("acq_voice_library").select("id, title, storage_path, assignment_kind, step_name, lead_handle, active, deleted_at").eq("agent_id", businessId).eq("active", true);
+  const notes = await db.from("acq_voice_library").select("id, title, storage_path, mime_type, assignment_kind, step_name, lead_handle, active, deleted_at").eq("agent_id", businessId).eq("active", true);
   if (notes.error) return null;
   const prior = thread.target_id
     ? await db.from("acq_voice_sends").select("voice_note_id").eq("agent_id", businessId).eq("target_id", thread.target_id).eq("result", "sent")
@@ -357,27 +430,10 @@ async function routedVoice(db, businessId, thread, state) {
     sentIds
   });
   if (!note || !note.storage_path) return null;
-  const controls = await db.from("acq_dm_controls").select("enabled, killed").eq("business_id", businessId).maybeSingle();
-  const send = !controls.error && controls.data && controls.data.enabled === true && controls.data.killed !== true;
-  return { note, send };
+  return { note, send: await voiceSendingOn(db, businessId) };
 }
 
-async function rememberVoice(db, businessId, thread, note) {
-  await db.from("acq_voice_sends").insert({
-    agent_id: businessId,
-    voice_note_id: note.id,
-    target_id: thread.target_id,
-    slot: "library",
-    result: "sent",
-    notes: ""
-  });
-  const handle = String(thread.username || "").replace(/^@/, "");
-  if (!handle) return;
-  const contact = await db.from("acq_contacts").select("id").eq("business_id", businessId).ilike("ig_handle", handle).maybeSingle();
-  if (contact.error || !contact.data) return;
-  const conversation = await db.from("acq_conversations").select("id").eq("business_id", businessId).eq("contact_id", contact.data.id).limit(1);
-  const conversationId = conversation.data && conversation.data[0] && conversation.data[0].id;
-  if (!conversationId) return;
+async function rememberVoice(db, businessId, conversationId, note, status) {
   await db.from("acq_messages").insert({
     business_id: businessId,
     conversation_id: conversationId,
@@ -385,7 +441,7 @@ async function rememberVoice(db, businessId, thread, note) {
     sender: "ai",
     body: "Voice note: " + (note.title || "Voice note"),
     metadata: { media_path: note.storage_path, media_kind: "audio", bucket: "acq-voice", voice_note_id: note.id },
-    delivery_status: "sent"
+    delivery_status: status === "sent" ? "sent" : "failed"
   });
 }
 
@@ -447,29 +503,33 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
   const token = await readIgToken(db, businessId);
   if (!token) return { ok: false, error: "Instagram is not connected." };
   const texts = (bubbles || []).filter(Boolean);
-  let voiceUrl = null;
-  if (voiceNote && voiceNote.path && kind !== "comment_private" && kind !== "comment_voice") {
-    const signed = await db.storage.from(voiceNote.bucket || "acq-voice").createSignedUrl(voiceNote.path, 3600);
-    voiceUrl = signed.data?.signedUrl || null;
-    if (voiceUrl) {
-      await postGraph(token, withPolicy(audioBody({ recipientId: thread.igsid, url: voiceUrl }), decision));
-    }
-  } else if (slot) {
+  let voiceAttached = false;
+  const allowVoice = kind !== "comment_private" && kind !== "comment_voice" && await voiceSendingOn(db, businessId);
+  if (allowVoice && voiceNote && voiceNote.path) {
+    const note = {
+      id: voiceNote.id || "",
+      title: voiceNote.title || "Voice note",
+      storage_path: voiceNote.path,
+      mime_type: voiceNote.mime || ""
+    };
+    const audio = await sendLibraryAudio(db, businessId, thread, note);
+    voiceAttached = audio.ok;
+    if (audio.conversationId) await rememberVoice(db, businessId, audio.conversationId, note, audio.ok ? "sent" : "failed");
+  } else if (allowVoice && slot) {
     const picked = await db.rpc("acq_pick_voice_note", { p_agent: businessId, p_slot: slot, p_niche: null, p_variant: null });
     const note = picked.data;
     if (note?.storage_path) {
-      const signed = await db.storage.from("acq-voice").createSignedUrl(note.storage_path, 3600);
-      voiceUrl = signed.data?.signedUrl || null;
-      if (voiceUrl) {
-        await postGraph(token, withPolicy(audioBody({ recipientId: thread.igsid, url: voiceUrl }), decision));
-        await db.from("acq_voice_sends").insert({
-          agent_id: businessId,
-          voice_note_id: note.id,
-          target_id: thread.target_id,
-          slot,
-          result: "sent"
-        });
-      }
+      const audio = await sendLibraryAudio(db, businessId, thread, note);
+      voiceAttached = audio.ok;
+      await db.from("acq_voice_sends").insert({
+        agent_id: businessId,
+        voice_note_id: note.id,
+        target_id: thread.target_id,
+        slot,
+        result: audio.ok ? "sent" : "skipped",
+        notes: audio.ok ? "" : String(audio.error || "not_sent").slice(0, 200)
+      });
+      if (audio.conversationId) await rememberVoice(db, businessId, audio.conversationId, note, audio.ok ? "sent" : "failed");
     }
   }
   const chunks = texts.length ? texts : [];
@@ -486,7 +546,7 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
       thread_id: thread.id,
       direction: "out",
       body: text,
-      kind: voiceUrl ? "audio+text" : "text"
+      kind: voiceAttached ? "audio+text" : "text"
     });
     await db.from("ig_send_log").insert({ business_id: businessId });
   }

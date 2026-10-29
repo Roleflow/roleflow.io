@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { pickRoutedNote, stepForState, usedCounts, workflowSteps } from "../acquire/voice-route.js";
 import { encodeWav, VOICE_MIME } from "../acquire/wav-encode.js";
-import { attachVoiceFile } from "../workers/roleflow-dm/send.mjs";
+import { sendRequest } from "../supabase/functions/_shared/ig-gateway.js";
+import { sniffAudio } from "../supabase/functions/_shared/clip-audio.js";
+
+const root = new URL("../", import.meta.url);
+const read = (file) => fs.readFileSync(new URL(file, root), "utf8");
 
 const steps = workflowSteps("Intro\nQualify the budget\nThen send the Booking link");
 assert.equal(steps.includes("Intro"), true);
@@ -27,17 +31,7 @@ assert.equal(header.startsWith("RIFF"), true);
 assert.equal(header.includes("WAVE"), true);
 assert.equal(VOICE_MIME, "audio/wav");
 
-const missing = await attachVoiceFile({ locator: () => ({ count: async () => 0, first: () => ({ setInputFiles: async () => {} }) }) }, "note.wav");
-assert.equal(missing.reason, "no_file_input");
-let attached = "";
-const found = await attachVoiceFile({
-  locator: () => ({ count: async () => 1, first: () => ({ setInputFiles: async (path) => { attached = path; } }) })
-}, "note.wav");
-assert.equal(found.reason, "attached");
-assert.equal(attached, "note.wav");
-
-const root = new URL("../", import.meta.url);
-const read = (file) => fs.readFileSync(new URL(file, root), "utf8");
+assert.doesNotMatch(read("workers/roleflow-dm/send.mjs"), /attachVoiceFile|setInputFiles/);
 assert.equal(read("acquire/voice-route.js"), read("supabase/functions/_shared/voice-route.js"));
 const page = read("acquire/voice-desk.js") + read("acquire/app.js");
 assert.match(page, /Unassigned/);
@@ -54,6 +48,16 @@ assert.match(page, /deleted_at/);
 assert.doesNotMatch(page, /zernio/i);
 assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /pickRoutedNote/);
 assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /dm_disabled/);
+assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /uploadDirect/);
+assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /attachmentType: "audio"/);
+assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /sniffAudio/);
+assert.doesNotMatch(read("supabase/functions/roleflow-acquisition/index.ts"), /audioBody/);
+assert.equal(sniffAudio(new Uint8Array(await wav.arrayBuffer())), "audio/wav");
+const audio = sendRequest({ kind: "reply", payload: { accountId: "acct", conversationId: "thread", text: "", attachmentUrl: "https://cdn.example/note.wav", attachmentType: "audio" } });
+assert.equal(audio.body.attachmentType, "audio");
+assert.equal(audio.body.attachmentUrl, "https://cdn.example/note.wav");
+assert.equal(Object.hasOwn(audio.body, "voiceNote"), false);
+assert.equal(audio.body.message, undefined);
 assert.match(read("acquire/cta-page.js"), /Library note/);
 const sql = read("supabase/migrations/20261029200000_voice_library_names.sql");
 assert.match(sql, /assignment_kind/);
