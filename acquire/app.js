@@ -279,6 +279,9 @@ async function boot() {
     if (new URLSearchParams(location.search).get("sheet") === "1" && state.contacts && state.contacts[0]) {
       state.studio = { view: "board", page: 1, query: {}, open: "contact:" + state.contacts[0].id, schedule: "calendly", sim: { as: "lead", state: "open", version: "", lines: [] }, proposal: null, edit: "" };
     }
+    if (new URLSearchParams(location.search).get("built") === "1") {
+      state.sopReview = localSopReview(state.sopWorkflow, state.winningConversations || []);
+    }
     armEditorRequest();
     fillPicker();
     hideBoot();
@@ -645,12 +648,14 @@ async function loadAll(id, token) {
   state.sectionErrors.winning = Boolean(winning.error);
   const [intake, intakeFiles, intakeLinks] = await Promise.all([
     q.from("acq_onboarding").select("offer, price, ideal, booking_link, criteria, disqualifiers, status, sources, draft").eq("business_id", id).maybeSingle(),
-    q.from("acq_onboarding_materials").select("id, name, kind, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
+    q.from("acq_onboarding_materials").select("id, name, kind, body, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
     q.from("acq_onboarding_links").select("id, expires_at, revoked_at, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(10)
   ]);
   if (!live()) return false;
   state.onboarding = intake.error || !intake.data ? (state.onboarding || null) : intake.data;
   state.onboardingMaterials = intakeFiles.error ? [] : intakeFiles.data || [];
+  const storedSop = (state.onboardingMaterials || []).find((item) => item.name === "SOP workflow" && item.body);
+  if (storedSop) state.sopWorkflow = storedSop.body;
   state.onboardingLinks = intakeLinks.error ? [] : intakeLinks.data || [];
   state.onboardingDraft = intake.data && intake.data.draft && intake.data.draft.prompt ? intake.data.draft : state.onboardingDraft;
   state.bookingLink = bookingLinkFor(state.settings && state.settings.booking_fallback_url);
@@ -1809,17 +1814,26 @@ async function saveBulkConversations(text) {
   }
 }
 
-async function buildSop(workflow) {
+async function buildSop(workflow, threads) {
   state.sopError = "";
+  const pending = String(threads || "").trim() ? parseBulkThreads(threads) : [];
   try {
     if (!state.supabase) {
-      state.sopReview = localSopReview(workflow || state.sopWorkflow, state.winningConversations || []);
+      const extra = pending.map((thread, index) => ({
+        id: "bulk-build-" + index,
+        outcome: thread.outcome,
+        raw_text: thread.raw_text
+      }));
+      state.sopReview = localSopReview(workflow || state.sopWorkflow, extra.concat(state.winningConversations || []));
       if (!state.onboarding) state.onboarding = {};
       state.onboarding.status = advanceStatus(state.onboarding.status, "drafted");
       paint();
       return;
     }
     if (String(workflow || "").trim()) await saveSopWorkflow(workflow);
+    for (const thread of pending) {
+      await saveWinning({ raw_text: thread.raw_text, messages: thread.messages, outcome: thread.outcome, notes: thread.notes, title: thread.label });
+    }
     const saved = await dashboardCall({ action: "build_onboarding" });
     const details = saved.prompt ? JSON.parse(saved.prompt) : {};
     state.sopReview = {
@@ -4780,6 +4794,10 @@ function readPreview() {
       }
     ],
     brief: { fields: { sell: "A coaching offer for founders who want a steadier calendar.", who: "Founders with an Instagram audience.", offer: "A done-with-you acquisition system.", pains: "Inconsistent calls.", guarantee: "You can pause the workspace any time." } },
+    sopWorkflow: "Offer: a coaching system for founders. Qualify budget, then book a call. Tone: short and direct.",
+    winningConversations: [
+      { id: "w1", title: "March close", outcome: "closed", notes: "They asked first", raw_text: "Me: hey\nThem: let's book", created_at: "2026-10-20T09:00:00Z" }
+    ],
     agentCards: [{ role: "qualification", name: "Setter", instructions: "Ask one question at a time.", delegations: [{ to: "appointment_booking", when: "they agree to a call" }] }],
     user: { id: "preview-user", email: "owner@example.com", user_metadata: { full_name: "Preview owner" } },
     accountProfile: { full_name: "Preview owner", email: "owner@example.com" },

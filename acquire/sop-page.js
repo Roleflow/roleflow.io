@@ -1,28 +1,14 @@
-// Dedicated SOP page. It reuses the onboarding materials, winning conversations,
-// client link, and prompt versions. Applying a build saves a new version.
+// SOP page: workflow, top-converting conversations, and Build my setter.
+// Applying a build saves a new prompt version. Stored rows stay in the database.
 
 import { playbookFromSources } from "./onboarding-build.js";
-import { parseBulkThreads } from "./winning-conversations.js";
 
 const COPY = {
   en: {
     title: "SOP",
-    body: "Paste how this business sells, and the conversations that booked or closed. Build my setter drafts a prompt for you to review. Nothing goes live until you save it.",
-    progress: "Onboarding progress",
-    sops: "SOPs added",
-    conversations: "Conversations added",
-    built: "Prompt built",
-    tested: "Simulator tested",
-    live: "Setter live",
-    test: "Test in Simulator",
-    link: "Client link",
     workflow: "SOP workflow",
-    workflowHelp: "Offer, ideal client, pricing rules, qualification, objections, booking, tone, and do's and don'ts.",
-    upload: "Upload .txt, .md, .pdf, or .docx",
-    shots: "Screenshots are not read. Paste the text.",
     saveSop: "Save SOP",
     threads: "Top-converting conversations",
-    threadsHelp: "Paste one or more threads. Separate them with a line of ---. Start each with Label, Outcome, and Note if you have them.",
     saveThreads: "Save conversations",
     outcome: "Outcome",
     note: "Note",
@@ -43,22 +29,9 @@ const COPY = {
   },
   es: {
     title: "SOP",
-    body: "Pega cómo vende este negocio y las conversaciones que reservaron o cerraron. Crear mi setter redacta un prompt para que lo revises. Nada se publica hasta que lo guardes.",
-    progress: "Progreso de onboarding",
-    sops: "SOPs añadidos",
-    conversations: "Conversaciones añadidas",
-    built: "Prompt creado",
-    tested: "Simulador probado",
-    live: "Setter en vivo",
-    test: "Probar en el simulador",
-    link: "Enlace para el cliente",
     workflow: "Flujo del SOP",
-    workflowHelp: "Oferta, cliente ideal, precios, calificación, objeciones, reserva, tono y qué hacer y qué no.",
-    upload: "Sube .txt, .md, .pdf o .docx",
-    shots: "Las capturas no se leen. Pega el texto.",
     saveSop: "Guardar SOP",
     threads: "Conversaciones que más convierten",
-    threadsHelp: "Pega uno o más hilos. Sepáralos con una línea ---. Empieza cada uno con Label, Outcome y Note si los tienes.",
     saveThreads: "Guardar conversaciones",
     outcome: "Resultado",
     note: "Nota",
@@ -106,28 +79,15 @@ export function renderSopPage(ui) {
   const lang = ui.language && ui.language() === "es" ? "es" : "en";
   const labels = PLAYBOOK_LABELS[lang];
   const page = ui.el("section", { class: "agent", id: "sop-page" });
-  page.append(ui.el("h2", { text: copy.title }));
-  page.append(ui.el("p", { text: copy.body }));
-  page.append(progress(ui, copy));
-  const links = ui.el("div", { class: "filters" });
-  links.append(ui.el("a", { class: "btn sm", href: "#setter", text: copy.test }));
-  if (ui.state.canEdit && ui.createOnboardingLink) links.append(ui.button(copy.link, () => ui.createOnboardingLink()));
-  page.append(links);
-  if (ui.state.onboardingShare) page.append(ui.el("p", { id: "sop-share", text: ui.state.onboardingShare }));
 
   const workflow = ui.el("textarea", { id: "sop-workflow", rows: "8", maxlength: "80000", "aria-label": copy.workflow });
   workflow.value = ui.state.sopWorkflow || "";
   workflow.addEventListener("input", () => { ui.state.sopWorkflow = workflow.value; });
   page.append(ui.el("h3", { text: copy.workflow }));
-  page.append(ui.el("p", { class: "mute", text: copy.workflowHelp }));
   page.append(workflow);
-  page.append(ui.el("p", { class: "mute", text: copy.upload }));
-  page.append(ui.el("p", { class: "mute", text: copy.shots }));
-  page.append(ui.el("input", { id: "sop-file", type: "file", accept: ".txt,.md,.pdf,.docx,text/plain" }));
   if (ui.state.canEdit) page.append(ui.button(copy.saveSop, () => ui.saveSopWorkflow(workflow.value)));
 
   page.append(ui.el("h3", { text: copy.threads }));
-  page.append(ui.el("p", { class: "mute", text: copy.threadsHelp }));
   const bulk = ui.el("textarea", { id: "sop-threads", rows: "8", maxlength: "80000", "aria-label": copy.threads, placeholder: "---\nLabel: March\nOutcome: closed\nMe: hey\nThem: book me\n---" });
   page.append(bulk);
   if (ui.state.canEdit) page.append(ui.button(copy.saveThreads, () => ui.saveBulkConversations(bulk.value)));
@@ -159,7 +119,7 @@ export function renderSopPage(ui) {
       build.textContent = copy.building;
       const status = ui.el("p", { id: "sop-build-status", class: "claude-notice", role: "status", text: copy.building });
       page.append(status);
-      await ui.buildSop(workflow.value);
+      await ui.buildSop(workflow.value, bulk.value);
     });
     build.id = "build-my-setter";
     page.append(build);
@@ -167,21 +127,6 @@ export function renderSopPage(ui) {
   if (ui.state.sopError) page.append(ui.el("p", { id: "sop-error", class: "claude-notice", role: "status", text: ui.state.sopError }));
   if (ui.state.sopReview) page.append(review(ui, copy, labels, ui.state.sopReview));
   return page;
-}
-
-function progress(ui, copy) {
-  const state = sopProgress(ui.state);
-  const list = ui.el("ol", { class: "intake-check", id: "sop-progress" });
-  [
-    ["hasSop", copy.sops],
-    ["hasConversations", copy.conversations],
-    ["built", copy.built],
-    ["tested", copy.tested],
-    ["live", copy.live]
-  ].forEach(([key, label]) => {
-    list.append(ui.el("li", { class: state[key] ? "is-done" : "", text: (state[key] ? "✓ " : "") + label }));
-  });
-  return list;
 }
 
 function review(ui, copy, labels, draft) {
