@@ -2,7 +2,8 @@
 // A voice reply is a file recorded or uploaded here. Nothing on this page is sent.
 
 import { ROLES } from "./model.js";
-import { buttonError, dmSendBadge, keywordConflict } from "./comment-cta.js";
+import { buttonError, keywordConflict } from "./comment-cta.js";
+import { mountSendBadge } from "./send-badge.js";
 
 const COPY = {
   en: {
@@ -112,17 +113,11 @@ function desk(ui) {
 
 export function renderCtaPage(ui) {
   const copy = copyFor(ui);
-  const lang = ui.language && ui.language() === "es" ? "es" : "en";
   const wrap = ui.el("div", { class: "studio cta-page" });
   const header = ui.pageHeader
     ? ui.pageHeader(ui, "CTAs", copy.held, "ctas", "comment")
     : ui.el("h2", { text: "CTAs" });
-  const actions = header.querySelector ? header.querySelector(".page-actions") : null;
-  if (actions) {
-    const badge = dmSendBadge(ui.state.autoDm);
-    const label = badge.tone === "on" ? (lang === "es" ? "En vivo" : "Live") : (lang === "es" ? "Envío apagado" : badge.label);
-    actions.prepend(ui.el("span", { id: "cta-send-state", class: "integration-status " + badge.tone, text: label }));
-  }
+  mountSendBadge(header, ui);
   wrap.append(header);
   const tabs = ui.el("div", { class: "cta-tabs", role: "tablist" });
   [["posts", copy.posts], ["stories", copy.stories]].forEach(([id, label]) => {
@@ -240,14 +235,20 @@ function keywordForm(ui, copy, close) {
   const kind = select(ui, copy.kind, [["text", copy.text], ["voice", copy.voice]], editing && editing.reply_kind === "voice" ? "voice" : "text");
   const voice = voiceField(ui, copy, editing);
   const libraryNotes = (ui.state.voices || []).filter((note) => note && !note.deleted_at && note.storage_path);
-  const library = select(ui, "Library note", [["", "Record or upload"]].concat(libraryNotes.map((note) => [note.id, note.title || "Voice note"])), editing && editing.voice_note_id || "");
+  const library = select(ui, "Library note", [["", "No library note / custom file"]].concat(libraryNotes.map((note) => [note.id, note.title || "Voice note"])), editing && editing.voice_note_id || "");
   library.addEventListener("change", () => {
     const note = libraryNotes.find((item) => item.id === library.value);
     voice.libraryId = note ? note.id : "";
     voice.path = note ? note.storage_path : "";
-    voice.mime = note ? note.mime_type || "audio/wav" : voice.mime;
+    voice.mime = note ? note.mime_type || "audio/wav" : "";
+    const picked = Boolean(note);
+    if (voice.custom) voice.custom.hidden = picked;
+    if (voice.preview) {
+      voice.preview.hidden = !picked;
+      if (picked && ui.signAudio) ui.signAudio(note.storage_path).then((url) => { if (url) voice.preview.src = url; });
+      if (!picked) voice.preview.removeAttribute("src");
+    }
   });
-  if (library.value) library.dispatchEvent(new Event("change"));
   const voiceHelp = ui.el("p", { class: "mute", text: copy.voiceHelp });
   const buttonText = ui.field(copy.buttonText, editing ? editing.button_label || "" : "");
   const buttonLink = ui.field(copy.buttonLink, editing ? editing.button_url || "" : "");
@@ -259,14 +260,18 @@ function keywordForm(ui, copy, close) {
   const showVoice = () => {
     const on = kind.value === "voice";
     voice.hidden = !on;
-    voiceHelp.hidden = !on;
     libraryLabel.hidden = !on;
+    const picked = Boolean(library.value);
+    voiceHelp.hidden = !on || picked;
+    if (voice.custom) voice.custom.hidden = !on || picked;
+    if (voice.preview) voice.preview.hidden = !on || !picked;
   };
   const showPublication = () => { publication.label.hidden = scope.value !== "post"; };
   kind.addEventListener("change", showVoice);
   scope.addEventListener("change", showPublication);
   showVoice();
   showPublication();
+  if (library.value) library.dispatchEvent(new Event("change"));
   form.append(keyword.label, labeled(ui, copy.match, mode), labeled(ui, copy.dm, dm), ui.el("p", { class: "mute", text: copy.dmHelp }));
   libraryLabel.classList.add("voice-choice");
   form.append(labeled(ui, copy.kind, kind), voiceHelp, libraryLabel, voice);
@@ -317,12 +322,17 @@ function keywordForm(ui, copy, close) {
 
 function voiceField(ui, copy, editing) {
   const box = ui.el("div", { class: "cta-voice" });
+  const custom = ui.el("div", { class: "cta-voice-custom" });
   const file = ui.el("input", { type: "file", accept: "audio/*", class: "cta-file", "aria-label": copy.upload });
   const upload = ui.el("button", { type: "button", class: "cta-upload" }, [copy.upload]);
   upload.addEventListener("click", () => file.click());
   const status = ui.el("p", { class: "mute", text: editing && editing.voice_path ? editing.voice_path.split("/").pop() : "" });
   const player = ui.el("audio", { class: "cta-audio", controls: "controls" });
   player.hidden = true;
+  const picked = ui.el("audio", { class: "cta-audio", controls: "controls" });
+  picked.hidden = true;
+  box.custom = custom;
+  box.preview = picked;
   box.file = null;
   box.mime = "";
   const showFile = (picked) => {
@@ -363,7 +373,8 @@ function voiceField(ui, copy, editing) {
     recorder.start();
     record.textContent = copy.stop;
   });
-  box.append(file, upload, record, status, player);
+  custom.append(file, upload, record);
+  box.append(custom, status, player, picked);
   return box;
 }
 

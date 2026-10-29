@@ -210,6 +210,10 @@ body.platform .home-card h3,body.platform .kpi span,body.platform .snap span,.me
 body.platform .tone-accounts{background:#1D2848}
 body.platform .tone-alerts{background:#243155}
 body.platform .info-banner,body.platform .banner{background:#101A33;border:0;color:var(--ink);border-radius:16px;box-shadow:none}
+body.platform .banner.gold,body.admin-panel .banner.gold{background:rgba(232,176,74,.12);border:1px solid var(--gold);color:var(--ink)}
+body.platform .banner.gold p,body.admin-panel .banner.gold p{margin:0}
+body.platform .banner.gold,body.admin-panel .banner.gold{background:rgba(232,176,74,.12);border:1px solid var(--gold);color:var(--ink)}
+body.platform .banner.gold p,body.admin-panel .banner.gold p{margin:0}
 body.platform .btn,body.admin-panel .btn{background:var(--grad);color:#fff;border:0;border-radius:999px;box-shadow:var(--shadow);padding:10px 18px;font-weight:600}
 body.platform .btn:hover,body.admin-panel .btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
 body.platform .btn.ghost,body.admin-panel .btn.ghost{background:transparent;color:var(--ink);border:0;box-shadow:none}
@@ -424,8 +428,18 @@ body.platform main.wrap:has(.pipe-board){width:min(1280px,calc(100% - 32px));max
 .cta-list-head h3{margin:0}
 .cta-actions{display:flex;gap:10px;align-items:center}
 body.platform .btn.cta-danger,body.admin-panel .btn.cta-danger{background:transparent;color:var(--m);border:1px solid var(--m);box-shadow:none}
-body.platform .btn.cta-secondary,body.admin-panel .btn.cta-secondary{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none}
-body.platform #cta-send-state.integration-status.wait,body.admin-panel #cta-send-state.integration-status.wait{color:#E8B04A}
+body.platform .btn.cta-secondary,body.admin-panel .btn.cta-secondary,body.platform button.cta-secondary,body.admin-panel button.cta-secondary{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none;border-radius:999px;padding:8px 14px;font:600 .85rem var(--b);cursor:pointer}
+body.platform .dm-send-state.integration-status.wait,body.admin-panel .dm-send-state.integration-status.wait,body.platform #cta-send-state.integration-status.wait,body.admin-panel #cta-send-state.integration-status.wait{color:#E8B04A}
+.voice-card-actions{display:flex;flex-wrap:nowrap;gap:8px;align-items:center}
+body.platform .voice-card label,body.admin-panel .voice-card label{display:grid;gap:6px}
+body.platform .voice-card input:not([type="checkbox"], [type="radio"], [type="file"]),body.admin-panel .voice-card input:not([type="checkbox"], [type="radio"], [type="file"]){width:100%;box-sizing:border-box;background:transparent;color:var(--ink);border:1px solid rgba(154,166,198,.28);border-radius:12px;padding:10px 12px;font:inherit}
+body.platform .voice-card .btn.cta-secondary,body.admin-panel .voice-card .btn.cta-secondary,body.platform .voice-card .btn.cta-danger,body.admin-panel .voice-card .btn.cta-danger{width:auto;flex:0 0 auto;background:transparent;box-shadow:none;border-radius:999px}
+body.platform .voice-card .btn.cta-danger,body.admin-panel .voice-card .btn.cta-danger{color:var(--m);border:1px solid var(--m)}
+body.platform .voice-tools .cta-upload,body.platform .voice-tools .cta-record,body.admin-panel .voice-tools .cta-upload,body.admin-panel .voice-tools .cta-record{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:8px 14px;cursor:pointer;font:600 .85rem var(--b)}
+.rec-timer{display:flex;align-items:center;gap:8px;color:var(--ink);font-variant-numeric:tabular-nums}
+.rec-dot{width:8px;height:8px;border-radius:99px;background:#E85D4C;animation:recPulse 1s ease-in-out infinite}
+@keyframes recPulse{50%{opacity:.35}}
+.step-warn{color:var(--gold);margin:0}
 .cta-dialog-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .cta-dialog-actions .btn{width:auto}
 .cta-dialog{position:fixed;inset:0;z-index:70}
@@ -453,6 +467,7 @@ body.platform #cta-send-state.integration-status.wait,body.admin-panel #cta-send
 .desk-filters{display:flex;flex-wrap:wrap;gap:6px}
 .desk-filters button{border:1px solid var(--line);background:#1D2848;color:var(--ink);border-radius:99px;padding:6px 10px;cursor:pointer;font:600 .78rem var(--b)}
 .desk-filters button[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+.bubble audio{display:block;width:min(280px,100%);min-width:min(280px,100%)}
 .bubble.lead{background:#101A33;border:1px solid var(--line)}
 .bubble.ai{background:rgba(123,77,255,.22);margin-left:auto}
 .bubble.human{background:rgba(192,64,154,.2);margin-left:auto}
@@ -581,6 +596,7 @@ body.platform .agent label:not(.switch),body.admin-panel .agent label:not(.switc
 body.platform .agent label.cta-publication[hidden],body.admin-panel .agent label.cta-publication[hidden],
 body.platform .agent label.voice-choice[hidden],body.admin-panel .agent label.voice-choice[hidden],
 body.platform .cta-dialog .cta-voice[hidden],body.admin-panel .cta-dialog .cta-voice[hidden],
+body.platform .cta-dialog .cta-voice-custom[hidden],body.admin-panel .cta-dialog .cta-voice-custom[hidden],
 body.platform .cta-dialog p[hidden],body.admin-panel .cta-dialog p[hidden]{display:none}
 body.platform .agent input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
 body.platform .agent textarea,

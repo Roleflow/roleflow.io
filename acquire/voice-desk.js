@@ -2,14 +2,22 @@
 
 import { SUGGESTED_STEPS, usedCounts, workflowSteps } from "./voice-route.js";
 import { transcodeToWav } from "./wav-encode.js";
+import { mountSendBadge } from "./send-badge.js";
 
 export function renderVoiceDesk(ui) {
   const es = ui.language && ui.language() === "es";
-  const wrap = ui.el("div", { class: "acq voice-desk" });
+  const wrap = ui.el("div", { class: "studio voice-desk" });
+  const header = ui.pageHeader
+    ? ui.pageHeader(ui, "Voice Gen", es
+      ? "Grabas la nota y le pones nombre. El setter la envía en ese paso o solo a esa persona."
+      : "Record a note and name it. The setter sends it at that step, or only to that person.", "voice", "send")
+    : ui.el("h2", { text: "Voice Gen" });
+  mountSendBadge(header, ui);
+  wrap.append(header);
   wrap.append(ui.el("section", { class: "banner gold" }, [
     ui.el("p", { text: es
-      ? "Grabas la nota, le pones nombre y el setter la envía en ese paso o solo a esa persona. Nada se envía mientras los DM están apagados."
-      : "Record a note and name it. The setter sends it at that SOP step, or only to that person. Nothing is sent while DMs are off." })
+      ? "Nada se envía mientras los DM están apagados."
+      : "Nothing is sent while DMs are off." })
   ]));
   if (ui.state.canEdit) wrap.append(recorder(ui, es));
   wrap.append(library(ui, es));
@@ -31,18 +39,25 @@ function card(ui, note, used, es) {
   node.append(ui.el("p", { text: assignmentLabel(note, es) }));
   const when = note.created_at ? new Date(note.created_at).toLocaleDateString() : "—";
   const seconds = note.duration_ms ? Math.round(note.duration_ms / 1000) + "s" : "—";
-  node.append(ui.el("p", { class: "mute", text: seconds + " · " + when + " · " + (es ? "usada " : "used ") + used + (es ? " veces" : " times") }));
+  const usedWord = es ? (used === 1 ? "vez" : "veces") : (used === 1 ? "time" : "times");
+  node.append(ui.el("p", { class: "mute", text: seconds + " · " + when + " · " + (es ? "usada " : "used ") + used + " " + usedWord }));
+  const steps = workflowSteps(ui.state.sopWorkflow || "");
+  if (note.assignment_kind === "step" && note.step_name && !steps.some((step) => step.toLowerCase() === String(note.step_name).toLowerCase())) {
+    node.append(ui.el("p", { class: "step-warn", text: es ? "Paso que no está en el SOP" : "Step not in SOP" }));
+  }
   const audio = ui.el("audio", { controls: true, preload: "none" });
   node.append(audio);
   if (ui.signAudio && note.storage_path) ui.signAudio(note.storage_path).then((url) => { if (url) audio.src = url; });
   if (!ui.state.canEdit) return node;
   const name = ui.field(es ? "Nombre" : "Name", note.title || "");
-  const tools = ui.el("div", { class: "filters" });
-  tools.append(ui.button(es ? "Renombrar" : "Rename", () => ui.renameVoice(note, name.input.value)));
-  tools.append(ui.button(es ? "Volver a grabar" : "Re-record", () => ui.rerecordVoice(note)));
+  const tools = ui.el("div", { class: "voice-card-actions" });
+  const rename = ui.button(es ? "Renombrar" : "Rename", () => ui.renameVoice(note, name.input.value));
+  const again = ui.button(es ? "Volver a grabar" : "Re-record", () => ui.rerecordVoice(note));
+  rename.classList.add("cta-secondary");
+  again.classList.add("cta-secondary");
   const remove = ui.button(es ? "Eliminar" : "Delete", () => ui.deleteVoice(note));
   remove.classList.add("cta-danger");
-  tools.append(remove);
+  tools.append(rename, again, remove);
   node.append(name.label, tools);
   return node;
 }
@@ -81,6 +96,8 @@ function recorder(ui, es) {
   kind.addEventListener("change", sync);
   sync();
   const status = ui.el("p", { class: "mute", text: "" });
+  const timer = ui.el("p", { class: "rec-timer" });
+  timer.hidden = true;
   const player = ui.el("audio", { controls: true, class: "cta-audio" });
   player.hidden = true;
   const file = ui.el("input", { type: "file", accept: "audio/*", class: "cta-file", "aria-label": es ? "Subir audio" : "Upload audio" });
@@ -92,6 +109,8 @@ function recorder(ui, es) {
   let held = null;
   let recorder = null;
   let stream = null;
+  let clock = 0;
+  let saveBtn = null;
   const preview = (blob, name) => {
     held = blob;
     player.src = URL.createObjectURL(blob);
@@ -121,8 +140,20 @@ function recorder(ui, es) {
     recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
+      clearInterval(clock);
+      timer.hidden = true;
+      if (saveBtn) saveBtn.disabled = false;
       preview(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }), es ? "Grabación" : "Recording");
     };
+    const started = Date.now();
+    timer.hidden = false;
+    timer.replaceChildren(ui.el("span", { class: "rec-dot" }), "0:00");
+    if (saveBtn) saveBtn.disabled = true;
+    clock = setInterval(() => {
+      const seconds = Math.floor((Date.now() - started) / 1000);
+      const text = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+      timer.replaceChildren(ui.el("span", { class: "rec-dot" }), text);
+    }, 250);
     recorder.start();
     record.textContent = es ? "Parar" : "Stop";
   });
@@ -134,11 +165,11 @@ function recorder(ui, es) {
     retake.hidden = true;
     file.value = "";
   });
-  form.append(title.label, labeled(ui, es ? "Para quién" : "Who it is for", kind), stepLabel, personLabel, status, player);
-  const tools = ui.el("div", { class: "filters" });
+  form.append(title.label, labeled(ui, es ? "Para quién" : "Who it is for", kind), stepLabel, personLabel, timer, status, player);
+  const tools = ui.el("div", { class: "voice-tools" });
   tools.append(upload, file, record, retake);
   form.append(tools);
-  form.append(ui.button(es ? "Guardar" : "Save", async (event) => {
+  saveBtn = ui.button(es ? "Guardar" : "Save", async (event) => {
     event.preventDefault();
     if (!title.input.value.trim()) return ui.toast(es ? "Ponle un nombre." : "Name the note.", "bad");
     if (!held) return ui.toast(es ? "Graba o sube un audio." : "Record or upload audio.", "bad");
@@ -163,7 +194,8 @@ function recorder(ui, es) {
       duration_ms: durationMs
     });
     ui.state.voiceReplace = "";
-  }));
+  });
+  form.append(saveBtn);
   form.addEventListener("submit", (event) => event.preventDefault());
   return form;
 }

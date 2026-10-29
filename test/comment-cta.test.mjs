@@ -84,7 +84,7 @@ assert.equal(strategy.items.some((item) => item.tab === "content"), false);
 assert.equal(strategy.items.some((item) => item.tab === "ctas"), true);
 assert.equal(canonicalTab("content"), "ctas");
 assert.equal(canonicalTab("ctas"), "ctas");
-const page = read("acquire/cta-page.js") + read("acquire/app.js");
+const page = read("acquire/cta-page.js") + read("acquire/app.js") + read("acquire/send-badge.js");
 assert.match(page, /Posts and Reels/);
 assert.match(page, /Voice note/);
 assert.match(page, /renderCtaPage/);

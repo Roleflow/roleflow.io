@@ -918,6 +918,7 @@ function pageUi() {
     percent,
     tabGroup,
     pageHeader,
+    signAudio,
     targetDetail: leadDetail,
     saveBrief,
     saveAgent,
@@ -3654,7 +3655,8 @@ function voiceQueue() {
 
 function voiceLibrary() {
   const wrap = renderVoiceDesk({
-    state, el, button, field, toast, paint, language, collectLeads, signAudio,
+    state, el, button, field, toast, paint, language, collectLeads, signAudio, pageHeader, go,
+    businessSync: currentSync,
     saveLibraryNote, renameVoice, rerecordVoice, deleteVoice
   });
   wrap.append(commentSlotCard());
