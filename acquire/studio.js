@@ -4,6 +4,7 @@ import {
   charCount, collectLeads, emptyBrief, exportCsv, exportJson, filterLeads, formatDelta, paginate, scoreBrief,
   validateAsset, validateLink, validateSchedule, versionDelta
 } from "./studio-model.js";
+import { columnSummary, presentLeads } from "./pipeline.js";
 import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 import { renderSopPage } from "./sop-page.js";
 
@@ -11,7 +12,7 @@ export { SETTER_SYNC };
 
 function box(ui) {
   if (!ui.state.studio) {
-    ui.state.studio = { view: "list", page: 1, query: {}, open: "", schedule: "calendly", sim: { as: "lead", state: "open", version: "", lines: [] }, proposal: null, edit: "" };
+    ui.state.studio = { view: "board", page: 1, query: {}, open: "", schedule: "calendly", sim: { as: "lead", state: "open", version: "", lines: [] }, proposal: null, edit: "" };
   }
   return ui.state.studio;
 }
@@ -301,14 +302,21 @@ export function renderCrm(ui) {
   wrap.append(header(ui, sectionText(lang, "opportunitiesTitle"), sectionText(lang, "opportunitiesBody"), "pipeline", "users"));
   const alert = sectionAlert(ui, "opportunities");
   if (alert) wrap.append(alert);
-  wrap.append(ui.el("p", { class: "mute", text: lang === "es" ? "La actualización automática es cada 22 segundos. El historial aparece cuando el flujo de eventos está conectado." : "Auto refresh in 22s. Chat history appears when the event stream is connected." }));
-  const leads = collectLeads(ui.state.contacts, ui.state.targets);
+  const leads = presentLeads(collectLeads(ui.state.contacts, ui.state.targets), {
+    deals: ui.state.deals,
+    conversations: ui.state.conversations,
+    messages: ui.state.recentMessages,
+    events: ui.state.stageEvents,
+    now: new Date()
+  });
   const query = studio.query;
   const filters = ui.el("form", { class: "crm-filters" });
-  const q = ui.field("Name or handle", query.q || "");
   const state = select(ui, "State", [["all", "Any state"]].concat(CRM_STATES), query.state || "all");
   const agents = [["", "Any agent"]].concat(ROLES.map((role) => [role.id, role.name]));
   const agent = select(ui, "Agent", agents, query.agent || "");
+  const sources = [["", "Any source"]].concat([...new Set(leads.map((lead) => lead.source).filter(Boolean))].sort().map((name) => [name, name]));
+  const source = select(ui, "Source", sources, query.source || "");
+  const mode = select(ui, "AI or manual", [["", "AI or manual"], ["on", "AI"], ["off", "Manual"]], query.ai || "");
   const tag = ui.field("Tag", query.tag || "");
   const automated = select(ui, "Automated", [["", "Any"], ["yes", "Automated"], ["no", "Not automated"]], query.automated || "");
   const verified = select(ui, "Verified", [["", "Any"], ["yes", "Verified"], ["no", "Not verified"]], query.verified || "");
@@ -320,11 +328,11 @@ export function renderCrm(ui) {
   const lastTo = ui.field("Last message to", query.lastToDate || "", "date");
   filters.addEventListener("input", () => { filters.dataset.dirty = "1"; });
   filters.addEventListener("change", () => { filters.dataset.dirty = "1"; });
-  filters.append(q.label, state, agent, tag.label, automated, verified, weFollow, theyFollow, minFollowers.label, messageMin.label, lastFrom.label, lastTo.label);
+  filters.append(labeled(ui, "Source", source), tag.label, labeled(ui, lang === "es" ? "IA o manual" : "AI or manual", mode), lastFrom.label, lastTo.label, state, agent, automated, verified, weFollow, theyFollow, minFollowers.label, messageMin.label);
   filters.append(ui.button("Apply filters", (event) => {
     event.preventDefault();
     studio.query = {
-      q: q.input.value, state: state.value, agent: agent.value, tag: tag.input.value.trim(),
+      q: (studio.query && studio.query.q) || "", state: state.value, agent: agent.value, tag: tag.input.value.trim(), source: source.value, ai: mode.value,
       automated: automated.value, verified: verified.value, weFollow: weFollow.value, theyFollow: theyFollow.value,
       minFollowers: minFollowers.input.value, messageMin: messageMin.input.value,
       lastFrom: lastFrom.input.value ? lastFrom.input.value + "T00:00:00.000Z" : "",
@@ -352,23 +360,39 @@ export function renderCrm(ui) {
   const message = ui.button(lang === "es" ? "Mensaje" : "Message", () => jumpLead(ui, page.rows[0], "message"));
   notes.classList.add("ghost");
   message.classList.add("ghost");
+  const search = ui.el("input", {
+    type: "search",
+    class: "pipe-search",
+    placeholder: lang === "es" ? "Buscar nombre o usuario" : "Search name or handle",
+    value: query.q || "",
+    "aria-label": lang === "es" ? "Buscar" : "Search"
+  });
+  search.addEventListener("change", () => {
+    studio.query = Object.assign({}, studio.query, { q: search.value.trim() });
+    studio.page = 1;
+    ui.paint();
+  });
+  const view = studio.view || "board";
   const views = ui.el("div", { class: "filters" });
-  [[ "list", lang === "es" ? "Lista" : "List" ], [ "board", lang === "es" ? "Tablero" : "Kanban" ]].forEach(([id, label]) => {
-    const button = ui.el("button", { type: "button", "aria-pressed": (studio.view || "list") === id ? "true" : "false" }, [label]);
+  [[ "board", lang === "es" ? "Tablero" : "Board" ], [ "list", lang === "es" ? "Lista" : "List" ]].forEach(([id, label]) => {
+    const button = ui.el("button", { type: "button", "aria-pressed": view === id ? "true" : "false" }, [label]);
     button.addEventListener("click", () => { studio.view = id; ui.paint(); });
     views.append(button);
   });
-  const count = ui.el("span", { text: page.total ? (lang === "es" ? "Mostrando " + page.rows.length + " de " + page.total + " personas" : "Showing " + page.rows.length + " of " + page.total + " people") : sectionText(lang, "opportunitiesNone") });
+  const countText = !leads.length ? "" : page.total
+    ? (lang === "es" ? "Mostrando " + page.rows.length + " de " + page.total + " personas" : "Showing " + page.rows.length + " of " + page.total + " people")
+    : sectionText(lang, "opportunitiesNone");
+  const count = ui.el("span", { text: countText });
   const refresh = ui.el("button", { type: "button", class: "icon-btn", "aria-label": lang === "es" ? "Actualizar" : "Refresh" }, ["↻"]);
   refresh.addEventListener("click", () => { if (ui.bootBusiness && ui.state.businessId) ui.bootBusiness(ui.state.businessId); });
-  toolbar.append(filterHost, notes, message, views, count, ui.el("span", { class: "range-label", text: lang === "es" ? "Actualización automática en 22 s" : "Auto refresh in 22s" }), refresh);
+  toolbar.append(search, filterHost, notes, message, views, count, ui.el("span", { class: "range-label", text: lang === "es" ? "Se guarda en este negocio" : "Saved on this business" }), refresh);
   toolbar.append(ui.button("Export CSV", () => download("leads.csv", exportCsv(matched), "text/csv")));
   toolbar.append(ui.button("Export JSON", () => download("leads.json", exportJson(matched), "application/json")));
   wrap.append(toolbar);
 
   if (!leads.length && !alert) wrap.append(sectionEmpty(ui, "opportunitiesEmpty"));
-  else if (studio.view === "board") wrap.append(board(ui, matched));
-  else wrap.append(table(ui, page.rows, lang));
+  if (view === "board") wrap.append(board(ui, matched, lang));
+  else if (leads.length) wrap.append(table(ui, page.rows, lang));
   const open = matched.find((lead) => lead.kind + ":" + lead.id === studio.open) || leads.find((lead) => lead.kind + ":" + lead.id === studio.open);
   if (open) wrap.append(drawer(ui, open));
   return wrap;
@@ -402,7 +426,7 @@ function leadRow(ui, lead, lang) {
   status.value = CRM_STATES.some(([value]) => value === lead.state) ? lead.state : "open";
   status.addEventListener("change", (event) => {
     event.stopPropagation();
-    if (ui.saveLead) ui.saveLead(lead, { crm_state: status.value, assigned_agent: lead.agent, ai_enabled: lead.ai, tags: lead.tags || [] });
+    if (ui.moveOpportunity) ui.moveOpportunity(lead, status.value);
   });
   statusCell.append(status);
   const info = ui.el("td");
@@ -458,21 +482,117 @@ function jumpLead(ui, lead, focus) {
   ui.paint();
 }
 
-function board(ui, rows) {
-  const boardNode = ui.el("div", { class: "kanban" });
+function board(ui, rows, lang) {
+  const boardNode = ui.el("div", { class: "pipe-board kanban" });
+  const narrow = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 860px)").matches;
   CRM_STATES.forEach(([id, label]) => {
-    const column = ui.el("section", { class: "kanban-col" });
+    const summary = columnSummary(rows, id);
+    const column = ui.el("section", { class: "pipe-col kanban-col", "data-stage": id });
+    const head = ui.el("header", { class: "pipe-head" });
+    head.append(ui.el("h3", { text: label }));
+    const value = summary.hasValue ? " · " + moneyLabel(ui, summary.valueCents) : "";
+    head.append(ui.el("span", { text: String(summary.count) + value }));
+    column.append(head);
     const items = rows.filter((lead) => lead.state === id);
-    column.append(ui.el("h3", { text: label }));
-    if (!items.length) column.append(ui.el("p", { text: "No leads" }));
-    items.forEach((lead) => {
-      const card = ui.el("button", { type: "button", class: "kanban-card" }, [lead.name || (lead.handle ? "@" + lead.handle : "Unnamed")]);
-      card.addEventListener("click", () => openLead(ui, lead));
-      column.append(card);
-    });
+    if (!items.length) column.append(ui.el("p", { class: "mute", text: lang === "es" ? "Sin leads" : "No leads" }));
+    items.forEach((lead) => column.append(pipeCard(ui, lead, narrow, lang)));
     boardNode.append(column);
   });
   return boardNode;
+}
+
+function moneyLabel(ui, cents) {
+  if (!Number.isFinite(cents)) return "—";
+  if (ui.money) return ui.money(cents, "USD");
+  return "$" + Math.round(cents / 100).toLocaleString("en-US");
+}
+
+function initials(title) {
+  const parts = String(title || "").replace(/^@/, "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "R";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function pipeCard(ui, lead, narrow, lang) {
+  const card = ui.el("article", { class: "pipe-card kanban-card" });
+  const title = lead.name || (lead.handle ? "@" + lead.handle : "Unnamed");
+  const top = ui.el("div", { class: "pipe-top" });
+  top.append(ui.el("span", { class: "biz-avatar", text: initials(lead.name || lead.handle || title) }));
+  const who = ui.el("div", { class: "pipe-who" });
+  who.append(ui.el("strong", { text: title }));
+  if (lead.name && lead.handle) who.append(ui.el("small", { text: "@" + lead.handle }));
+  top.append(who);
+  top.append(ui.el("span", { class: lead.ai ? "ai-badge" : "manual-badge", text: lead.ai ? "AI" : "Manual" }));
+  card.append(top);
+  card.append(ui.el("p", { class: "pipe-value", text: Number.isFinite(lead.valueCents) ? moneyLabel(ui, lead.valueCents) : "—" }));
+  card.append(ui.el("p", { class: "pipe-snippet", text: lead.snippet || (lang === "es" ? "Sin mensaje guardado." : "No message stored.") }));
+  const meta = ui.el("p", { class: "pipe-meta" });
+  meta.append(ui.el("span", { text: lead.lastMessageAt && ui.when ? ui.when(lead.lastMessageAt) : "—" }));
+  meta.append(ui.el("span", { text: lead.days == null ? "—" : (lang === "es" ? lead.days + " d en la etapa" : lead.days + "d in stage") }));
+  card.append(meta);
+  if ((lead.tags || []).length) {
+    const tags = ui.el("div", { class: "chips" });
+    lead.tags.forEach((tag) => tags.append(ui.el("span", { class: "chip", text: tag })));
+    card.append(tags);
+  }
+  const move = moveMenu(ui, lead, lang);
+  card.append(move);
+  bindCardPointer(card, lead, ui, narrow);
+  return card;
+}
+
+function moveMenu(ui, lead, lang) {
+  const menu = ui.el("select", { class: "pipe-move", "aria-label": lang === "es" ? "Mover a" : "Move to" });
+  CRM_STATES.forEach(([value, label]) => menu.append(ui.el("option", { value, text: label })));
+  menu.value = CRM_STATES.some(([value]) => value === lead.state) ? lead.state : "open";
+  menu.addEventListener("pointerdown", (event) => event.stopPropagation());
+  menu.addEventListener("change", (event) => {
+    event.stopPropagation();
+    if (ui.moveOpportunity) ui.moveOpportunity(lead, menu.value);
+  });
+  return menu;
+}
+
+function bindCardPointer(card, lead, ui, narrow) {
+  let startX = null;
+  let startY = null;
+  let dragging = false;
+  card.addEventListener("pointerdown", (event) => {
+    if (narrow || event.target.closest("select, button, a, input")) return;
+    if (ui.state) ui.state.pipeDragging = true;
+    startX = event.clientX;
+    startY = event.clientY;
+    card.setPointerCapture(event.pointerId);
+  });
+  card.addEventListener("pointermove", (event) => {
+    if (startX == null) return;
+    if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < 8) return;
+    dragging = true;
+    card.classList.add("dragging");
+    document.querySelectorAll(".pipe-col.over").forEach((node) => node.classList.remove("over"));
+    const under = document.elementFromPoint(event.clientX, event.clientY);
+    const column = under && under.closest ? under.closest("[data-stage]") : null;
+    if (column) column.classList.add("over");
+  });
+  card.addEventListener("pointerup", (event) => {
+    const under = document.elementFromPoint(event.clientX, event.clientY);
+    const column = under && under.closest ? under.closest("[data-stage]") : null;
+    document.querySelectorAll(".pipe-col.over").forEach((node) => node.classList.remove("over"));
+    card.classList.remove("dragging");
+    if (ui.state) ui.state.pipeDragging = false;
+    if (dragging && column && column.dataset.stage && column.dataset.stage !== lead.state && ui.moveOpportunity) ui.moveOpportunity(lead, column.dataset.stage);
+    else if (!dragging) openLead(ui, lead);
+    dragging = false;
+    startX = null;
+    startY = null;
+  });
+  card.addEventListener("pointercancel", () => {
+    dragging = false;
+    startX = null;
+    card.classList.remove("dragging");
+    if (ui.state) ui.state.pipeDragging = false;
+  });
 }
 
 function drawer(ui, lead) {
@@ -489,7 +609,7 @@ function drawer(ui, lead) {
   });
   card.append(openChat);
   card.append(ui.el("p", { text: [lead.handle ? "@" + lead.handle : "", lead.contact].filter(Boolean).join(" · ") || "No contact details stored." }));
-  const state = ui.el("select", { "aria-label": "Lead state" });
+  const state = ui.el("select", { class: "pipe-stage", "aria-label": lang === "es" ? "Mover a" : "Move to" });
   CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
   state.value = lead.state;
   const agent = ui.el("select", { "aria-label": "Assigned agent" });
@@ -501,7 +621,18 @@ function drawer(ui, lead) {
   aiInput.checked = lead.ai;
   ai.prepend(aiInput);
   const tags = ui.field("Tags", (lead.tags || []).join(", "));
-  card.append(state, agent, ai, tags.label);
+  state.addEventListener("change", () => {
+    if (ui.moveOpportunity) ui.moveOpportunity(lead, state.value);
+  });
+  card.append(ui.el("p", { class: "mute", text: lang === "es" ? "Mover a" : "Move to" }), state, agent, ai, tags.label);
+  const history = (ui.state.stageEvents || []).filter((event) => event.contact_id === lead.id || event.target_id === lead.id);
+  const log = ui.el("div", { class: "stage-history" });
+  log.append(ui.el("h3", { text: lang === "es" ? "Historial de etapa" : "Stage history" }));
+  if (!history.length) log.append(ui.el("p", { text: lang === "es" ? "Todavía no hay cambios de etapa." : "No stage changes recorded yet." }));
+  history.forEach((event) => {
+    log.append(ui.el("p", { text: (event.from_state || "—") + " → " + (event.to_state || "—") + " · " + (event.actor === "ai" ? "AI" : (lang === "es" ? "Persona" : "Person")) + (event.created_at && ui.when ? " · " + ui.when(event.created_at) : "") }));
+  });
+  card.append(log);
   if (ui.state.canEdit) {
     card.append(ui.button("Save lead", () => ui.saveLead(lead, {
       crm_state: state.value,
@@ -515,8 +646,8 @@ function drawer(ui, lead) {
   card.append(ui.el("h3", { text: "Follow-up progress" }));
   card.append(ui.el("p", { text: lead.followups ? lead.followups + " follow-ups recorded." : "No follow-ups recorded." }));
   const notes = (ui.state.leadNotes || []).filter((note) => (lead.kind === "contact" ? note.contact_id === lead.id : note.target_id === lead.id));
-  card.append(ui.el("h3", { text: "Notes" }));
-  if (!notes.length) card.append(ui.el("p", { text: "No notes yet." }));
+  card.append(ui.el("h3", { text: lang === "es" ? "Notas" : "Notes" }));
+  if (!notes.length) card.append(ui.el("p", { text: lang === "es" ? "Todavía no hay notas." : "No notes yet." }));
   notes.forEach((note) => card.append(ui.el("p", { text: new Date(note.created_at).toLocaleString() + " — " + note.body })));
   const note = ui.field("Add a note", "");
   card.append(note.label);
@@ -826,6 +957,12 @@ function rolePicker(ui) {
     return input;
   });
   return { wrap, selected: () => inputs.filter((input) => input.checked).map((input) => input.value) };
+}
+
+function labeled(ui, name, node) {
+  const label = ui.el("label");
+  label.append(ui.el("span", { text: name }), node);
+  return label;
 }
 
 function select(ui, label, options, value) {

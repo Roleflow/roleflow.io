@@ -276,6 +276,9 @@ async function boot() {
       { id: "tool-voice", agent_role: "inbound_manager", kind: "media", name: "Gap building", config: { media_type: "voice" } },
       { id: "tool-book", agent_role: "inbound_manager", kind: "booking", name: "Calendar", config: { calendar_link: "" } }
     ];
+    if (new URLSearchParams(location.search).get("sheet") === "1" && state.contacts && state.contacts[0]) {
+      state.studio = { view: "board", page: 1, query: {}, open: "contact:" + state.contacts[0].id, schedule: "calendly", sim: { as: "lead", state: "open", version: "", lines: [] }, proposal: null, edit: "" };
+    }
     armEditorRequest();
     fillPicker();
     hideBoot();
@@ -532,6 +535,10 @@ async function loadAll(id, token) {
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
+  const recentMessages = await q.from("acq_messages").select("conversation_id, body, sent_at, sender").eq("business_id", id).order("sent_at", { ascending: false }).limit(300);
+  state.recentMessages = recentMessages.error ? [] : recentMessages.data || [];
+  const stageEvents = await q.from("acq_stage_events").select("contact_id, target_id, from_state, to_state, actor, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(400);
+  state.stageEvents = stageEvents.error ? [] : stageEvents.data || [];
   state.engineMessages = [];
   state.threadMore = false;
   state.outbox = outbox.error ? [] : outbox.data || [];
@@ -800,6 +807,7 @@ function paint() {
   }
   armRefresh();
   watchChats();
+  watchOpportunities();
 }
 
 function watchChats() {
@@ -902,6 +910,7 @@ function pageUi() {
     studioEdit: editWithModel,
     studioSimulate: simulateThread,
     saveLead,
+    moveOpportunity,
     addLeadNote,
     queueMessage,
     cancelQueued,
@@ -2237,13 +2246,30 @@ function armRefresh() {
   }
   if (state.tab !== "opportunities" || !state.supabase || !state.businessId || state.businessId === "preview") return;
   state.refreshTimer = setInterval(() => {
-    if (document.hidden || state.tab !== "opportunities") return;
-    if (document.querySelector(".crm-filters[data-dirty='1']")) return;
-    if (state.studio && state.studio.open) return;
-    const active = document.activeElement;
-    if (active && active.closest && active.closest("#app input, #app textarea, #app select")) return;
+    if (skipOpportunityRefresh()) return;
     bootBusiness(state.businessId, { quiet: true });
   }, 22000);
+}
+
+function skipOpportunityRefresh() {
+  if (document.hidden || state.tab !== "opportunities" || state.pipeDragging || state.pipeSaving) return true;
+  if (document.querySelector(".crm-filters[data-dirty='1']")) return true;
+  if (state.studio && state.studio.open) return true;
+  const active = document.activeElement;
+  return Boolean(active && active.closest && active.closest("#app input, #app textarea, #app select"));
+}
+
+function watchOpportunities() {
+  if (!state.supabase || !state.businessId || state.businessId === "preview" || state.pipeChannel) return;
+  const refresh = () => {
+    if (skipOpportunityRefresh()) return;
+    bootBusiness(state.businessId, { quiet: true });
+  };
+  state.pipeChannel = state.supabase.channel("pipe-" + state.businessId)
+    .on("postgres_changes", { event: "*", schema: "public", table: "acq_contacts", filter: "business_id=eq." + state.businessId }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "acq_targets", filter: "agent_id=eq." + state.businessId }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "acq_stage_events", filter: "business_id=eq." + state.businessId }, refresh)
+    .subscribe();
 }
 
 function readyToSave() {
@@ -2400,6 +2426,48 @@ async function simulateThread(sim) {
     lines: (sim.lines || []).slice(-12)
   });
   if (data && data.reply) sim.lines.push({ role: "assistant", text: String(data.reply) });
+  paint();
+}
+
+async function moveOpportunity(lead, toState) {
+  if (!lead || !toState || lead.state === toState) return;
+  const rows = lead.kind === "contact" ? state.contacts : state.targets;
+  const row = (rows || []).find((item) => item.id === lead.id);
+  if (!row) return;
+  const previous = row.crm_state;
+  row.crm_state = toState;
+  const localEvent = {
+    contact_id: lead.kind === "contact" ? lead.id : null,
+    target_id: lead.kind === "target" ? lead.id : null,
+    from_state: previous || lead.state,
+    to_state: toState,
+    actor: "human",
+    created_at: new Date().toISOString()
+  };
+  state.stageEvents = [localEvent].concat(state.stageEvents || []);
+  paint();
+  if (!state.canEdit) {
+    row.crm_state = previous;
+    state.stageEvents = (state.stageEvents || []).filter((event) => event !== localEvent);
+    toast("You can't edit this business.", "bad");
+    paint();
+    return;
+  }
+  if (!state.supabase || state.businessId === "preview") return;
+  state.pipeSaving = true;
+  const saved = lead.kind === "contact"
+    ? await state.supabase.from("acq_contacts").update({ crm_state: toState }).eq("id", lead.id).eq("business_id", state.businessId).select("id")
+    : await state.supabase.from("acq_targets").update({ crm_state: toState }).eq("id", lead.id).eq("agent_id", state.businessId).select("id");
+  state.pipeSaving = false;
+  if (saved.error || !(saved.data || []).length) {
+    row.crm_state = previous;
+    state.stageEvents = (state.stageEvents || []).filter((event) => event !== localEvent);
+    toast((saved.error && saved.error.message) || "The stage was not saved.", "bad");
+    paint();
+    return;
+  }
+  const events = await state.supabase.from("acq_stage_events").select("contact_id, target_id, from_state, to_state, actor, created_at").eq("business_id", state.businessId).order("created_at", { ascending: false }).limit(400);
+  if (!events.error) state.stageEvents = events.data || [];
   paint();
 }
 
@@ -4639,6 +4707,17 @@ function readPreview() {
       { id: "c-sam", name: "Sam Quiet", ig_handle: "samquiet", crm_state: "lost", ai_enabled: false, automated: false, tags: [], unread_count: 0, message_count: 1, last_message_at: "2026-10-21T12:00:00Z", attributes: { summary: "Went quiet after the first reply." } }
     ],
     conversations: params.get("chats") === "empty" ? [] : [{ id: "cv-ada", contact_id: "c-ada" }, { id: "cv-sam", contact_id: "c-sam" }],
+    recentMessages: params.get("chats") === "empty" ? [] : [
+      { conversation_id: "cv-ada", body: "How does the offer work?", sent_at: "2026-10-25T18:00:00Z", sender: "adanorth" },
+      { conversation_id: "cv-sam", body: "Not now, thanks.", sent_at: "2026-10-21T12:00:00Z", sender: "samquiet" }
+    ],
+    stageEvents: params.get("chats") === "empty" ? [] : [
+      { contact_id: "c-ada", target_id: null, from_state: "open", to_state: "discovering", actor: "ai", created_at: "2026-10-24T12:00:00Z" },
+      { contact_id: null, target_id: "t2", from_state: "qualifying", to_state: "booked", actor: "human", created_at: "2026-10-20T09:00:00Z" }
+    ],
+    leadNotes: params.get("chats") === "empty" ? [] : [
+      { id: "n1", contact_id: "c-ada", body: "Asked how the offer works.", created_at: "2026-10-25T18:10:00Z" }
+    ],
     engineMessages: [
       { id: "m-ada-1", conversation_id: "cv-ada", role: "user", sender: "adanorth", body: "How does the offer work?", sent_at: "2026-10-25T18:00:00Z" },
       { id: "m-ada-2", conversation_id: "cv-ada", role: "assistant", sender: "ai", body: "Happy to walk you through it on a call.", sent_at: "2026-10-25T18:04:00Z", delivery_status: "sent" },
@@ -4727,7 +4806,10 @@ function readPreview() {
       threads: [],
       messages: [],
       deals: [],
-      outreach: []
+      outreach: [],
+      recentMessages: [],
+      stageEvents: [],
+      leadNotes: []
     } : {}),
     ...previewOnboarding(params),
     ...(params.get("fail") === "1" ? {

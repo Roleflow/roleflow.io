@@ -386,7 +386,28 @@ body.reduce-motion .station-g:hover,body.reduce-motion .station-g:focus-visible{
 .kanban-col{min-width:200px;flex:1;background:#101A33;border-radius:16px;padding:12px;display:grid;gap:8px;align-content:start}
 .kanban-col h3{margin:0;font-size:.95rem}
 .kanban-card{text-align:left;background:#1D2848;color:var(--ink);border:0;border-radius:12px;padding:10px 12px;cursor:pointer;font:500 .92rem var(--b)}
-.kanban-card:focus-visible{outline:2px solid rgba(123,77,255,.85);outline-offset:2px}
+.kanban-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+body.platform main.wrap:has(.pipe-board){width:min(1280px,calc(100% - 32px));max-width:1280px}
+.pipe-board{display:flex;gap:12px;overflow:auto;padding-bottom:12px;align-items:flex-start}
+.pipe-col{min-width:220px;flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:12px;display:grid;gap:8px;align-content:start}
+.pipe-col.over{outline:2px solid var(--gold)}
+.pipe-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.pipe-head h3{margin:0;font-size:.95rem}
+.pipe-head span{color:var(--mute);font-size:.78rem}
+.pipe-card{display:grid;gap:6px;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:12px;touch-action:none}
+.pipe-card.dragging{opacity:.72}
+.pipe-top{display:flex;gap:8px;align-items:center}
+.pipe-who{min-width:0}
+.pipe-top strong,.pipe-top small{display:block;overflow-wrap:anywhere}
+.pipe-top small,.pipe-snippet,.pipe-meta{color:var(--mute);font-size:.8rem}
+.pipe-value{margin:0;font-weight:700;color:var(--gold)}
+.pipe-meta{display:flex;justify-content:space-between;gap:8px;margin:0}
+.ai-badge{margin-left:auto;border-radius:99px;padding:2px 8px;background:var(--grad);color:#fff;font-size:.72rem;font-weight:700}
+.manual-badge{margin-left:auto;border-radius:99px;padding:2px 8px;border:1px solid var(--gold);color:var(--gold);font-size:.72rem;font-weight:700}
+.pipe-move{display:none;width:100%}
+.pipe-search{min-width:180px;font:400 .95rem var(--b);color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+@media(max-width:860px){.pipe-move,.pipe-stage{display:block}.pipe-card{touch-action:auto;cursor:pointer}}
+.stage-history{display:grid;gap:4px}
 .role-picker{border:1px solid var(--line);border-radius:16px;display:grid;gap:6px;padding:12px}
 .role-picker label{font-weight:500}
 .agent-card{display:grid;gap:4px}
