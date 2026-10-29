@@ -259,7 +259,7 @@ function keywordForm(ui, copy, close) {
   form.append(keyword.label, labeled(ui, copy.match, mode), labeled(ui, copy.dm, dm), ui.el("p", { class: "mute", text: copy.dmHelp }));
   form.append(labeled(ui, copy.kind, kind), voiceHelp, voice);
   form.append(buttonText.label, buttonLink.label, labeled(ui, copy.agent, agent), labeled(ui, copy.scope, scope), publication.label);
-  form.append(ui.button(copy.save, async (event) => {
+  const save = ui.button(copy.save, async (event) => {
     event.preventDefault();
     const next = {
       id: editing ? editing.id : "",
@@ -292,8 +292,12 @@ function keywordForm(ui, copy, close) {
     desk(ui).dialog = false;
     desk(ui).editing = "";
     await ui.saveCommentCta(next);
-  }));
-  form.append(ui.button(copy.cancel, close));
+  });
+  const cancel = ui.button(copy.cancel, close);
+  cancel.classList.add("cta-secondary");
+  const row = ui.el("div", { class: "cta-dialog-actions" });
+  row.append(save, cancel);
+  form.append(row);
   form.addEventListener("submit", (event) => event.preventDefault());
   return form;
 }

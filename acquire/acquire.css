@@ -424,6 +424,10 @@ body.platform main.wrap:has(.pipe-board){width:min(1280px,calc(100% - 32px));max
 .cta-list-head h3{margin:0}
 .cta-actions{display:flex;gap:10px;align-items:center}
 body.platform .btn.cta-danger,body.admin-panel .btn.cta-danger{background:transparent;color:var(--m);border:1px solid var(--m);box-shadow:none}
+body.platform .btn.cta-secondary,body.admin-panel .btn.cta-secondary{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+body.platform #cta-send-state.integration-status.wait,body.admin-panel #cta-send-state.integration-status.wait{color:#E8B04A}
+.cta-dialog-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.cta-dialog-actions .btn{width:auto}
 .cta-dialog{position:fixed;inset:0;z-index:70}
 .cta-dialog-backdrop{position:absolute;inset:0;border:0;background:rgba(10,18,38,.62);cursor:pointer}
 .cta-dialog-card{position:relative;width:min(560px,calc(100% - 32px));max-height:min(86vh,840px);overflow:auto;margin:6vh auto 0;background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:10px;box-shadow:var(--shadow)}
@@ -574,6 +578,9 @@ body.assistant-page .assistant-fab{display:none}
 .app-top{position:relative}
 #assistant-mode{background-color:transparent;color:var(--ink);border:1px solid rgba(154,166,198,.28);border-radius:12px;padding:8px 36px 8px 12px}
 body.platform .agent label:not(.switch),body.admin-panel .agent label:not(.switch){display:grid;gap:6px}
+body.platform .agent label.cta-publication[hidden],body.admin-panel .agent label.cta-publication[hidden],
+body.platform .cta-dialog .cta-voice[hidden],body.admin-panel .cta-dialog .cta-voice[hidden],
+body.platform .cta-dialog p[hidden],body.admin-panel .cta-dialog p[hidden]{display:none}
 body.platform .agent input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
 body.platform .agent textarea,
 body.platform .config-layout input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
