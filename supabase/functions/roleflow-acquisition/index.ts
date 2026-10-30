@@ -24,12 +24,14 @@ import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
-import { agentEnabled, agentKeyForKind, followupDue, followupLead, normalizePolicy, recoveryKey } from "../_shared/agent-control.js";
+import { agentEnabled, agentKeyForKind } from "../_shared/agent-control.js";
 import { clientSafeText } from "../_shared/client-safe.js";
 import { replyDelayMs } from "./ig/delay.js";
 import { parseSignedRequest } from "./ig/deletion.js";
 import { qualifiersPass } from "./ig/qualify.js";
 import { readDmGate } from "../_shared/dm-gate.js";
+import { queueFollowups } from "../_shared/followup-queue.js";
+import { followupBrief, textBubbles, voiceForStep } from "../_shared/followup-ladder.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -262,6 +264,13 @@ async function runOutbox(db, row) {
     }).eq("id", row.id).eq("business_id", businessId);
   }
   if (row.kind === "human") return sendHuman(db, row, thread, settings);
+  const step = row.kind === "recovery" ? await loadFollowupStep(db, businessId, row.payload) : null;
+  if (row.kind === "recovery" && row.payload?.step_id && !step) {
+    await markFollowup(db, row, "skipped", "step_removed", null);
+    return finish("blocked", "step_removed");
+  }
+  if (step && step.mode !== "ai") return sendStepText(db, row, thread, settings, step, finish);
+  const stepContent = step ? await stepAsset(db, businessId, step) : null;
   const prompts = await currentPrompt(db, businessId, role);
   const env = Deno.env.toObject();
   const loaded = await loadSetterReply(db, businessId, env);
@@ -295,7 +304,12 @@ async function runOutbox(db, row) {
             : info.message
         }),
         tools: [bookingTool()],
-        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide, keyLinks),
+        system: setterSystem(savedPrompt, prompts, settings, booking, clips, catalog, bookingLink, commentGuide, keyLinks) + (step ? "\n\n" + followupBrief({
+          step,
+          state: thread.crm_state || thread.state,
+          hoursSilent: (Date.now() - Date.parse(thread.last_user_message_at || "")) / 3600000,
+          content: stepContent ? stepContent.text : ""
+        }) : ""),
         messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
       })
     });
@@ -321,7 +335,10 @@ async function runOutbox(db, row) {
     updated_at: new Date().toISOString()
   }).eq("id", thread.id).eq("business_id", businessId);
   if (plan.escalate) await escalate(db, businessId, thread.target_id, plan.escalateReason || plan.state, plan.escalateReason || plan.state);
-  if (plan.noResponse) return finish("done");
+  if (plan.noResponse) {
+    if (step) await markFollowup(db, row, "skipped", plan.reason || "no_response", null);
+    return finish("done");
+  }
   const bubbles = (await maybeBook(db, businessId, thread, settings, plan, booking)).map((text) => resolveOutgoing(text, { voices: catalog, bookingLink }));
   const splitWords = Number.isFinite(Number(settings.reply_split_words)) ? Number(settings.reply_split_words) : 15;
   const spoken = bubbles.flatMap((item) => splitReply(item.text, splitWords)).filter(Boolean);
@@ -332,7 +349,16 @@ async function runOutbox(db, row) {
     kind: "ai",
     humanLocked: false
   });
-  if (!decision.allow) return finish("blocked", decision.reason);
+  if (!decision.allow) {
+    if (step) await markFollowup(db, row, "skipped", decision.reason, null);
+    return finish("blocked", decision.reason);
+  }
+  if (step) {
+    const voiceId = await sendStepVoice(db, businessId, thread, step);
+    const sentStep = await deliver(db, businessId, thread, settings, spoken, null, decision, row.kind, null, null);
+    await markFollowup(db, row, sentStep.ok ? "sent" : "failed", sentStep.error || null, voiceId);
+    return finish(sentStep.ok ? "done" : "failed", sentStep.error || null);
+  }
   const routed = await routedVoice(db, businessId, thread, plan.state);
   if (routed && !routed.send) {
     await db.from("acq_voice_sends").insert({
@@ -357,6 +383,82 @@ async function runOutbox(db, row) {
     if (audio.conversationId) await rememberVoice(db, businessId, audio.conversationId, routed.note, audio.ok ? "sent" : "failed");
   }
   const sent = await deliver(db, businessId, thread, settings, spoken, tokenNote ? null : plan.voiceNoteSlot, decision, row.kind, row.payload?.comment_id, tokenNote);
+  return finish(sent.ok ? "done" : "failed", sent.error || null);
+}
+
+async function loadFollowupStep(db, businessId, payload) {
+  const id = payload && payload.step_id;
+  if (!id) return null;
+  if (payload.track === "welcome") {
+    const row = await db.from("acq_welcome_steps").select("id, position, delay_hours, body").eq("id", id).eq("business_id", businessId).maybeSingle();
+    return row.error || !row.data ? null : { ...row.data, mode: "text", voice_note_id: null, asset_id: null };
+  }
+  const row = await db.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id, voice_note_id, state_prompts, enabled").eq("id", id).eq("business_id", businessId).maybeSingle();
+  if (row.error || !row.data || row.data.enabled === false) return null;
+  return row.data;
+}
+
+async function stepAsset(db, businessId, step) {
+  if (!step || !step.asset_id) return null;
+  const row = await db.from("acq_value_assets").select("kind, title, url, label, placement").eq("id", step.asset_id).eq("business_id", businessId).maybeSingle();
+  if (row.error || !row.data || !row.data.url) return null;
+  const text = [row.data.label || row.data.title || "", row.data.url].filter(Boolean).join(" ");
+  return { text, placement: row.data.placement || "after" };
+}
+
+async function markFollowup(db, row, status, reason, voiceNoteId) {
+  const payload = row.payload || {};
+  if (!payload.step_id || !row.thread_id) return;
+  await db.from("acq_followup_sends").update({
+    status,
+    reason: reason ? String(reason).slice(0, 200) : null,
+    voice_note_id: voiceNoteId || null,
+    updated_at: new Date().toISOString()
+  }).eq("thread_id", row.thread_id).eq("step_id", payload.step_id).eq("cycle", String(payload.cycle || "0"));
+}
+
+async function sendStepVoice(db, businessId, thread, step) {
+  if (!step || !step.voice_note_id || !thread.target_id) return null;
+  const prior = await db.from("acq_voice_sends").select("voice_note_id").eq("agent_id", businessId).eq("target_id", thread.target_id).eq("result", "sent");
+  const id = voiceForStep(step, (prior.data || []).map((item) => item.voice_note_id));
+  if (!id) return null;
+  const note = await db.from("acq_voice_library").select("id, title, storage_path, mime_type, active, deleted_at").eq("id", id).eq("agent_id", businessId).maybeSingle();
+  if (note.error || !note.data || note.data.deleted_at || note.data.active === false || !note.data.storage_path) return null;
+  const audio = await sendLibraryAudio(db, businessId, thread, note.data);
+  await db.from("acq_voice_sends").insert({
+    agent_id: businessId,
+    voice_note_id: id,
+    target_id: thread.target_id,
+    slot: "followup",
+    result: audio.ok ? "sent" : "skipped",
+    notes: audio.ok ? "" : String(audio.error || "not_sent").slice(0, 200)
+  });
+  if (audio.conversationId) await rememberVoice(db, businessId, audio.conversationId, note.data, audio.ok ? "sent" : "failed");
+  return audio.ok ? id : null;
+}
+
+async function sendStepText(db, row, thread, settings, step, finish) {
+  const businessId = row.business_id;
+  const decision = messagingDecision({
+    lastUserMessageAt: thread.last_user_message_at,
+    now: Date.now(),
+    kind: "ai",
+    humanLocked: false
+  });
+  if (!decision.allow) {
+    await markFollowup(db, row, "skipped", decision.reason, null);
+    return finish("blocked", decision.reason);
+  }
+  const content = await stepAsset(db, businessId, step);
+  let bubbles = textBubbles(step.body);
+  if (content) bubbles = content.placement === "before" ? [content.text].concat(bubbles) : bubbles.concat([content.text]);
+  if (!bubbles.length) {
+    await markFollowup(db, row, "skipped", "empty_step", null);
+    return finish("done");
+  }
+  const voiceId = await sendStepVoice(db, businessId, thread, step);
+  const sent = await deliver(db, businessId, thread, settings, bubbles, null, decision, row.kind, null, null);
+  await markFollowup(db, row, sent.ok ? "sent" : "failed", sent.error || null, voiceId);
   return finish(sent.ok ? "done" : "failed", sent.error || null);
 }
 
@@ -645,38 +747,9 @@ async function setterPromptBody(db, businessId) {
 }
 
 async function queueRecovery(db) {
-  const { data: businesses } = await db.from("acq_settings").select("agent_id, system_enabled, timezone").eq("system_enabled", true);
+  const { data: businesses } = await db.from("acq_settings").select("agent_id, system_enabled, timezone, followup_restart_on_reply, followup_before_close, skip_followed, office_mode, office_start, office_end").eq("system_enabled", true);
   for (const settings of businesses || []) {
-    const businessId = settings.agent_id;
-    if (!await agentEnabled(db, businessId, "followup")) continue;
-    const policyRow = await db.from("acq_followup_policy").select("*").eq("business_id", businessId).maybeSingle();
-    const policy = normalizePolicy(policyRow && policyRow.data);
-    const { data: threads } = await db.from("ig_threads").select("*").eq("business_id", businessId).eq("human_locked", false).limit(100);
-    for (const thread of threads || []) {
-      const decision = followupDue({
-        enabled: true,
-        policy,
-        lead: followupLead(thread),
-        now: Date.now(),
-        timeZone: settings.timezone
-      });
-      if (!decision.due) continue;
-      const key = recoveryKey(thread.id, thread.followup_count);
-      const inserted = await db.from("ig_outbox").insert({
-        business_id: businessId,
-        thread_id: thread.id,
-        kind: "recovery",
-        payload: { text: "", event_kind: "message" },
-        run_at: new Date().toISOString(),
-        idempotency_key: key
-      });
-      if (!inserted.error) {
-        await db.from("ig_threads").update({
-          followup_count: thread.followup_count + 1,
-          state: thread.state === "comment_to_dm" ? "qualification" : "recovery"
-        }).eq("id", thread.id).eq("business_id", businessId);
-      }
-    }
+    await queueFollowups(db, settings, Date.now());
   }
 }
 

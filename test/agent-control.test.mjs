@@ -125,8 +125,9 @@ for (const file of [
   assert.match(read(file), /TAILORTALK_SYNC_ENABLED/);
 }
 assert.match(read("supabase/functions/acq-tailortalk/index.ts"), /This engine agent is not used for acquisition/);
-assert.match(read("supabase/functions/followup-boss/index.ts"), /followupDue/);
-assert.match(read("supabase/functions/followup-boss/index.ts"), /agentEnabled/);
+assert.match(read("supabase/functions/followup-boss/index.ts"), /queueFollowups/);
+assert.match(read("supabase/functions/_shared/followup-queue.js"), /agentEnabled\(db, businessId, "followup"\)/);
+assert.match(read("supabase/functions/_shared/followup-queue.js"), /ladderDecision/);
 assert.match(read("supabase/functions/zernio-webhook/index.ts"), /sendBlocked/);
 assert.match(read("supabase/functions/ig-outbox-tick/index.ts"), /stampAgentEnabled/);
 assert.match(read("supabase/functions/roleflow-acquisition/index.ts"), /agentEnabled/);

@@ -1,14 +1,17 @@
-// Follow Up Boss tick. verify_jwt is false. pg_cron sends the acquisition
+// Follow-up tick. verify_jwt is false. pg_cron sends the acquisition
 // cron secret (private.acquisition_settings key cron_secret, read with
-// acq_read_cron_secret). An agent that is off, inside quiet hours, or past
-// the max follow-up count is not queued.
+// acq_read_cron_secret). The 24-hour ladder and welcome steps are queued from
+// acq_followup_steps and acq_welcome_steps. Nothing is queued while the
+// follow-up agent is off; while DM sending is off a due step is held.
 //
 // This function does not read ZERNIO_API_KEY. The outbox tick sends the row
 // only when the follow-up switch is still on.
 // Do not set TAILORTALK_SYNC_ENABLED. Leaving it unset keeps the retired sync off.
 
 import { adminClient, json } from "../_shared/gateway-http.js";
-import { agentEnabled, followupDue, followupLead, normalizePolicy, recoveryKey } from "../_shared/agent-control.js";
+import { queueFollowups } from "../_shared/followup-queue.js";
+
+const FOLLOWUP_SETTINGS = "agent_id, timezone, system_enabled, followup_restart_on_reply, followup_before_close, skip_followed, office_mode, office_start, office_end";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "POST required." });
@@ -16,7 +19,7 @@ Deno.serve(async (req) => {
   const secret = await admin.rpc("acq_read_cron_secret");
   const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!secret.data || bearer !== secret.data) return json(401, { ok: false, error: "Unauthorized." });
-  const businesses = await admin.from("acq_settings").select("agent_id, timezone, system_enabled").eq("system_enabled", true);
+  const businesses = await admin.from("acq_settings").select(FOLLOWUP_SETTINGS).eq("system_enabled", true);
   if (businesses.error) return json(500, { ok: false, error: "Could not read businesses." });
   let queued = 0;
   for (const settings of businesses.data || []) {
@@ -26,37 +29,6 @@ Deno.serve(async (req) => {
 });
 
 async function queueBusiness(admin, settings) {
-  const businessId = settings.agent_id;
-  if (!await agentEnabled(admin, businessId, "followup")) return 0;
-  const policyRow = await admin.from("acq_followup_policy").select("*").eq("business_id", businessId).maybeSingle();
-  const policy = normalizePolicy(policyRow.data || {});
-  const threads = await admin.from("ig_threads").select("*").eq("business_id", businessId).eq("human_locked", false).limit(100);
-  if (threads.error) return 0;
-  let queued = 0;
-  const now = Date.now();
-  for (const thread of threads.data || []) {
-    const decision = followupDue({
-      enabled: true,
-      policy,
-      lead: followupLead(thread),
-      now,
-      timeZone: settings.timezone
-    });
-    if (!decision.due) continue;
-    const inserted = await admin.from("ig_outbox").insert({
-      business_id: businessId,
-      thread_id: thread.id,
-      kind: "recovery",
-      payload: { text: "", event_kind: "message" },
-      run_at: new Date(now).toISOString(),
-      idempotency_key: recoveryKey(thread.id, thread.followup_count)
-    });
-    if (inserted.error) continue;
-    queued += 1;
-    await admin.from("ig_threads").update({
-      followup_count: (Number(thread.followup_count) || 0) + 1,
-      state: thread.state === "comment_to_dm" ? "qualification" : "recovery"
-    }).eq("id", thread.id).eq("business_id", businessId);
-  }
-  return queued;
+  const result = await queueFollowups(admin, settings, Date.now());
+  return result.queued;
 }
