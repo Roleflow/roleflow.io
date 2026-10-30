@@ -1,4 +1,4 @@
-import { AGENT_KEYS, dashboardMetrics, DEFAULT_POLICY, normalizePolicy, previewReply, setterMayEnable } from "./agent-control.js";
+import { AGENT_KEYS, dashboardMetrics, previewReply, setterMayEnable } from "./agent-control.js";
 import { beginInstagramConnect, disconnectInstagram, scrubChannelCopy } from "./connect-instagram.js";
 import { CLAUDE_SONNET_MODEL, keyHint, maskedKey } from "./model-key.js";
 import { diffLines, PROMPT_MAX } from "./prompt-history.js";
@@ -618,39 +618,6 @@ function insertToken(area, token) {
   if (area.setSelectionRange) area.setSelectionRange(cursor, cursor);
 }
 
-export function renderFollowBoss(ui) {
-  const copy = text(ui.language());
-  const policy = normalizePolicy(ui.state.followupPolicy || DEFAULT_POLICY);
-  const wrap = ui.el("div", { class: "platform-home" });
-  const lang = ui.language ? ui.language() : "en";
-  wrap.append(ui.pageHeader(ui, sectionText(lang, "followTitle"), sectionText(lang, "followBody"), "followup", "trend"));
-  wrap.append(ui.el("p", { text: copy.channel }));
-  wrap.append(switchCard(ui, "followup", copy));
-  const form = ui.el("form", { class: "agent grid-2", id: "followup-policy" });
-  form.append(numberField(ui, "Hours since last message", "hours", policy.hoursSinceLastMessage, 1, 23));
-  form.append(selectField(ui, "Lead stage", "stage", [
-    ["any", "Any stage"],
-    ["open", "Open"],
-    ["discovering", "Discovering"],
-    ["qualifying", "Qualifying"],
-    ["proposal", "Proposal"],
-    ["booked", "Booked"],
-    ["paid", "Paid"]
-  ], policy.leadStage));
-  form.append(numberField(ui, "No reply after N messages", "quietCount", policy.noReplyAfter, 1, 20));
-  form.append(selectField(ui, "Booking", "booked", [["any", "Booked or not"], ["booked", "Booked"], ["not_booked", "Not booked"]], policy.booked));
-  form.append(numberField(ui, "Max follow-ups", "max", policy.maxFollowups, 1, 10));
-  form.append(textField(ui, "Quiet hours start", "quietStart", policy.quietStart));
-  form.append(textField(ui, "Quiet hours end", "quietEnd", policy.quietEnd));
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    ui.saveFollowupPolicy(readPolicy(form));
-  });
-  form.append(ui.button("Save triggers", null, "submit"));
-  wrap.append(form);
-  return wrap;
-}
-
 export function renderModelKey(ui) {
   const copy = text(ui.language());
   const card = ui.el("form", { class: "agent", id: "model-key" });
@@ -843,7 +810,7 @@ export function gateSetter(state) {
   return setterMayEnable({ prompt: state.setterPrompt, testedAt: state.setterTestedAt });
 }
 
-function switchCard(ui, key, copy) {
+export function switchCard(ui, key, copy) {
   const row = (ui.state.agentSwitches || []).find((item) => item.agent_key === key);
   const on = Boolean(row && row.enabled);
   const card = ui.el("section", { class: "agent agent-switch" });
@@ -862,38 +829,4 @@ function metricCard(ui, title, value, note, tone) {
   card.append(ui.el("span", { text: title }), ui.el("strong", { text: value }));
   if (note) card.append(ui.el("em", { text: note }));
   return card;
-}
-
-function numberField(ui, label, name, value, min, max) {
-  const wrap = ui.el("label", { text: label });
-  const input = ui.el("input", { type: "number", name, min: String(min), max: String(max), value: String(value), required: true });
-  wrap.append(input);
-  return wrap;
-}
-
-function textField(ui, label, name, value) {
-  const wrap = ui.el("label", { text: label });
-  wrap.append(ui.el("input", { type: "time", name, value, required: true }));
-  return wrap;
-}
-
-function selectField(ui, label, name, options, value) {
-  const wrap = ui.el("label", { text: label });
-  const select = ui.el("select", { name });
-  options.forEach(([option, text]) => select.append(ui.el("option", { value: option, text, selected: option === value ? true : null })));
-  wrap.append(select);
-  return wrap;
-}
-
-function readPolicy(form) {
-  const data = new FormData(form);
-  return normalizePolicy({
-    hoursSinceLastMessage: data.get("hours"),
-    leadStage: data.get("stage"),
-    noReplyAfter: data.get("quietCount"),
-    booked: data.get("booked"),
-    maxFollowups: data.get("max"),
-    quietStart: data.get("quietStart"),
-    quietEnd: data.get("quietEnd")
-  });
 }

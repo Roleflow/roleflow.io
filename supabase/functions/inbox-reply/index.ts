@@ -1,7 +1,7 @@
 // Sends one reply on a chat the caller can edit. The key stays on the server.
 
 import { API_BASE } from "../_shared/ig-gateway.js";
-import { manualSendError, manualSendRequest } from "../_shared/inbox-send.js";
+import { humanWindow, manualSendError, manualSendRequest } from "../_shared/inbox-send.js";
 import { adminClient, cors, json, loadGatewayConfig, userClientFrom } from "../_shared/gateway-http.js";
 import { dmGateCopy, readDmGate } from "../_shared/dm-gate.js";
 
@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
   const userClient = userClientFrom(req);
   const { data: userData, error: userError } = await userClient.auth.getUser();
   if (userError || !userData.user) return json(401, { ok: false, error: "Sign in required." });
-  let body: { business_id?: string; contact_id?: string; text?: string; message_id?: string } = {};
+  let body: { business_id?: string; contact_id?: string; text?: string; message_id?: string; human_followup?: boolean } = {};
   try { body = await req.json(); } catch (_error) { body = {}; }
   const businessId = String(body.business_id || "");
   const contactId = String(body.contact_id || "");
@@ -31,10 +31,20 @@ Deno.serve(async (req) => {
   if (account.error || !account.data || !account.data.account_id) return json(200, { ok: false, error: "Instagram is not connected yet." });
   const conversation = await admin.from("acq_conversations").select("id, external_id").eq("business_id", businessId).eq("contact_id", contactId).maybeSingle();
   if (conversation.error || !conversation.data || !conversation.data.external_id) return json(200, { ok: false, error: "This chat has no Instagram thread yet." });
+  const lastLead = await admin.from("acq_messages").select("sent_at").eq("business_id", businessId).eq("conversation_id", conversation.data.id).eq("role", "user").order("sent_at", { ascending: false }).limit(1);
+  const lastLeadAt = !lastLead.error && lastLead.data && lastLead.data[0] ? String(lastLead.data[0].sent_at || "") : "";
+  const windowCheck = humanWindow(lastLeadAt, Date.now(), body.human_followup === true);
+  if (!windowCheck.allow && windowCheck.reason !== "no_lead_message") {
+    const message = windowCheck.reason === "outside_24h"
+      ? "More than 24 hours since the lead's last message. Send it from the 7-day follow-up list."
+      : "More than 7 days since the lead's last message. Instagram does not allow a reply.";
+    return json(200, { ok: false, error: message, reason: windowCheck.reason });
+  }
   const request = manualSendRequest({
     accountId: account.data.account_id,
     conversationId: conversation.data.external_id,
-    text
+    text,
+    humanTag: windowCheck.tag
   });
   let response: Response;
   try {
