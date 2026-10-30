@@ -26,6 +26,7 @@ import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js
 import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
+import { readDmGate } from "../_shared/dm-gate.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
@@ -370,6 +371,11 @@ async function sendPending(admin, apiKey, businessId) {
 }
 
 async function sendOne(admin, apiKey, row) {
+  const gate = await readDmGate(admin, row.business_id);
+  if (!gate.open) {
+    await admin.from("ig_outbox").update({ status: "blocked", last_error: gate.reason }).eq("id", row.id).eq("status", "pending");
+    return;
+  }
   const stamped = await stampAgentEnabled(admin, row);
   if (sendBlocked(stamped)) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "The agent is off." }).eq("id", row.id).eq("status", "pending");

@@ -29,6 +29,7 @@ import { clientSafeText } from "../_shared/client-safe.js";
 import { replyDelayMs } from "./ig/delay.js";
 import { parseSignedRequest } from "./ig/deletion.js";
 import { qualifiersPass } from "./ig/qualify.js";
+import { readDmGate } from "../_shared/dm-gate.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -224,6 +225,10 @@ async function tick(req) {
 
 async function runOutbox(db, row) {
   const businessId = row.business_id;
+  const gate = await readDmGate(db, businessId);
+  if (!gate.open) {
+    return db.from("ig_outbox").update({ status: "blocked", last_error: gate.reason }).eq("id", row.id).eq("business_id", businessId);
+  }
   const threadRes = await db.from("ig_threads").select("*").eq("id", row.thread_id).eq("business_id", businessId).maybeSingle();
   const thread = threadRes.data;
   const settings = await loadSettings(db, businessId);
@@ -356,6 +361,8 @@ async function runOutbox(db, row) {
 }
 
 async function sendLibraryAudio(db, businessId, thread, note) {
+  const gate = await readDmGate(db, businessId);
+  if (!gate.open) return { ok: false, error: gate.reason, conversationId: "" };
   const config = await loadGatewayConfig(db);
   if (!config.apiKey) return { ok: false, error: "Instagram is not connected yet.", conversationId: "" };
   const account = await db.from("ig_gateway_accounts").select("account_id").eq("business_id", businessId).eq("status", "connected").maybeSingle();
@@ -412,8 +419,7 @@ function audioUploadFile(note, bytes) {
 }
 
 async function voiceSendingOn(db, businessId) {
-  const controls = await db.from("acq_dm_controls").select("enabled, killed").eq("business_id", businessId).maybeSingle();
-  return !controls.error && Boolean(controls.data) && controls.data.enabled === true && controls.data.killed !== true;
+  return (await readDmGate(db, businessId)).open;
 }
 
 async function routedVoice(db, businessId, thread, state) {
@@ -500,6 +506,8 @@ async function loadCommentGuide(db, businessId, catalog) {
 }
 
 async function deliver(db, businessId, thread, settings, bubbles, slot, decision, kind, commentId, voiceNote) {
+  const gate = await readDmGate(db, businessId);
+  if (!gate.open) return { ok: false, error: gate.reason };
   const token = await readIgToken(db, businessId);
   if (!token) return { ok: false, error: "Instagram is not connected." };
   const texts = (bubbles || []).filter(Boolean);

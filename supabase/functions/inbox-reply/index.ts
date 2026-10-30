@@ -3,6 +3,7 @@
 import { API_BASE } from "../_shared/ig-gateway.js";
 import { manualSendError, manualSendRequest } from "../_shared/inbox-send.js";
 import { adminClient, cors, json, loadGatewayConfig, userClientFrom } from "../_shared/gateway-http.js";
+import { dmGateCopy, readDmGate } from "../_shared/dm-gate.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,6 +23,8 @@ Deno.serve(async (req) => {
   const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
   if (allowed.error || allowed.data !== true) return json(403, { ok: false, error: "You can't edit this business." });
   const admin = adminClient();
+  const gate = await readDmGate(admin, businessId);
+  if (!gate.open) return json(200, { ok: false, error: dmGateCopy(gate.reason), reason: gate.reason });
   const config = await loadGatewayConfig(admin);
   if (!config.apiKey) return json(200, { ok: false, error: "Instagram is not connected yet." });
   const account = await admin.from("ig_gateway_accounts").select("account_id, status").eq("business_id", businessId).eq("status", "connected").maybeSingle();

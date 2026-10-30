@@ -6,6 +6,7 @@ import { outboxWriteStatus } from "../_shared/ig-gateway.js";
 import { stampAgentEnabled } from "../_shared/agent-control.js";
 import { postOfficial } from "../_shared/official-outbox.js";
 import { sentMessage } from "../_shared/clip-send.js";
+import { readDmGate } from "../_shared/dm-gate.js";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "POST required." });
@@ -20,6 +21,11 @@ Deno.serve(async (req) => {
   const rows = claimed.data || [];
   let sent = 0;
   for (const row of rows) {
+    const gate = await readDmGate(admin, row.business_id);
+    if (!gate.open) {
+      await admin.from("ig_outbox").update({ status: "blocked", last_error: gate.reason }).eq("id", row.id).eq("status", "running");
+      continue;
+    }
     const stamped = await stampAgentEnabled(admin, row);
     const result = await postOfficial(stamped, config.apiKey, fetch, {
       download: (clip) => downloadOwnerClip(admin, clip)
