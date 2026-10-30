@@ -763,3 +763,36 @@ body.admin-panel .connect-banner .roster-biz{display:flex;flex-wrap:wrap;align-i
 .voice-slider input{width:100%;accent-color:#7B4DFF}
 .voice-ends{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.78rem}
 .voice-ends span{color:var(--mute)}
+/* Follow-ups: reuses the CTA tabs, table and dialog. */
+.followups-page .follow-held{margin:0;color:var(--gold);font-weight:600}
+.followups-page .follow-pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;border:1px solid rgba(232,176,74,.45);color:var(--gold);font-size:.8rem;font-weight:600;white-space:nowrap}
+.followups-page .follow-empty{display:grid;gap:8px;justify-items:start;padding:18px;border:1px dashed var(--line);border-radius:14px}
+.followups-page .follow-empty strong{font-size:1rem}
+.followups-page .follow-empty p{margin:0}
+.followups-page .follow-table td{vertical-align:middle}
+.followups-page .follow-text{max-width:420px;white-space:pre-line}
+.followups-page .follow-states{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(123,77,255,.06)}
+.followups-page .follow-states[hidden],.followups-page .btn[hidden],.followups-page button[hidden]{display:none}
+.followups-page .follow-lead{display:grid;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.followups-page .follow-lead-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.followups-page .follow-lead .cta-actions{flex-wrap:wrap}
+.followups-page .follow-rate{font:700 1.7rem/1.1 var(--h);color:var(--gold)}
+.followups-page .follow-stats p{margin:0}
+.followups-page .follow-rules{margin:0;padding-left:18px;display:grid;gap:8px;color:var(--ink)}
+.followups-page .follow-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+.followups-page .follow-kpis strong{color:var(--gold)}
+.followups-page .volume i{background:var(--grad)}
+.followups-page .cta-list-head{flex-wrap:wrap}
+.followups-page .btn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:860px){.followups-page .follow-kpis{grid-template-columns:1fr}}
+.followups-page .follow-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.followups-page .follow-top .follow-held{flex:1 1 320px}
+.followups-page .follow-switch-help{margin:-4px 0 6px 44px}
+.followups-page .cta-dialog-card .btn,.followups-page .reminder-body .btn{width:auto;justify-self:start}
+.followups-page .reminder-body .filters{justify-content:flex-start}
+.followups-page .table-wrap{overflow-x:auto;max-width:100%}
+.followups-page .cta-table{min-width:640px}
+.followups-page .cta-table th,.followups-page .cta-table td{white-space:nowrap}
+.followups-page .cta-table td.follow-text{white-space:normal;min-width:220px}
+.followups-page .follow-states textarea{min-height:56px}
+@media(max-width:860px){.followups-page .follow-switch-help{margin-left:0}}

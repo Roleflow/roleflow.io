@@ -3,7 +3,7 @@ import { toast } from "../auth/ui.js";
 import { NAV_GROUPS, canonicalTab, navLabel, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
-import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderFollowBoss, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
+import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
@@ -45,7 +45,9 @@ import { THREAD_PAGE, senderLabel } from "./studio-flow-model.js";
 import { prepareOwnerFile } from "./clip-file.js";
 import { scorePrompt } from "./workforce-model.js";
 import { aggregateFromLeads, emptySummary, mergeSummary } from "./chat-summary.js";
-import { renderChats, renderCtas, renderFollowups, renderReminders } from "./studio-flow.js";
+import { renderChats, renderCtas } from "./studio-flow.js";
+import { FOLLOW_TABS, followDesk, renderFollowupsPage } from "./followups-page.js";
+import { suggestedLadder } from "./followup-ladder.js";
 import {
   ENGINE_HINT,
   JOURNEY,
@@ -132,6 +134,10 @@ const state = {
   followupSteps: [],
   welcomeSteps: [],
   manualFollowups: [],
+  manualSteps: [],
+  followupSends: [],
+  followDrafts: {},
+  chatHumanFollowup: null,
   reminders: [],
   commentCtas: [],
   storyCtas: [],
@@ -572,17 +578,31 @@ async function loadAll(id, token) {
   state.scheduleEndpoints = schedules.error ? [] : schedules.data || [];
   state.valueAssets = assets.error ? [] : assets.data || [];
   const [followups, welcomes, manuals, reminders, commentCtas, storyCtas] = await Promise.all([
-    q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id").eq("business_id", id).order("hours", { ascending: true }),
+    q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id, voice_note_id, state_prompts, enabled").eq("business_id", id).order("hours", { ascending: true }),
     q.from("acq_welcome_steps").select("id, position, delay_hours, mode, body").eq("business_id", id).order("position", { ascending: true }),
-    q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(100),
+    q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at, step_id, sent_via").eq("business_id", id).order("created_at", { ascending: false }).limit(100),
     q.from("acq_reminders").select("id, contact_id, target_id, kind, source, title, due_at, status, created_at").eq("business_id", id).order("due_at", { ascending: true }).limit(200),
     q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies, scope, publication_ref, reply_kind, voice_path, voice_mime").eq("business_id", id).order("created_at", { ascending: false }),
     q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
   ]);
   if (!live()) return false;
   state.followupSteps = followups.error ? [] : followups.data || [];
+  if (followups.error) {
+    const plainSteps = await q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id").eq("business_id", id).order("hours", { ascending: true });
+    state.followupSteps = plainSteps.error ? [] : plainSteps.data || [];
+  }
+  const [manualSteps, followSends] = await Promise.all([
+    q.from("acq_manual_followup_steps").select("id, wait_half_days, mode, body, asset_id").eq("business_id", id).order("wait_half_days", { ascending: true }),
+    q.from("acq_followup_sends").select("id, track, step_id, contact_id, target_id, status, reason, replied, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(500)
+  ]);
+  state.manualSteps = manualSteps.error ? [] : manualSteps.data || [];
+  state.followupSends = followSends.error ? [] : followSends.data || [];
   state.welcomeSteps = welcomes.error ? [] : welcomes.data || [];
   state.manualFollowups = manuals.error ? [] : manuals.data || [];
+  if (manuals.error) {
+    const plainManual = await q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(100);
+    state.manualFollowups = plainManual.error ? [] : plainManual.data || [];
+  }
   state.reminders = reminders.error ? [] : reminders.data || [];
   state.commentCtas = commentCtas.error ? [] : commentCtas.data || [];
   state.storyCtas = storyCtas.error ? [] : storyCtas.data || [];
@@ -792,7 +812,7 @@ function paint() {
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
   if (state.tab === "outreacher") root.append(renderGrokAgent(ui, "outreacher"));
   if (state.tab === "setter") root.append(renderSetter(ui));
-  if (state.tab === "followup") root.append(renderFollowBoss(ui));
+  if (state.tab === "followup") root.append(renderFollowupsPage(ui));
   if (state.tab === "settings") {
     root.append(renderModelKey(ui));
     root.append(renderInstagramConnect(ui));
@@ -941,6 +961,11 @@ function pageUi() {
     mountEngineInbox: (host) => renderEngine("inbox", host, engineCtx()),
     saveFollowupOptions,
     saveFollowupStep,
+    toggleFollowupStep,
+    createSuggestedLadder,
+    saveManualStep,
+    markManualSent,
+    sendManualFromDesk,
     saveWelcomeStep,
     saveManualFollowup,
     markFollowupSent,
@@ -1012,8 +1037,7 @@ function pageUi() {
     restartTrial,
     addCommentRule,
     saveCommentVoice,
-    trySetter,
-    saveFollowupPolicy
+    trySetter
   };
 }
 
@@ -2250,25 +2274,6 @@ async function trySetter(prompt, message, logEl) {
   toast("Tried. Nothing was sent.");
 }
 
-async function saveFollowupPolicy(policy) {
-  if (!state.canEdit) {
-    toast("You can't edit this business.", "bad");
-    return;
-  }
-  state.followupPolicy = policy;
-  if (!state.supabase) {
-    toast(agentText(language()).saved);
-    return;
-  }
-  try {
-    const saved = await dashboardCall({ action: "save_policy", policy });
-    state.followupPolicy = saved.policy || policy;
-    toast(agentText(language()).saved);
-  } catch (error) {
-    toast(error.message, "bad");
-  }
-}
-
 function armRefresh() {
   if (state.refreshTimer) {
     clearInterval(state.refreshTimer);
@@ -2624,28 +2629,98 @@ async function saveFollowupOptions(patch) {
   await patchSettings(patch);
 }
 
+function followText() {
+  const es = language() === "es";
+  return {
+    preview: es ? "Esta vista previa no guarda." : "This preview does not save.",
+    step: es ? "Paso guardado. No se envía nada." : "Step saved. Nothing is sent.",
+    ladder: es ? "Escalera sugerida creada. Los pasos están apagados." : "Suggested ladder added. The steps are off.",
+    welcome: es ? "Paso de bienvenida guardado." : "Welcome step saved.",
+    manual: es ? "Paso manual guardado." : "Manual step saved.",
+    marked: es ? "Marcado como enviado desde Instagram. Roleflow no escribió al lead." : "Marked as sent from Instagram. Roleflow did not message the lead.",
+    loaded: es ? "Mensaje cargado en Chats. Revísalo y pulsa Enviar." : "Message loaded in Chats. Review it and press Send.",
+    write: es ? "Escribe el mensaje primero." : "Write the message first."
+  };
+}
+
 async function saveFollowupStep(row) {
-  if (!readyToSave()) return toast("This preview does not save.", "bad");
-  const saved = await state.supabase.from("acq_followup_steps").insert({ ...row, business_id: state.businessId });
+  if (!readyToSave()) return toast(followText().preview, "bad");
+  const payload = {
+    hours: row.hours,
+    mode: row.mode,
+    body: row.body || "",
+    crm_state: row.crm_state || null,
+    asset_id: row.asset_id || null,
+    voice_note_id: row.voice_note_id || null,
+    state_prompts: row.state_prompts || {},
+    enabled: row.enabled !== false,
+    updated_at: new Date().toISOString()
+  };
+  const saved = row.id
+    ? await state.supabase.from("acq_followup_steps").update(payload).eq("id", row.id).eq("business_id", state.businessId)
+    : await state.supabase.from("acq_followup_steps").insert({ ...payload, business_id: state.businessId });
   if (saved.error) toast(saved.error.message, "bad");
   else {
-    toast("Step saved.");
+    toast(followText().step);
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function toggleFollowupStep(id, enabled) {
+  if (!readyToSave()) {
+    state.followupSteps = (state.followupSteps || []).map((row) => row.id === id ? { ...row, enabled } : row);
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_followup_steps").update({ enabled: enabled === true, updated_at: new Date().toISOString() }).eq("id", id).eq("business_id", state.businessId);
+  if (saved.error) toast(saved.error.message, "bad");
+  else await bootBusiness(state.businessId, { quiet: true });
+}
+
+async function createSuggestedLadder() {
+  const rows = suggestedLadder();
+  if (!readyToSave()) {
+    state.followupSteps = rows.map((row, index) => ({ ...row, id: "preview-step-" + (index + 1) }));
+    toast(followText().ladder);
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_followup_steps").insert(rows.map((row) => ({ ...row, business_id: state.businessId })));
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast(followText().ladder);
     await bootBusiness(state.businessId, { quiet: true });
   }
 }
 
 async function saveWelcomeStep(row) {
-  if (!readyToSave()) return toast("This preview does not save.", "bad");
-  const saved = await state.supabase.from("acq_welcome_steps").insert({ ...row, business_id: state.businessId });
+  if (!readyToSave()) return toast(followText().preview, "bad");
+  const payload = { position: row.position, delay_hours: row.delay_hours, body: row.body, mode: "text" };
+  const saved = row.id
+    ? await state.supabase.from("acq_welcome_steps").update(payload).eq("id", row.id).eq("business_id", state.businessId)
+    : await state.supabase.from("acq_welcome_steps").insert({ ...payload, business_id: state.businessId });
   if (saved.error) toast(saved.error.message, "bad");
   else {
-    toast("Welcome message saved.");
+    toast(followText().welcome);
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+async function saveManualStep(row) {
+  if (!readyToSave()) return toast(followText().preview, "bad");
+  const payload = { wait_half_days: row.wait_half_days, mode: row.mode, body: row.body || "", asset_id: row.asset_id || null, updated_at: new Date().toISOString() };
+  const saved = row.id
+    ? await state.supabase.from("acq_manual_followup_steps").update(payload).eq("id", row.id).eq("business_id", state.businessId)
+    : await state.supabase.from("acq_manual_followup_steps").insert({ ...payload, business_id: state.businessId });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast(followText().manual);
     await bootBusiness(state.businessId, { quiet: true });
   }
 }
 
 async function saveManualFollowup(row) {
-  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  if (!readyToSave()) return toast(followText().preview, "bad");
   const saved = await state.supabase.from("acq_manual_followups").insert({
     business_id: state.businessId,
     body: row.body,
@@ -2658,6 +2733,36 @@ async function saveManualFollowup(row) {
   }
 }
 
+async function markManualSent(lead, step, body) {
+  if (!readyToSave()) return toast(followText().preview, "bad");
+  const saved = await state.supabase.from("acq_manual_followups").insert({
+    business_id: state.businessId,
+    contact_id: lead.id,
+    step_id: step.id,
+    body: String(body || "").trim() || "(sent from Instagram)",
+    status: "sent_by_human",
+    sent_via: "instagram",
+    sent_at: new Date().toISOString()
+  });
+  if (saved.error) toast(saved.error.message, "bad");
+  else {
+    toast(followText().marked);
+    await bootBusiness(state.businessId, { quiet: true });
+  }
+}
+
+// Loads the draft into the Chats desk. Nothing is sent until a person presses
+// Send there; only that click may use the 7-day human tag.
+function sendManualFromDesk(lead, step, body) {
+  const text = String(body || "").trim();
+  if (!text) return toast(followText().write, "bad");
+  state.chatDraft = text;
+  state.chatHumanFollowup = { contactId: lead.id, stepId: step.id };
+  go("chats");
+  openChat({ kind: "contact", id: lead.id });
+  toast(followText().loaded);
+}
+
 async function markFollowupSent(id) {
   if (!readyToSave()) return;
   const saved = await state.supabase.from("acq_manual_followups").update({ status: "sent_by_human" }).eq("id", id).eq("business_id", state.businessId);
@@ -2668,12 +2773,17 @@ async function markFollowupSent(id) {
   }
 }
 
-async function draftManualFollowup() {
+async function draftManualFollowup(context) {
+  const lead = context && context.lead;
+  const step = context && context.step;
+  const brief = step && step.mode === "ai" && step.body ? " Instructions: " + step.body : "";
+  const who = lead ? " The lead is @" + (lead.ig_handle || lead.name || "lead") + ", marked Lost, quiet for a few days." : "";
   const data = await callStudio("draft", {
     fields: (state.brief && state.brief.fields) || {},
-    lines: [{ role: "user", text: "Draft a short follow-up a person will send within 7 days." }]
+    lines: [{ role: "user", text: "Draft a short, non-promotional follow-up a person will send within 7 days." + who + brief }]
   });
-  if (data && data.reply) await saveManualFollowup({ body: String(data.reply) });
+  if (data && data.reply) return String(data.reply);
+  return "";
 }
 
 async function saveReminder(row) {
@@ -2770,7 +2880,7 @@ async function saveStoryCta(row) {
 }
 
 async function deleteFlowRow(table, id) {
-  const allowed = new Set(["acq_followup_steps", "acq_welcome_steps", "acq_comment_ctas", "acq_story_ctas"]);
+  const allowed = new Set(["acq_followup_steps", "acq_welcome_steps", "acq_manual_followup_steps", "acq_comment_ctas", "acq_story_ctas"]);
   if (!allowed.has(table) || !readyToSave()) return;
   const saved = await state.supabase.from(table).delete().eq("id", id).eq("business_id", state.businessId);
   if (saved.error) toast(saved.error.message, "bad");
@@ -2791,9 +2901,11 @@ async function sendInboxReply(lead, text, messageId) {
   state.chatSend = { contactId: lead.id, body, status: "sending", messageId: messageId || "" };
   state.chatDraft = "";
   paint();
+  const humanFollowup = Boolean(state.chatHumanFollowup && state.chatHumanFollowup.contactId === lead.id);
   const invoked = await state.supabase.functions.invoke("inbox-reply", {
-    body: { business_id: state.businessId, contact_id: lead.id, text: body, message_id: messageId || "" }
+    body: { business_id: state.businessId, contact_id: lead.id, text: body, message_id: messageId || "", human_followup: humanFollowup, followup_step_id: humanFollowup ? state.chatHumanFollowup.stepId : null }
   });
+  if (humanFollowup) state.chatHumanFollowup = null;
   const payload = invoked.data || {};
   if (invoked.error || payload.ok !== true) {
     state.chatSend = { contactId: lead.id, body, status: "failed", messageId: payload.message_id || messageId || "" };
@@ -4668,6 +4780,13 @@ function tabFromHash() {
     history.replaceState(null, "", url.pathname + url.search + "#voice");
   }
   const tab = canonicalTab(raw);
+  if (tab === "followup") {
+    const sub = raw === "reminders" ? "reminders" : parts[1];
+    if (FOLLOW_TABS.includes(sub)) {
+      const desk = followDesk({ state });
+      desk.tab = sub;
+    }
+  }
   state.settingsFocus = tab === "settings" && parts[1] === "model" ? "model" : "";
   const connectQuery = new URLSearchParams(location.search).get("connect") === "1";
   if (tab === "settings" && (parts[1] === "connect" || raw === "integrations" || raw === "instagram" || raw === "billing" || connectQuery)) state.configKey = "connect";
@@ -4922,6 +5041,7 @@ function readPreview() {
     storyCtas: [],
     commentVoiceLog: [{ id: "log-1", matched: false, queued: false, reason: "no_match", comment_text: "Nice post", commenter_username: "ada", created_at: "2026-10-26T09:00:00Z" }],
     followupPolicy: null,
+    ...previewFollowups(params),
     workers: [{ id: "w1", label: "Outreach worker", key_prefix: "rfw_preview", enabled: true, status: "offline", last_heartbeat_at: null, pause_reason: null }],
     dnc: [{ handle: "donotcontact", reason: "asked to stop" }],
     prompts: [],
@@ -4957,6 +5077,41 @@ function readPreview() {
         content: true
       }
     } : {})
+  };
+}
+
+function previewFollowups(params) {
+  if (params.get("followups") === "empty") {
+    return { followupSteps: [], manualSteps: [], welcomeSteps: [], followupSends: [], previewNow: "2026-10-24T10:00:00Z" };
+  }
+  return {
+    previewNow: "2026-10-24T10:00:00Z",
+    valueAssets: [
+      { id: "asset-case", kind: "link", title: "Client case study", url: "https://roleflow.io", label: "Case study", placement: "after", agent_roles: [] }
+    ],
+    followupSteps: [
+      { id: "fs-3", hours: 3, mode: "ai", body: "Ask one light question about what they are working on.", crm_state: null, asset_id: null, voice_note_id: null, state_prompts: {}, enabled: true },
+      { id: "fs-10", hours: 10, mode: "ai", body: "", crm_state: null, asset_id: "asset-case", voice_note_id: "v-open", state_prompts: { discovering: "Share the case study and ask if it fits.", qualifying: "Ask about budget in one line.", proposal: "Offer two call times." }, enabled: true },
+      { id: "fs-22", hours: 22, mode: "text", body: "Still here if you want to pick this up.\nNo rush.", crm_state: null, asset_id: null, voice_note_id: null, state_prompts: {}, enabled: false }
+    ],
+    manualSteps: [
+      { id: "ms-1", wait_half_days: 2, mode: "text", body: "Hey, circling back on this. Is it still on your list?", asset_id: null },
+      { id: "ms-2", wait_half_days: 5, mode: "ai", body: "Mention one result from the case study, no pitch.", asset_id: "asset-case" }
+    ],
+    welcomeSteps: [
+      { id: "ws-1", position: 1, delay_hours: 2, mode: "text", body: "Quick one: did my last message come through?" }
+    ],
+    reminders: [
+      { id: "rem-a", contact_id: "c-ada", title: "Resume with Ada after her launch", due_at: "2026-10-24T15:00:00Z", status: "open", kind: "resume", source: "ai", created_at: "2026-10-22T09:00:00Z" },
+      { id: "rem-b", contact_id: "c-sam", title: "Send Sam the pricing page", due_at: "2026-10-23T09:00:00Z", status: "open", kind: "task", source: "manual", created_at: "2026-10-20T09:00:00Z" },
+      { id: "rem-c", contact_id: null, title: "Review the 22h step copy", due_at: "2026-10-27T09:00:00Z", status: "open", kind: "task", source: "manual", created_at: "2026-10-23T09:00:00Z" }
+    ],
+    followupSends: [
+      { id: "fsd-1", track: "auto", step_id: "fs-3", status: "sent", replied: true, created_at: "2026-10-22T12:00:00Z" },
+      { id: "fsd-2", track: "auto", step_id: "fs-10", status: "sent", replied: false, created_at: "2026-10-22T19:00:00Z" },
+      { id: "fsd-3", track: "auto", step_id: "fs-3", status: "sent", replied: true, created_at: "2026-10-23T08:00:00Z" },
+      { id: "fsd-4", track: "welcome", step_id: "ws-1", status: "sent", replied: false, created_at: "2026-10-23T09:00:00Z" }
+    ]
   };
 }
 

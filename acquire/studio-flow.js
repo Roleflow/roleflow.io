@@ -2,7 +2,7 @@ import { ROLES } from "./model.js";
 import { CRM_STATES, filterLeads } from "./studio-model.js";
 import { aggregateFromLeads, bubbleKind, bubbleLabel, emptySummary, summaryFields } from "./chat-summary.js";
 import { mountSendBadge } from "./send-badge.js";
-import { exportThread, matchKeyword, reminderBucket, reminderKpis, stepError, volumeByDay, welcomeError } from "./studio-flow-model.js";
+import { exportThread, matchKeyword, reminderBucket, reminderKpis, volumeByDay } from "./studio-flow-model.js";
 import { sectionAlert, sectionEmpty, sectionText } from "./section-copy.js";
 
 function box(ui) {
@@ -27,136 +27,46 @@ function download(name, text, type) {
   URL.revokeObjectURL(url);
 }
 
-export function renderFollowups(ui) {
+export function renderReminders(ui) {
   const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Follow-ups", "A ladder inside the 24-hour messaging window, plus welcome messages and a 7-day list a person sends.", "followups", "send"));
-  wrap.append(ui.el("p", { text: "Instagram only delivers a business reply inside 24 hours of the lead's last message. Steps are 1 to 23 hours so the last one still fits. Nothing here is sent while live sync is off." }));
-  const settings = ui.state.settings || {};
-  const options = ui.el("section", { class: "agent" });
-  options.append(ui.el("h3", { text: "Window options" }));
-  const restart = check(ui, "Restart the ladder when the lead replies", settings.followup_restart_on_reply === true);
-  const before = check(ui, "Send the next step before office hours end", settings.followup_before_close === true);
-  options.append(restart.label, before.label);
-  if (ui.state.canEdit) {
-    options.append(ui.button("Save options", () => ui.saveFollowupOptions({
-      followup_restart_on_reply: restart.input.checked,
-      followup_before_close: before.input.checked
-    })));
-  }
-  wrap.append(options);
-  wrap.append(ladder(ui));
-  wrap.append(welcome(ui));
-  wrap.append(manual(ui));
+  wrap.append(header(ui, "Reminders", "Tasks and conversations to resume. A person confirms anything the model suggests.", "reminders", "clipboard"));
+  wrap.append(reminderBody(ui));
   return wrap;
 }
 
-function ladder(ui) {
-  const section = ui.el("section", { class: "agent" });
-  section.append(ui.el("h3", { text: "24-hour ladder" }));
-  const steps = ui.state.followupSteps || [];
-  if (!steps.length) section.append(ui.el("p", { text: "No steps yet." }));
-  steps.forEach((step) => {
-    const state = step.crm_state ? stateName(step.crm_state) : "Any state";
-    const line = ui.el("p", { text: step.hours + "h · " + (step.mode === "ai" ? "AI instructions" : "Literal text") + " · " + state + " — " + step.body });
-    if (ui.state.canEdit) line.append(" ", ui.button("Remove", () => ui.deleteFlowRow("acq_followup_steps", step.id)));
-    section.append(line);
-  });
-  if (!ui.state.canEdit) return section;
-  const form = ui.el("form", { class: "grid-2" });
-  const hours = ui.el("select", { "aria-label": "Hours" });
-  for (let hour = 1; hour <= 23; hour += 1) hours.append(ui.el("option", { value: String(hour), text: hour + " hours" }));
-  const mode = ui.el("select", { "aria-label": "Step mode" });
-  [["ai", "AI instructions"], ["text", "Literal text"]].forEach(([value, label]) => mode.append(ui.el("option", { value, text: label })));
-  const state = ui.el("select", { "aria-label": "Lead state variant" });
-  state.append(ui.el("option", { value: "any", text: "Any state" }));
-  CRM_STATES.forEach(([value, label]) => state.append(ui.el("option", { value, text: label })));
-  const body = ui.el("textarea", { rows: "3", "aria-label": "Step text" });
-  const asset = ui.el("select", { "aria-label": "Attach content" });
-  asset.append(ui.el("option", { value: "", text: "No attachment" }));
-  (ui.state.valueAssets || []).forEach((item) => asset.append(ui.el("option", { value: item.id, text: item.title || item.kind })));
-  form.append(hours, mode, state, body, asset);
-  form.append(ui.button("Add step", (event) => {
-    event.preventDefault();
-    const errors = stepError({ hours: hours.value, mode: mode.value, body: body.value, state: state.value, states: CRM_STATES.map((item) => item[0]) });
-    if (errors.length) return ui.toast(errors[0], "bad");
-    ui.saveFollowupStep({
-      hours: Number(hours.value),
-      mode: mode.value,
-      body: body.value.trim(),
-      crm_state: state.value === "any" ? null : state.value,
-      asset_id: asset.value || null
-    });
-  }));
-  form.addEventListener("submit", (event) => event.preventDefault());
-  section.append(form);
-  return section;
-}
+const REMINDER_COPY = {
+  en: { overdue: "Overdue", today: "Today", next: "Next 7 days", volume: "Volume by day", days: " days", open: "Open", done: "Done", none: "No reminders in this filter.", resume: "Resume conversation", task: "Task", suggested: "Suggested", manual: "Manual", finish: "Mark done", pauses: "Pauses automatic follow-ups for this lead." },
+  es: { overdue: "Vencidos", today: "Hoy", next: "Próximos 7 días", volume: "Volumen por día", days: " días", open: "Abiertos", done: "Hechos", none: "No hay recordatorios en este filtro.", resume: "Retomar conversación", task: "Tarea", suggested: "Sugerido", manual: "Manual", finish: "Marcar hecho", pauses: "Pausa los seguimientos automáticos de este lead." }
+};
 
-function welcome(ui) {
-  const section = ui.el("section", { class: "agent" });
-  section.append(ui.el("h3", { text: "Welcome follow-ups" }));
-  section.append(ui.el("p", { text: "Two messages at most, both inside 24 hours of the first reply." }));
-  const rows = ui.state.welcomeSteps || [];
-  if (!rows.length) section.append(ui.el("p", { text: "No welcome messages yet." }));
-  rows.forEach((row) => section.append(ui.el("p", { text: "Message " + row.position + " · " + row.delay_hours + "h — " + row.body })));
-  if (!ui.state.canEdit || rows.length >= 2) return section;
-  const form = ui.el("form", { class: "grid-2" });
-  const delay = ui.field("Delay in hours", "1", "number");
-  const body = ui.el("textarea", { rows: "2", "aria-label": "Welcome text" });
-  form.append(delay.label, body);
-  form.append(ui.button("Add welcome message", (event) => {
-    event.preventDefault();
-    const next = rows.concat([{ delay_hours: delay.input.value, body: body.value }]);
-    const errors = welcomeError(next);
-    if (errors.length) return ui.toast(errors[0], "bad");
-    ui.saveWelcomeStep({ position: rows.length + 1, delay_hours: Number(delay.input.value), body: body.value.trim(), mode: "text" });
-  }));
-  form.addEventListener("submit", (event) => event.preventDefault());
-  section.append(form);
-  return section;
-}
-
-function manual(ui) {
-  const section = ui.el("section", { class: "agent" });
-  section.append(ui.el("h3", { text: "7-day manual follow-ups" }));
-  section.append(ui.el("p", { text: "The model can draft these. A person sends them. Marking one sent does not message the lead." }));
-  const rows = (ui.state.manualFollowups || []).filter((row) => row.status === "pending");
-  if (!rows.length) section.append(ui.el("p", { text: "No pending drafts." }));
-  rows.forEach((row) => {
-    const line = ui.el("p", { text: row.body });
-    if (ui.state.canEdit) line.append(" ", ui.button("I sent this", () => ui.markFollowupSent(row.id)));
-    section.append(line);
-  });
-  if (!ui.state.canEdit) return section;
-  const form = ui.el("form");
-  const body = ui.el("textarea", { rows: "2", "aria-label": "Manual follow-up" });
-  form.append(body);
-  form.append(ui.button("Save draft", (event) => {
-    event.preventDefault();
-    if (!body.value.trim()) return ui.toast("Write the draft first.", "bad");
-    ui.saveManualFollowup({ body: body.value.trim() });
-  }));
-  form.append(ui.button("Draft with AI", () => ui.draftManualFollowup()));
-  form.addEventListener("submit", (event) => event.preventDefault());
-  section.append(form);
-  return section;
-}
-
-export function renderReminders(ui) {
+export function reminderBody(ui) {
   const flow = box(ui);
-  const wrap = ui.el("div", { class: "studio" });
-  wrap.append(header(ui, "Reminders", "Tasks and conversations to resume. A person confirms anything the model suggests.", "reminders", "clipboard"));
+  const copy = REMINDER_COPY[ui.language && ui.language() === "es" ? "es" : "en"];
+  const wrap = ui.el("div", { class: "cta-stack reminder-body" });
   const reminders = ui.state.reminders || [];
-  const kpis = reminderKpis(reminders, new Date());
-  const cards = ui.el("div", { class: "kpi-row" });
-  [["Overdue", kpis.overdue], ["Today", kpis.today], ["Next 7 days", kpis.week]].forEach(([label, value]) => {
+  const now = ui.state.previewNow ? new Date(ui.state.previewNow) : new Date();
+  const kpis = reminderKpis(reminders, now);
+  const cards = ui.el("div", { class: "kpi-row follow-kpis" });
+  [[copy.overdue, kpis.overdue], [copy.today, kpis.today], [copy.next, kpis.week]].forEach(([label, value]) => {
     const card = ui.el("article", { class: "kpi" });
     card.append(ui.el("span", { text: label }), ui.el("strong", { text: String(value) }));
     cards.append(card);
   });
   wrap.append(cards);
-  const volume = volumeByDay(reminders, 14, new Date());
-  const chart = ui.el("div", { class: "volume", "aria-label": "Reminders created over 14 days" });
+  const span = [7, 14, 30].includes(flow.reminderDays) ? flow.reminderDays : 14;
+  const chartCard = ui.el("section", { class: "agent cta-card" });
+  const head = ui.el("div", { class: "cta-list-head" });
+  head.append(ui.el("h3", { text: copy.volume }));
+  const ranges = ui.el("div", { class: "filters" });
+  [7, 14, 30].forEach((days) => {
+    const button = ui.el("button", { type: "button", "aria-pressed": span === days ? "true" : "false" }, [days + copy.days]);
+    button.addEventListener("click", () => { flow.reminderDays = days; ui.paint(); });
+    ranges.append(button);
+  });
+  head.append(ranges);
+  chartCard.append(head);
+  const volume = volumeByDay(reminders, span, now);
+  const chart = ui.el("div", { class: "volume", "aria-label": copy.volume });
   const max = Math.max(1, ...volume.map((day) => day.count));
   volume.forEach((day) => {
     const bar = ui.el("i");
@@ -164,9 +74,10 @@ export function renderReminders(ui) {
     bar.title = day.day + ": " + day.count;
     chart.append(bar);
   });
-  wrap.append(chart);
+  chartCard.append(chart);
+  wrap.append(chartCard);
   const filters = ui.el("div", { class: "filters" });
-  [["open", "Open"], ["overdue", "Overdue"], ["done", "Done"]].forEach(([id, label]) => {
+  [["open", copy.open], ["overdue", copy.overdue], ["done", copy.done]].forEach(([id, label]) => {
     const button = ui.el("button", { type: "button", "aria-pressed": flow.reminderFilter === id ? "true" : "false" }, [label]);
     button.addEventListener("click", () => { flow.reminderFilter = id; ui.paint(); });
     filters.append(button);
@@ -174,15 +85,23 @@ export function renderReminders(ui) {
   wrap.append(filters);
   const shown = reminders.filter((reminder) => {
     if (flow.reminderFilter === "done") return reminder.status === "done";
-    if (flow.reminderFilter === "overdue") return reminderBucket(reminder, new Date()) === "overdue";
+    if (flow.reminderFilter === "overdue") return reminderBucket(reminder, now) === "overdue";
     return reminder.status !== "done";
-  });
-  if (!shown.length) wrap.append(ui.el("p", { text: "No reminders in this filter." }));
+  }).sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at));
+  if (!shown.length) wrap.append(ui.el("p", { text: copy.none }));
   shown.forEach((reminder) => {
-    const card = ui.el("article", { class: "agent" });
-    card.append(ui.el("h3", { text: reminder.title }));
-    card.append(ui.el("p", { text: (reminder.kind === "resume" ? "Resume conversation" : "Task") + " · " + (reminder.source === "ai" ? "Suggested" : "Manual") + " · " + new Date(reminder.due_at).toLocaleString() }));
-    if (ui.state.canEdit && reminder.status !== "done") card.append(ui.button("Mark done", () => ui.finishReminder(reminder.id)));
+    const card = ui.el("article", { class: "agent cta-card" });
+    const top = ui.el("div", { class: "cta-list-head" });
+    top.append(ui.el("h3", { text: reminder.title }));
+    top.append(ui.el("span", { class: reminder.kind === "resume" ? "follow-pill" : "chip", text: reminder.kind === "resume" ? copy.resume : copy.task }));
+    card.append(top);
+    card.append(ui.el("p", { class: "mute", text: (reminder.source === "ai" ? copy.suggested : copy.manual) + " · " + new Date(reminder.due_at).toLocaleString() }));
+    if (reminder.kind === "resume" && reminder.status !== "done") card.append(ui.el("p", { class: "mute", text: copy.pauses }));
+    if (ui.state.canEdit && reminder.status !== "done") {
+      const finish = ui.button(copy.finish, () => ui.finishReminder(reminder.id));
+      finish.classList.add("cta-secondary");
+      card.append(ui.el("div", { class: "cta-dialog-actions" }, [finish]));
+    }
     wrap.append(card);
   });
   if (ui.state.canEdit) wrap.append(reminderForm(ui));
@@ -190,18 +109,20 @@ export function renderReminders(ui) {
 }
 
 function reminderForm(ui) {
-  const form = ui.el("form", { class: "agent" });
-  form.append(ui.el("h3", { text: "Add a reminder" }));
-  const title = ui.field("Title", "");
-  const due = ui.field("Due", "", "datetime-local");
-  const kind = ui.el("select", { "aria-label": "Reminder kind" });
-  [["task", "Task"], ["resume", "Resume conversation"]].forEach(([value, label]) => kind.append(ui.el("option", { value, text: label })));
+  const es = ui.language && ui.language() === "es";
+  const form = ui.el("form", { class: "agent cta-card" });
+  form.append(ui.el("h3", { text: es ? "Añadir recordatorio" : "Add a reminder" }));
+  const title = ui.field(es ? "Título" : "Title", "");
+  const due = ui.field(es ? "Vence" : "Due", "", "datetime-local");
+  const kind = ui.el("select", { "aria-label": es ? "Tipo" : "Reminder kind" });
+  [["task", es ? "Tarea" : "Task"], ["resume", es ? "Retomar conversación" : "Resume conversation"]].forEach(([value, label]) => kind.append(ui.el("option", { value, text: label })));
   form.append(title.label, due.label, kind);
-  form.append(ui.button("Save reminder", (event) => {
+  const save = ui.button(es ? "Guardar recordatorio" : "Save reminder", (event) => {
     event.preventDefault();
-    if (!title.input.value.trim() || !due.input.value) return ui.toast("Add a title and a time.", "bad");
+    if (!title.input.value.trim() || !due.input.value) return ui.toast(es ? "Añade un título y una hora." : "Add a title and a time.", "bad");
     ui.saveReminder({ title: title.input.value.trim(), due_at: new Date(due.input.value).toISOString(), kind: kind.value, source: "manual" });
-  }));
+  });
+  form.append(ui.el("div", { class: "cta-dialog-actions" }, [save]));
   form.addEventListener("submit", (event) => event.preventDefault());
   return form;
 }

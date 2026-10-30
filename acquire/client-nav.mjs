@@ -18,7 +18,7 @@ export const NAV_GROUPS = [
     { tab: "warmer", icon: "users", tone: "t4", soon: true, label: { en: "Lead Warmer", es: "Calentador" } },
     { tab: "outreacher", icon: "send", tone: "t5", soon: true, label: { en: "Outreacher", es: "Prospección" } },
     { tab: "setter", icon: "inbox", tone: "t2", label: { en: "Agentic Setter", es: "Setter" } },
-    { tab: "followup", icon: "trend", tone: "t3", label: { en: "Follow Up Boss", es: "Seguimiento" } }
+    { tab: "followup", icon: "trend", tone: "t3", label: { en: "Follow-ups", es: "Seguimientos" } }
   ] },
   { id: "account", label: { en: "Account", es: "Cuenta" }, items: [
     { tab: "settings", icon: "settings", tone: "t1", label: { en: "Settings", es: "Ajustes" } }
