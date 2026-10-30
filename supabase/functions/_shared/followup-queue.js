@@ -24,12 +24,18 @@ async function leadFacts(db, businessId, thread) {
   const lastOut = await rows(db.from("ig_messages").select("created_at").eq("thread_id", thread.id).eq("business_id", businessId).eq("direction", "out").order("created_at", { ascending: false }).limit(1));
   const firstOut = await rows(db.from("ig_messages").select("created_at").eq("thread_id", thread.id).eq("business_id", businessId).eq("direction", "out").order("created_at", { ascending: true }).limit(1));
   const handle = String(thread.username || "").replace(/^@/, "");
-  const contact = handle
-    ? (await rows(db.from("acq_contacts").select("id, we_follow, automated, crm_state").eq("business_id", businessId).ilike("ig_handle", handle).limit(1)))[0] || null
+  const externalId = String(thread.igsid || "").trim();
+  let contact = externalId
+    ? (await rows(db.from("acq_contacts").select("id, we_follow, automated, crm_state").eq("business_id", businessId).eq("external_id", externalId).limit(1)))[0] || null
     : null;
+  if (!contact && handle) {
+    contact = (await rows(db.from("acq_contacts").select("id, we_follow, automated, crm_state").eq("business_id", businessId).ilike("ig_handle", handle).limit(1)))[0] || null;
+  }
   const resume = thread.target_id
     ? await rows(db.from("acq_reminders").select("id").eq("business_id", businessId).eq("target_id", thread.target_id).eq("kind", "resume").eq("status", "open").limit(1))
-    : [];
+    : contact
+      ? await rows(db.from("acq_reminders").select("id").eq("business_id", businessId).eq("contact_id", contact.id).eq("kind", "resume").eq("status", "open").limit(1))
+      : [];
   const firstAt = firstOut[0] ? firstOut[0].created_at : "";
   const repliedAfter = firstAt && thread.last_user_message_at ? Date.parse(thread.last_user_message_at) > Date.parse(firstAt) : false;
   return {
