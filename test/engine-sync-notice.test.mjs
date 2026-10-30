@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { businessSync, SYNC_LIVE, SYNC_READY, SYNC_SETUP, SYNCING } from "../acquire/sync-state.js";
+import { businessSync, SYNC_FAILED, SYNC_LIVE, SYNC_READY, SYNC_SETUP, SYNCING } from "../acquire/sync-state.js";
 import { SETTER_SECTION_DEFS } from "../acquire/setter-sections.js";
 import { buildSyncNotice, resolveResendConfig, shouldClaim } from "../supabase/functions/_shared/sync-notice.js";
 import { headedSections, SECTION_HEADINGS, withHeading } from "../supabase/functions/_shared/prompt-headings.js";
@@ -58,7 +58,7 @@ const pendingCreate = [{ kind: "create_agent", status: "pending", created_at: "2
 assert.equal(businessSync({ outbox: pendingCreate, igStatus: "connected", systemEnabled: true }).label, SYNC_SETUP);
 assert.equal(businessSync({
   outbox: [{ kind: "create_agent", status: "failed", error: "Missing calendar", created_at: "2026-10-23T11:00:00Z" }]
-}).label, "Missing calendar");
+}).label, SYNC_FAILED);
 assert.equal(businessSync({
   outbox: [{ kind: "update_workflow", status: "pending", created_at: "2026-10-23T11:00:00Z" }],
   igStatus: "connected",
@@ -70,7 +70,7 @@ assert.equal(businessSync({
   igStatus: "connected",
   systemEnabled: true,
   externalAgentId: "agent"
-}).label, "Deploy was rejected");
+}).label, SYNC_FAILED);
 assert.equal(businessSync({
   outbox: [],
   igStatus: "connected",
@@ -84,7 +84,8 @@ assert.equal(businessSync({
   externalAgentId: "agent-1"
 }).label, SYNC_READY);
 assert.equal(businessSync({ outbox: [], igStatus: "disconnected", systemEnabled: false }).label, SYNC_SETUP);
-assert.equal(businessSync({ previewSync: "failed", previewError: "The workflow was rejected." }).label, "The workflow was rejected.");
+assert.equal(businessSync({ previewSync: "failed", previewError: "The workflow was rejected." }).label, SYNC_FAILED);
+assert.equal(businessSync({ previewSync: "failed", previewError: "The workflow was rejected." }).detail, "The workflow was rejected.");
 
 const sql = read("supabase/migrations/20261023080000_engine_sync_notice.sql");
 ["result_agent_id", "notified_at", "'done'", "create_agent", "update_tool", "resume_agent", "connect_instagram", "acq_engine_outbox_settle", "acq_engine_outbox_pending", "acq_claim_sync_notice", "followup_settings", "workflow_text", "personality", "version_id"].forEach((needle) => {

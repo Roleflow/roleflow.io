@@ -43,11 +43,12 @@ export function renderSetterStudio(ui) {
   });
   bar.append(select);
   const status = syncLabel(ui);
-  if (status) bar.append(ui.el("span", { class: "integration-status " + status.tone, id: "setter-sync", text: status.label }));
+  if (status) bar.append(ui.el("span", { class: "integration-status " + status.tone, id: "setter-sync", text: status.label, title: (ui.state.isAdmin && status.detail) || status.label }));
   if (ui.state.canEdit) {
     bar.append(ui.button("Save", () => savePrompt(ui)));
   }
   editor.append(bar);
+  if (status && status.detail && ui.state.isAdmin) editor.append(ui.el("p", { class: "tool-hint", id: "setter-sync-detail", text: status.detail }));
   editor.append(ui.el("p", { class: "tool-hint", text: toolHint(tools) }));
   const accordion = ui.el("div", { class: "setter-accordion" });
   SETTER_SECTION_DEFS.forEach((section) => {
@@ -94,7 +95,7 @@ function toolPhrase(tool) {
 }
 
 function syncLabel(ui) {
-  if (ui.businessSync) return ui.businessSync();
+  if (ui.businessSync) return ui.businessSync({ full: true });
   return businessSync({
     outbox: (ui.state.setterOutbox || []).concat(ui.state.outbox || []),
     igStatus: ui.state.ig && ui.state.ig.status,

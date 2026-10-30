@@ -231,7 +231,7 @@ export function pageHeader(ui, title, text, how, iconName) {
   const quietSync = new Set(["dashboard", "warmer", "outreacher", "setter", "followup", "ctas", "chats", "voice"]);
   if (ui.businessSync && !(ui.state && quietSync.has(ui.state.tab))) {
     const sync = ui.businessSync();
-    actions.append(ui.el("span", { id: "sync-state", class: "integration-status " + sync.tone, "data-sync": sync.key, text: sync.label }));
+    actions.append(ui.el("span", { id: "sync-state", class: "integration-status " + sync.tone, "data-sync": sync.key, text: sync.label, title: (ui.state && ui.state.isAdmin && sync.detail) || sync.label }));
   }
   actions.append(button);
   card.append(copy, actions, ui.el("span", { class: "page-rule" }));
