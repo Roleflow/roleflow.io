@@ -1,7 +1,12 @@
-export const SYNC_SETUP = "Setting up your AI setter…";
+export const SYNC_SETUP = "Setting up";
 export const SYNC_READY = "Setter ready";
 export const SYNC_LIVE = "Live";
 export const SYNCING = "Syncing";
+export const SYNC_FAILED = "Sync failed";
+
+// Page headers show one short, client-safe label. The backend reason goes in
+// `detail` (tooltip / admin-only views) so a long or internal error can never
+// stretch the header or reach a client as the status pill.
 
 const DONE = new Set(["done", "applied"]);
 
@@ -12,7 +17,7 @@ export function businessSync(input) {
   if (preview === "ready") return pack("ready", SYNC_READY, "wait");
   if (preview === "live") return pack("live", SYNC_LIVE, "on");
   if (preview === "syncing") return pack("syncing", SYNCING, "wait");
-  if (preview === "failed") return pack("failed", reasonText(source.previewError), "bad");
+  if (preview === "failed") return pack("failed", SYNC_FAILED, "bad", reasonText(source.previewError));
 
   const rows = Array.isArray(source.outbox) ? source.outbox : [];
   const creates = rows.filter((row) => row.kind === "create_agent");
@@ -20,12 +25,16 @@ export function businessSync(input) {
   const createDone = creates.some((row) => DONE.has(row.status)) || Boolean(String(source.externalAgentId || "").trim());
   const createFailed = newest(creates.filter((row) => row.status === "failed"));
   if (createPending) return pack("setup", SYNC_SETUP, "wait");
-  if (createFailed && !createDone) return pack("failed", reasonText(createFailed.error), "bad");
+  // Engine failures only describe the business when it runs on the engine setter.
+  // Businesses on the Roleflow setter can carry stale or intentionally blocked
+  // engine jobs; those must not turn every page header red.
+  const engineFailures = source.engine !== false;
+  if (createFailed && !createDone && engineFailures) return pack("failed", SYNC_FAILED, "bad", reasonText(createFailed.error));
 
   const others = rows.filter((row) => row.kind !== "create_agent");
   if (others.some((row) => row.status === "pending")) return pack("syncing", SYNCING, "wait");
   const failed = newest(others.filter((row) => row.status === "failed"));
-  if (failed && !superseded(others, failed)) return pack("failed", reasonText(failed.error), "bad");
+  if (failed && !superseded(others, failed) && engineFailures) return pack("failed", SYNC_FAILED, "bad", reasonText(failed.error));
 
   const live = source.igStatus === "connected" && source.systemEnabled === true;
   if (live) return pack("live", SYNC_LIVE, "on");
@@ -40,8 +49,8 @@ export function queueSyncNotice(supabase, businessId) {
   }).catch(() => {});
 }
 
-function pack(key, label, tone) {
-  return { key, label, tone };
+function pack(key, label, tone, detail) {
+  return { key, label, tone, detail: detail || "" };
 }
 
 function newest(rows) {

@@ -195,8 +195,12 @@ body.platform .slide-nav a[aria-current=page] .nav-ico{background:var(--grad);co
 body.platform .page-card,body.platform .home-card,body.platform .agent,body.platform .kpi,body.platform .report,body.platform .voice-card,body.platform .detail,body.platform .snap article,body.platform .table-wrap,body.admin-panel .biz-tile,body.admin-panel .roster-biz{
   background:#101A33;border:0;box-shadow:none;border-radius:16px;
 }
-body.platform .page-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:center;padding:24px}
+body.platform .page-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,max-content);gap:8px 16px;align-items:center;padding:24px}
 .page-copy{display:flex;gap:16px;align-items:flex-start;min-width:0}
+.page-copy>div{min-width:min(100%,16rem)}
+.page-actions{min-width:0;max-width:22rem}
+.page-actions .integration-status{max-width:100%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:1.4}
+.page-actions .integration-status::before{display:inline-block;vertical-align:middle;margin:-2px 8px 0 0}
 .page-copy h2{margin:0;font-size:1.45rem}
 .page-copy p{margin:8px 0 0;color:var(--mute);max-width:46rem}
 .page-copy .nav-ico{width:40px;height:40px;border-radius:12px;flex:none}

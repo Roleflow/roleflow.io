@@ -4024,8 +4024,10 @@ function usesEngine() {
   return Boolean(state.settings && state.settings.setter_provider === "engine");
 }
 
-function currentSync() {
+function currentSync(options) {
+  const full = Boolean(options && options.full);
   return businessSync({
+    engine: full || usesEngine(),
     previewSync: state.previewSync || "",
     previewError: state.previewError || "",
     outbox: state.outbox || [],
