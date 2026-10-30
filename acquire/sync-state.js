@@ -1,4 +1,4 @@
-export const SYNC_SETUP = "Setting up your AI setter…";
+export const SYNC_SETUP = "Setting up";
 export const SYNC_READY = "Setter ready";
 export const SYNC_LIVE = "Live";
 export const SYNCING = "Syncing";
