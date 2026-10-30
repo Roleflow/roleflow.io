@@ -32,6 +32,7 @@ import { qualifiersPass } from "./ig/qualify.js";
 import { readDmGate } from "../_shared/dm-gate.js";
 import { queueFollowups } from "../_shared/followup-queue.js";
 import { followupBrief, textBubbles, voiceForStep } from "../_shared/followup-ladder.js";
+import { contactLookup, followupGate, pickChannel } from "../_shared/followup-channel.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -240,6 +241,15 @@ async function runOutbox(db, row) {
   const setterReply = agentKey === "setter";
   if (!settings.system_enabled && row.kind !== "human" && !setterReply) return finish("blocked", "system_off");
   if (agentKey !== "human" && !await agentEnabled(db, businessId, agentKey)) return finish("blocked", "agent_off");
+  if (row.kind === "recovery") {
+    const channel = await sendChannel(db, businessId, thread);
+    const windowCheck = messagingDecision({ lastUserMessageAt: thread.last_user_message_at, now: Date.now(), kind: "ai", humanLocked: false });
+    const opened = followupGate({ dmOpen: true, followupOn: true, channel, windowOpen: windowCheck.allow, windowReason: windowCheck.reason });
+    if (!opened.allow) {
+      await markFollowup(db, row, "skipped", opened.reason, null);
+      return finish("blocked", opened.reason);
+    }
+  }
   const role = row.kind === "recovery" ? "conversation_recovery" : row.kind === "comment_private" ? "comment_to_dm" : "qualification";
   const savedPrompt = agentKey === "human" ? "" : await setterPromptBody(db, businessId);
   if (agentKey === "setter" && !savedPrompt) return finish("blocked", "prompt_missing");
@@ -418,9 +428,13 @@ async function markFollowup(db, row, status, reason, voiceNoteId) {
 }
 
 async function sendStepVoice(db, businessId, thread, step) {
-  if (!step || !step.voice_note_id || !thread.target_id) return null;
-  const prior = await db.from("acq_voice_sends").select("voice_note_id").eq("agent_id", businessId).eq("target_id", thread.target_id).eq("result", "sent");
-  const id = voiceForStep(step, (prior.data || []).map((item) => item.voice_note_id));
+  if (!step || !step.voice_note_id) return null;
+  const prior = thread.target_id
+    ? await db.from("acq_voice_sends").select("voice_note_id").eq("agent_id", businessId).eq("target_id", thread.target_id).eq("result", "sent")
+    : { data: [] };
+  const logged = await db.from("acq_followup_sends").select("voice_note_id").eq("business_id", businessId).eq("thread_id", thread.id).not("voice_note_id", "is", null);
+  const sentIds = (prior.data || []).map((item) => item.voice_note_id).concat((logged.data || []).map((item) => item.voice_note_id));
+  const id = voiceForStep(step, sentIds);
   if (!id) return null;
   const note = await db.from("acq_voice_library").select("id, title, storage_path, mime_type, active, deleted_at").eq("id", id).eq("agent_id", businessId).maybeSingle();
   if (note.error || !note.data || note.data.deleted_at || note.data.active === false || !note.data.storage_path) return null;
@@ -428,7 +442,7 @@ async function sendStepVoice(db, businessId, thread, step) {
   await db.from("acq_voice_sends").insert({
     agent_id: businessId,
     voice_note_id: id,
-    target_id: thread.target_id,
+    target_id: thread.target_id || null,
     slot: "followup",
     result: audio.ok ? "sent" : "skipped",
     notes: audio.ok ? "" : String(audio.error || "not_sent").slice(0, 200)
@@ -465,18 +479,11 @@ async function sendStepText(db, row, thread, settings, step, finish) {
 async function sendLibraryAudio(db, businessId, thread, note) {
   const gate = await readDmGate(db, businessId);
   if (!gate.open) return { ok: false, error: gate.reason, conversationId: "" };
-  const config = await loadGatewayConfig(db);
-  if (!config.apiKey) return { ok: false, error: "Instagram is not connected yet.", conversationId: "" };
-  const account = await db.from("ig_gateway_accounts").select("account_id").eq("business_id", businessId).eq("status", "connected").maybeSingle();
-  if (account.error || !account.data || !account.data.account_id) return { ok: false, error: "Instagram is not connected yet.", conversationId: "" };
-  const handle = String(thread.username || "").replace(/^@/, "");
-  const contact = handle
-    ? await db.from("acq_contacts").select("id").eq("business_id", businessId).ilike("ig_handle", handle).maybeSingle()
-    : { data: null, error: null };
-  if (!contact.data) return { ok: false, error: "This chat has no Instagram thread yet.", conversationId: "" };
-  const conversation = await db.from("acq_conversations").select("id, external_id").eq("business_id", businessId).eq("contact_id", contact.data.id).limit(1);
-  const row = conversation.data && conversation.data[0];
-  if (!row || !row.external_id) return { ok: false, error: "This chat has no Instagram thread yet.", conversationId: row && row.id || "" };
+  const target = await gatewayTarget(db, businessId, thread);
+  if (!target.ok) return { ok: false, error: target.error, conversationId: target.conversationRowId || "" };
+  const config = { apiKey: target.apiKey };
+  const account = { data: { account_id: target.accountId } };
+  const row = { id: target.conversationRowId, external_id: target.conversationId };
   const downloaded = await db.storage.from("acq-voice").download(note.storage_path);
   if (downloaded.error || !downloaded.data) return { ok: false, error: "The voice note was not sent.", conversationId: row.id };
   const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
@@ -611,7 +618,7 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
   const gate = await readDmGate(db, businessId);
   if (!gate.open) return { ok: false, error: gate.reason };
   const token = await readIgToken(db, businessId);
-  if (!token) return { ok: false, error: "Instagram is not connected." };
+  if (!token) return deliverGateway(db, businessId, thread, bubbles, kind);
   const texts = (bubbles || []).filter(Boolean);
   let voiceAttached = false;
   const allowVoice = kind !== "comment_private" && kind !== "comment_voice" && await voiceSendingOn(db, businessId);
@@ -666,6 +673,76 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify({ message: texts[0] })
     });
+  }
+  return { ok: true };
+}
+
+// Instagram connected through the messaging account (no stored Meta token).
+async function gatewayTarget(db, businessId, thread) {
+  const config = await loadGatewayConfig(db);
+  if (!config.apiKey) return { ok: false, error: "Instagram is not connected." };
+  const account = await db.from("ig_gateway_accounts").select("account_id").eq("business_id", businessId).eq("status", "connected").maybeSingle();
+  if (account.error || !account.data || !account.data.account_id) return { ok: false, error: "Instagram is not connected." };
+  const lookup = contactLookup(thread);
+  let contact = null;
+  if (lookup.externalId) {
+    const byId = await db.from("acq_contacts").select("id").eq("business_id", businessId).eq("external_id", lookup.externalId).limit(1);
+    contact = byId.data && byId.data[0] || null;
+  }
+  if (!contact && lookup.handle) {
+    const byHandle = await db.from("acq_contacts").select("id").eq("business_id", businessId).ilike("ig_handle", lookup.handle).limit(1);
+    contact = byHandle.data && byHandle.data[0] || null;
+  }
+  if (!contact) return { ok: false, error: "This chat has no Instagram thread yet." };
+  const conversation = await db.from("acq_conversations").select("id, external_id").eq("business_id", businessId).eq("contact_id", contact.id).limit(1);
+  const row = conversation.data && conversation.data[0];
+  if (!row || !row.external_id) return { ok: false, error: "This chat has no Instagram thread yet.", conversationRowId: row && row.id || "" };
+  return { ok: true, apiKey: config.apiKey, accountId: account.data.account_id, conversationId: row.external_id, conversationRowId: row.id };
+}
+
+async function sendChannel(db, businessId, thread) {
+  const token = await readIgToken(db, businessId);
+  if (token) return pickChannel({ metaToken: true });
+  const target = await gatewayTarget(db, businessId, thread);
+  return pickChannel({ metaToken: false, gatewayReady: target.ok });
+}
+
+async function deliverGateway(db, businessId, thread, bubbles, kind) {
+  if (kind === "comment_private" || kind === "comment_voice") return { ok: false, error: "Instagram is not connected." };
+  const target = await gatewayTarget(db, businessId, thread);
+  if (!target.ok) return { ok: false, error: target.error };
+  const texts = (bubbles || []).filter(Boolean);
+  for (let index = 0; index < texts.length; index += 1) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
+    const gate = await readDmGate(db, businessId);
+    if (!gate.open) return { ok: false, error: gate.reason };
+    const text = texts[index];
+    const request = sendRequest({ kind: "reply", payload: { accountId: target.accountId, conversationId: target.conversationId, text } });
+    let result;
+    try {
+      const response = await fetch(API_BASE + request.path, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + target.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(request.body)
+      });
+      const payload = await response.json().catch(() => ({}));
+      result = interpretSend(response.status, payload);
+    } catch (_error) {
+      result = { ok: false, error: "The reply was not sent." };
+    }
+    if (!result.ok) return { ok: false, error: result.error || "The reply was not sent." };
+    await db.from("ig_messages").insert({ business_id: businessId, thread_id: thread.id, direction: "out", body: text, kind: "text" });
+    await db.from("acq_messages").insert({
+      business_id: businessId,
+      conversation_id: target.conversationRowId,
+      role: "assistant",
+      sender: "ai",
+      body: text,
+      metadata: { source: kind === "recovery" ? "followup" : kind },
+      delivery_status: "sent",
+      sent_at: new Date().toISOString()
+    });
+    await db.from("ig_send_log").insert({ business_id: businessId });
   }
   return { ok: true };
 }
