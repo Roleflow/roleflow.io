@@ -3,6 +3,7 @@ import { toast } from "../auth/ui.js";
 import { NAV_GROUPS, canonicalTab, navLabel, readLanguage, writeLanguage } from "./client-nav.mjs";
 import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
+import { switchesText } from "./dashboard-switches.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
@@ -517,6 +518,17 @@ async function loadAll(id, token) {
   const llmNote = await q.from("acq_llm_errors").select("message").eq("business_id", id).eq("provider", "anthropic").order("created_at", { ascending: false }).limit(1);
   const note = !llmNote.error && llmNote.data && llmNote.data[0] ? String(llmNote.data[0].message || "") : "";
   state.claudeNotice = /Claude API key was rejected/.test(note) ? note : "";
+  const llmSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const llmErrors = await q.from("acq_llm_errors").select("provider, model, message, fell_back, created_at").eq("business_id", id).gte("created_at", llmSince).order("created_at", { ascending: false }).limit(5);
+  const gatewayIg = await q.from("ig_gateway_accounts").select("status, username").eq("business_id", id).maybeSingle();
+  if (!live()) return false;
+  state.llmErrors = llmErrors.error ? [] : llmErrors.data || [];
+  state.gatewayIg = gatewayIg.error ? null : gatewayIg.data || null;
+  const replyQuery = (cols) => q.from("acq_messages").select(cols).eq("business_id", id).eq("role", "assistant").gte("sent_at", llmSince).order("sent_at", { ascending: false }).limit(20);
+  let assistantReplies = await replyQuery("role, sender, delivery_status, sent_at");
+  if (assistantReplies.error) assistantReplies = await replyQuery("role, sender, sent_at");
+  if (!live()) return false;
+  state.assistantReplies = assistantReplies.error ? [] : assistantReplies.data || [];
   state.performance = performance.error ? [] : performance.data || [];
   state.stats = null;
   state.leads = [];
@@ -545,6 +557,8 @@ async function loadAll(id, token) {
       template: "",
       exclusions: ""
     };
+  } else if (!dmControls.error) {
+    state.autoDm = null;
   }
   state.dmCampaigns = dmCampaigns.error ? [] : dmCampaigns.data || [];
   state.contacts = contacts.error ? [] : contacts.data || [];
@@ -1006,6 +1020,7 @@ function pageUi() {
     rejectAction,
     language,
     setAgent,
+    setSending,
     saveSetterPrompt,
     saveAutoDm,
     startDmLogin,
@@ -1482,6 +1497,37 @@ async function disconnectDm() {
     }
   }
   toast(language() === "es" ? "No se pudo desconectar." : "Could not disconnect.", "bad");
+}
+
+async function setSending(enabled) {
+  if (!state.canEdit) {
+    toast(language() === "es" ? "No puedes editar este negocio." : "You can't edit this business.", "bad");
+    return;
+  }
+  const current = state.autoDm || {};
+  if (current.killed === true) {
+    toast(switchesText(language()).sendingStopped, "bad");
+    return;
+  }
+  if (enabled === true && !window.confirm(switchesText(language()).confirmSending)) return;
+  const next = Object.assign({}, current, { enabled: enabled === true });
+  if (!state.supabase || state.businessId === "preview") {
+    state.autoDm = next;
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_dm_controls").upsert({
+    business_id: state.businessId,
+    enabled: enabled === true,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "business_id" }).select("enabled, killed").maybeSingle();
+  if (saved.error) {
+    toast(saved.error.message, "bad");
+    return;
+  }
+  state.autoDm = Object.assign({}, next, saved.data ? { enabled: saved.data.enabled === true, killed: saved.data.killed === true } : {});
+  toast(agentText(language()).saved);
+  paint();
 }
 
 async function saveAutoDm(draft) {
@@ -3124,6 +3170,7 @@ async function saveLlm(patch, secrets) {
       p_base_url: secret.baseUrl || ""
     });
     if (stored.error || !stored.data || stored.data.ok !== true) return toast("The key was not saved.", "bad");
+    state.llmKeySavedAt = Object.assign({}, state.llmKeySavedAt || {}, { [state.businessId]: new Date().toISOString() });
   }
   toast("Saved.");
   await bootBusiness(state.businessId);
@@ -4899,6 +4946,19 @@ function previewCallAt() {
   return date.toISOString();
 }
 
+function previewSwitches(params, selected) {
+  const mode = params.get("switches") || "";
+  const live = mode === "live";
+  const out = {
+    agentSwitches: live ? [{ agent_key: "setter", enabled: true }, { agent_key: "followup", enabled: true }, { agent_key: "comment_voice", enabled: false }] : [],
+    autoDm: mode ? { enabled: live, killed: mode === "killed", cap: 30, paused: "", igHandle: "", sessionReady: false, loginLive: false, name: "", handles: "", template: "", exclusions: "" } : null,
+    gatewayIg: params.get("igstatus") === "error" || params.get("connect") === "1" ? null : { status: "connected", username: "previewcoach", business_id: selected },
+    assistantReplies: params.get("aikey") === "fixed" ? [{ role: "assistant", sender: null, delivery_status: null, sent_at: new Date(Date.now() - 5 * 60 * 1000).toISOString() }] : [],
+    llmErrors: params.get("aikey") === "bad" || params.get("aikey") === "fixed" ? [{ provider: "xai", model: "demo-model", message: "Incorrect API key provided.", fell_back: false, created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() }] : []
+  };
+  return out;
+}
+
 function readPreview() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return null;
@@ -4978,7 +5038,7 @@ function readPreview() {
     ig,
     connectRequests: pending ? [{ id: "preview-request", workspace_id: "preview", channel: "instagram", username: "previewcoach", status: "pending", notes: "Business account" }] : [],
     google: { status: "disconnected" },
-    agentSwitches: [],
+    ...previewSwitches(params, selected),
     setterPrompt: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}.",
     setterTestedAt: null,
     bookingLink: bookingLinkFor(""),
@@ -5048,7 +5108,7 @@ function readPreview() {
     dnc: [{ handle: "donotcontact", reason: "asked to stop" }],
     prompts: [],
     members: [],
-    isAdmin: false,
+    isAdmin: params.get("admin") === "1",
     openThread: "th1",
     promptRole: "qualification",
     ...(params.get("inbox") === "1" ? inboxPreview() : {}),

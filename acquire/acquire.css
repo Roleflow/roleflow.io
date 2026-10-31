@@ -800,3 +800,24 @@ body.admin-panel .connect-banner .roster-biz{display:flex;flex-wrap:wrap;align-i
 .followups-page .cta-table td.follow-text{white-space:normal;min-width:220px}
 .followups-page .follow-states textarea{min-height:56px}
 @media(max-width:860px){.followups-page .follow-switch-help{margin-left:0}}
+.dash-controls{margin-top:18px}
+.dash-replying{display:inline-flex;align-items:center;gap:6px;margin:6px 0 10px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg2);font-size:.95rem}
+.dash-replying.on{border-color:rgba(123,77,255,.6);box-shadow:inset 0 0 0 1px rgba(123,77,255,.25)}
+.dash-replying.on strong{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.dash-replying.blocked strong{color:var(--gold)}
+.dash-blockers{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
+.dash-blockers li{padding:8px 12px;border-radius:12px;border:1px solid rgba(232,176,74,.45);background:rgba(232,176,74,.08);color:var(--ink);font-size:.9rem}
+.dash-hint-link{background:none;border:0;padding:0;color:var(--o);font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+.dash-control-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.dash-control{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--bg2)}
+.dash-control-text{display:grid;gap:2px}
+.dash-control-text .mute{font-size:.85rem}
+.dash-control[data-control=sending]{border-color:rgba(192,64,154,.45)}
+.dash-soon{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mute);font-size:.72rem;font-weight:600}
+.dash-switch{position:relative;width:46px;height:26px;padding:0;border-radius:999px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:background .18s ease}
+.dash-switch .dash-switch-knob{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--mute);transition:left .18s ease,background .18s ease}
+.dash-switch.on{background:var(--grad);border-color:transparent}
+.dash-switch.on .dash-switch-knob{left:22px;background:#fff}
+.dash-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dash-switch[disabled]{opacity:.45;cursor:not-allowed}
+.admin-only{font-size:.8rem;margin-top:10px}

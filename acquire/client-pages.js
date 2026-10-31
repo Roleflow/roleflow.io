@@ -7,6 +7,7 @@ import { renderRoleflowCalendar } from "./calendar-page.js";
 import { sectionText } from "./section-copy.js";
 import { renderSetterDesk } from "./setter-workspace.js";
 import { renderAutoDm } from "./auto-dm-page.js";
+import { renderDashboardSwitches } from "./dashboard-switches.js";
 
 const COPY = {
   en: {
@@ -215,6 +216,7 @@ export function renderDashboardHome(ui) {
   const on = ui.state.settings && ui.state.settings.system_enabled;
   banner.append(ui.el("p", { text: (on ? "The workspace is on." : "The workspace is off.") + " " + ui.instagramLine() }));
   wrap.append(banner);
+  wrap.append(renderDashboardSwitches(ui));
   wrap.append(ui.el("p", { class: "hq-note", text: copy.channel }));
   return wrap;
 }
