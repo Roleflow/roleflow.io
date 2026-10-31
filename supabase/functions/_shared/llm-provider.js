@@ -200,7 +200,7 @@ export function chatRequest({ runtime, system, messages, json, tools, responseFo
   const heat = Number.isFinite(Number(temperature)) ? Number(temperature) : 0.4;
   const toolList = Array.isArray(tools) ? tools.filter((tool) => tool && tool.name) : [];
   if (spec.kind === "anthropic") return anthropicRequest({ runtime, spec, model, system, messages, json, toolList, heat, maxTokens, omitTemperature: omitTemperature === true });
-  if (spec.kind === "gemini") return geminiRequest({ runtime, model, system, messages, json, toolList, heat });
+  if (spec.kind === "gemini") return geminiRequest({ runtime, model, system, messages, json, toolList, heat, maxTokens });
   return openaiRequest({ runtime, spec, model, system, messages, json, toolList, responseFormat, heat, maxTokens });
 }
 
@@ -400,6 +400,7 @@ export async function probeClaude({ apiKey, model, fetchImpl }) {
       system: "Reply with the single word pong.",
       messages: [{ role: "user", content: "ping" }],
       maxTokens: 16,
+      allowCutOff: true,
       omitTemperature: true,
       fetchImpl
     });
@@ -460,14 +461,40 @@ function temperatureRejected(error) {
   return /temperature/i.test(message) && /deprecated/i.test(message);
 }
 
+// True when the provider stopped because it ran out of output tokens.
+export function hitTokenLimit(payload) {
+  const body = payload && typeof payload === "object" ? payload : {};
+  if (body.choices && body.choices[0] && body.choices[0].finish_reason === "length") return true;
+  if (body.stop_reason === "max_tokens") return true;
+  const candidate = body.candidates && body.candidates[0];
+  return Boolean(candidate && candidate.finishReason === "MAX_TOKENS");
+}
+
+export function largerBudget(maxTokens) {
+  const current = Math.round(Number(maxTokens)) || 1024;
+  return Math.min(16000, Math.max(4096, current * 4));
+}
+
 async function once(runtime, input) {
   try {
-    return await sendOnce(runtime, input || {});
+    return await sendWhole(runtime, input || {});
   } catch (error) {
     if (runtime && runtime.provider === "anthropic" && !(input && input.omitTemperature) && temperatureRejected(error)) {
-      return sendOnce(runtime, { ...(input || {}), omitTemperature: true });
+      return sendWhole(runtime, { ...(input || {}), omitTemperature: true });
     }
     throw error;
+  }
+}
+
+// A reply that hit the token limit is never returned. Retry once with a larger
+// budget; if it is still cut off, throw so the caller falls back or fails the
+// reply instead of sending a fragment.
+async function sendWhole(runtime, input) {
+  try {
+    return await sendOnce(runtime, input);
+  } catch (error) {
+    if (!(error && error.code === "cut_off") || input.retriedCutOff) throw error;
+    return sendOnce(runtime, { ...input, maxTokens: largerBudget(input.maxTokens), retriedCutOff: true });
   }
 }
 
@@ -502,8 +529,10 @@ async function sendOnce(runtime, input) {
     throw error;
   }
   const parsed = parseChat(runtime.provider, payload);
-  if (payload && payload.choices && payload.choices[0] && payload.choices[0].finish_reason === "length") {
-    throw new Error("The model response was cut off.");
+  if (hitTokenLimit(payload) && input.allowCutOff !== true) {
+    const error = new Error("The model response was cut off.");
+    error.code = "cut_off";
+    throw error;
   }
   return {
     text: parsed.text,
@@ -580,9 +609,10 @@ function anthropicRequest({ runtime, spec, model, system, messages, json, toolLi
   };
 }
 
-function geminiRequest({ runtime, model, system, messages, json, toolList, heat }) {
+function geminiRequest({ runtime, model, system, messages, json, toolList, heat, maxTokens }) {
   const gemini3 = /^gemini-3/i.test(model);
   const generationConfig = {};
+  if (maxTokens) generationConfig.maxOutputTokens = Math.min(16000, Math.max(1, Math.round(Number(maxTokens))));
   if (json) generationConfig.responseMimeType = "application/json";
   if (gemini3) {
     generationConfig.thinkingConfig = { thinkingLevel: "low" };
