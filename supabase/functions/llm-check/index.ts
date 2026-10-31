@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
       system: "Reply with the single word pong.",
       messages: [{ role: "user", content: "ping" }],
       maxTokens: 16,
+      allowCutOff: true,
       temperature: 0,
       onError: (entry) => logLlmError(admin, { ...entry, businessId, purpose: "test" })
     });

@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
+import { trimToSentence } from "./split-reply.js";
 
 export const CALLBACK_URL = "https://roleflow.io/app/instagram/callback";
 export const LOGO_URL = "https://roleflow.io/assets/logo.jpg";
@@ -385,7 +386,7 @@ export function idempotencyKey(eventId) {
 
 export function enqueueBody(event, text, conversationRowId) {
   return {
-    text: String(text || "").slice(0, 1000),
+    text: trimToSentence(text, 1000),
     accountId: String((event && event.accountId) || ""),
     conversationId: String((event && event.conversationId) || ""),
     conversationRowId: String(conversationRowId || ""),
@@ -406,7 +407,7 @@ export function planPayload(event, conversationRowId) {
 
 export function replyText(plan) {
   if (!plan || plan.noResponse) return "";
-  return (plan.bubbles || []).map((item) => String(item || "").trim()).filter(Boolean).join("\n\n").slice(0, 1000);
+  return (plan.bubbles || []).map((item) => String(item || "").trim()).filter(Boolean).join("\n\n");
 }
 
 export function outboxWriteStatus(result) {

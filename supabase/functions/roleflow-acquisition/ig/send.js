@@ -68,13 +68,13 @@ export function underRateLimit(count, limit = 20) {
   return (Number(count) || 0) < limit;
 }
 
+// Keep every bubble whole. The model is asked for short bubbles; a longer one
+// is split into more DMs later (splitReply), never cut mid-sentence here.
+export const MAX_BUBBLES = 4;
+
 export function clampBubbles(bubbles) {
   return (bubbles || [])
     .map((item) => String(item || "").trim())
     .filter(Boolean)
-    .slice(0, 2)
-    .map((text) => {
-      const words = text.split(/\s+/);
-      return words.length > 30 ? words.slice(0, 30).join(" ") : text;
-    });
+    .slice(0, MAX_BUBBLES);
 }
