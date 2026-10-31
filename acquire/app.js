@@ -524,6 +524,11 @@ async function loadAll(id, token) {
   if (!live()) return false;
   state.llmErrors = llmErrors.error ? [] : llmErrors.data || [];
   state.gatewayIg = gatewayIg.error ? null : gatewayIg.data || null;
+  const replyQuery = (cols) => q.from("acq_messages").select(cols).eq("business_id", id).eq("role", "assistant").gte("sent_at", llmSince).order("sent_at", { ascending: false }).limit(20);
+  let assistantReplies = await replyQuery("role, sender, delivery_status, sent_at");
+  if (assistantReplies.error) assistantReplies = await replyQuery("role, sender, sent_at");
+  if (!live()) return false;
+  state.assistantReplies = assistantReplies.error ? [] : assistantReplies.data || [];
   state.performance = performance.error ? [] : performance.data || [];
   state.stats = null;
   state.leads = [];
@@ -3165,6 +3170,7 @@ async function saveLlm(patch, secrets) {
       p_base_url: secret.baseUrl || ""
     });
     if (stored.error || !stored.data || stored.data.ok !== true) return toast("The key was not saved.", "bad");
+    state.llmKeySavedAt = Object.assign({}, state.llmKeySavedAt || {}, { [state.businessId]: new Date().toISOString() });
   }
   toast("Saved.");
   await bootBusiness(state.businessId);
@@ -4947,7 +4953,8 @@ function previewSwitches(params, selected) {
     agentSwitches: live ? [{ agent_key: "setter", enabled: true }, { agent_key: "followup", enabled: true }, { agent_key: "comment_voice", enabled: false }] : [],
     autoDm: mode ? { enabled: live, killed: mode === "killed", cap: 30, paused: "", igHandle: "", sessionReady: false, loginLive: false, name: "", handles: "", template: "", exclusions: "" } : null,
     gatewayIg: params.get("igstatus") === "error" || params.get("connect") === "1" ? null : { status: "connected", username: "previewcoach", business_id: selected },
-    llmErrors: params.get("aikey") === "bad" ? [{ provider: "xai", model: "demo-model", message: "Incorrect API key provided.", fell_back: false, created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() }] : []
+    assistantReplies: params.get("aikey") === "fixed" ? [{ role: "assistant", sender: null, delivery_status: null, sent_at: new Date(Date.now() - 5 * 60 * 1000).toISOString() }] : [],
+    llmErrors: params.get("aikey") === "bad" || params.get("aikey") === "fixed" ? [{ provider: "xai", model: "demo-model", message: "Incorrect API key provided.", fell_back: false, created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() }] : []
   };
   return out;
 }

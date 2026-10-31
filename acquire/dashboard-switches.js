@@ -85,12 +85,29 @@ export function instagramConnected(state) {
   return Boolean(gateway && gateway.status === "connected");
 }
 
-export function recentKeyErrors(errors, now) {
+// No member-readable timestamp of the last key save exists (acq_llm_key_hints
+// returns provider and last4 only, and saving a key does not touch
+// acq_settings). So a key error counts only while it is in the last 24 hours,
+// AND no successful AI reply was recorded after it, AND the key was not saved
+// in this browser session after it.
+export function successfulReply(row) {
+  if (!row || row.role !== "assistant") return false;
+  if (row.sender === "human") return false;
+  if (row.delivery_status === "failed") return false;
+  return Number.isFinite(Date.parse(row.sent_at || ""));
+}
+
+export function recentKeyErrors(errors, now, context) {
   const at = now instanceof Date ? now.getTime() : Date.now();
+  const extra = context || {};
+  const lastReply = (extra.replies || []).filter(successfulReply).reduce((max, row) => Math.max(max, Date.parse(row.sent_at)), -Infinity);
+  const savedAt = Date.parse(extra.keySavedAt || "");
+  const cleared = Math.max(lastReply, Number.isFinite(savedAt) ? savedAt : -Infinity);
   return (errors || []).filter((row) => {
     if (!row) return false;
     const stamp = Date.parse(row.created_at || "");
     if (!Number.isFinite(stamp) || at - stamp > LLM_ERROR_WINDOW_MS || stamp - at > 60000) return false;
+    if (stamp <= cleared) return false;
     return KEY_PROBLEM.test(String(row.message || ""));
   });
 }
@@ -102,7 +119,11 @@ export function dashboardControls(state, now) {
   const sendingOn = dm.enabled === true && !killed;
   const setterOn = agentOn(source.agentSwitches, "setter");
   const connected = instagramConnected(source);
-  const keyErrors = recentKeyErrors(source.llmErrors, now);
+  const savedMap = source.llmKeySavedAt || {};
+  const keyErrors = recentKeyErrors(source.llmErrors, now, {
+    replies: source.assistantReplies,
+    keySavedAt: typeof savedMap === "string" ? savedMap : savedMap[source.businessId || ""]
+  });
   const blockers = [];
   if (sendingOn || setterOn) {
     if (!connected) blockers.push("noInstagram");

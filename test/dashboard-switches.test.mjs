@@ -9,6 +9,7 @@ import {
   instagramConnected,
   recentKeyErrors,
   renderDashboardSwitches,
+  successfulReply,
   switchesText
 } from "../acquire/dashboard-switches.js";
 
@@ -188,4 +189,35 @@ test("dashboard mounts the switches for every business and writes through RLS pa
   assert.match(fn, /window\.confirm/);
   assert.doesNotMatch(app, /service_role|SERVICE_ROLE/);
   assert.match(app, /setSending,\n/);
+});
+
+test("a key error is cleared by a successful AI reply after it", () => {
+  const errors = [{ message: "Incorrect API key provided.", created_at: ago(30) }];
+  assert.equal(recentKeyErrors(errors, NOW, { replies: [{ role: "assistant", sender: null, sent_at: ago(10) }] }).length, 0);
+  assert.equal(recentKeyErrors(errors, NOW, { replies: [{ role: "assistant", sender: "ai", delivery_status: "sent", sent_at: ago(10) }] }).length, 0);
+  assert.equal(recentKeyErrors(errors, NOW, { replies: [{ role: "assistant", sender: null, sent_at: ago(40) }] }).length, 1, "reply before the error does not clear it");
+  assert.equal(recentKeyErrors(errors, NOW, { replies: [{ role: "assistant", sender: "human", sent_at: ago(10) }] }).length, 1, "a human reply is not proof the key works");
+  assert.equal(recentKeyErrors(errors, NOW, { replies: [{ role: "assistant", sender: "ai", delivery_status: "failed", sent_at: ago(10) }] }).length, 1);
+  assert.equal(recentKeyErrors(errors, NOW, { replies: [{ role: "user", sender: "lead", sent_at: ago(10) }] }).length, 1);
+  const newer = errors.concat([{ message: "Incorrect API key provided.", created_at: ago(5) }]);
+  assert.equal(recentKeyErrors(newer, NOW, { replies: [{ role: "assistant", sender: null, sent_at: ago(10) }] }).length, 1, "an error after the reply still counts");
+  assert.equal(successfulReply(null), false);
+});
+
+test("a key saved in this session after the error clears it", () => {
+  const errors = [{ message: "Incorrect API key provided.", created_at: ago(30) }];
+  assert.equal(recentKeyErrors(errors, NOW, { keySavedAt: ago(2) }).length, 0);
+  assert.equal(recentKeyErrors(errors, NOW, { keySavedAt: ago(60) }).length, 1);
+  const state = { ...live, llmErrors: errors, llmKeySavedAt: { b1: ago(2) } };
+  assert.equal(dashboardControls(state, NOW).replying, "on");
+  assert.equal(dashboardControls({ ...state, llmKeySavedAt: { other: ago(2) } }, NOW).replying, "blocked");
+  const cleared = dashboardControls({ ...live, llmErrors: errors, assistantReplies: [{ role: "assistant", sender: null, sent_at: ago(1) }] }, NOW);
+  assert.deepEqual(cleared.blockers, []);
+});
+
+test("the panel loads recent assistant replies and stamps key saves", () => {
+  const app = read("acquire/app.js");
+  assert.match(app, /from\("acq_messages"\)\.select\(cols\)\.eq\("business_id", id\)\.eq\("role", "assistant"\)/);
+  assert.match(app, /state\.assistantReplies = /);
+  assert.match(app, /state\.llmKeySavedAt = Object\.assign/);
 });
