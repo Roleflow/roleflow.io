@@ -24,7 +24,7 @@ import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, privateReplyBody, sendWithPresence, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { textLeadMs } from "../_shared/typing-plan.js";
 import { loadMemory, memoryRule, ourRecentBubbles, repeatedBubble, retryRule } from "../_shared/reply-memory.js";
-import { VOICE_FAILED_BODY, VOICE_PENDING_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceRule } from "../_shared/voice-transcribe.js";
+import { VOICE_FAILED_BODY, VOICE_PENDING_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceOptions, voiceRule } from "../_shared/voice-transcribe.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
 import { agentEnabled, agentKeyForKind } from "../_shared/agent-control.js";
@@ -288,7 +288,7 @@ async function runOutbox(db, row) {
   const env = Deno.env.toObject();
   let heardVoice = row.payload?.voice_heard || null;
   if (row.payload?.voice && row.kind === "reply") {
-    const heard = await understandVoice(row.payload.voice, env, {});
+    const heard = await understandVoice(row.payload.voice, env, await voiceOptions(db, businessId, {}));
     const mid = String(row.payload.mid || "");
     const typed = String(row.payload.text || "").trim();
     if (!heard.ok) {
