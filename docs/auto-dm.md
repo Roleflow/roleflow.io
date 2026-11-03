@@ -25,9 +25,10 @@ All of these have to be true at the moment of the click:
 | Switch | Required value |
 | --- | --- |
 | `ROLEFLOW_DM_LIVE` | `1` in the machine environment. The image, the entrypoint, and cloud-init do not set this. |
-| `acq_dm_controls.enabled` | `true` |
+| `acq_dm_controls.enabled` | `true`. The panel pause sets this to false. |
 | `acq_dm_controls.killed` | `false` |
 | `acq_dm_controls.paused_reason` | empty |
+| `acq_outreacher_config.paused` | `false`. The panel pause sets this to true. Either this or `enabled` false stops sends and warm-up actions (`dm`, `like`, `follow`, `view`). |
 | `acq_outreacher_config.dry_run` | `false`. A missing row stays dry-run. |
 | `acq_settings.system_enabled` | `true` |
 | `acq_settings.ig_paused` | `false` |
@@ -56,7 +57,7 @@ A dry run on a pilot machine is the default. Leave `ROLEFLOW_DM_LIVE` unset. Tur
 | `OUTREACHER_JWT_PRIVATE_KEY` | Function secret only. PKCS8 PEM for ES256. Not on the machine. |
 | `OUTREACHER_JWT_PUBLIC_KEY` | Function secret only. SPKI PEM. |
 
-Paths that persist are under `/data` (`profile`, `secrets`, `state`, `logs`). Proxy URL, backup key, and volume key are written only under `/run/roleflow` (tmpfs) and are not logged. The backup key is the `backup_key` field from `config`, which the function reads from `private.outreach_machine_secrets` when that table exists. The brain does not invent a key. Nightly backups are skipped until the key is present. The ciphertext is AES-256-GCM with a `RFBK1` header, uploaded through a signed URL, and the function keeps the newest 7 objects for that machine. Retention after non-payment is the provisioner's job.
+Paths that persist are under `/data` (`profile`, `secrets`, `state`, `logs`). Proxy URL, backup key, and volume key are written only under `/run/roleflow` (tmpfs) and are not logged. `config` reads them by calling `public.outreacher_machine_secrets(p_machine_id)`. The `private` schema stays off the Data API, so this function does not select `private.outreach_machine_secrets`. The brain does not invent a key. Nightly backups are skipped until the key is present. The ciphertext is AES-256-GCM with a `RFBK1` header, uploaded through a signed URL. Cleanup deletes by the full object key (`<business_id>/<machine_id>/<file>`), not the name inside the folder, and keeps the newest 7. Retention after non-payment is the provisioner's job.
 
 ## Edge function contract
 
@@ -81,7 +82,7 @@ Authorization: Bearer <access JWT>
 | `claim_check` | `claim_id` | Calls `outreacher_claim_check`. |
 | `report_send` | `claim_id`, `result` (`sent`, `dry_run`, `failed`, `skipped`), `handle`, `body`, `kind` | Calls `outreacher_report_send`. `sent` longer than 1000 characters is refused and is not written to `acq_dm_sends`. |
 | `log_event` | `kind`, `handle`, `reason`, optional `body` | Skip/failure visibility in `acq_activity.payload` and `client_machine_events`. The message text is not sliced. |
-| `backup_slot` / `backup_commit` | path from the slot | Signed upload URL under `outreacher-profiles/<business_id>/<machine_id>/`, then prune to 7. |
+| `backup_slot` / `backup_commit` | path from the slot | Signed upload URL under `outreacher-profiles/<business_id>/<machine_id>/`. Prune passes full keys such as `<business_id>/<machine_id>/<file>` to storage remove, and keeps 7. |
 
 `session_state` is `ok`, `expired`, `checkpoint`, `action_block`, or `unknown`. `sending_mode` is `off`, `dry_run`, or `live`.
 
@@ -109,25 +110,25 @@ That runs `docker buildx build --platform linux/amd64,linux/arm64`. The tag is `
 
 The image users are `agent` (the brain) and `chromium` (the browser). nftables for the chromium uid drop `169.254.169.254`, all UDP, and TCP port 53, then allow only the proxy IP and port. The agent uid may reach metadata, DNS, NTP, and the control HTTPS set. Rules are rendered by `workers/roleflow-dm/brain-nft.mjs` and applied only when `ROLEFLOW_APPLY_NFT=1`. Chromium enterprise policy disables the password manager and autofill and sets `WebRtcIPHandlingPolicy` to `disable_non_proxied_udp`. The process is also started with `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`.
 
-## What the other pieces must add
+## What provisioning creates
 
-This repo does not create these. Names match the provisioning contract (`client_machines`, `client_machine_events`), not a second copy of the machine table.
+This change creates none of these. The provisioning migration is the only place that creates `client_machines`, `client_machine_events`, `acq_outreacher_config`, `private.outreach_machine_secrets`, the claim functions, `public.outreacher_machine_secrets(p_machine_id)`, and the private `outreacher-profiles` bucket. This image only calls them. The `private` schema is not exposed on the Data API.
 
 `client_machines`: `id`, `business_id`, `provider_server_id`, `ipv4`, `status` (`provisioning` at bootstrap), `bootstrap_token_hash`, `bootstrap_expires_at` (at most 15 minutes ahead), `bootstrap_used_at`, `refresh_token_hash`, `refresh_prev_hash`, `refresh_family_id`, `revoked_at`, `session_state`, `last_heartbeat_at`, `last_error`, `image_version`, `health`, `sending_mode`, `sends_today`, `sends_per_hour`, `error_rate`, `last_send_at`, `uptime_s`, `last_egress_ip`, `agent_version`.
 
 `client_machine_events`: `business_id`, `machine_id`, `kind`, `severity`, `detail jsonb`, `created_at`.
 
-`acq_outreacher_config`: `business_id` primary key, `exclude_keywords`, `countries`, `languages`, `delay_min_s`, `delay_max_s`, `hourly_cap`, `dry_run` default true, optional `triggers`.
+`acq_outreacher_config`: `business_id` primary key, `paused` (default true), `exclude_keywords`, `countries`, `languages`, `delay_min_s`, `delay_max_s`, `hourly_cap`, `dry_run` default true, `triggers`.
 
-`private.outreach_machine_secrets`: `machine_id`, `proxy_url`, `backup_key`, `volume_key`. Service role only.
+`private.outreach_machine_secrets`: `machine_id`, `proxy_url`, `backup_key`, `volume_key`. Service role only. Read through `public.outreacher_machine_secrets(p_machine_id uuid)`, security definer, service role only, returning those three values.
 
-Storage bucket `outreacher-profiles`, private, written only by this function.
+Storage bucket `outreacher-profiles`, private. This function uploads and deletes objects. Delete keys are the full path.
 
-SQL, called with the service role and the business id taken from the JWT:
+SQL, called with the service role. `business_id` comes from the JWT, not the body. Signatures match the provisioning functions:
 
-- `outreacher_can_send(business_id, action_kind, target)` returns `{ ok, claim_id, expires_at }` or `{ ok: false, reason }`. It must lock the control row and refuse when the global kill, the panel kill, `enabled` is false, the workforce role is off, the system is off, Instagram is paused, the machine is not running, the subscription is inactive, quiet hours apply, a cap is spent, the handle is on `acq_dnc`, or the handle was already contacted. The claim expires in 2 minutes. `dry_run` reports must not increment the cap.
-- `outreacher_claim_check(claim_id)` re-checks that claim for the same machine.
-- `outreacher_report_send(claim_id, result, detail)` stores the result without shortening `detail.body`.
+- `outreacher_can_send(business_id uuid, action_kind text, target text)` returns `{ ok, claim_id, expires_at }` or `{ ok: false, reason }`. `action_kind` is `dm`, `like`, `follow`, or `view`. It refuses when `acq_outreacher_config.paused` is true or `acq_dm_controls.enabled` is false, and on the other kill, cap, quiet-hour, DNC, and already-contacted checks. The claim expires in 2 minutes. A reported `dry_run` does not count toward the caps.
+- `outreacher_claim_check(claim_id uuid)` re-checks that claim.
+- `outreacher_report_send(claim_id uuid, result text, detail jsonb)` stores `detail` without shortening `detail.body`. `result` is `sent`, `dry_run`, `failed`, or `skipped`.
 
 Function secrets: `OUTREACHER_JWT_PRIVATE_KEY` and `OUTREACHER_JWT_PUBLIC_KEY`. The pilot verifies those tokens inside the edge function. Importing the signing key into the project auth settings is a later change and is not done here.
 

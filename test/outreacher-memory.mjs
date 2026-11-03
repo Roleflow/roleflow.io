@@ -26,11 +26,12 @@ export function createMemory(seed) {
           async createSignedUploadUrl(path) {
             return { data: { signedUrl: "https://uploads.example.test/" + path, token: "slot", path }, error: null };
           },
-          async list(prefix) {
-            return { data: db.objects.filter((item) => String(item.name).startsWith(prefix)), error: null };
+          async list() {
+            return { data: db.objects.slice(), error: null };
           },
           async remove(paths) {
-            db.objects = db.objects.filter((item) => !paths.includes(item.name));
+            db.removed = paths.slice();
+            db.objects = db.objects.filter((item) => !paths.some((key) => key === item.name || key.endsWith("/" + item.name)));
             return { data: null, error: null };
           }
         };

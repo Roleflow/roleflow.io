@@ -13,7 +13,7 @@ export function sendingMode({ env, config }) {
   const workforce = source.workforce || {};
   const liveEnv = String(env && env.ROLEFLOW_DM_LIVE || "") === "1";
   if (source.halt === true || controls.killed === true || String(env && env.ROLEFLOW_DM_KILL || "") === "1") return "off";
-  if (controls.enabled !== true) return "off";
+  if (controls.enabled !== true || outreach.paused === true) return "off";
   if (controls.paused === true || settings.ig_paused === true || settings.system_enabled !== true) return "off";
   if (workforce.active !== true) return "off";
   if (source.machine && source.machine.status && source.machine.status !== "running" && source.machine.status !== "awaiting_login") return "off";

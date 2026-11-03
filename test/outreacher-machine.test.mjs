@@ -7,6 +7,7 @@ import {
   authenticateMachine,
   draftUserMessage,
   handleMachineAction,
+  objectKeys,
   presentConfig,
   pruneNames
 } from "../supabase/functions/acquisition-bot/machine.js";
@@ -67,9 +68,8 @@ function baseTables(extra) {
     acq_tag_rules: [{ business_id: BUSINESS, name: "hot", rule_kind: "text", rule_text: "said budget" }],
     acq_offer_links: [{ business_id: BUSINESS, name: "Strategy session", url: "https://example.test/book", average_ticket_cents: 9900 }],
     acq_dm_sends: [{ business_id: BUSINESS, handle: "already.sent" }],
-    acq_outreacher_config: [{ business_id: BUSINESS, dry_run: true, exclude_keywords: "crypto", countries: ["ES"], languages: ["es"], delay_min_s: 300, delay_max_s: 1800, hourly_cap: 6 }],
-    acq_activity: [],
-    "private.outreach_machine_secrets": [{ machine_id: MACHINE, proxy_url: "http://user:secret@203.0.113.8:8000", backup_key: "backup-key", volume_key: "volume-key" }]
+    acq_outreacher_config: [{ business_id: BUSINESS, paused: true, dry_run: true, exclude_keywords: "crypto", countries: ["ES"], languages: ["es"], delay_min_s: 300, delay_max_s: 1800, hourly_cap: 6 }],
+    acq_activity: []
   };
 }
 
@@ -82,6 +82,11 @@ async function serviceFor(overrides = {}) {
     tables,
     objects: overrides.objects || [],
     rpc: {
+      outreacher_machine_secrets(args, store) {
+        store.secretArgs = args;
+        if (args.p_machine_id !== MACHINE) return { data: null, error: null };
+        return { data: { proxy_url: "http://user:secret@203.0.113.8:8000", backup_key: "backup-key", volume_key: "volume-key" }, error: null };
+      },
       outreacher_can_send(args) {
         calls.push(args);
         if (args.target === "refused") return { data: { ok: false, reason: "killed" }, error: null };
@@ -208,6 +213,9 @@ assert.equal(token.length, 64);
   assert.deepEqual(config.body.dnc, ["skip.me"]);
   assert.deepEqual(config.body.sent_handles, ["already.sent"]);
   assert.equal(config.body.proxy_url.includes("secret"), true);
+  assert.equal(config.body.outreacher.paused, true);
+  assert.equal(config.body.controls.paused, true);
+  assert.equal(memory.db.secretArgs.p_machine_id, MACHINE);
   const user = draftUserMessage({
     profile: { handle: "jane", bio: "coach", captions: ["scale"] },
     trigger: "new_follower",
@@ -289,9 +297,10 @@ assert.equal(token.length, 64);
   const slot = await act(memory, { action: "backup_slot" }, { businessId: BUSINESS, machineId: MACHINE });
   assert.equal(slot.body.path.startsWith(BUSINESS + "/"), true);
   assert.equal(slot.body.upload_url.includes("/rest/v1"), false);
-  memory.db.objects = Array.from({ length: 8 }, (_item, index) => ({ name: BUSINESS + "/" + MACHINE + "/b" + index, created_at: "2026-11-0" + (index + 1) }));
+  memory.db.objects = Array.from({ length: 8 }, (_item, index) => ({ name: "b" + index, created_at: "2026-11-0" + (index + 1) }));
   const committed = await act(memory, { action: "backup_commit", path: slot.body.path }, { businessId: BUSINESS, machineId: MACHINE });
   assert.equal(committed.body.dropped, 1);
+  assert.deepEqual(memory.db.removed, [BUSINESS + "/" + MACHINE + "/b0"]);
   assert.equal(memory.db.objects.length, 7);
   const otherPath = await act(memory, { action: "backup_commit", path: OTHER + "/nope" }, { businessId: BUSINESS, machineId: MACHINE });
   assert.equal(otherPath.status, 403);
@@ -303,12 +312,23 @@ assert.equal(token.length, 64);
   const pruned = pruneNames(names, 7);
   assert.equal(pruned.keep.length, 7);
   assert.equal(pruned.drop[0].name, "b0");
+  assert.deepEqual(objectKeys(BUSINESS + "/" + MACHINE, [{ name: "b0" }, { name: BUSINESS + "/" + MACHINE + "/kept.bin" }]), [
+    BUSINESS + "/" + MACHINE + "/b0",
+    BUSINESS + "/" + MACHINE + "/kept.bin"
+  ]);
   const shown = presentConfig({ settings: { follower_min: null, follower_max: null }, prompt: "  keep\n", controls: null, workforce: {}, offerLinks: [{ name: "A", url: "https://example.test", average_ticket_cents: 1 }] });
   assert.equal(shown.settings.follower_min, null);
   assert.equal(shown.prompt, "  keep\n");
   assert.equal(shown.controls.enabled, false);
   assert.equal("average_ticket_cents" in shown.offer_links[0], false);
 }
+
+const machineSource = fs.readFileSync(new URL("../supabase/functions/acquisition-bot/machine.js", import.meta.url), "utf8");
+assert.match(machineSource, /outreacher_machine_secrets/);
+assert.match(machineSource, /p_machine_id/);
+assert.doesNotMatch(machineSource, /schema\("private"\)/);
+assert.doesNotMatch(machineSource, /from\("outreach_machine_secrets"\)/);
+assert.doesNotMatch(machineSource, /create table|insert into storage\.buckets/i);
 
 const bot = fs.readFileSync(new URL("../supabase/functions/acquisition-bot/index.ts", import.meta.url), "utf8");
 assert.match(bot, /different business/);

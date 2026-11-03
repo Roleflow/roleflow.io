@@ -440,7 +440,7 @@ export function presentConfig(parts) {
     controls: {
       enabled: controls.enabled === true,
       killed: controls.killed === true,
-      paused: String(controls.paused_reason || "").trim() !== "",
+      paused: String(controls.paused_reason || "").trim() !== "" || (parts.outreacher && parts.outreacher.paused === true),
       daily_cap: controls.daily_cap == null ? null : controls.daily_cap,
       ig_handle: controls.ig_handle || ""
     },
@@ -455,6 +455,27 @@ export function presentConfig(parts) {
     backup_key: parts.secrets ? parts.secrets.backup_key || null : null,
     volume_key: parts.secrets ? parts.secrets.volume_key || null : null,
     missing: parts.missing || []
+  };
+}
+
+function firstRow(data) {
+  if (Array.isArray(data)) return data[0] || null;
+  if (data && typeof data === "object") return data;
+  return null;
+}
+
+async function loadMachineSecrets(ctx, missing) {
+  const result = await ctx.service.rpc("outreacher_machine_secrets", { p_machine_id: ctx.machineId });
+  if (!result || result.error) {
+    if (!result || missingFunction(result.error) || missingRelation(result.error)) missing.push("outreacher_machine_secrets");
+    return {};
+  }
+  const row = firstRow(result.data);
+  if (!row) return {};
+  return {
+    proxy_url: row.proxy_url || null,
+    backup_key: row.backup_key || null,
+    volume_key: row.volume_key || null
   };
 }
 
@@ -477,8 +498,7 @@ async function loadConfig(ctx) {
   } else if (outreach.data) {
     outreacher = outreach.data;
   }
-  const secrets = await ctx.service.schema("private").from("outreach_machine_secrets").select("proxy_url,backup_key,volume_key").eq("machine_id", ctx.machineId).maybeSingle();
-  if (missingRelation(secrets.error)) missing.push("outreach_machine_secrets");
+  const secrets = await loadMachineSecrets(ctx, missing);
   if (missingRelation(machine.error)) missing.push("client_machines");
   const promptBody = prompts.data && prompts.data[0] ? prompts.data[0].body : "";
   return {
@@ -499,7 +519,7 @@ async function loadConfig(ctx) {
       sentIncomplete: listIncomplete(sent, LIST_LIMIT),
       machine: machine.data || {},
       outreacher,
-      secrets: secrets.data || {},
+      secrets,
       missing
     })
   };
@@ -679,15 +699,25 @@ export function pruneNames(entries, keep = 7) {
   return { keep: sorted.slice(0, keep), drop: sorted.slice(keep) };
 }
 
+export function objectKeys(prefix, entries) {
+  const folder = String(prefix || "").replace(/\/$/, "");
+  return (entries || []).map((item) => {
+    const name = String(item && item.name || "").replace(/^\/+/, "");
+    if (!name) return "";
+    if (!folder || name === folder || name.startsWith(folder + "/")) return name;
+    return folder + "/" + name;
+  }).filter(Boolean);
+}
+
 async function backupCommit(ctx) {
   const path = String(ctx.body.path || "");
   if (!path.startsWith(ctx.businessId + "/")) return { status: 403, body: { error: "That worker key is for a different business." } };
-  const listed = await ctx.service.storage.from("outreacher-profiles").list(ctx.businessId + "/" + ctx.machineId);
+  const folder = ctx.businessId + "/" + ctx.machineId;
+  const listed = await ctx.service.storage.from("outreacher-profiles").list(folder);
   const names = listed && listed.data ? listed.data : [];
   const decision = pruneNames(names, 7);
-  if (decision.drop.length) {
-    await ctx.service.storage.from("outreacher-profiles").remove(decision.drop.map((item) => item.name));
-  }
+  const keys = objectKeys(folder, decision.drop);
+  if (keys.length) await ctx.service.storage.from("outreacher-profiles").remove(keys);
   await insertEvent(ctx.service, {
     business_id: ctx.businessId,
     machine_id: ctx.machineId,

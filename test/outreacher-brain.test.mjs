@@ -85,6 +85,8 @@ assert.equal(sendingMode({ env: { ROLEFLOW_DM_LIVE: "1" }, config: open }), "dry
 assert.equal(sendingMode({ env: { ROLEFLOW_DM_LIVE: "1" }, config: { ...open, outreacher: { dry_run: false } } }), "live");
 assert.equal(sendingMode({ env: { ROLEFLOW_DM_LIVE: "1" }, config: { ...open, controls: { enabled: false }, outreacher: { dry_run: false } } }), "off");
 assert.equal(sendingMode({ env: { ROLEFLOW_DM_LIVE: "1", ROLEFLOW_DM_KILL: "1" }, config: { ...open, outreacher: { dry_run: false } } }), "off");
+assert.equal(sendingMode({ env: { ROLEFLOW_DM_LIVE: "1" }, config: { ...open, outreacher: { dry_run: false, paused: true }, controls: { enabled: true, killed: false, paused: false } } }), "off");
+assert.equal(sendingMode({ env: { ROLEFLOW_DM_LIVE: "1" }, config: { ...open, outreacher: { dry_run: false, paused: false }, controls: { enabled: false, killed: false, paused: false } } }), "off");
 assert.equal(messageSendable("a".repeat(1001)).reason, "will_not_truncate");
 assert.equal(messageSendable("The price is $50").reason, "price");
 assert.equal(messageSendable("Short note about your last post").ok, true);
@@ -393,6 +395,36 @@ function harness(options = {}) {
   const result = await tickMachine(ctx);
   assert.equal(result.reason, "expired");
   assert.equal(calls.some((row) => row[0] === "heartbeat" && row[1] === "expired"), true);
+  assert.equal(calls.some((row) => row[0] === "claim"), false);
+}
+
+{
+  const { ctx, calls } = harness({
+    env: { ROLEFLOW_DM_LIVE: "1" },
+    config: allow({
+      controls: { enabled: true, killed: false, paused: false, daily_cap: 20, ig_handle: "own.handle" },
+      outreacher: { dry_run: false, paused: true, delay_min_s: 0, delay_max_s: 0, hourly_cap: 6, exclude_keywords: "" }
+    })
+  });
+  ctx.state.ledger.baselined = true;
+  ctx.state.nextPollAt = new Date(ctx.now().getTime() - 1000).toISOString();
+  const paused = await tickMachine(ctx);
+  assert.equal(paused.reason, "off");
+  assert.equal(calls.some((row) => row[0] === "claim"), false);
+}
+
+{
+  const { ctx, calls } = harness({
+    env: { ROLEFLOW_DM_LIVE: "1" },
+    config: allow({
+      controls: { enabled: false, killed: false, paused: false, daily_cap: 20, ig_handle: "own.handle" },
+      outreacher: { dry_run: false, paused: false, delay_min_s: 0, delay_max_s: 0, hourly_cap: 6, exclude_keywords: "" }
+    })
+  });
+  ctx.state.ledger.baselined = true;
+  ctx.state.nextPollAt = new Date(ctx.now().getTime() - 1000).toISOString();
+  const disabled = await tickMachine(ctx);
+  assert.equal(disabled.reason, "off");
   assert.equal(calls.some((row) => row[0] === "claim"), false);
 }
 
