@@ -1,7 +1,7 @@
 import { API_BASE, interpretSend, privateReplyKind, sendRequest } from "./ig-gateway.js";
 import { withAttachment } from "./clip-send.js";
 import { sendBlocked } from "./agent-control.js";
-import { typeThenSend } from "./typing-plan.js";
+import { pauseThenSend } from "./typing-plan.js";
 
 // The webhook waits at most this long inside the request. A longer configured
 // delay is stored on the outbox row and sent by the one-minute tick.
@@ -59,7 +59,7 @@ export async function postOfficial(row, apiKey, fetchImpl, extras) {
   }
   const request = sendRequest(prepared);
   const fetchFn = fetchImpl || fetch;
-  return typeThenSend(prepared, apiKey, async () => {
+  return pauseThenSend(prepared, apiKey, async () => {
     try {
       const response = await fetchFn(API_BASE + request.path, {
         method: "POST",
