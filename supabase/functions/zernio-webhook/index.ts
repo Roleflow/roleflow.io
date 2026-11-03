@@ -24,7 +24,7 @@ import {
   sendRequest,
   voiceRefreshRequest
 } from "../_shared/ig-gateway.js";
-import { VOICE_FAILED_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceMetadata, voiceRule } from "../_shared/voice-transcribe.js";
+import { VOICE_FAILED_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceMetadata, voiceOptions, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
@@ -231,7 +231,7 @@ async function planJob(admin, job, apiKey) {
   }
   let heardVoice = null;
   if (job.event.voice) {
-    const heard = await understandVoice(job.event.voice, env, { refresh: voiceRefreshRequest(job.event, apiKey) });
+    const heard = await understandVoice(job.event.voice, env, await voiceOptions(admin, job.account.businessId, { refresh: voiceRefreshRequest(job.event, apiKey) }));
     if (!heard.ok) {
       await voiceNotUnderstood(admin, job, current.data.payload.conversationRowId, heard.reason);
       return;

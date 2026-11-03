@@ -159,7 +159,7 @@ for (const reason of ["download", "too_long", "empty", "no_provider", "transcrib
 // Wiring: both paths transcribe first, hand failures to a person, never guess.
 const hook = read("supabase/functions/zernio-webhook/index.ts");
 assert.match(hook, /p_body: inboundStoreBody\(event\)/);
-assert.match(hook, /understandVoice\(job\.event\.voice, env, \{ refresh: voiceRefreshRequest\(job\.event, apiKey\) \}\)/);
+assert.match(hook, /understandVoice\(job\.event\.voice, env, await voiceOptions\(admin, job\.account\.businessId, \{ refresh: voiceRefreshRequest\(job\.event, apiKey\) \}\)\)/);
 const failBlock = hook.slice(hook.indexOf("async function voiceNotUnderstood"), hook.indexOf("async function promptSections"));
 assert.match(failBlock, /status: "blocked"/);
 assert.match(failBlock, /human_locked: true/);
