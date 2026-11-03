@@ -260,6 +260,26 @@ revoke all on private.outreach_refresh from public, anon, authenticated;
 revoke all on private.outreach_proxy_secrets from public, anon, authenticated;
 revoke all on private.outreach_machine_secrets from public, anon, authenticated;
 grant select, insert, update, delete on private.outreach_machine_secrets to service_role;
+
+-- The private schema stays off the Data API. The image reads these three
+-- values with rpc('outreacher_machine_secrets'). Columns stay plaintext for
+-- the pilot. Encrypting them at rest is a follow-up before anyone sells this.
+create or replace function public.outreacher_machine_secrets(p_machine_id uuid)
+returns table (proxy_url text, backup_key text, volume_key text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if coalesce(auth.role(), '') is distinct from 'service_role' then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  return query
+    select s.proxy_url, s.backup_key, s.volume_key
+    from private.outreach_machine_secrets as s
+    where s.machine_id = p_machine_id;
+end;
+$$;
 revoke all on private.outreach_live_tickets from public, anon, authenticated;
 
 alter table public.client_machines enable row level security;
@@ -1075,6 +1095,7 @@ $function$;
 revoke all on function public.acq_worker_pipeline(text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.acq_worker_pipeline(text, text, jsonb) to service_role;
 
+revoke all on function public.outreacher_machine_secrets(uuid) from public, anon, authenticated;
 revoke all on function public.outreacher_can_send(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.outreacher_claim_check(uuid) from public, anon, authenticated;
 revoke all on function public.outreacher_claim_bootstrap(uuid, text, text, text) from public, anon, authenticated;
@@ -1092,6 +1113,7 @@ revoke all on function private.outreacher_can_send(uuid, text, text) from public
 revoke all on function private.outreacher_pipeline_gate(uuid, text, jsonb) from public, anon, authenticated;
 revoke all on function private.outreacher_raise_attention(uuid, uuid, text, text) from public, anon, authenticated;
 
+grant execute on function public.outreacher_machine_secrets(uuid) to service_role;
 grant execute on function public.outreacher_can_send(uuid, text, text) to service_role;
 grant execute on function public.outreacher_claim_check(uuid) to service_role;
 grant execute on function public.outreacher_claim_bootstrap(uuid, text, text, text) to service_role;

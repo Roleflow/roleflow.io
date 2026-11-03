@@ -5,7 +5,13 @@ import { flattenOffers, imageIdFor, parseOffers } from "./outreacher-offers.js";
 
 export const FIRST_BOOT_MS = 10 * 60 * 1000;
 export const LATER_BOOT_MS = 5 * 60 * 1000;
-export const HEARTBEAT_GAP_MS = 15 * 60 * 1000;
+export const DEFAULT_HEARTBEAT_MISS_S = 180;
+
+export function heartbeatMissMs(env) {
+  const seconds = Number(env && env.heartbeatMissS);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  return DEFAULT_HEARTBEAT_MISS_S * 1000;
+}
 export const DEFAULT_GRACE_DAYS = 5;
 export const DEFAULT_RETAIN_DAYS = 30;
 export const DEFAULT_PILOT_CAP = 3;
@@ -33,6 +39,7 @@ function tokenStillGood(row, now) {
 
 export function planMachine(row, env) {
   const now = env.now;
+  const heartbeatMiss = heartbeatMissMs(env);
   if (!row || row.status === "deleted" || row.status === "revoked") return { type: "idle" };
   if (row.status === "deleting") return { type: "purge" };
   if (row.status === "suspended") {
@@ -46,7 +53,7 @@ export function planMachine(row, env) {
     return { type: "retire_server" };
   }
   if (row.status === "error") {
-    if (row.provider_server_id && row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) < HEARTBEAT_GAP_MS) {
+    if (row.provider_server_id && row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) < heartbeatMiss) {
       return { type: "mark", status: row.session_state === "ok" ? "running" : "awaiting_login", event: "recovered" };
     }
     return { type: "idle" };
@@ -55,7 +62,7 @@ export function planMachine(row, env) {
     if (row.status === "awaiting_login" && row.session_state === "ok") {
       return { type: "mark", status: "running", event: "session_ok" };
     }
-    if (row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) >= HEARTBEAT_GAP_MS && !row.health_alerted) {
+    if (row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) >= heartbeatMiss && !row.health_alerted) {
       return { type: "heartbeat_miss" };
     }
     if (row.backup_count > BACKUP_KEEP) return { type: "prune_backups" };

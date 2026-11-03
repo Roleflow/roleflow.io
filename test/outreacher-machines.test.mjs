@@ -230,11 +230,23 @@ assert.equal((await stepMachine(later, baseEnv(now), fakeDeps())).row.last_error
 const fresh = { ...booting, server_running_at: new Date(now - 4 * 60 * 1000).toISOString(), boot_generation: 1 };
 assert.equal((await stepMachine(fresh, baseEnv(now), fakeDeps())).decision.type, "idle");
 
-const live = { ...baseMachine(), status: "running", provider_server_id: "9001", last_heartbeat_at: new Date(now - 16 * 60 * 1000).toISOString() };
+const live = { ...baseMachine(), status: "running", provider_server_id: "9001", last_heartbeat_at: new Date(now - 181 * 1000).toISOString() };
+const recent = { ...live, last_heartbeat_at: new Date(now - 120 * 1000).toISOString(), health_alerted: false };
+assert.equal((await stepMachine(recent, baseEnv(now), fakeDeps())).decision.type, "idle");
 const missed = await stepMachine(live, baseEnv(now), fakeDeps());
 assert.equal(missed.attention, "missed_heartbeats");
 assert.equal(missed.events[0].kind, "heartbeat_missed");
 assert.equal(missed.row.status, "running");
+const wider = await stepMachine(live, { ...baseEnv(now), heartbeatMissS: 300 }, fakeDeps());
+assert.equal(wider.decision.type, "idle");
+assert.match(migration, /function public\.outreacher_machine_secrets\(p_machine_id uuid\)/);
+assert.match(migration, /security definer/);
+assert.match(migration, /set search_path = ''/);
+assert.match(migration, /revoke all on function public\.outreacher_machine_secrets\(uuid\) from public, anon, authenticated/);
+assert.match(migration, /grant execute on function public\.outreacher_machine_secrets\(uuid\) to service_role/);
+assert.doesNotMatch(migration, /grant execute on function public\.outreacher_machine_secrets\(uuid\) to anon/);
+assert.doesNotMatch(migration, /grant execute on function public\.outreacher_machine_secrets\(uuid\) to authenticated/);
+assert.doesNotMatch(migration, /grant execute on function public\.outreacher_machine_secrets\(uuid\) to public/);
 
 const hash = await tokenHash("one-time");
 assert.equal(evaluateBootstrap({ hash, presentedHash: hash, expiresAt: new Date(now + 1000).toISOString(), boundServerId: "", boundIp: "", serverId: "9001", sourceIp: "203.0.113.50", nowMs: now }).reason, "identity_pending");

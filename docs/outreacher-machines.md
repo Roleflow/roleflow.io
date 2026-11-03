@@ -75,21 +75,21 @@ If the token expires before the first exchange, the provisioner deletes the serv
 
 Pilot machines call edge functions only. This change does not create a Postgres role named `outreacher` and does not import a JWT signing key. That import would change how every Roleflow session is signed and needs Diego's approval before general availability.
 
-`signMachineJwt` / `readMachineJwt` use `OUTREACH_MACHINE_JWT_SECRET` (HMAC-SHA256). Claims are `business_id`, `machine_id`, `role=outreacher`, `sub` equal to the machine id, `iss=roleflow-outreacher`, and a one-hour `exp`. The refresh token is opaque. Its hash, the previous hash, and `revoked_at` live in `private.outreach_refresh`. Presenting the previous hash revokes the machine (`refresh_reuse`).
+`signMachineJwt` / `readMachineJwt` use `OUTREACHER_JWT_PRIVATE_KEY` and `OUTREACHER_JWT_PUBLIC_KEY` (ES256, `kid` `outreacher-1`). Claims are `business_id`, `machine_id`, `role=outreacher`, `sub` equal to the machine id, `iss=roleflow-outreacher`, and a one-hour `exp`. The refresh token is opaque. Its hash and the previous hash live on `client_machines`. Presenting the previous hash revokes the machine (`refresh_reuse`).
 
-Every machine-facing edge function, after verifying the JWT, calls `authorizeMachineCall(claims, row)` in the shared helper (and may also call `outreacher_machine_gate`). The row must be the live `client_machines` row, `revoked_at` must be null, and `status` must be `provisioning`, `health_check`, `ready`, or `paused`. A revoked or deleted machine fails the next call even if the JWT has not expired. The function must take `business_id` and `machine_id` from the claims, not from the body.
+Every machine-facing edge function, after verifying the JWT, calls `authorizeMachineCall(claims, row)` in the shared helper (and may also call `outreacher_machine_gate`). The row must be the live `client_machines` row, `revoked_at` must be null, and `status` must be `provisioning`, `awaiting_login`, `running`, `paused`, `error`, or `suspended`. A revoked or deleted machine fails the next call even if the JWT has not expired. The function must take `business_id` and `machine_id` from the claims, not from the body.
 
 No model key and no service-role key are placed on the machine.
 
 ## Heartbeat and health
 
-The image heartbeats about every 5 minutes (4–6 with jitter). The first heartbeat while the row is `provisioning` moves it to `awaiting_login`, or to `running` when `session_state` is `ok`. noVNC listens on `127.0.0.1:6080` and is reached only through the relay.
+The image heartbeats every 50–70 seconds. The first heartbeat while the row is `provisioning` moves it to `awaiting_login`, or to `running` when `session_state` is `ok`. noVNC listens on `127.0.0.1:6080` and is reached only through the relay.
 
 | Situation | Wait | Result |
 | --- | --- | --- |
 | First boot, no heartbeat | 10 minutes after the server is running | Retry, then `failed` after `OUTREACH_MAX_ATTEMPTS` (default 5) and a Needs Diego item |
 | Later boot | 5 minutes | Same retry path |
-| Already `running` or `awaiting_login`, heartbeat older than 15 minutes | 3 missed 5-minute beats | Event `heartbeat_missed` and a Needs Diego item. Status stays so the client can still open the browser |
+| Already `running` or `awaiting_login`, heartbeat older than `OUTREACH_HEARTBEAT_MISS_S` | Default 180 seconds, about 3 missed 50–70 second beats | Event `heartbeat_missed` and a Needs Diego item. Status stays so the client can still open the browser |
 
 Needs Diego items are `hq_tasks` rows with `status = needs_diego` and `decision = pending`, assigned to the Chief of Staff agent named `Roleflow Agent`. The title is stable per machine and code, so a repeat tick does not open a second item.
 
@@ -120,7 +120,7 @@ Host nftables, image requirement: default-drop output. The agent user may reach 
 
 ## Proxy
 
-Each business gets one sticky proxy row in `outreach_proxies`, matched on `proxy_country` (ISO country, from checkout metadata). Credentials are encrypted in `private.outreach_proxy_secrets` and are not in cloud-init or in `client_machines`. The image fetches them from its config action after the JWT exists. If no free proxy matches the country, provisioning waits and raises Needs Diego.
+Each business gets one sticky proxy row in `outreach_proxies`, matched on `proxy_country` (ISO country, from checkout metadata). The proxy URL, backup key, and volume key for one machine live in `private.outreach_machine_secrets` (`proxy_url`, `backup_key`, `volume_key`). The `private` schema stays off the Data API. The image reads that one row with `rpc('outreacher_machine_secrets', { p_machine_id })`. The function is `SECURITY DEFINER`, `search_path` is empty, and only `service_role` can execute it. `anon` and `authenticated` cannot. The three values are plaintext for the pilot. Encrypting them at rest, with Supabase Vault or pgsodium, is a follow-up before anyone sells this past the pilot. Proxy pool credentials in `private.outreach_proxy_secrets` stay encrypted and are not in cloud-init or in `client_machines`. If no free proxy matches the country, provisioning waits and raises Needs Diego.
 
 Released proxies stay reserved for that business for 90 days (`quarantine_until`). Another business cannot take one during that window. The same business can take it back on reactivation.
 
@@ -254,6 +254,7 @@ Set these as function secrets. None are committed. Until the provider token, the
 | `OUTREACH_GRACE_DAYS` | Default 5 |
 | `OUTREACH_RETAIN_DAYS` | Default 30 |
 | `OUTREACH_MAX_ATTEMPTS` | Default 5 |
+| `OUTREACH_HEARTBEAT_MISS_S` | Seconds without a heartbeat before a Needs Diego item. Default 180 |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are injected.
 

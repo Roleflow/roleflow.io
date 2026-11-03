@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { createDigitalOceanProvider } from "../_shared/outreacher-digitalocean.js";
 import { createHetznerProvider } from "../_shared/outreacher-hetzner.js";
 import { attentionTask } from "../_shared/outreacher-attention.js";
-import { offersFromEnv, DEFAULT_PILOT_CAP, DEFAULT_RETAIN_DAYS, MAX_ATTEMPTS, pilotCount, stepMachine } from "../_shared/outreacher-plan.js";
+import { offersFromEnv, DEFAULT_HEARTBEAT_MISS_S, DEFAULT_PILOT_CAP, DEFAULT_RETAIN_DAYS, MAX_ATTEMPTS, pilotCount, stepMachine } from "../_shared/outreacher-plan.js";
 import { machineKeyEnv, tokenHash } from "../_shared/outreacher-token.js";
 
 function json(status: number, body: Record<string, unknown>) {
@@ -101,6 +101,7 @@ function buildEnv(rows: Record<string, unknown>[]) {
     pilotCap: numberEnv("OUTREACH_PILOT_CAP", DEFAULT_PILOT_CAP),
     retainDays: numberEnv("OUTREACH_RETAIN_DAYS", DEFAULT_RETAIN_DAYS),
     maxAttempts: numberEnv("OUTREACH_MAX_ATTEMPTS", MAX_ATTEMPTS),
+    heartbeatMissS: numberEnv("OUTREACH_HEARTBEAT_MISS_S", DEFAULT_HEARTBEAT_MISS_S),
     offers: offersFromEnv({ providerOrder: order || undefined }),
     proxy: null,
     rows
