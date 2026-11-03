@@ -442,6 +442,19 @@ verify_jwt = false
 [functions.outreach-provisioner]
 verify_jwt = false
 
+# outreach-checkout serves a public status read. Checkout and cancel check the user JWT themselves.
+[functions.outreach-checkout]
+verify_jwt = false
+
+# outreach-live returns a 10-minute ticket for that business's machine only.
+[functions.outreach-live]
+verify_jwt = true
+
+# outreach-usage reports the monthly growth fee. pg_cron sends the acquisition cron secret.
+# An authorized call stays inert until the Stripe secret and meter event name are set.
+[functions.outreach-usage]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

@@ -1,4 +1,4 @@
-import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured } from "../auth/supabase.js";
+import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, safeNext } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
 import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
@@ -358,6 +358,11 @@ if (!isConfigured()) {
             return;
           }
           if (inviteToken || joinCode) return;
+          const next = safeNext(params.get("next"));
+          if (next.includes("#outreacher")) {
+            window.location.replace(next);
+            return;
+          }
           window.location.replace("/account/acquisition/?onboarding=1");
           return;
         }

@@ -64,7 +64,7 @@ The provider's hosted welcome screen is not white-label. `brandName`, `logoUrl`,
 
 Every agent defaults to off, including when the switch row is missing. Off is enforced in the send path, not only in the page.
 
-- Lead Warmer and Outreacher open the client's own Grok Bot. The buttons stay disabled until `acquire/client-config.js` or `window.ROLEFLOW_GROK_URLS` has a real `https` URL. An empty string is a placeholder, not a connection.
+- Lead Warmer stays unavailable until its launch address is a real https URL. Outreacher opens the Outreacher page in this panel.
 - Agentic Setter cannot be turned on until the system prompt is saved and tried in the test panel. Turning any agent on asks for confirmation.
 - Follow Up Boss queues a message only when its switch is on, the lead matches the saved stage and booking rule, quiet hours are clear, the 24-hour window is open, and the follow-up count is under the max. The same recovery key is used by the five-minute job and the acquisition tick, so one lead is not queued twice.
 - A reply typed in Chats is a human message and still sends while the agents are off.

@@ -46,16 +46,46 @@ export function interpretStripeEvent(event) {
       subscriptionId: object.id || ""
     };
   }
-  if (type === "invoice.paid" || type === "customer.subscription.updated") {
+  if (type === "invoice.paid") {
+    return {
+      kind: "resume",
+      keepCancel: true,
+      customerId: typeof object.customer === "string" ? object.customer : "",
+      subscriptionId: typeof object.subscription === "string" ? object.subscription : "",
+      subscriptionStatus: "active"
+    };
+  }
+  if (type === "customer.subscription.updated") {
+    const customerId = typeof object.customer === "string" ? object.customer : "";
+    const subscriptionId = object.id || "";
+    if (cancellationRequested(object)) {
+      return {
+        kind: "cancel_requested",
+        customerId,
+        subscriptionId,
+        cancelAt: object.cancel_at == null || object.cancel_at === "" ? null : Number(object.cancel_at),
+        cancelAtPeriodEnd: object.cancel_at_period_end === true,
+        subscriptionStatus: object.status || ""
+      };
+    }
     const status = object.status || "";
-    if (type === "invoice.paid" || status === "active" || status === "trialing") {
+    if (status === "active" || status === "trialing") {
       return {
         kind: "resume",
-        customerId: typeof object.customer === "string" ? object.customer : "",
-        subscriptionId: type === "customer.subscription.updated" ? (object.id || "") : (typeof object.subscription === "string" ? object.subscription : ""),
+        clearCancel: true,
+        customerId,
+        subscriptionId,
         subscriptionStatus: status === "trialing" ? "trialing" : "active"
       };
     }
   }
   return { kind: "ignore", reason: type || "unknown" };
+}
+
+function cancellationRequested(object) {
+  if (!object) return false;
+  if (object.cancel_at_period_end === true) return true;
+  if (object.cancel_at) return true;
+  const reason = object.cancellation_details && object.cancellation_details.reason;
+  return typeof reason === "string" && reason.length > 0;
 }
