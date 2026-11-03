@@ -30,7 +30,7 @@ import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { readDmGate } from "../_shared/dm-gate.js";
-import { markSeen, nextDueInMs, textLeadMs, typeThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
+import { markSeen, nextDueInMs, textLeadMs, pauseThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
@@ -457,7 +457,7 @@ async function sendOne(admin, apiKey, row) {
     return;
   }
   const request = sendRequest(prepared);
-  const result = await typeThenSend(prepared, apiKey, async () => {
+  const result = await pauseThenSend(prepared, apiKey, async () => {
     try {
       const response = await fetch(API_BASE + request.path, {
         method: "POST",

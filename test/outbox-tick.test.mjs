@@ -46,8 +46,8 @@ const result = await postOfficial(first[0], "test-key", async (url, init) => {
   return { ok: true, status: 200, json: async () => ({ ok: true, success: true }) };
 }, { sleep: async (ms) => { slept.push(ms); } });
 assert.equal(result.ok, true);
-assert.equal(allCalls.length, 2);
-assert.equal(allCalls[0].url, "https://zernio.com/api/v1/inbox/conversations/2108532849767337/typing");
+assert.equal(allCalls.length, 1);
+assert.ok(!allCalls.some((call) => call.url.endsWith("/typing")));
 assert.equal(slept.length, 1);
 const calls = allCalls.filter((call) => call.url.endsWith("/messages"));
 assert.equal(calls.length, 1);
