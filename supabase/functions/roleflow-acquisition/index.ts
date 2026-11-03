@@ -23,6 +23,7 @@ import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, privateReplyBody, sendWithPresence, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { textLeadMs } from "../_shared/typing-plan.js";
+import { VOICE_FAILED_BODY, VOICE_PENDING_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceRule } from "../_shared/voice-transcribe.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
 import { agentEnabled, agentKeyForKind } from "../_shared/agent-control.js";
@@ -182,7 +183,7 @@ async function acceptInbound(db, businessId, event) {
       business_id: businessId,
       thread_id: thread.id,
       direction: "in",
-      body: event.text || "",
+      body: event.text || (event.voice ? VOICE_PENDING_BODY : ""),
       meta_mid: event.mid || null,
       kind: event.kind
     });
@@ -206,7 +207,7 @@ async function acceptInbound(db, businessId, event) {
     business_id: businessId,
     thread_id: thread.id,
     kind: event.kind === "comment" ? "comment_private" : "reply",
-    payload: { text: event.text || "", comment_id: event.commentId || null, event_kind: event.kind },
+    payload: { text: event.text || "", comment_id: event.commentId || null, event_kind: event.kind, ...(event.voice ? { voice: event.voice, mid: event.mid || "" } : {}) },
     run_at: new Date(Date.now() + delay).toISOString(),
     idempotency_key: "job:" + eventId(event)
   });
@@ -284,6 +285,24 @@ async function runOutbox(db, row) {
   const stepContent = step ? await stepAsset(db, businessId, step) : null;
   const prompts = await currentPrompt(db, businessId, role);
   const env = Deno.env.toObject();
+  let heardVoice = row.payload?.voice_heard || null;
+  if (row.payload?.voice && row.kind === "reply") {
+    const heard = await understandVoice(row.payload.voice, env, {});
+    const mid = String(row.payload.mid || "");
+    const typed = String(row.payload.text || "").trim();
+    if (!heard.ok) {
+      const message = voiceFailureMessage(heard.reason);
+      await db.from("ig_threads").update({ human_locked: true, updated_at: new Date().toISOString() }).eq("id", thread.id).eq("business_id", businessId);
+      await escalate(db, businessId, thread.target_id, "voice_note", message);
+      if (mid) await db.from("ig_messages").update({ body: typed ? typed + "\n\n" + VOICE_FAILED_BODY : VOICE_FAILED_BODY }).eq("business_id", businessId).eq("meta_mid", mid);
+      return finish("blocked", message);
+    }
+    if (mid) await db.from("ig_messages").update({ body: voiceBody(typed, heard.text) }).eq("business_id", businessId).eq("meta_mid", mid);
+    heardVoice = { transcribed: true, language: heard.language };
+    const { voice: _voice, ...rest } = row.payload;
+    row.payload = { ...rest, text: inboundText(typed, heard.text), voice_heard: heardVoice };
+    await db.from("ig_outbox").update({ payload: row.payload }).eq("id", row.id).eq("business_id", businessId);
+  }
   const loaded = await loadSetterReply(db, businessId, env);
   const booking = await loadBooking(db, businessId, prompts, settings);
   const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
@@ -320,8 +339,8 @@ async function runOutbox(db, row) {
           state: thread.crm_state || thread.state,
           hoursSilent: (Date.now() - Date.parse(thread.last_user_message_at || "")) / 3600000,
           content: stepContent ? stepContent.text : ""
-        }) : ""),
-        messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
+        }) : "") + voiceRule(heardVoice),
+        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }, heardVoice)) }]
       })
     });
   } catch (error) {

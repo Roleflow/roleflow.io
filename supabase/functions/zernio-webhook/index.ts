@@ -12,6 +12,7 @@ import {
   enqueueBody,
   handleWebhook,
   idempotencyKey,
+  inboundStoreBody,
   interpretSend,
   outboxWriteStatus,
   planGatewayReply,
@@ -20,8 +21,10 @@ import {
   privateReplyKind,
   replyText,
   safeWebhookError,
-  sendRequest
+  sendRequest,
+  voiceRefreshRequest
 } from "../_shared/ig-gateway.js";
+import { VOICE_FAILED_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceMetadata, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
@@ -80,7 +83,7 @@ Deno.serve(async (req) => {
           p_username: event.username,
           p_conversation: event.conversationId || event.commentId || "",
           p_external: event.externalId,
-          p_body: event.text,
+          p_body: inboundStoreBody(event),
           p_at: new Date().toISOString(),
           p_kind: event.kind
         });
@@ -225,6 +228,17 @@ async function planJob(admin, job, apiKey) {
     const seenGate = await readDmGate(admin, job.account.businessId);
     if (seenGate.open) await markSeen(job.event, job.account.accountId, apiKey, fetch);
   }
+  let heardVoice = null;
+  if (job.event.voice) {
+    const heard = await understandVoice(job.event.voice, env, { refresh: voiceRefreshRequest(job.event, apiKey) });
+    if (!heard.ok) {
+      await voiceNotUnderstood(admin, job, current.data.payload.conversationRowId, heard.reason);
+      return;
+    }
+    await recordVoiceTranscript(admin, job, current.data.payload.conversationRowId, heard);
+    heardVoice = { transcribed: true, language: heard.language };
+    job.event = { ...job.event, text: inboundText(job.event.text, heard.text) };
+  }
   const loaded = await loadSetterReply(admin, job.account.businessId, env);
   const runtime = loaded.chain[0];
   if (!runtime) {
@@ -278,8 +292,8 @@ async function planJob(admin, job, apiKey) {
             : info.message
         }),
         tools: [bookingTool()],
-        system: promptBody,
-        messages: [{ role: "user", content: JSON.stringify({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }) }]
+        system: promptBody + voiceRule(heardVoice),
+        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }, heardVoice)) }]
       })
     });
     plan.clipChoice = chooseClip({
@@ -371,6 +385,32 @@ async function planJob(admin, job, apiKey) {
   }
   if (beforeTyping > 0) await new Promise((resolve) => setTimeout(resolve, beforeTyping));
   await admin.from("ig_outbox").update({ payload }).eq("id", job.id).eq("status", "pending");
+}
+
+// The transcript replaces the "Voice note" placeholder on the stored inbound rows.
+async function recordVoiceTranscript(admin, job, conversationRowId, heard) {
+  const body = voiceBody(job.event.text, heard.text);
+  const externalId = String(job.event.externalId || "");
+  if (conversationRowId && externalId) {
+    await admin.from("acq_messages").update({ body, metadata: voiceMetadata(heard) }).eq("business_id", job.account.businessId).eq("conversation_id", conversationRowId).eq("external_id", externalId);
+  }
+  if (externalId) await admin.from("ig_messages").update({ body }).eq("business_id", job.account.businessId).eq("meta_mid", externalId);
+}
+
+// No guessed reply: the thread goes to a person and shows up under needs attention.
+async function voiceNotUnderstood(admin, job, conversationRowId, reason) {
+  const businessId = job.account.businessId;
+  const message = voiceFailureMessage(reason);
+  await admin.from("ig_outbox").update({ status: "blocked", last_error: message }).eq("id", job.id).eq("status", "pending");
+  if (job.threadId) await admin.from("ig_threads").update({ human_locked: true, updated_at: new Date().toISOString() }).eq("id", job.threadId).eq("business_id", businessId);
+  await admin.from("acq_exceptions").insert({ agent_id: businessId, kind: "voice_note", message, target_id: null });
+  const externalId = String(job.event.externalId || "");
+  const typed = String(job.event.text || "").trim();
+  const body = typed ? typed + "\n\n" + VOICE_FAILED_BODY : VOICE_FAILED_BODY;
+  if (conversationRowId && externalId) {
+    await admin.from("acq_messages").update({ body, metadata: { voice_note: { status: "failed", reason } } }).eq("business_id", businessId).eq("conversation_id", conversationRowId).eq("external_id", externalId);
+  }
+  if (externalId) await admin.from("ig_messages").update({ body }).eq("business_id", businessId).eq("meta_mid", externalId);
 }
 
 async function promptSections(admin, businessId, role) {

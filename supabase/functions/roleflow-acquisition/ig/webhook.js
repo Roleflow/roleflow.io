@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { metaVoiceAttachment } from "../../_shared/voice-transcribe.js";
 
 export function safeEqual(a, b) {
   const left = Buffer.from(String(a ?? ""), "utf8");
@@ -44,7 +45,8 @@ export function extractEvents(body) {
       const sender = String(item?.sender?.id || "");
       const timestamp = Number(item?.timestamp) || Date.now();
       if (item?.message) {
-        const text = String(item.message.text || item.message.attachments?.[0]?.payload?.url || "").slice(0, 4000);
+        const voice = metaVoiceAttachment(item.message);
+        const text = String(item.message.text || (voice ? "" : item.message.attachments?.[0]?.payload?.url) || "").slice(0, 4000);
         events.push({
           kind: "message",
           igUserId,
@@ -52,7 +54,8 @@ export function extractEvents(body) {
           timestamp,
           mid: String(item.message.mid || ""),
           text,
-          username: ""
+          username: "",
+          ...(voice ? { voice } : {})
         });
       } else if (item?.postback) {
         events.push({
