@@ -5,6 +5,7 @@ import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { switchesText } from "./dashboard-switches.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
+import { loadOutreacher, normalizeHandle, outreacherCopy, outreacherPhase, renderOutreacher } from "./outreacher-page.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
@@ -561,6 +562,12 @@ async function loadAll(id, token) {
     state.autoDm = null;
   }
   state.dmCampaigns = dmCampaigns.error ? [] : dmCampaigns.data || [];
+  const outreachRow = await loadOutreacher(q, id);
+  if (!live()) return false;
+  if (!outreachRow.unavailable) {
+    state.machine = outreachRow.machine;
+    state.outreacherConfig = outreachRow.config;
+  }
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
@@ -824,7 +831,7 @@ function paint() {
   if (state.tab === "ctas") root.append(renderCtaPage(ui));
   if (state.tab === "voice") root.append(voiceLibrary());
   if (state.tab === "warmer") root.append(renderGrokAgent(ui, "warmer"));
-  if (state.tab === "outreacher") root.append(renderGrokAgent(ui, "outreacher"));
+  if (state.tab === "outreacher") root.append(renderOutreacher(ui));
   if (state.tab === "setter") root.append(renderSetter(ui));
   if (state.tab === "followup") root.append(renderFollowupsPage(ui));
   if (state.tab === "settings") {
@@ -841,6 +848,7 @@ function paint() {
   }
   app.append(root);
   paintChrome(pageUi());
+  armOutreachPoll();
   if (state.tab !== "assistant" && state.assistantOpen && !state.assistantExpanded) revealAssistantModal();
   if (state.tab === "settings" && state.settingsFocus === "model") {
     const keyCard = document.getElementById("model-key");
@@ -953,6 +961,10 @@ function pageUi() {
     percent,
     tabGroup,
     pageHeader,
+    startOutreachCheckout,
+    scheduleOutreachCancel,
+    openOutreachBrowser,
+    saveOutreachPause,
     signAudio,
     targetDetail: leadDetail,
     saveBrief,
@@ -4697,6 +4709,167 @@ async function signAudio(path) {
   return signed.data && signed.data.signedUrl ? signed.data.signedUrl : "";
 }
 
+let outreachPoll = 0;
+
+function armOutreachPoll() {
+  if (outreachPoll || state.preview) return;
+  outreachPoll = setInterval(async () => {
+    if (state.tab !== "outreacher" || !state.supabase || !state.businessId || document.hidden) return;
+    const before = outreacherPhase(state);
+    const loaded = await loadOutreacher(state.supabase, state.businessId);
+    if (loaded.unavailable) return;
+    state.machine = loaded.machine;
+    state.outreacherConfig = loaded.config;
+    if (state.tab === "outreacher" && outreacherPhase(state) !== before) paint();
+  }, 8000);
+}
+
+async function startOutreachCheckout(accepted) {
+  const copy = outreacherCopy(language());
+  if (!accepted) return;
+  if (state.preview) {
+    toast(copy.checking);
+    return;
+  }
+  const session = await state.supabase.auth.getSession();
+  const token = session.data.session && session.data.session.access_token;
+  const root = globalThis.ROLEFLOW_SUPABASE || {};
+  const button = document.getElementById("outreach-checkout");
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch(String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/outreach-checkout", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + (token || ""),
+        apikey: root.SUPABASE_ANON_KEY || "",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ business_id: state.businessId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.url) throw new Error(payload.error || copy.checkoutMissing);
+    window.location.assign(payload.url);
+  } catch (error) {
+    state.outreachError = error.message || copy.checkoutMissing;
+    if (button) button.disabled = false;
+    paint();
+  }
+}
+
+async function scheduleOutreachCancel() {
+  const copy = outreacherCopy(language());
+  if (!state.machine || !state.machine.minimum_term_ends_at || state.machine.subscription_cancel_at) return;
+  if (state.preview) {
+    state.machine.subscription_cancel_at = state.machine.minimum_term_ends_at;
+    state.outreachError = "";
+    paint();
+    return;
+  }
+  const session = await state.supabase.auth.getSession();
+  const token = session.data.session && session.data.session.access_token;
+  const root = globalThis.ROLEFLOW_SUPABASE || {};
+  const button = document.getElementById("outreach-cancel");
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch(String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/outreach-checkout", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + (token || ""),
+        apikey: root.SUPABASE_ANON_KEY || "",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ business_id: state.businessId, action: "cancel" })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok || !payload.cancel_at) throw new Error(payload.error || copy.cancelMissing);
+    state.machine.subscription_cancel_at = payload.cancel_at;
+    state.outreachError = "";
+    paint();
+  } catch (error) {
+    state.outreachError = error.message || copy.cancelMissing;
+    if (button) button.disabled = false;
+    paint();
+  }
+}
+
+async function openOutreachBrowser(handle) {
+  const copy = outreacherCopy(language());
+  const phase = outreacherPhase(state);
+  const needsHandle = phase === "login" || phase === "reconnect" || (phase === "paused" && (!state.machine || state.machine.session_state !== "ok"));
+  const clean = normalizeHandle(handle);
+  if (needsHandle && !clean && !(state.outreacherConfig && state.outreacherConfig.ig_username)) {
+    state.outreachError = copy.handleInvalid;
+    paint();
+    return;
+  }
+  state.outreachError = "";
+  if (clean) {
+    state.outreacherConfig = { ...(state.outreacherConfig || {}), ig_username: clean };
+    if (state.machine) state.machine.ig_username = clean;
+  }
+  if (!state.preview && state.supabase && clean) {
+    const saved = await state.supabase.from("acq_outreacher_config").upsert({
+      business_id: state.businessId,
+      ig_username: clean,
+      paused: Boolean(state.outreacherConfig && state.outreacherConfig.paused)
+    });
+    if (saved.error) {
+      state.outreachError = saved.error.message;
+      paint();
+      return;
+    }
+  }
+  if (state.preview) {
+    state.outreachOpen = true;
+    state.outreachUrl = "";
+    paint();
+    return;
+  }
+  const session = await state.supabase.auth.getSession();
+  const token = session.data.session && session.data.session.access_token;
+  const root = globalThis.ROLEFLOW_SUPABASE || {};
+  try {
+    const response = await fetch(String(root.SUPABASE_URL || "").replace(/\/$/, "") + "/functions/v1/outreach-live", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + (token || ""),
+        apikey: root.SUPABASE_ANON_KEY || "",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ business_id: state.businessId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.url) throw new Error(payload.error || copy.checkoutMissing);
+    state.outreachOpen = true;
+    state.outreachUrl = payload.url;
+  } catch (error) {
+    state.outreachError = error.message;
+    state.outreachOpen = false;
+  }
+  paint();
+}
+
+async function saveOutreachPause(paused) {
+  state.outreacherConfig = { ...(state.outreacherConfig || {}), paused: paused === true };
+  if (state.preview) {
+    paint();
+    return;
+  }
+  const saved = await state.supabase.from("acq_outreacher_config").upsert({
+    business_id: state.businessId,
+    paused: paused === true,
+    ig_username: (state.outreacherConfig && state.outreacherConfig.ig_username) || null
+  });
+  const controls = await state.supabase.from("acq_dm_controls").upsert({
+    business_id: state.businessId,
+    enabled: paused !== true
+  });
+  if ((saved.error || controls.error) && state.tab === "outreacher") {
+    state.outreachError = (saved.error || controls.error).message;
+  }
+  paint();
+}
+
 async function resumeInstagram() {
   const saved = await state.supabase.from("acq_settings").update({
     ig_paused: false,
@@ -4959,6 +5132,17 @@ function previewSwitches(params, selected) {
   return out;
 }
 
+function previewMachine(phase) {
+  const term = { minimum_term_ends_at: "2027-02-03T18:00:00.000Z" };
+  if (phase === "setup") return { status: "provisioning", session_state: "unknown", sending_mode: "off", ...term };
+  if (phase === "login") return { status: "awaiting_login", session_state: "unknown", sending_mode: "off", ...term };
+  if (phase === "live" || phase === "connected" || phase === "paused") return { status: "running", session_state: "ok", sending_mode: "off", ig_username: "northstudio", ...term };
+  if (phase === "reconnect") return { status: "running", session_state: "checkpoint", sending_mode: "off", ig_username: "northstudio", ...term };
+  if (phase === "suspended") return { status: "suspended", session_state: "unknown", sending_mode: "off", ...term };
+  if (phase === "attention") return { status: "error", session_state: "unknown", sending_mode: "off", ...term };
+  return null;
+}
+
 function readPreview() {
   const host = location.hostname;
   if (host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".vercel.app")) return null;
@@ -4983,6 +5167,13 @@ function readPreview() {
       ? [{ id: "preview", agent_name: "First business", owner_id: "owner" }, { id: "second", agent_name: "North studio", owner_id: "owner" }]
       : [{ id: "preview", agent_name: "Preview coaching" }],
     canEdit: params.get("edit") === "1",
+    machine: previewMachine(params.get("outreacher") || "start"),
+    outreacherConfig: {
+      paused: params.get("outreacher") === "paused",
+      ig_username: ["connected", "live", "paused", "reconnect"].includes(params.get("outreacher") || "") ? "northstudio" : ""
+    },
+    outreachOpen: params.get("outreacher") === "live",
+    outreachUrl: "",
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
     settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120, setter_voice: params.get("voice") == null || params.get("voice") === "" ? 50 : clampVoice(params.get("voice")), setter_claude_mode: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? "own" : "default" },

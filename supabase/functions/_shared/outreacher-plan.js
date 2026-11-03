@@ -2,6 +2,7 @@ import { BOOTSTRAP_TTL_MS, randomToken } from "./outreacher-token.js";
 import { buildFirewallRules } from "./outreacher-firewall.js";
 import { renderCloudInit } from "./outreacher-cloudinit.js";
 import { flattenOffers, imageIdFor, parseOffers } from "./outreacher-offers.js";
+import { assignMinimumTerm } from "./outreacher-pricing.js";
 
 export const FIRST_BOOT_MS = 10 * 60 * 1000;
 export const LATER_BOOT_MS = 5 * 60 * 1000;
@@ -402,6 +403,7 @@ export function applyBilling(store, command, now, config) {
       live.status = "pending";
       live.subscription_status = "active";
       live.grace_delete_at = null;
+      live.subscription_cancel_at = null;
       live.stripe_subscription_id = command.subscriptionId || live.stripe_subscription_id;
       live.stripe_customer_id = command.customerId || live.stripe_customer_id;
       live.proxy_country = command.country || live.proxy_country;
@@ -409,6 +411,7 @@ export function applyBilling(store, command, now, config) {
       live.provider_server_id = "";
       live.ipv4 = "";
       live.attempts = 0;
+      assignMinimumTerm(live, command.startMs || now, now);
       return { ok: true, reactivated: true, machine: live };
     }
     const created = {
@@ -426,10 +429,17 @@ export function applyBilling(store, command, now, config) {
       offer_index: 0,
       attempts: 0,
       boot_generation: 0,
-      revoked_at: null
+      revoked_at: null,
+      subscription_cancel_at: null
     };
+    assignMinimumTerm(created, command.startMs || now, now);
     store.machines.push(created);
     return { ok: true, created: true, machine: created };
+  }
+  if (command.kind === "cancel_scheduled") {
+    if (!live) return { ok: true, missing: true };
+    live.subscription_cancel_at = command.cancelAtIso || live.minimum_term_ends_at || null;
+    return { ok: true, scheduled: true, machine: live };
   }
   if (command.kind === "pause") {
     if (!live) return { ok: true, missing: true };
@@ -443,6 +453,7 @@ export function applyBilling(store, command, now, config) {
     if (!live) return { ok: true, missing: true };
     live.subscription_status = command.subscriptionStatus || "active";
     live.grace_delete_at = null;
+    if (command.clearCancel) live.subscription_cancel_at = null;
     if (live.status === "suspended" || live.status === "error") {
       live.status = "pending";
       live.reactivate = true;

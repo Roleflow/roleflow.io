@@ -1,5 +1,18 @@
 /* Section layouts inside the original dark shell. */
 
+.outreach-card{display:grid;gap:12px}
+.outreach-price-block{display:grid;gap:8px}
+.outreach-price,.outreach-term{margin:0;overflow-wrap:anywhere}
+.outreach-card h3{margin:0}
+.outreach-card label{display:grid;gap:6px;font-weight:650}
+.outreach-card input[type=text]{min-height:44px;border-radius:12px;border:1px solid var(--line);background:#101A33;color:var(--ink);padding:0 12px}
+.outreach-risk{align-items:flex-start}
+.outreach-pause{display:grid;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
+.outreach-viewer{display:grid;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:16px}
+.outreach-viewer-bar{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.outreach-frame{width:100%;min-height:640px;border:0;border-radius:16px;background:#0A1226}
+.outreach-stage{display:grid;place-items:center;padding:24px;text-align:center}
+
 body.platform{text-align:left}
 .icon-btn{width:36px;height:36px;border-radius:999px;border:1px solid var(--line);background:#1D2848;color:var(--ink);display:grid;place-items:center;cursor:pointer;font:700 .75rem var(--b);padding:0}
 .profile-menu{position:relative}

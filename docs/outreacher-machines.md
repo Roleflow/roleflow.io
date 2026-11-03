@@ -2,7 +2,7 @@
 
 One isolated computer per paying business. The client only sees Roleflow. This document is the contract between provisioning (this change), machine isolation, and the image that runs the browser.
 
-The migration is `supabase/migrations/20261103190000_client_machines.sql`. It is not applied. Do not deploy `outreach-billing` or `outreach-provisioner` until Diego reviews it.
+The migration is `supabase/migrations/20261103190000_client_machines.sql`. The price term and the monthly fee ledger are `supabase/migrations/20261103200000_outreacher_pricing.sql`. Neither is applied. Do not deploy `outreach-billing`, `outreach-provisioner`, `outreach-checkout`, `outreach-live`, or `outreach-usage` until Diego reviews them.
 
 On 3 Nov 2026 the hosted project already had `client_dashboard_agents`, `business_model_keys`, and `prompt_versions_and_comment_voice`. This file is ordered after `20261030090000_followups_ladder.sql`.
 
@@ -12,7 +12,7 @@ On 3 Nov 2026 the hosted project already had `client_dashboard_agents`, `busines
 
 One row per business while `status <> 'deleted'`. A second provider server id, or a second assigned proxy, cannot be attached to another live row.
 
-Clients with `acq_can_read` may select status, session, sending mode, heartbeat, Instagram username, subscription, and the grace dates. They cannot select provider ids, addresses, token hashes, or proxy hosts. Writes are service role only. There is no policy that lets `anon` write.
+Clients with `acq_can_read` may select status, session, sending mode, heartbeat, Instagram username, subscription, the grace dates, and the minimum-term dates. They cannot select provider ids, addresses, token hashes, or proxy hosts. Writes are service role only. There is no policy that lets `anon` write.
 
 `public.client_machine_events` records state changes. Session changes are also written by a trigger:
 
@@ -126,17 +126,33 @@ Released proxies stay reserved for that business for 90 days (`quarantine_until`
 
 ## Payments and deletion
 
+The price is $249 setup + 10% of growth, 3-month minimum.
+
+Checkout is Stripe Checkout in `subscription` mode. The first line item is the one-time setup price `STRIPE_OUTREACH_SETUP_PRICE_ID` with quantity 1. The second line item is the monthly metered price `STRIPE_OUTREACH_GROWTH_PRICE_ID` and is sent with no quantity. If either price id or `STRIPE_SECRET_KEY` is missing, checkout returns the support message and does not call Stripe.
+
+`minimum_term_ends_at` is the subscription start plus three calendar months, stored in UTC. A later checkout for a machine that already has a future term does not move that date. A cancellation requested before then is sent to Stripe as `cancel_at` at that instant, with `cancel_at_period_end` false. The machine keeps running. The panel shows the date and, once scheduled, `subscription_cancel_at`. After the term, a cancellation uses `cancel_at_period_end`. The webhook calls Stripe before it records the event, so a failed schedule is retried. A follow-up event whose `cancel_at` is already that instant is stored and not sent again.
+
 `outreach-billing` checks `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`. The same event id is stored in `private.stripe_events` and a replay returns without a second machine.
 
 | Event | Effect |
 | --- | --- |
-| `checkout.session.completed` when paid | One `pending` machine, `sending_mode=off`, subscription `active`. A `suspended` machine is set back to `pending` and keeps its volume |
-| `invoice.payment_failed` or `customer.subscription.deleted` | `acq_dm_controls.enabled` is set false and `acq_outreacher_config.paused` is set true, so sends stop immediately. The server keeps running. `grace_delete_at` is now plus `OUTREACH_GRACE_DAYS` (default 5) |
-| `invoice.paid` or a subscription moving to `active` / `trialing` | Grace is cleared. A suspended machine returns to `pending` so it can be created again on the same volume. Sending stays off until the client turns it on |
+| `checkout.session.completed` when paid | One `pending` machine, `sending_mode=off`, subscription `active`, `minimum_term_ends_at` set. A `suspended` machine is set back to `pending` and keeps its volume. A future term already on the row is kept |
+| `customer.subscription.updated` with a cancellation | Schedules `cancel_at` for `minimum_term_ends_at` when the request would end sooner. Does not pause sending and does not start the grace delete |
+| `invoice.payment_failed` or `customer.subscription.deleted` | `acq_dm_controls.enabled` is set false and `acq_outreacher_config.paused` is set true, so sends stop immediately. The server keeps running. `grace_delete_at` is now plus `OUTREACH_GRACE_DAYS` (default 5). This path is unchanged by the minimum term |
+| `invoice.paid` | Grace is cleared. A scheduled cancellation is left in place. A suspended machine returns to `pending` so it can be created again on the same volume. Sending stays off until the client turns it on |
+| `customer.subscription.updated` to `active` or `trialing` without a cancellation | Grace is cleared and `subscription_cancel_at` is cleared |
 
 After `grace_delete_at` the provisioner deletes the server and the firewall, keeps the volume, and sets `suspended`. `volume_retain_until` is now plus `OUTREACH_RETAIN_DAYS` (default 30). The proxy enters the 90-day quarantine. When retention ends, the volume and the profile backups are deleted and the status becomes `deleted`.
 
 A payment during the 30 days reattaches that volume. It does not create a second machine row.
+
+### Monthly growth fee
+
+The fee is the share Roleflow already records. `acq_settings.share_bps` is constrained to 1000, which is 10%. For the previous UTC calendar month, `outreach-usage` sums `acq_deals.amount_cents` where `attributed` is true, `closed_on` falls in that month, and `closed_on` is on or after the machine `created_at` date. The fee is `round(sum * share_bps / 10000)`, once on the sum. A missing settings row uses 1000. Deals in a currency other than `STRIPE_OUTREACH_FEE_CURRENCY` (default `USD`), or a month with more than one currency, are not reported and are not marked done.
+
+The cron is `outreach-usage` at 06:15 UTC. It checks the acquisition cron secret. Until `STRIPE_SECRET_KEY` and `STRIPE_OUTREACH_METER_EVENT_NAME` are both set, it returns `inert` and does not write `outreach_usage_reports` and does not call Stripe. A zero fee inserts a row with `stripe_identifier` null and does not call Stripe. A positive fee is inserted only after the meter accepts it. The meter event identifier is `outreach-fee:{business_id}:{period_start}`. The payload keys are `stripe_customer_id` and `value`. `value` is the fee in cents. The timestamp is the last second of that month. The same month is not sent twice.
+
+`outreach_usage_reports` has no client policy. `anon` and `authenticated` cannot read or write it.
 
 ## Provider order
 
@@ -187,7 +203,7 @@ Refusal order:
 
 ## Panel
 
-The Outreacher item in the shared account panel is `#outreacher`. It is the same page for every business. Checkout is a redirect from `outreach-checkout`. Until the machine is `ready`, the page says it is setting up. `needs_login` shows a username field and Connect. `connected` shows Access. A challenge or logout shows Reconnect. The pause switch writes `acq_outreacher_config.paused` and sets `acq_dm_controls.enabled` to the opposite. The browser frame is Roleflow's. The password is typed there and is not stored.
+The Outreacher item in the shared account panel is `#outreacher`. It is the same page for every business, including the narrow layout. The price line is `$249 setup + 10% of growth, 3-month minimum`. Once a subscription exists, the page shows the minimum-term date and that a cancellation before then ends on that date. Checkout is a redirect from `outreach-checkout`. Cancel at end of minimum term posts `action: cancel` to that function. Until the machine is ready to sign in, the page says it is setting up. A username field and Connect are shown when a sign-in is still needed. A live session shows Access. A challenge or logout shows Reconnect. The pause switch writes `acq_outreacher_config.paused` and sets `acq_dm_controls.enabled` to the opposite. The browser frame is Roleflow's. The password is typed there and is not stored.
 
 `/outreacher/` is the public page an ad can open. Sign-up with `next=/account/acquisition/#outreacher` returns to that tab.
 
@@ -232,8 +248,11 @@ Set these as function secrets. None are committed. Until the provider token, the
 | Name | Purpose |
 | --- | --- |
 | `STRIPE_WEBHOOK_SECRET` | Billing signature |
-| `STRIPE_SECRET_KEY` | Checkout session (panel) |
-| `STRIPE_OUTREACH_PRICE_ID` | Outreacher price |
+| `STRIPE_SECRET_KEY` | Checkout, minimum-term cancellation, and meter events |
+| `STRIPE_OUTREACH_SETUP_PRICE_ID` | One-time $249 setup price |
+| `STRIPE_OUTREACH_GROWTH_PRICE_ID` | Monthly billing-meter price for the growth fee. No quantity is sent |
+| `STRIPE_OUTREACH_METER_EVENT_NAME` | Meter event name. Usage reporting stays inert until this and the secret key are set |
+| `STRIPE_OUTREACH_FEE_CURRENCY` | Optional. Default `USD`. A deal in another currency is left unreported |
 | `HCLOUD_TOKEN` | First provider |
 | `DIGITALOCEAN_TOKEN` | Fallback provider |
 | `OUTREACH_PROVIDER_ORDER` | Optional JSON override of the type list |
@@ -260,7 +279,8 @@ Set these as function secrets. None are committed. Until the provider token, the
 
 External setup, all still to do:
 
-- A Stripe product and price, and a webhook to `functions/v1/outreach-billing` for checkout completion, invoice payment failure, invoice paid, and subscription deleted
+- A Stripe product with two prices, a billing meter, and a webhook to `functions/v1/outreach-billing` for checkout completion, invoice payment failure, invoice paid, subscription updated, and subscription deleted. The setup price is one-time, $249. The growth price is recurring monthly, attached to the meter, $0.01 per unit, so the reported `value` is the fee in cents. The meter sums events. Its customer payload key is `stripe_customer_id` and its value payload key is `value`. The event name is `STRIPE_OUTREACH_METER_EVENT_NAME`. The webhook signing secret is `STRIPE_WEBHOOK_SECRET`
+- Deploy `outreach-usage` before relying on the 06:15 UTC cron. Until that deploy, the cron has nothing to reach. Until the secret key and meter event name are set, a deployed call stays inert
 - A provider project and token, with room for the pilot servers
 - Proxy rows (country, host, port) plus encrypted credentials in `private.outreach_proxy_secrets`
 - The relay, and DNS for `live.roleflow.io`

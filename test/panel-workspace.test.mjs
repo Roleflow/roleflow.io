@@ -57,7 +57,7 @@ assert.doesNotMatch(migration, /drop table/i);
 const warmer = NAV_GROUPS.find((group) => group.id === "workforce").items.find((item) => item.tab === "warmer");
 const outreacher = NAV_GROUPS.find((group) => group.id === "workforce").items.find((item) => item.tab === "outreacher");
 assert.equal(warmer.soon, true);
-assert.equal(outreacher.soon, true);
+assert.equal(outreacher.soon, undefined);
 assert.equal(canonicalTab("commentvoice"), "voice");
 assert.match(read("acquire/client-pages.js"), /Coming soon/);
 assert.match(read("acquire/home.js"), /"Soon"/);

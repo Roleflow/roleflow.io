@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { normalizeHandle, outreacherPhase, sessionLabel, outreacherCopy, termCopy } from "../acquire/outreacher-page.js";
+import { OUTREACH_PRICE_COPY } from "../supabase/functions/_shared/outreacher-pricing.js";
+
+const page = fs.readFileSync(new URL("../acquire/outreacher-page.js", import.meta.url), "utf8");
+const app = fs.readFileSync(new URL("../acquire/app.js", import.meta.url), "utf8");
+const landing = fs.readFileSync(new URL("../outreacher/index.html", import.meta.url), "utf8");
+const live = fs.readFileSync(new URL("../supabase/functions/outreach-live/index.ts", import.meta.url), "utf8");
+const checkout = fs.readFileSync(new URL("../supabase/functions/outreach-checkout/index.ts", import.meta.url), "utf8");
+
+assert.equal(normalizeHandle("@North.Studio"), "north.studio");
+assert.equal(normalizeHandle("bad handle"), "");
+assert.equal(outreacherPhase({}), "start");
+assert.equal(outreacherPhase({ machine: { status: "deleted" } }), "start");
+assert.equal(outreacherPhase({ machine: { status: "provisioning", session_state: "unknown" } }), "setup");
+assert.equal(outreacherPhase({ machine: { status: "awaiting_login", session_state: "unknown" } }), "login");
+assert.equal(outreacherPhase({ machine: { status: "running", session_state: "ok" } }), "connected");
+assert.equal(outreacherPhase({ machine: { status: "running", session_state: "checkpoint" } }), "reconnect");
+assert.equal(outreacherPhase({ machine: { status: "running", session_state: "expired" } }), "reconnect");
+assert.equal(outreacherPhase({ machine: { status: "running", session_state: "ok" }, outreacherConfig: { paused: true } }), "paused");
+assert.equal(outreacherPhase({ machine: { status: "error" } }), "attention");
+assert.equal(outreacherPhase({ machine: { status: "suspended" } }), "suspended");
+assert.equal(sessionLabel(outreacherCopy("en"), { session_state: "unknown" }), "Needs login");
+assert.equal(sessionLabel(outreacherCopy("es"), { session_state: "ok" }), "Conectado");
+
+assert.match(page, /id: "outreach-setup"/);
+assert.match(page, /id: "outreach-handle"/);
+assert.match(page, /type: "checkbox"/);
+assert.doesNotMatch(page, /type: "password"|Grok Bot|Zernio|Hetzner|noVNC/i);
+assert.doesNotMatch(landing, /Grok Bot|Zernio|Hetzner|noVNC/i);
+assert.match(landing, /\/signup\/\?next=\/account\/acquisition\/%23outreacher/);
+assert.match(app, /renderOutreacher\(ui\)/);
+assert.match(app, /functions\/v1\/outreach-live/);
+assert.match(app, /functions\/v1\/outreach-checkout/);
+assert.match(fs.readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8"), /\[functions\.outreach-live\]\nverify_jwt = true/);
+assert.match(checkout, /STRIPE_OUTREACH_SETUP_PRICE_ID/);
+assert.match(checkout, /STRIPE_OUTREACH_GROWTH_PRICE_ID/);
+assert.doesNotMatch(checkout, /STRIPE_OUTREACH_PRICE_ID/);
+assert.match(checkout, /mode", "subscription"|checkoutSessionParams/);
+assert.match(page, /\$249 setup \+ 10% of growth, 3-month minimum/);
+assert.equal(outreacherCopy("en").price, OUTREACH_PRICE_COPY);
+assert.equal(outreacherCopy("es").price, OUTREACH_PRICE_COPY);
+assert.match(landing, /\$249 setup \+ 10% of growth, 3-month minimum/);
+const termMachine = { minimum_term_ends_at: "2027-02-03T18:00:00.000Z", status: "running" };
+assert.match(termCopy(outreacherCopy("en"), termMachine, "en"), /2027/);
+assert.match(termCopy(outreacherCopy("en"), { ...termMachine, subscription_cancel_at: "2027-02-03T18:00:00.000Z" }, "en"), /scheduled/i);
+assert.match(checkout, /acq_can_edit/);
+assert.doesNotMatch(page + landing, /service_role/);
+
+console.log("outreacher panel tests passed");

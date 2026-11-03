@@ -153,15 +153,23 @@ const created = applyBilling(store, { ...command, eventId: "evt_1", machineId: "
 assert.equal(created.created, true);
 assert.equal(store.machines[0].status, "pending");
 assert.equal(store.machines[0].sending_mode, "off");
-const again = applyBilling(store, { ...command, eventId: "evt_9", machineId: "m-2" }, now, { graceDays: 5 });
+assert.equal(store.machines[0].minimum_term_ends_at, "2027-02-03T18:00:00.000Z");
+const again = applyBilling(store, { ...command, eventId: "evt_9", machineId: "m-2", startMs: now + 40 * day }, now, { graceDays: 5 });
 assert.equal(again.duplicate, true);
 assert.equal(store.machines.length, 1);
+assert.equal(store.machines[0].minimum_term_ends_at, "2027-02-03T18:00:00.000Z");
 const paused = applyBilling(store, { kind: "pause", subscriptionId: "sub_1" }, now, { graceDays: 5 });
 assert.equal(paused.paused, true);
 assert.equal(store.machines[0].status, "pending");
+assert.equal(store.machines[0].minimum_term_ends_at, "2027-02-03T18:00:00.000Z");
 assert.equal(store.controls["biz-1"].enabled, false);
 assert.equal(store.configs["biz-1"].paused, true);
 assert.equal(Date.parse(store.machines[0].grace_delete_at) - now, 5 * day);
+const cancelRequest = interpretStripeEvent({ id: "evt_cancel", type: "customer.subscription.updated", data: { object: { id: "sub_1", customer: "cus_1", status: "active", cancel_at_period_end: true, cancel_at: 1790000000, cancellation_details: { reason: null } } } });
+assert.equal(cancelRequest.kind, "cancel_requested");
+const stillActive = interpretStripeEvent({ id: "evt_active", type: "customer.subscription.updated", data: { object: { id: "sub_1", customer: "cus_1", status: "active", cancel_at_period_end: false, cancellation_details: { reason: null } } } });
+assert.equal(stillActive.kind, "resume");
+assert.equal(stillActive.clearCancel, true);
 
 const machine = baseMachine();
 const env = baseEnv(now);
