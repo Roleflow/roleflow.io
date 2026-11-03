@@ -30,6 +30,7 @@ import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { readDmGate } from "../_shared/dm-gate.js";
+import { loadMemory, memoryRule, ourRecentBubbles, repeatedBubble, retryRule } from "../_shared/reply-memory.js";
 import { markSeen, nextDueInMs, textLeadMs, pauseThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
@@ -273,7 +274,8 @@ async function planJob(admin, job, apiKey) {
     const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", job.account.businessId).eq("active", true);
     const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
     const promptBody = expandPrompt(setterPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n" + systemPrompt({}, booking) + knowledge + clipInstructions(clips);
-    plan = await planGatewayReply({
+    const memory = await loadMemory(admin, { businessId: job.account.businessId, conversationRowId: current.data.payload.conversationRowId, threadId: job.threadId, excludeId: job.id });
+    const ask = (extra) => planGatewayReply({
       thread,
       eventKind: job.event.kind,
       text: job.event.text,
@@ -292,10 +294,13 @@ async function planJob(admin, job, apiKey) {
             : info.message
         }),
         tools: [bookingTool()],
-        system: promptBody + voiceRule(heardVoice),
-        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }, heardVoice)) }]
+        system: promptBody + voiceRule(heardVoice) + memoryRule() + (extra || ""),
+        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {}, recent_messages: memory }, heardVoice)) }]
       })
     });
+    plan = await ask("");
+    const repeated = repeatedBubble(replyText(plan), ourRecentBubbles(memory));
+    if (repeated) plan = await ask(retryRule(repeated));
     plan.clipChoice = chooseClip({
       requestedId: plan.clipId || clipFromSlot(plan.voiceNoteSlot, clips),
       clips,
