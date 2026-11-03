@@ -23,6 +23,7 @@ import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, privateReplyBody, sendWithPresence, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { textLeadMs } from "../_shared/typing-plan.js";
+import { loadMemory, memoryRule, ourRecentBubbles, repeatedBubble, retryRule } from "../_shared/reply-memory.js";
 import { VOICE_FAILED_BODY, VOICE_PENDING_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceRule } from "../_shared/voice-transcribe.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
@@ -314,7 +315,8 @@ async function runOutbox(db, row) {
   const keyLinks = await loadKeyLinks(db, businessId);
   let plan;
   try {
-    plan = await planTurn({
+    const memory = await loadMemory(db, { businessId, threadId: thread.id, excludeId: row.id });
+    const askTurn = (extra) => planTurn({
       thread: toThread(thread),
       eventKind: row.payload?.event_kind || "message",
       kind: "ai",
@@ -339,10 +341,13 @@ async function runOutbox(db, row) {
           state: thread.crm_state || thread.state,
           hoursSilent: (Date.now() - Date.parse(thread.last_user_message_at || "")) / 3600000,
           content: stepContent ? stepContent.text : ""
-        }) : "") + voiceRule(heardVoice),
-        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }, heardVoice)) }]
+        }) : "") + voiceRule(heardVoice) + memoryRule() + (extra || ""),
+        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {}, recent_messages: memory }, heardVoice)) }]
       })
     });
+    plan = await askTurn("");
+    const repeated = plan && !plan.noResponse ? repeatedBubble((plan.bubbles || []).join("\n"), ourRecentBubbles(memory)) : "";
+    if (repeated) plan = await askTurn(retryRule(repeated));
   } catch (error) {
     const message = error instanceof Error ? error.message : "llm failed";
     if (error?.code === "llm_unconfigured" || row.attempts >= 5) {
