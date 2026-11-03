@@ -43,6 +43,8 @@ Sending needs the panel switch (`acq_dm_controls.enabled`) and a session file. I
 
 The login service polls Supabase for a one-time link, opens Instagram in Playwright, and joins a private Realtime channel named `dm-login:` plus the SHA-256 of that link. Screencast frames (Chrome `Page.screencastFrame`, JPEG, at most a few a second) go out on that channel. Typed input and clicks come back on the same channel. Codes and challenges stay in that Chrome. Nothing in the channel is written to a table: Realtime checks the policy and rolls the check back. When Instagram has finished login, the service encrypts the Playwright storage state and creates `<workspace-id>.key` if that file is missing. It sets `ig_handle` and `session_ready`. It does not set `enabled`. Disconnect is another one-time link. The service deletes that workspace's `.bin` file and clears `ig_handle` and `session_ready`. `/workers/` is not served by the public site.
 
+If Supabase drops the Realtime socket, the service reconnects with backoff (1 s up to 30 s) and rejoins every open login channel. While the socket is down it does not send the heartbeat and does not open Chrome for a new link, so the panel does not offer Connect into a dead stream. The latest picture is resent every 3 seconds even when Instagram's page has not changed, so a page that subscribes late still gets one. The login page says "Opening Instagram's page" until the first picture, and after 25 seconds without one it tells the member to close the tab and press Connect again.
+
 The Connect button is shown only while `acq_dm_login_service.seen_at` is less than 45 seconds old. The service calls `acq_dm_login_beat` about every 2 seconds. `public_origin` is unused. No tunnel is required.
 
 ## Session directory

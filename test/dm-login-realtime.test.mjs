@@ -227,4 +227,107 @@ assert.equal(launched, false);
 assert.equal(fs.existsSync(sessionFile), false);
 assert.deepEqual(disconnectCalls.find((call) => call.url.includes("acq_dm_controls")).body, { ig_handle: null, session_ready: false });
 
+// The socket reconnects after Supabase drops it and rejoins the open login channel.
+{
+  const sockets = [];
+  class DropSocket {
+    constructor() { this.sent = []; sockets.push(this); }
+    send(data) { this.sent.push(JSON.parse(String(data))); }
+    close() { this.closed = true; }
+  }
+  const timers = [];
+  const rtLogs = [];
+  const rt = createRealtime({
+    url: "https://example.supabase.co",
+    key: "service-role-test-key",
+    WebSocket: DropSocket,
+    heartbeatMs: 0,
+    setTimeout: (fn) => { timers.push(fn); return { unref() {} }; },
+    log: (status) => rtLogs.push(status)
+  });
+  const got = [];
+  const ch = rt.join(HASH, (body) => got.push(body));
+  sockets[0].onopen();
+  assert.equal(rt.isOpen(), true);
+  assert.equal(sockets[0].sent.filter((m) => m[3] === "phx_join").length, 1);
+  sockets[0].onclose();
+  assert.equal(rt.isOpen(), false);
+  for (let i = 0; i < 20; i += 1) assert.equal(ch.send("frame", { j: "abcdefghij" }), false);
+  assert.equal(timers.length, 1);
+  timers.shift()();
+  assert.equal(sockets.length, 2);
+  sockets[1].onopen();
+  const joins = sockets[1].sent.filter((m) => m[3] === "phx_join");
+  assert.equal(joins.length, 1);
+  assert.equal(joins[0][2], "realtime:" + loginChannel(HASH));
+  assert.equal(sockets[1].sent.some((m) => m[3] === "broadcast"), false);
+  assert.equal(ch.send("frame", { j: "abcdefghij" }), true);
+  sockets[1].onmessage({ data: encodeRealtime({ topic: "realtime:" + loginChannel(HASH), event: "broadcast", payload: { type: "broadcast", event: "input", payload: { method: "Input.insertText", params: { text: "x" } } } }) });
+  assert.equal(got.length, 1);
+  sockets[1].onmessage({ data: encodeRealtime({ joinRef: joins[0][0], topic: "realtime:" + loginChannel(HASH), event: "phx_error", payload: {} }) });
+  timers.shift()();
+  assert.equal(sockets[1].sent.filter((m) => m[3] === "phx_join").length, 2);
+  rt.close();
+  assert.equal(rtLogs.includes("realtime_closed"), true);
+}
+
+// The relay resends an unchanged picture so a late page still gets one,
+// and does not beat or launch a browser while the socket is down.
+{
+  const refreshDir = fs.mkdtempSync(path.join(os.tmpdir(), "rf-relay-refresh-"));
+  const sentFrames = [];
+  let refreshBrowser;
+  await runLoginRelay({
+    once: true,
+    env: { SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-test-key", ROLEFLOW_DM_SESSION_DIR: refreshDir },
+    sessionDir: refreshDir,
+    frameMs: 10,
+    refreshMs: 30,
+    interval: 10,
+    fetchImpl: async (url, init) => {
+      if (String(url).includes("acq_dm_login_links") && init.method === "GET") {
+        return { ok: true, status: 200, json: async () => [{ ...link, token_hash: "ef".repeat(32), expires_at: new Date(Date.now() + 400).toISOString() }] };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    },
+    launch: async () => { refreshBrowser = fakeBrowser(); return refreshBrowser; },
+    encryptStorageState() { return true; },
+    ensureSessionKey() { return "k"; },
+    realtime: {
+      isOpen() { return true; },
+      join() { return { send(event) { if (event === "frame") sentFrames.push(Date.now()); return true; }, close() {} }; },
+      close() {}
+    },
+    log: () => {}
+  });
+  refreshBrowser.emit(Buffer.from("same-static-login-frame"));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.ok(sentFrames.length >= 3, "unchanged frame is resent");
+
+  const downCalls = [];
+  let downLaunched = false;
+  await runLoginRelay({
+    once: true,
+    env: { SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-test-key", ROLEFLOW_DM_SESSION_DIR: refreshDir },
+    sessionDir: refreshDir,
+    fetchImpl: async (url, init) => {
+      downCalls.push(String(url));
+      if (String(url).includes("acq_dm_login_links") && init.method === "GET") {
+        return { ok: true, status: 200, json: async () => [{ ...link, token_hash: "fa".repeat(32) }] };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    },
+    launch: async () => { downLaunched = true; return fakeBrowser(); },
+    encryptStorageState() { return true; },
+    ensureSessionKey() { return "k"; },
+    realtime: { isOpen() { return false; }, join() { throw new Error("down"); }, close() {} },
+    log: () => {}
+  });
+  assert.equal(downLaunched, false);
+  assert.equal(downCalls.some((u) => u.includes("acq_dm_login_beat")), false);
+}
+
+assert.match(page, /STUCK_NOTE/);
+assert.match(page, /channel\.subscribe\(\(state\)/);
+
 console.log("dm login realtime tests passed");
