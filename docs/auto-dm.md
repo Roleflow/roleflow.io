@@ -1,128 +1,163 @@
-# Follow-to-DM
+# Outreacher brain
 
-Each business has its own control row. It starts off. The kill switch and the daily cap belong to that workspace. Roleflow and Value Add Marketing both get a row, and a new business gets one when its workspace is created.
+One container image runs one client's Instagram session. The brain is the long-lived process inside that image. It polls the logged-in Instagram web UI for new followers and post likes, checks the profile against that business's ICP, waits, and sends one personalised DM. Scoring and the message are produced by the `acquisition-bot` edge function. The machine does not hold a model key, does not call the data API, and does not store an Instagram password.
 
-A DM is allowed only when all of these are true:
+Sending is off unless every switch below is on. A dry run does the same work and then stops before the send click.
 
-- That workspace's opt-in is on and its kill switch is off.
-- There is no block or warning pause.
-- The handle is not on that workspace's exclusion list, has not been messaged by that workspace, and has not said stop.
-- Fewer than that workspace's daily cap have been sent today. The default cap is 20. The maximum is 50.
-- The clock in Madrid is from 09:00 to 21:00.
-- At least 5 minutes, and at most 30, have passed since the follow or like. The wait is random.
-- The person's public profile could be read (name, bio, category, or a recent post).
-- Claude Sonnet (`claude-sonnet-5-5`) wrote a new opener from that profile, the setter prompt, and the SOP playbook. The request does not send a temperature. The platform key is `ANTHROPIC_API_KEY`. A business key, when one is saved, is used first by the same order as setter replies.
-- The draft is not too similar to recent sends from that workspace.
-- The opener has no price and no commission.
+The older shared-computer worker is still `node workers/roleflow-dm/run.mjs <workspace-id>`. That process is not the per-client image. The image entrypoint is `node workers/roleflow-dm/brain.mjs`.
 
-The sent text is stored with the workspace and the handle. A fixed template is never sent.
+## What the process does
 
-The Instagram password is never stored. The panel has no password field. The person types only on Instagram's own page inside a remote browser. Roleflow keeps the encrypted session for that workspace and nothing else.
+1. Read `/etc/roleflow/bootstrap` (`machine_id`, `bootstrap_token`, optional `server_id`, `supabase_url`, `relay_url`). If `server_id` is missing, read it from the cloud metadata instance-id URL. `POST` `action: "bootstrap"` to `acquisition-bot`. The function checks the token hash, a 15-minute expiry, the recorded server id, and the source IP. If the server id or IP is not recorded yet it returns `425` and the brain retries. On success it writes the access JWT and the refresh token to `/data/secrets` at mode `0600`, writes the URLs without the token to `/data/state/endpoints.json`, and shreds the bootstrap file (`shred -u`, or overwrite and unlink). A second presentation of the same token revokes the machine. If the secret files already exist, bootstrap is skipped and a leftover bootstrap file is still shredded.
+2. Send `heartbeat` immediately, then about every 60 seconds (50–70 with jitter). The first boot must heartbeat within 10 minutes. A later boot must heartbeat within 5 minutes. Once the machine is ready, three missed beats (about 3 minutes) is the failure signal the provisioner should enforce.
+3. Pull `config` on boot, every 5 minutes, and again immediately before a send.
+4. Poll followers and likers every 5–15 minutes. The first successful poll is a baseline and is not messaged. Someone new is opened (a `view` claim), read, and ICP-checked. A pass waits a random delay, then a `dm` claim, then the draft.
+5. The default wait is 5–30 minutes. `acq_outreacher_config.delay_min_s` and `delay_max_s` override that when the row exists.
+6. Dry run types the full draft and does not click send. Live mode clicks only after a second claim check, and only if the composer still equals the full draft. The sent bubble must equal that same text. Anything shorter is not clicked. If a click already happened and the bubble does not match, the send is logged as failed and not retried.
+7. A login URL, a challenge URL, or a block dialog stops sending, heartbeats the session state, and the edge function pauses the business.
 
-The Instagram connection used for setter replies is a different path. This login does not change it.
+Chromium is a different user from the brain. It is started by supervisord with `--user-data-dir=/data/profile` and a proxy URL from `/run/roleflow/proxy.url`. The brain attaches over `127.0.0.1:9222`. noVNC listens on `127.0.0.1:6080` and x11vnc on `127.0.0.1:5900`. The outbound relay is a separate piece.
 
-## What runs on the box
+## Switches required to send
 
-Do not provision a new server or a paid host. One shared Linux computer runs two kinds of process. Both use the same session directory.
+All of these have to be true at the moment of the click:
 
-1. **One login service for every workspace.** It runs under Node 24 in `/opt/roleflow-dm`, in the tmux session `roleflow-dm`, and binds only `127.0.0.1:8796` for a local health check. `8790` is already taken. The stream does not use that port. The service's only network path is outbound TLS to the existing Supabase project on port 443. It is not started by the bots.
-2. **One long-running worker per workspace, under that workspace's Grok Bot.** `node workers/roleflow-dm/run.mjs <workspace-id>`. No recipient argument. The process wakes about every 3 minutes. A second start while the first is alive exits, so it is safe to launch it every few minutes as well.
+| Switch | Required value |
+| --- | --- |
+| `ROLEFLOW_DM_LIVE` | `1` in the machine environment. The image, the entrypoint, and cloud-init do not set this. |
+| `acq_dm_controls.enabled` | `true`. The panel pause sets this to false. |
+| `acq_dm_controls.killed` | `false` |
+| `acq_dm_controls.paused_reason` | empty |
+| `acq_outreacher_config.paused` | `false`. The panel pause sets this to true. Either this or `enabled` false stops sends and warm-up actions (`dm`, `like`, `follow`, `view`). |
+| `acq_outreacher_config.dry_run` | `false`. A missing row stays dry-run. |
+| `acq_settings.system_enabled` | `true` |
+| `acq_settings.ig_paused` | `false` |
+| `business_workforce` role `personalised_outreach` | `status = active` and not disabled |
+| `client_machines.status` | `running` (or `awaiting_login` for the local gate; the claim function is the authority) |
+| `outreacher_can_send` | returns a `claim_id` |
+| `outreacher_claim_check` | still ok, and the claim is under 2 minutes old |
+| Quiet hours | outside `acq_settings.quiet_start` / `quiet_end` in `acq_settings.timezone` |
+| Caps | under the smaller of the two daily caps, and under `hourly_cap` when that column is set |
 
-Roleflow's workspace id is `840b08a9-869c-4650-8dc7-f78fdfa0e112`. Value Add Marketing's is `1351d2ac-79bb-545d-8da0-c49ecff28a47`.
+`ROLEFLOW_DM_KILL=1` stops the process's sends even if the panel is on.
 
-```
-node workers/roleflow-dm/run.mjs 840b08a9-869c-4650-8dc7-f78fdfa0e112
-node workers/roleflow-dm/run.mjs 1351d2ac-79bb-545d-8da0-c49ecff28a47
-```
+A dry run on a pilot machine is the default. Leave `ROLEFLOW_DM_LIVE` unset. Turn the panel row on if you want the brain to draft and log, and leave `dry_run` true. The log line `reason: "dry_run"` is the text that would have been sent.
 
-Each tick, when that workspace's panel switch is on and its kill switch is off, the worker uses that workspace's session to read the latest followers and the likers of the latest posts. The first successful read is a baseline: those people are remembered and are not messaged. Someone who shows up on a later tick is new. The worker reads their public profile, asks Claude Sonnet (`claude-sonnet-5-5`, no temperature) for an opener, and sends only when `planDm` allows it. The business Claude key is used when one is saved; otherwise `ANTHROPIC_API_KEY` is used. The send is written to `acq_dm_sends`. A restart keeps the same wait and does not message that person again.
+## Environment
 
-Sending needs the panel switch (`acq_dm_controls.enabled`) and a session file. It does not need a second environment flag. `ROLEFLOW_DM_KILL=1` stops that process. A block sets `paused_reason` and the worker stops opening Instagram until that is cleared.
+| Variable | Purpose |
+| --- | --- |
+| `ROLEFLOW_SUPABASE_URL` | Edge function origin, for example `https://<project>.supabase.co`. Taken from the bootstrap file when unset. |
+| `ROLEFLOW_IMAGE_VERSION` | Baked into the image at build time and reported on heartbeat. |
+| `ROLEFLOW_DM_LIVE` | Must be `1` to click send. Unset means dry-run. |
+| `ROLEFLOW_DM_KILL` | `1` forces sending off. |
+| `ROLEFLOW_DM_BROWSER` | `0` skips attaching to Chromium. The image sets it to `1`. |
+| `ROLEFLOW_CDP` | Defaults to `http://127.0.0.1:9222`. |
+| `ROLEFLOW_APPLY_NFT` | `1` loads the shipped nftables rules. Cloud-init may set this. It must not set `ROLEFLOW_DM_LIVE`. |
+| `OUTREACHER_JWT_PRIVATE_KEY` | Function secret only. PKCS8 PEM for ES256. Not on the machine. |
+| `OUTREACHER_JWT_PUBLIC_KEY` | Function secret only. SPKI PEM. |
 
-`supabase/migrations/20261028160000_roleflow_auto_dm.sql` is already applied in production (Supabase version `20261028150149`). Do not run that file again. Apply `20261028170000_dm_every_business.sql` if `acq_dm_sends` is not in the database yet, and apply `20261028190000_dm_instagram_login.sql` before the connect button can store a handle. This repo does not apply them.
+Paths that persist are under `/data` (`profile`, `secrets`, `state`, `logs`). Proxy URL, backup key, and volume key are written only under `/run/roleflow` (tmpfs) and are not logged. `config` reads them by calling `public.outreacher_machine_secrets(p_machine_id)`. The `private` schema stays off the Data API, so this function does not select `private.outreach_machine_secrets`. The brain does not invent a key. Nightly backups are skipped until the key is present. The ciphertext is AES-256-GCM with a `RFBK1` header, uploaded through a signed URL. Cleanup deletes by the full object key (`<business_id>/<machine_id>/<file>`), not the name inside the folder, and keeps the newest 7. Retention after non-payment is the provisioner's job.
 
-The login service polls Supabase for a one-time link, opens Instagram in Playwright, and joins a private Realtime channel named `dm-login:` plus the SHA-256 of that link. Screencast frames (Chrome `Page.screencastFrame`, JPEG, at most a few a second) go out on that channel. Typed input and clicks come back on the same channel. Codes and challenges stay in that Chrome. Nothing in the channel is written to a table: Realtime checks the policy and rolls the check back. When Instagram has finished login, the service encrypts the Playwright storage state and creates `<workspace-id>.key` if that file is missing. It sets `ig_handle` and `session_ready`. It does not set `enabled`. Disconnect is another one-time link. The service deletes that workspace's `.bin` file and clears `ig_handle` and `session_ready`. `/workers/` is not served by the public site.
+## Edge function contract
 
-The Connect button is shown only while `acq_dm_login_service.seen_at` is less than 45 seconds old. The service calls `acq_dm_login_beat` about every 2 seconds. `public_origin` is unused. No tunnel is required.
-
-## Session directory
-
-The only directory is `/opt/roleflow-dm/sessions`. Set `ROLEFLOW_DM_SESSION_DIR` to that path for the login service and for every worker.
-
-Each workspace has two files, mode 600:
-
-- `<workspace-id>.bin` — encrypted Playwright storage state (`openssl enc -aes-256-cbc -pbkdf2 -salt`)
-- `<workspace-id>.key` — the key for that file. The login service creates it on the first connect when it is missing.
-
-The worker also writes `<workspace-id>.feed.json` and `<workspace-id>.lock` in that directory so a restart keeps the baseline, the wait, and a single sender. Those files are mode 600. They do not contain a session or a key.
-
-Move the sessions the bots already have. Stop the old workers first.
-
-Value Add Marketing, from `/workspace/roleflow-dm/vam/session/`:
-
-```
-mkdir -p /opt/roleflow-dm/sessions
-chmod 700 /opt/roleflow-dm/sessions
-# encrypted state -> the .bin, key text -> the .key
-cp /workspace/roleflow-dm/vam/session/<session-file> /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.bin
-cp /workspace/roleflow-dm/vam/session/<key-file> /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.key
-chmod 600 /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.bin /opt/roleflow-dm/sessions/1351d2ac-79bb-545d-8da0-c49ecff28a47.key
-```
-
-Roleflow, from `/workspace/roleflow-dm/roleflow/.dm/sessions/`:
+The machine calls only:
 
 ```
-cp /workspace/roleflow-dm/roleflow/.dm/sessions/<session-file> /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.bin
-cp /workspace/roleflow-dm/roleflow/.dm/sessions/<key-file> /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.key
-chmod 600 /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.bin /opt/roleflow-dm/sessions/840b08a9-869c-4650-8dc7-f78fdfa0e112.key
+POST {SUPABASE_URL}/functions/v1/acquisition-bot
+Authorization: Bearer <access JWT>
 ```
 
-If an old file is plain Playwright JSON, encrypt it and do not leave the plain file in place. `ROLEFLOW_DM_SESSION_KEY` is the contents of the `.key` file:
+`bootstrap` and `refresh` do not send the access JWT. No call uses `/rest/v1`. The JWT is ES256, one hour, claims `iss=roleflow-outreacher`, `aud=authenticated`, `role=outreacher`, `sub` and `machine_id`, `business_id`, `jti`, `exp`. Every other action verifies the signature and re-reads `client_machines`. A revoked, deleted, or mismatched row is rejected even if the JWT has not expired. A body `business_id` that does not match the claim returns 403, `That worker key is for a different business.`
+
+| Action | Body | Result |
+| --- | --- | --- |
+| `bootstrap` | `machine_id`, `bootstrap_token`, `server_id` | Access JWT, refresh token, `business_id`. `425` with `identity_pending` if the server id or IP is not stored yet. |
+| `refresh` | `refresh_token` | A new pair. The previous token is remembered once so a replay revokes the machine, writes `refresh_reuse`, and opens an HQ task when `hq_agents` has a row. |
+| `heartbeat` | `session_state`, `sending_mode`, `sends_today`, `sends_per_hour`, `error_rate`, `last_send_at`, `last_error`, `uptime_s`, `image_version`, `health`, `last_egress_ip` | Updates `client_machines`. On a change to `expired`, `checkpoint`, or `action_block`, writes `client_machine_events` (`session_expired`, `checkpoint`, `action_block`) and pauses via `acq_bot_pause`. |
+| `config` | none | ICP, prompt, switches, DNC, sent handles, booking links (name and URL only), proxy URL, backup key. See below. |
+| `qualify` | `profile`, `trigger` | `{ score }` from the business model key. This is not the panel prompt. |
+| `draft` | `profile`, `trigger` | `{ text }` using `acq_agent_prompt_versions.body` as the system prompt with no edits. A cut-off model reply returns `truncated` and is not a message. |
+| `claim` | `action_kind` (`dm`, `like`, `follow`, `view`), `target` | Calls `outreacher_can_send(business_id, action_kind, target)` with `business_id` from the JWT. Returns `claim_id` and `expires_at` (2 minutes). |
+| `claim_check` | `claim_id` | Calls `outreacher_claim_check`. |
+| `report_send` | `claim_id`, `result` (`sent`, `dry_run`, `failed`, `skipped`), `handle`, `body`, `kind` | Calls `outreacher_report_send`. `sent` longer than 1000 characters is refused and is not written to `acq_dm_sends`. |
+| `log_event` | `kind`, `handle`, `reason`, optional `body` | Skip/failure visibility in `acq_activity.payload` and `client_machine_events`. The message text is not sliced. |
+| `backup_slot` / `backup_commit` | path from the slot | Signed upload URL under `outreacher-profiles/<business_id>/<machine_id>/`. Prune passes full keys such as `<business_id>/<machine_id>/<file>` to storage remove, and keeps 7. |
+
+`session_state` is `ok`, `expired`, `checkpoint`, `action_block`, or `unknown`. `sending_mode` is `off`, `dry_run`, or `live`.
+
+### Config shape
+
+`acq_settings` (keyed by `agent_id`) is the ICP source: `niche`, `follower_min`, `follower_max`, `cta_keywords`, `icp_notes`, `offer_summary`, `daily_cap`, `keyword_only`, `skip_followed`, plus `timezone`, `quiet_start`, `quiet_end`, `ig_paused`, `system_enabled`. Null follower bounds fall back to 5000 and 200000 only in the brain's check. Stored numbers are used as stored, including a ceiling of 50000. Empty `cta_keywords` passes the keyword gate. `keyword_only` does not add a second keyword list.
+
+Also returned: `business_workforce.parameters.min_score` for role `personalised_outreach` (70 when null), `acq_business_briefs.fields` (`who`, `sell`, `offer`, `service`), `acq_dnc`, `acq_tag_rules`, `acq_offer_links` as `{ name, url }` only, `acq_dm_controls`, recent `acq_dm_sends` handles, and `acq_outreacher_config` when that table exists (`exclude_keywords`, `countries`, `languages`, `delay_min_s`, `delay_max_s`, `hourly_cap`, `dry_run`). A country or language is enforced only when the profile actually exposes one.
+
+The panel prompt is the newest `acq_agent_prompt_versions.body`. It is passed to the model as the system text unchanged. The user message carries the profile, the brief, the tag rules, and the booking links. Prices are not added to that message. A draft that contains a price or is longer than 1000 characters is not sent.
+
+## ICP check
+
+Before a profile is opened, the handle is dropped if it is on `acq_dnc`, already in `acq_dm_sends`, or is the account's own handle. After the profile is read: follower range, CTA keywords when the list is non-empty, exclude keywords, `skip_followed`, country and language when known. `qualify` must return a score at or above `min_score`. The same gates run again immediately before the DM claim.
+
+## Image
+
+Build both architectures from the repo root:
 
 ```
-openssl enc -aes-256-cbc -pbkdf2 -salt \
-  -in state.json \
-  -out /opt/roleflow-dm/sessions/<workspace-id>.bin \
-  -pass env:ROLEFLOW_DM_SESSION_KEY
-rm state.json
+sh workers/roleflow-dm/build-image.sh 2026.11.03
 ```
 
-Confirm with `openssl enc -d -aes-256-cbc -pbkdf2 -in <workspace-id>.bin -pass env:ROLEFLOW_DM_SESSION_KEY`. Then point the login service and both bots at `ROLEFLOW_DM_SESSION_DIR=/opt/roleflow-dm/sessions`.
+That runs `docker buildx build --platform linux/amd64,linux/arm64`. The tag is `roleflow-outreacher:<version>`. Chromium comes from Playwright's linux build for the target architecture, so arm64 (CAX11) and amd64 use the same Dockerfile.
 
-## One-time setup
+The image users are `agent` (the brain) and `chromium` (the browser). nftables for the chromium uid drop `169.254.169.254`, all UDP, and TCP port 53, then allow only the proxy IP and port. The agent uid may reach metadata, DNS, NTP, and the control HTTPS set. Rules are rendered by `workers/roleflow-dm/brain-nft.mjs` and applied only when `ROLEFLOW_APPLY_NFT=1`. Chromium enterprise policy disables the password manager and autofill and sets `WebRtcIPHandlingPolicy` to `disable_non_proxied_udp`. The process is also started with `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`.
 
-Diego does this once on the box. New workspaces do not need it again.
+## What provisioning creates
 
-1. Use the Node 24 install already on the box, plus OpenSSL. Do not add a tunnel client or a new Supabase project.
-2. Outside this git repo, install the browser the service launches:
+This change creates none of these. The provisioning migration is the only place that creates `client_machines`, `client_machine_events`, `acq_outreacher_config`, `private.outreach_machine_secrets`, the claim functions, `public.outreacher_machine_secrets(p_machine_id)`, and the private `outreacher-profiles` bucket. This image only calls them. The `private` schema is not exposed on the Data API.
 
-   ```
-   sudo mkdir -p /opt/roleflow-dm/sessions
-   sudo chown "$USER" /opt/roleflow-dm /opt/roleflow-dm/sessions
-   chmod 700 /opt/roleflow-dm/sessions
-   cd /opt/roleflow-dm
-   npm init -y
-   npm install playwright
-   npx playwright install --with-deps chromium
-   ```
+`client_machines`: `id`, `business_id`, `provider_server_id`, `ipv4`, `status` (`provisioning` at bootstrap), `bootstrap_token_hash`, `bootstrap_expires_at` (at most 15 minutes ahead), `bootstrap_used_at`, `refresh_token_hash`, `refresh_prev_hash`, `refresh_family_id`, `revoked_at`, `session_state`, `last_heartbeat_at`, `last_error`, `image_version`, `health`, `sending_mode`, `sends_today`, `sends_per_hour`, `error_rate`, `last_send_at`, `uptime_s`, `last_egress_ip`, `agent_version`.
 
-   Do not commit `package.json` or `node_modules`.
+`client_machine_events`: `business_id`, `machine_id`, `kind`, `severity`, `detail jsonb`, `created_at`.
 
-3. Put the service environment in a file on the box that is not in git. `SUPABASE_URL` is the existing project URL. `SUPABASE_SERVICE_ROLE_KEY` stays only on this computer. `ROLEFLOW_DM_SESSION_DIR=/opt/roleflow-dm/sessions`. `ROLEFLOW_DM_PLAYWRIGHT_ROOT=/opt/roleflow-dm`. `ROLEFLOW_DM_LOGIN_HOST=127.0.0.1`. `ROLEFLOW_DM_LOGIN_PORT=8796`. `ANTHROPIC_API_KEY` is the fallback Claude key for openers. Do not set `DEBUG`. The same file is what each worker bot loads.
-4. Restart the login service inside the existing tmux session `roleflow-dm`. Pull this repo first. From the checkout on the box:
+`acq_outreacher_config`: `business_id` primary key, `paused` (default true), `exclude_keywords`, `countries`, `languages`, `delay_min_s`, `delay_max_s`, `hourly_cap`, `dry_run` default true, `triggers`.
 
-   ```
-   tmux send-keys -t roleflow-dm C-c
-   tmux send-keys -t roleflow-dm 'cd /opt/roleflow && set -a && . /etc/roleflow-dm.env && set +a && node workers/roleflow-dm/login-service.mjs' C-m
-   ```
+`private.outreach_machine_secrets`: `machine_id`, `proxy_url`, `backup_key`, `volume_key`. Service role only. Read through `public.outreacher_machine_secrets(p_machine_id uuid)`, security definer, service role only, returning those three values.
 
-   If Instagram refuses the headless browser, run it under `xvfb-run -a` and set `ROLEFLOW_DM_LOGIN_HEADED=1`. Do not open port 8796 on the public internet. The health check is only for the box: `curl -s http://127.0.0.1:8796/health`.
-5. Apply `20261028190000_dm_instagram_login.sql` if it is not in the database yet, then `20261028200000_dm_login_realtime.sql`. In the Supabase dashboard, Realtime settings, turn **Allow public access** off so a channel can be joined only when `realtime.messages` allows it. That is the one-time step in the dashboard. No new account, and no `public_origin` value.
+Storage bucket `outreacher-profiles`, private. This function uploads and deletes objects. Delete keys are the full path.
 
-Each Grok Bot runs only its own `run.mjs <workspace-id>` with that same `ROLEFLOW_DM_SESSION_DIR`. The panel switch is what allows sending.
+SQL, called with the service role. `business_id` comes from the JWT, not the body. Signatures match the provisioning functions:
 
-## Security trade-off
+- `outreacher_can_send(business_id uuid, action_kind text, target text)` returns `{ ok, claim_id, expires_at }` or `{ ok: false, reason }`. `action_kind` is `dm`, `like`, `follow`, or `view`. It refuses when `acq_outreacher_config.paused` is true or `acq_dm_controls.enabled` is false, and on the other kill, cap, quiet-hour, DNC, and already-contacted checks. The claim expires in 2 minutes. A reported `dry_run` does not count toward the caps.
+- `outreacher_claim_check(claim_id uuid)` re-checks that claim.
+- `outreacher_report_send(claim_id uuid, result text, detail jsonb)` stores `detail` without shortening `detail.body`. `result` is `sent`, `dry_run`, `failed`, or `skipped`.
 
-Keystrokes have to reach the Chrome process on the box or Instagram cannot receive them. They travel from the member's browser to Supabase Realtime on port 443, then out to the login service, then into Chrome, in memory, for that 10-minute link. The same path carries frames the other way, a few JPEG frames a second, so the picture can lag by a few hundred milliseconds and typing can feel slightly late. They are not stored, not written to logs, not saved as screenshots, and not kept in Realtime history. The database stores the SHA-256 of the link, the heartbeat time, the Instagram handle, and `session_ready`. The session file and its key stay on the box.
+Function secrets: `OUTREACHER_JWT_PRIVATE_KEY` and `OUTREACHER_JWT_PUBLIC_KEY`. The pilot verifies those tokens inside the edge function. Importing the signing key into the project auth settings is a later change and is not done here.
 
-Someone who can read the login service's memory during those 10 minutes could see what was typed. Supabase's Realtime process also sees the frames and the typed events while it forwards them, then drops them. Only a member who can edit that business, and who holds that one link, can join the channel. The live picture shows Instagram's page; Instagram masks its own secret field. The frames are not written to disk.
+`docs/outreacher-machines.md` from the provisioning change is the table contract. If a column name differs, heartbeat and bootstrap will return 503 until they match the list above.
+
+## Tests
+
+Unit tests cover profile HTML, ICP bounds, delays, caps, the kill and dry-run gates, the truncation guard, the health probe, bootstrap, refresh replay, the cross-business 403, claim failure, and the image rules. They do not open Instagram.
+
+```
+node --test test/outreacher-brain.test.mjs test/outreacher-machine.test.mjs
+```
+
+## Shared computer already running
+
+The per-client image does not use this directory. The login service and `run.mjs` that are already on the shared computer do.
+
+Sessions live in `/opt/roleflow-dm/sessions`. Each workspace has `<workspace-id>.bin` and `<workspace-id>.key`, mode `chmod 600`. The worker also writes `<workspace-id>.feed.json` and `<workspace-id>.lock` there. `ROLEFLOW_DM_SESSION_DIR` points at that directory.
+
+Value Add Marketing's previous files were under `/workspace/roleflow-dm/vam/session/`. Roleflow's were under `/workspace/roleflow-dm/roleflow/.dm/sessions/`. Copy those into `/opt/roleflow-dm/sessions` under the workspace id, then `chmod 600` the `.bin` and the `.key`.
+
+`supabase/migrations/20261028160000_roleflow_auto_dm.sql` is already applied in production (Supabase version `20261028150149`). Do not run that file again.
+
+The login service runs under Node 24 in `/opt/roleflow-dm`, in the tmux session `roleflow-dm`, and binds only `127.0.0.1:8796`. `8790` is already taken. It is not started by the bots. Restart it from the checkout with `node workers/roleflow-dm/login-service.mjs`. If the browser must be headed, run it under `xvfb-run -a` and set `ROLEFLOW_DM_LOGIN_HEADED=1`. Do not open port 8796 on the public internet.
+
+## Open points
+
+- The claim, report, and machine tables are not in this repo. Until they exist, claim and report fail closed and the brain does not click send.
+- Listing the follower and like dialogs uses the logged-in web UI. The selectors live in `brain-browser.mjs` and are covered with fixtures. A pilot machine is the first check against the live UI.
+- The relay socket that should push `halt` within seconds is owned by another piece. This process also stops when heartbeat or config returns `halt`, and when a claim is refused.
+- Heartbeat counts are what the brain reports. The claim ledger is the source of truth for caps.
+- `acq_dm_controls.enabled` may already be true for existing businesses. That does not send. `ROLEFLOW_DM_LIVE` and `dry_run = false` are still required, and this change does not write those rows.
