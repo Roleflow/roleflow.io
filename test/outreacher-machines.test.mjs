@@ -10,6 +10,7 @@ import {
   authorizeMachineCall,
   evaluateBootstrap,
   evaluateRefresh,
+  machineKeyEnv,
   readMachineJwt,
   signMachineJwt,
   tokenHash
@@ -26,7 +27,7 @@ const ready = {
   config: { paused: false, hourly_cap: 6 },
   workforce: { status: "active" },
   settings: { ig_paused: false, system_enabled: true, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00" },
-  machine: { status: "ready", revoked_at: null, session_state: "connected", sending_mode: "live", subscription_status: "active" },
+  machine: { status: "running", revoked_at: null, session_state: "ok", sending_mode: "live", subscription_status: "active" },
   dailyCount: 0,
   hourlyCount: 0,
   dnc: false,
@@ -58,16 +59,15 @@ for (const [patch, reason] of [
   [{ machine: { subscription_status: "past_due" } }, "subscription"],
   [{ machine: { status: "suspended" } }, "machine"],
   [{ machine: { revoked_at: "2026-11-03T00:00:00Z" } }, "machine"],
-  [{ machine: { session_state: "needs_login" } }, "session"],
-  [{ machine: { session_state: "challenge" } }, "session"],
-  [{ machine: { sending_mode: "off" } }, "sending_off"],
+  [{ machine: { session_state: "unknown" } }, "session"],
+  [{ machine: { session_state: "checkpoint" } }, "session"],
   [{ quiet: true }, "quiet_hours"],
   [{ dailyCount: 20 }, "daily_cap"],
   [{ hourlyCount: 6 }, "hourly_cap"],
   [{ dnc: true }, "dnc"],
   [{ contacted: true }, "already_contacted"],
   [{ target: "not a handle" }, "target"],
-  [{ actionKind: "warmup", machine: { sending_mode: "dry_run" } }, "claimed"]
+  [{ actionKind: "view" }, "claimed"]
 ]) {
   const result = claim(patch);
   assert.equal(result.reason, reason, reason);
@@ -167,12 +167,12 @@ const machine = baseMachine();
 const env = baseEnv(now);
 const deps = fakeDeps();
 let stepped = await drive(machine, env, deps, 6);
-assert.equal(stepped.status, "health_check");
+assert.equal(stepped.status, "provisioning");
 assert.equal(stepped.provider, "hetzner");
 assert.equal(stepped.server_type, "cx23");
 assert.equal(stepped.arch, "amd64");
-assert.equal(stepped.public_ip, "203.0.113.50");
-assert.equal(stepped.provider_machine_id, "9001");
+assert.equal(stepped.ipv4, "203.0.113.50");
+assert.equal(stepped.provider_server_id, "9001");
 assert.equal(stepped.volume_id, "vol-1");
 assert.ok(deps.calls.some((call) => call.op === "createServer" && call.input.sshKeys.length === 0));
 const userData = deps.calls.find((call) => call.op === "createServer").input.userData;
@@ -180,14 +180,17 @@ assert.doesNotMatch(userData, /server_id=|public_ip=/);
 assert.match(userData, /bootstrap_token=/);
 stepped.last_heartbeat_at = new Date(now).toISOString();
 stepped = (await stepMachine(stepped, env, deps)).row;
-assert.equal(stepped.status, "ready");
+assert.equal(stepped.status, "awaiting_login");
+stepped.session_state = "ok";
+stepped = (await stepMachine(stepped, env, deps)).row;
+assert.equal(stepped.status, "running");
 
 stepped.grace_delete_at = new Date(now + 5 * day).toISOString();
-assert.equal((await stepMachine(stepped, env, deps)).row.status, "ready");
+assert.equal((await stepMachine(stepped, env, deps)).row.status, "running");
 const afterGrace = await stepMachine(stepped, { ...env, now: now + 5 * day + 1000 }, deps);
 assert.equal(afterGrace.row.status, "suspended");
 assert.equal(afterGrace.row.volume_id, "vol-1");
-assert.equal(afterGrace.row.provider_machine_id, "");
+assert.equal(afterGrace.row.provider_server_id, "");
 assert.ok(deps.calls.some((call) => call.op === "deleteServer"));
 const retained = afterGrace.row;
 const purged = await stepMachine(retained, { ...env, now: Date.parse(retained.volume_retain_until) + 1000 }, deps);
@@ -201,7 +204,7 @@ assert.equal(resumed.machine.status, "pending");
 assert.equal(resumed.machine.volume_id, "vol-keep");
 const reattached = await drive(resumed.machine, baseEnv(now), deps, 8);
 assert.equal(reattached.volume_id, "vol-keep");
-assert.equal(reattached.provider_machine_id.length > 0, true);
+assert.equal(reattached.provider_server_id.length > 0, true);
 
 const stock = fakeDeps({ unavailable: new Set(["cx23"]) });
 const fallen = await drive(baseMachine(), baseEnv(now), stock, 40);
@@ -219,7 +222,7 @@ const capped = await stepMachine(baseMachine(), { ...baseEnv(now), poolCount: 3,
 assert.equal(capped.attention, "pilot_cap");
 assert.equal(capped.row.status, "pending");
 
-const booting = { ...baseMachine(), status: "health_check", provider: "hetzner", provider_machine_id: "9001", public_ip: "203.0.113.50", server_running_at: new Date(now - 11 * 60 * 1000).toISOString(), boot_generation: 0, volume_id: "vol-1" };
+const booting = { ...baseMachine(), status: "provisioning", provider: "hetzner", provider_server_id: "9001", ipv4: "203.0.113.50", server_running_at: new Date(now - 11 * 60 * 1000).toISOString(), boot_generation: 0, volume_id: "vol-1" };
 const timed = await stepMachine(booting, baseEnv(now), fakeDeps());
 assert.equal(timed.row.last_error, "health_timeout");
 const later = { ...booting, boot_generation: 1, server_running_at: new Date(now - 6 * 60 * 1000).toISOString() };
@@ -227,14 +230,14 @@ assert.equal((await stepMachine(later, baseEnv(now), fakeDeps())).row.last_error
 const fresh = { ...booting, server_running_at: new Date(now - 4 * 60 * 1000).toISOString(), boot_generation: 1 };
 assert.equal((await stepMachine(fresh, baseEnv(now), fakeDeps())).decision.type, "idle");
 
-const live = { ...baseMachine(), status: "ready", provider_machine_id: "9001", last_heartbeat_at: new Date(now - 4 * 60 * 1000).toISOString() };
+const live = { ...baseMachine(), status: "running", provider_server_id: "9001", last_heartbeat_at: new Date(now - 16 * 60 * 1000).toISOString() };
 const missed = await stepMachine(live, baseEnv(now), fakeDeps());
 assert.equal(missed.attention, "missed_heartbeats");
 assert.equal(missed.events[0].kind, "heartbeat_missed");
-assert.equal(missed.row.status, "ready");
+assert.equal(missed.row.status, "running");
 
 const hash = await tokenHash("one-time");
-assert.equal(evaluateBootstrap({ hash, presentedHash: hash, expiresAt: new Date(now + 1000).toISOString(), boundServerId: "", boundIp: "", serverId: "9001", sourceIp: "203.0.113.50", nowMs: now }).status, 425);
+assert.equal(evaluateBootstrap({ hash, presentedHash: hash, expiresAt: new Date(now + 1000).toISOString(), boundServerId: "", boundIp: "", serverId: "9001", sourceIp: "203.0.113.50", nowMs: now }).reason, "identity_pending");
 const exchanged = evaluateBootstrap({ hash, presentedHash: hash, expiresAt: new Date(now + 1000).toISOString(), boundServerId: "9001", boundIp: "203.0.113.50", serverId: "9001", sourceIp: "203.0.113.50", nowMs: now });
 assert.equal(exchanged.ok, true);
 const replayed = evaluateBootstrap({ hash, presentedHash: hash, expiresAt: new Date(now + 1000).toISOString(), usedAt: new Date(now).toISOString(), boundServerId: "9001", boundIp: "203.0.113.50", serverId: "9001", sourceIp: "203.0.113.50", nowMs: now });
@@ -243,16 +246,33 @@ const previous = await tokenHash("old");
 const current = await tokenHash("new");
 assert.equal(evaluateRefresh({ currentHash: current, previousHash: previous, presentedHash: previous, expiresAt: new Date(now + day).toISOString(), nowMs: now }).revoke, true);
 
-const signed = await signMachineJwt({ business_id: "biz-1", machine_id: "m-1" }, "machine-secret", now);
-const read = await readMachineJwt(signed.token, "machine-secret", now);
+const machineKeys = await es256Pair();
+assert.deepEqual(machineKeyEnv((name) => name), {
+  privateKey: "OUTREACHER_JWT_PRIVATE_KEY",
+  publicKey: "OUTREACHER_JWT_PUBLIC_KEY"
+});
+const signed = await signMachineJwt({ business_id: "biz-1", machine_id: "m-1" }, machineKeys.privateKey, now);
+const read = await readMachineJwt(signed.token, machineKeys.publicKey, now);
 assert.equal(read.ok, true);
-assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "biz-1", status: "ready", revoked_at: null }, now).ok, true);
-assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "biz-1", status: "ready", revoked_at: now }, now).reason, "revoked");
-assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "other", status: "ready" }, now).reason, "revoked");
+assert.equal(read.claims.role, "outreacher");
+assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "biz-1", status: "running", revoked_at: null }, now).ok, true);
+assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "biz-1", status: "running", revoked_at: now }, now).reason, "revoked");
+assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "other", status: "running" }, now).reason, "revoked");
 assert.equal(authorizeMachineCall(read.claims, { id: "m-1", business_id: "biz-1", status: "deleted" }, now).reason, "revoked");
-assert.equal((await readMachineJwt(signed.token, "other-secret", now)).ok, false);
+assert.equal((await readMachineJwt(signed.token, (await es256Pair()).publicKey, now)).ok, false);
 
-assert.match(migration, /client_machines/);
+assert.match(migration, /provider_server_id/);
+assert.match(migration, /bootstrap_token_hash/);
+assert.match(migration, /refresh_prev_hash/);
+assert.match(migration, /function public.outreacher_can_send\(business_id uuid, action_kind text, target text\)/);
+assert.match(migration, /function public.outreacher_claim_check\(claim_id uuid\)/);
+assert.match(migration, /function public.outreacher_report_send\(claim_id uuid, result text, detail jsonb\)/);
+assert.match(migration, /private.outreach_machine_secrets/);
+assert.match(migration, /proxy_url text/);
+assert.match(migration, /outreacher-profiles/);
+assert.match(migration, /dry_run boolean not null default true/);
+assert.doesNotMatch(cloud, /ROLEFLOW_DM_LIVE/);
+assert.match(cloud, /ROLEFLOW_APPLY_NFT=1/);
 assert.match(migration, /client_machine_events/);
 assert.doesNotMatch(migration, /Grok Bot|Zernio/);
 assert.match(fs.readFileSync(new URL("../supabase/functions/_shared/outreacher-token.js", import.meta.url), "utf8"), /authorizeMachineCall/);
@@ -269,7 +289,7 @@ function baseMachine() {
     attempts: 0,
     boot_generation: 0,
     sending_mode: "off",
-    session_state: "needs_login",
+    session_state: "unknown",
     subscription_status: "active",
     volume_keep: false,
     health_alerted: false
@@ -335,9 +355,21 @@ async function drive(row, env, deps, limit) {
   for (let i = 0; i < limit; i += 1) {
     const result = await stepMachine(current, env, deps);
     current = result.row;
-    if (current.status === "health_check" || current.status === "ready" || current.status === "failed") return current;
+    if (current.provider_server_id && current.ipv4 && current.status === "provisioning") return current;
+    if (current.status === "awaiting_login" || current.status === "running" || current.status === "error") return current;
   }
   return current;
+}
+
+async function es256Pair() {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const priv = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
+  const pub = await crypto.subtle.exportKey("spki", pair.publicKey);
+  const pem = (bytes, label) => {
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+    return "-----BEGIN " + label + "-----\n" + (b64.match(/.{1,64}/g) || []).join("\n") + "\n-----END " + label + "-----";
+  };
+  return { privateKey: pem(priv, "PRIVATE KEY"), publicKey: pem(pub, "PUBLIC KEY") };
 }
 
 async function hmac(secret, message) {

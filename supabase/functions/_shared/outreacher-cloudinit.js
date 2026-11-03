@@ -29,7 +29,12 @@ export function renderCloudInit({ machineId, bootstrapToken, relayUrl, supabaseU
     "      machine_id=" + machineId,
     "      bootstrap_token=" + bootstrapToken,
     "      relay_url=" + relay,
-    "      supabase_url=" + supabase,
+      "      supabase_url=" + supabase,
+    "  - path: /etc/roleflow/host.env",
+    "    owner: root:root",
+    "    permissions: \"0644\"",
+    "    content: |",
+    "      ROLEFLOW_APPLY_NFT=1",
     "runcmd:",
     "  - [ systemctl, start, roleflow-outreacher ]"
   ].join("\n") + "\n";

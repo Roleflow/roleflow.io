@@ -83,13 +83,13 @@ No model key and no service-role key are placed on the machine.
 
 ## Heartbeat and health
 
-The image sends a heartbeat about every 60 seconds, with jitter. The provisioner marks the machine `ready` on the first `last_heartbeat_at`.
+The image heartbeats about every 5 minutes (4–6 with jitter). The first heartbeat while the row is `provisioning` moves it to `awaiting_login`, or to `running` when `session_state` is `ok`. noVNC listens on `127.0.0.1:6080` and is reached only through the relay.
 
 | Situation | Wait | Result |
 | --- | --- | --- |
 | First boot, no heartbeat | 10 minutes after the server is running | Retry, then `failed` after `OUTREACH_MAX_ATTEMPTS` (default 5) and a Needs Diego item |
 | Later boot | 5 minutes | Same retry path |
-| Already `ready`, heartbeat older than 3 minutes | 3 missed beats | Event `heartbeat_missed` and a Needs Diego item. Status stays `ready` so the client can still open the browser |
+| Already `running` or `awaiting_login`, heartbeat older than 15 minutes | 3 missed 5-minute beats | Event `heartbeat_missed` and a Needs Diego item. Status stays so the client can still open the browser |
 
 Needs Diego items are `hq_tasks` rows with `status = needs_diego` and `decision = pending`, assigned to the Chief of Staff agent named `Roleflow Agent`. The title is stable per machine and code, so a repeat tick does not open a second item.
 
@@ -185,6 +185,12 @@ Refusal order:
 
 `acq_worker_pipeline` is still in the database. This migration does not drop it. Execute is revoked from `anon` and `authenticated`, and granted only to `service_role`. `set_stage` to `dm_sent`, and `log` of a like, follow, view, comment, or message, return `claim_required` unless `claim_id` is a live ledger row for that business. List, stats, and add-prospect stay available to the service role because they are not sends. Retire `acq_worker_pipeline` before the outreacher is sold. It is a legacy log, and it is not the send path. External callers that posted to it with the publishable key have to move to an edge function.
 
+## Panel
+
+The Outreacher item in the shared account panel is `#outreacher`. It is the same page for every business. Checkout is a redirect from `outreach-checkout`. Until the machine is `ready`, the page says it is setting up. `needs_login` shows a username field and Connect. `connected` shows Access. A challenge or logout shows Reconnect. The pause switch writes `acq_outreacher_config.paused` and sets `acq_dm_controls.enabled` to the opposite. The browser frame is Roleflow's. The password is typed there and is not stored.
+
+`/outreacher/` is the public page an ad can open. Sign-up with `next=/account/acquisition/#outreacher` returns to that tab.
+
 ## Live view
 
 `outreach-live` (panel change) returns a 10-minute ticket for one machine. The relay pairs that ticket with the machine's outbound socket. The ticket's machine id has to match. Passwords are typed by the client into the browser on their machine. Roleflow does not store them.
@@ -241,7 +247,8 @@ Set these as function secrets. None are committed. Until the provider token, the
 | `OUTREACH_REGISTRY_IPS` | Firewall pin |
 | `OUTREACH_DNS_IPS` | Optional. Defaults to the resolver pair above |
 | `OUTREACH_NTP_IPS` | Optional |
-| `OUTREACH_MACHINE_JWT_SECRET` | HMAC secret for machine JWTs. Not a Supabase signing key |
+| `OUTREACHER_JWT_PRIVATE_KEY` | PKCS8 PEM. ES256 signing key. Same name as the image function. Not on the machine |
+| `OUTREACHER_JWT_PUBLIC_KEY` | SPKI PEM. ES256 verify key. Same pair as the private key |
 | `OUTREACH_LIVE_SECRET` | HMAC secret for the 10-minute panel ticket |
 | `OUTREACH_PILOT_CAP` | Default 3 |
 | `OUTREACH_GRACE_DAYS` | Default 5 |

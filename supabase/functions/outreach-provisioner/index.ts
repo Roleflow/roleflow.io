@@ -7,7 +7,7 @@ import { createDigitalOceanProvider } from "../_shared/outreacher-digitalocean.j
 import { createHetznerProvider } from "../_shared/outreacher-hetzner.js";
 import { attentionTask } from "../_shared/outreacher-attention.js";
 import { offersFromEnv, DEFAULT_PILOT_CAP, DEFAULT_RETAIN_DAYS, MAX_ATTEMPTS, pilotCount, stepMachine } from "../_shared/outreacher-plan.js";
-import { tokenHash } from "../_shared/outreacher-token.js";
+import { machineKeyEnv, tokenHash } from "../_shared/outreacher-token.js";
 
 function json(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -43,8 +43,8 @@ Deno.serve(async (req) => {
         p_machine: saved.id,
         p_hash: saved.bootstrap_token_hash,
         p_expires: saved.bootstrap_expires_at,
-        p_server_id: saved.provider_machine_id || "",
-        p_ip: saved.public_ip || ""
+        p_server_id: saved.provider_server_id || "",
+        p_ip: saved.ipv4 || ""
       });
     }
     if (result.attention) {
@@ -77,7 +77,8 @@ Deno.serve(async (req) => {
     }
     stepped += 1;
   }
-  return json(200, { ok: true, stepped });
+  const machineKeys = machineKeyEnv();
+  return json(200, { ok: true, stepped, machine_jwt_configured: Boolean(machineKeys.privateKey && machineKeys.publicKey) });
 });
 
 function buildEnv(rows: Record<string, unknown>[]) {

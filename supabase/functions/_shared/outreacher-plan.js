@@ -5,7 +5,7 @@ import { flattenOffers, imageIdFor, parseOffers } from "./outreacher-offers.js";
 
 export const FIRST_BOOT_MS = 10 * 60 * 1000;
 export const LATER_BOOT_MS = 5 * 60 * 1000;
-export const HEARTBEAT_GAP_MS = 3 * 60 * 1000;
+export const HEARTBEAT_GAP_MS = 15 * 60 * 1000;
 export const DEFAULT_GRACE_DAYS = 5;
 export const DEFAULT_RETAIN_DAYS = 30;
 export const DEFAULT_PILOT_CAP = 3;
@@ -13,7 +13,7 @@ export const PROXY_QUARANTINE_DAYS = 90;
 export const MAX_ATTEMPTS = 5;
 export const BACKUP_KEEP = 7;
 
-const SERVER_STATUSES = new Set(["provisioning", "health_check", "ready", "paused", "stopping"]);
+const SERVER_STATUSES = new Set(["provisioning", "awaiting_login", "running", "paused", "stopping"]);
 
 export function pilotCount(rows) {
   return (rows || []).filter((row) => SERVER_STATUSES.has(row.status)).length;
@@ -42,28 +42,32 @@ export function planMachine(row, env) {
   }
   const graceDue = row.grace_delete_at && now >= Date.parse(row.grace_delete_at);
   if (row.status === "stopping" || (graceDue && row.status !== "pending")) {
-    if (!row.provider_machine_id && !row.volume_id) return { type: "mark", status: "deleted", event: "deleted" };
+    if (!row.provider_server_id && !row.volume_id) return { type: "mark", status: "deleted", event: "deleted" };
     return { type: "retire_server" };
   }
-  if (row.status === "ready" || row.status === "paused") {
+  if (row.status === "error") {
+    if (row.provider_server_id && row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) < HEARTBEAT_GAP_MS) {
+      return { type: "mark", status: row.session_state === "ok" ? "running" : "awaiting_login", event: "recovered" };
+    }
+    return { type: "idle" };
+  }
+  if (["awaiting_login", "running", "paused"].includes(row.status)) {
+    if (row.status === "awaiting_login" && row.session_state === "ok") {
+      return { type: "mark", status: "running", event: "session_ok" };
+    }
     if (row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) >= HEARTBEAT_GAP_MS && !row.health_alerted) {
       return { type: "heartbeat_miss" };
     }
     if (row.backup_count > BACKUP_KEEP) return { type: "prune_backups" };
     return { type: "idle" };
   }
-  if (row.status === "failed") {
-    if (row.provider_machine_id && row.last_heartbeat_at && now - Date.parse(row.last_heartbeat_at) < HEARTBEAT_GAP_MS) {
-      return { type: "mark", status: "ready", event: "recovered" };
+  if (row.status === "provisioning" && row.provider_server_id && row.ipv4) {
+    if (row.last_heartbeat_at) {
+      return { type: "mark", status: row.session_state === "ok" ? "running" : "awaiting_login", event: "heartbeat" };
     }
-    return { type: "idle" };
-  }
-  if (row.status === "health_check") {
-    if (row.last_heartbeat_at) return { type: "mark", status: "ready", event: "ready" };
     const limit = (row.boot_generation || 0) > 0 ? LATER_BOOT_MS : FIRST_BOOT_MS;
     if (row.server_running_at && now - Date.parse(row.server_running_at) > limit) return { type: "boot_timeout" };
     if (row.bootstrap_expires_at && !row.bootstrap_used_at && now >= Date.parse(row.bootstrap_expires_at)) return { type: "remint" };
-    if (!row.public_ip || !row.provider_machine_id) return { type: "poll_server" };
     return { type: "idle" };
   }
   if (!env.imageVersion) return attention("missing_image");
@@ -95,7 +99,7 @@ export function planMachine(row, env) {
   if (offer.provider === "digitalocean" && !env.doToken) return attention("missing_provider_token");
   if (!imageIdFor(offer, env)) return attention("missing_image");
   if (row.status === "pending" || row.reactivate === true) {
-    if (row.grace_delete_at && !row.provider_machine_id) return { type: "mark", status: "deleted", event: "deleted" };
+    if (row.grace_delete_at && !row.provider_server_id) return { type: "mark", status: "deleted", event: "deleted" };
     if ((env.poolCount || 0) >= (env.pilotCap || DEFAULT_PILOT_CAP)) return attention("pilot_cap");
     if (row.next_attempt_at && now < Date.parse(row.next_attempt_at)) return { type: "idle" };
     return { type: "begin" };
@@ -106,8 +110,8 @@ export function planMachine(row, env) {
   }
   if (!row.volume_id) return { type: "create_volume", offer };
   if (!row.firewall_id) return { type: "create_firewall", offer, rules: rules.rules };
-  if (!row.provider_machine_id) return { type: "create_server", offer, rules: rules.rules };
-  if (!row.public_ip) return { type: "poll_server" };
+  if (!row.provider_server_id) return { type: "create_server", offer, rules: rules.rules };
+  if (!row.ipv4) return { type: "poll_server" };
   if (!tokenStillGood(row, now)) return { type: "remint", offer };
   return { type: "enter_health" };
 }
@@ -139,8 +143,8 @@ export async function stepMachine(row, env, deps) {
       row: stamp(base, {
         status: decision.status,
         offer_index: decision.offer_index != null ? decision.offer_index : row.offer_index,
-        last_error: decision.status === "ready" ? "" : row.last_error,
-        health_alerted: decision.status === "ready" ? false : row.health_alerted,
+        last_error: decision.status === "running" || decision.status === "awaiting_login" ? "" : row.last_error,
+        health_alerted: decision.status === "running" || decision.status === "awaiting_login" ? false : row.health_alerted,
         reactivate: false
       }),
       decision,
@@ -165,17 +169,17 @@ export async function stepMachine(row, env, deps) {
   if (decision.type === "boot_timeout") {
     const attempts = (row.attempts || 0) + 1;
     const failed = attempts >= (env.maxAttempts || MAX_ATTEMPTS);
-    if (!failed && row.provider_machine_id) {
-      try { await providerForRow(deps, row).deleteServer(row.provider_machine_id); } catch { /* retried on the next tick */ }
+    if (!failed && row.provider_server_id) {
+      try { await providerForRow(deps, row).deleteServer(row.provider_server_id); } catch { /* retried on the next tick */ }
     }
     return {
       row: stamp(base, {
         attempts,
-        status: failed ? "failed" : "provisioning",
+        status: failed ? "error" : "provisioning",
         last_error: "health_timeout",
         next_attempt_at: new Date(now + Math.min(60, 2 ** attempts) * 60 * 1000).toISOString(),
-        provider_machine_id: failed ? row.provider_machine_id : "",
-        public_ip: failed ? row.public_ip : "",
+        provider_server_id: failed ? row.provider_server_id : "",
+        ipv4: failed ? row.ipv4 : "",
         server_running_at: null,
         bootstrap_token_hash: failed ? row.bootstrap_token_hash : ""
       }),
@@ -214,11 +218,11 @@ export async function stepMachine(row, env, deps) {
     }
     if (decision.type === "create_server" || decision.type === "mint_bootstrap" || decision.type === "remint") {
       let current = base;
-      if (decision.type === "remint" && row.provider_machine_id) {
-        await providerForRow(deps, row).deleteServer(row.provider_machine_id);
+      if (decision.type === "remint" && row.provider_server_id) {
+        await providerForRow(deps, row).deleteServer(row.provider_server_id);
         current = stamp(base, {
-          provider_machine_id: "",
-          public_ip: "",
+          provider_server_id: "",
+          ipv4: "",
           server_running_at: null,
           bootstrap_token_hash: "",
           bootstrap_expires_at: null,
@@ -237,7 +241,7 @@ export async function stepMachine(row, env, deps) {
           bound_ip: ""
         });
       }
-      if (decision.type === "mint_bootstrap" && row.provider_machine_id && row.public_ip) {
+      if (decision.type === "mint_bootstrap" && row.provider_server_id && row.ipv4) {
         return {
           row: stamp(current, { bootstrap_token: "" }),
           decision,
@@ -268,45 +272,45 @@ export async function stepMachine(row, env, deps) {
           server_type: offer.serverType,
           arch: offer.arch,
           region: offer.location,
-          provider_machine_id: created.id,
-          public_ip: created.ipv4 || "",
+          provider_server_id: created.id,
+          ipv4: created.ipv4 || "",
           bound_server_id: created.id,
           bound_ip: created.ipv4 || "",
           server_running_at: created.ipv4 ? new Date(now).toISOString() : null,
-          status: created.ipv4 ? "health_check" : "provisioning",
+          status: "provisioning",
           bootstrap_token: "",
           volume_keep: true,
           image_version: env.imageVersion
         }),
         decision,
-        events: [{ kind: "server_created", from_state: row.status, to_state: created.ipv4 ? "health_check" : "provisioning", detail: { server_type: offer.serverType, arch: offer.arch, provider: offer.provider } }]
+        events: [{ kind: "server_created", from_state: row.status, to_state: "provisioning", detail: { server_type: offer.serverType, arch: offer.arch, provider: offer.provider } }]
       };
     }
     if (decision.type === "poll_server") {
-      const found = await providerForRow(deps, row).getServer(row.provider_machine_id);
+      const found = await providerForRow(deps, row).getServer(row.provider_server_id);
       if (!found.ipv4) return { row, decision, events: [] };
       return {
-        row: stamp(base, { public_ip: found.ipv4, bound_ip: found.ipv4, bound_server_id: row.provider_machine_id, server_running_at: row.server_running_at || new Date(now).toISOString(), status: "health_check" }),
+        row: stamp(base, { ipv4: found.ipv4, bound_ip: found.ipv4, bound_server_id: row.provider_server_id, server_running_at: row.server_running_at || new Date(now).toISOString(), status: "provisioning" }),
         decision,
-        events: [{ kind: "server_running", to_state: "health_check" }]
+        events: [{ kind: "server_running", to_state: "provisioning" }]
       };
     }
     if (decision.type === "enter_health") {
       return {
-        row: stamp(base, { status: "health_check", server_running_at: row.server_running_at || new Date(now).toISOString() }),
+        row: stamp(base, { status: "provisioning", server_running_at: row.server_running_at || new Date(now).toISOString() }),
         decision,
-        events: [{ kind: "state", from_state: row.status, to_state: "health_check" }]
+        events: [{ kind: "state", from_state: row.status, to_state: "provisioning" }]
       };
     }
     if (decision.type === "retire_server") {
-      if (row.provider_machine_id) await providerForRow(deps, row).deleteServer(row.provider_machine_id);
+      if (row.provider_server_id) await providerForRow(deps, row).deleteServer(row.provider_server_id);
       if (row.firewall_id) await providerForRow(deps, row).deleteFirewall(row.firewall_id);
       const retain = new Date(now + (env.retainDays || DEFAULT_RETAIN_DAYS) * 24 * 60 * 60 * 1000).toISOString();
       return {
         row: stamp(base, {
           status: "suspended",
-          provider_machine_id: "",
-          public_ip: "",
+          provider_server_id: "",
+          ipv4: "",
           firewall_id: "",
           server_running_at: null,
           volume_retain_until: row.volume_retain_until || retain,
@@ -343,7 +347,7 @@ export async function stepMachine(row, env, deps) {
       return {
         row: stamp(base, {
           offer_index: next,
-          provider_machine_id: "",
+          provider_server_id: "",
           last_error: "type_unavailable",
           volume_id: clearVolume ? "" : row.volume_id,
           volume_location: clearVolume ? "" : row.volume_location,
@@ -358,7 +362,7 @@ export async function stepMachine(row, env, deps) {
     return {
       row: stamp(base, {
         attempts,
-        status: failed ? "failed" : row.status,
+        status: failed ? "error" : row.status,
         last_error: String(error && error.message || "provider_error").slice(0, 300),
         next_attempt_at: new Date(now + Math.min(60, 2 ** attempts) * 60 * 1000).toISOString()
       }),
@@ -385,8 +389,8 @@ export function applyBilling(store, command, now, config) {
   const live = machines.find((row) => row.status !== "deleted");
   if (command.kind === "provision") {
     if (!command.businessId) return { ok: false, reason: "missing_business" };
-    if (live && live.status !== "suspended" && live.status !== "failed") return { ok: true, duplicate: true, machine: live };
-    if (live && (live.status === "suspended" || live.status === "failed")) {
+    if (live && live.status !== "suspended" && live.status !== "error") return { ok: true, duplicate: true, machine: live };
+    if (live && (live.status === "suspended" || live.status === "error")) {
       live.reactivate = true;
       live.status = "pending";
       live.subscription_status = "active";
@@ -395,8 +399,8 @@ export function applyBilling(store, command, now, config) {
       live.stripe_customer_id = command.customerId || live.stripe_customer_id;
       live.proxy_country = command.country || live.proxy_country;
       live.offer_index = 0;
-      live.provider_machine_id = "";
-      live.public_ip = "";
+      live.provider_server_id = "";
+      live.ipv4 = "";
       live.attempts = 0;
       return { ok: true, reactivated: true, machine: live };
     }
@@ -409,7 +413,7 @@ export function applyBilling(store, command, now, config) {
       provider: "hetzner",
       status: "pending",
       subscription_status: "active",
-      session_state: "needs_login",
+      session_state: "unknown",
       sending_mode: "off",
       proxy_country: command.country || "",
       offer_index: 0,
@@ -432,12 +436,12 @@ export function applyBilling(store, command, now, config) {
     if (!live) return { ok: true, missing: true };
     live.subscription_status = command.subscriptionStatus || "active";
     live.grace_delete_at = null;
-    if (live.status === "suspended" || live.status === "failed") {
+    if (live.status === "suspended" || live.status === "error") {
       live.status = "pending";
       live.reactivate = true;
       live.offer_index = 0;
-      live.provider_machine_id = "";
-      live.public_ip = "";
+      live.provider_server_id = "";
+      live.ipv4 = "";
       live.firewall_id = "";
     }
     return { ok: true, resumed: true, machine: live };

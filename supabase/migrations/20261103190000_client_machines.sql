@@ -32,10 +32,18 @@ revoke all on public.outreacher_global from public, anon, authenticated;
 create table if not exists public.acq_outreacher_config (
   business_id uuid primary key references public.acq_workspaces (id) on delete cascade,
   paused boolean not null default true,
-  hourly_cap integer not null default 6,
+  hourly_cap integer,
   ig_username text,
+  exclude_keywords text not null default '',
+  countries text[] not null default '{}',
+  languages text[] not null default '{}',
+  delay_min_s integer not null default 300,
+  delay_max_s integer not null default 1800,
+  dry_run boolean not null default true,
+  triggers jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
-  constraint acq_outreacher_hourly_check check (hourly_cap between 1 and 30),
+  constraint acq_outreacher_hourly_check check (hourly_cap is null or hourly_cap between 1 and 30),
+  constraint acq_outreacher_delay_check check (delay_min_s >= 0 and delay_max_s >= delay_min_s),
   constraint acq_outreacher_username_check check (ig_username is null or ig_username ~ '^[a-z0-9._]{1,30}$')
 );
 
@@ -62,16 +70,18 @@ create table if not exists public.client_machines (
   stripe_subscription_id text,
   stripe_event_id text unique,
   provider text not null default 'hetzner',
-  provider_machine_id text,
+  provider_server_id text,
   server_type text,
   arch text,
-  public_ip text,
+  ipv4 text,
   volume_id text,
   volume_location text,
   volume_keep boolean not null default false,
   region text,
   firewall_id text,
   image_version text,
+  agent_version text,
+  health text,
   status text not null default 'pending',
   attempts integer not null default 0,
   offer_index integer not null default 0,
@@ -80,14 +90,23 @@ create table if not exists public.client_machines (
   last_heartbeat_at timestamptz,
   server_running_at timestamptz,
   health_alerted boolean not null default false,
-  session_state text not null default 'needs_login',
+  session_state text not null default 'unknown',
   grace_delete_at timestamptz,
   volume_retain_until timestamptz,
   backup_retain_until timestamptz,
   sending_mode text not null default 'off',
   sends_today integer not null default 0,
+  sends_per_hour integer not null default 0,
+  error_rate numeric not null default 0,
   last_send_at timestamptz,
   uptime_s integer not null default 0,
+  last_egress_ip text,
+  bootstrap_token_hash text,
+  bootstrap_expires_at timestamptz,
+  bootstrap_used_at timestamptz,
+  refresh_token_hash text,
+  refresh_prev_hash text,
+  refresh_family_id uuid,
   worker_id uuid references public.acq_workers (id) on delete set null,
   ig_username text,
   revoked_at timestamptz,
@@ -99,12 +118,13 @@ create table if not exists public.client_machines (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint client_machines_status_check check (status in (
-    'pending', 'provisioning', 'health_check', 'ready', 'paused',
-    'stopping', 'stopped', 'suspended', 'deleting', 'deleted', 'failed', 'revoked'
+    'pending', 'provisioning', 'awaiting_login', 'running', 'paused',
+    'stopping', 'suspended', 'deleting', 'deleted', 'error', 'revoked'
   )),
   constraint client_machines_session_check check (session_state in (
-    'needs_login', 'connected', 'challenge', 'logged_out', 'action_block'
+    'ok', 'expired', 'checkpoint', 'action_block', 'unknown'
   )),
+  constraint client_machines_health_check check (health is null or health in ('ok', 'error')),
   constraint client_machines_sending_check check (sending_mode in ('off', 'dry_run', 'live')),
   constraint client_machines_provider_check check (provider in ('hetzner', 'digitalocean')),
   constraint client_machines_arch_check check (arch is null or arch in ('amd64', 'arm64')),
@@ -118,8 +138,12 @@ create unique index if not exists client_machines_one_live
   where status <> 'deleted';
 
 create unique index if not exists client_machines_provider_server
-  on public.client_machines (provider, provider_machine_id)
-  where provider_machine_id is not null and status <> 'deleted';
+  on public.client_machines (provider, provider_server_id)
+  where provider_server_id is not null and status <> 'deleted';
+
+create unique index if not exists client_machines_refresh_hash
+  on public.client_machines (refresh_token_hash)
+  where refresh_token_hash is not null;
 
 create unique index if not exists client_machines_proxy_live
   on public.client_machines (proxy_id)
@@ -176,7 +200,7 @@ create table if not exists public.outreach_send_ledger (
   result text,
   detail jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  constraint outreach_send_kind_check check (action_kind in ('dm', 'warmup', 'like', 'follow', 'view', 'comment')),
+  constraint outreach_send_kind_check check (action_kind in ('dm', 'like', 'follow', 'view')),
   constraint outreach_send_status_check check (status in ('claimed', 'reported', 'expired', 'refused'))
 );
 
@@ -216,9 +240,12 @@ create table if not exists private.outreach_proxy_secrets (
   password_enc bytea
 );
 
-create table if not exists private.client_machine_secrets (
+create table if not exists private.outreach_machine_secrets (
   machine_id uuid primary key references public.client_machines (id) on delete cascade,
-  volume_key_enc bytea
+  proxy_url text,
+  backup_key text,
+  volume_key text,
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists private.outreach_live_tickets (
@@ -231,7 +258,8 @@ create table if not exists private.outreach_live_tickets (
 revoke all on private.outreach_bootstrap from public, anon, authenticated;
 revoke all on private.outreach_refresh from public, anon, authenticated;
 revoke all on private.outreach_proxy_secrets from public, anon, authenticated;
-revoke all on private.client_machine_secrets from public, anon, authenticated;
+revoke all on private.outreach_machine_secrets from public, anon, authenticated;
+grant select, insert, update, delete on private.outreach_machine_secrets to service_role;
 revoke all on private.outreach_live_tickets from public, anon, authenticated;
 
 alter table public.client_machines enable row level security;
@@ -276,6 +304,15 @@ insert into storage.buckets (id, name, public)
 values ('outreacher-profiles', 'outreacher-profiles', false)
 on conflict (id) do update set public = false;
 
+-- Restrictive so the browser roles cannot read this bucket, and other buckets stay unchanged.
+drop policy if exists outreacher_profiles_no_browser on storage.objects;
+create policy outreacher_profiles_no_browser on storage.objects
+  as restrictive
+  for all
+  to anon, authenticated
+  using (bucket_id is distinct from 'outreacher-profiles')
+  with check (bucket_id is distinct from 'outreacher-profiles');
+
 create or replace function public.outreacher_touch_machine()
 returns trigger
 language plpgsql
@@ -291,36 +328,6 @@ $$;
 drop trigger if exists client_machines_touch on public.client_machines;
 create trigger client_machines_touch before update on public.client_machines
   for each row execute function public.outreacher_touch_machine();
-
-create or replace function public.outreacher_session_event()
-returns trigger
-language plpgsql
-security invoker
-set search_path = public
-as $$
-declare
-  v_kind text;
-begin
-  if new.session_state is not distinct from old.session_state then
-    return new;
-  end if;
-  v_kind := case new.session_state
-    when 'logged_out' then 'session_expired'
-    when 'challenge' then 'challenge'
-    when 'action_block' then 'action_block'
-    else null
-  end;
-  if v_kind is not null then
-    insert into public.client_machine_events (machine_id, business_id, kind, severity, from_state, to_state)
-    values (new.id, new.business_id, v_kind, 'warning', old.session_state, new.session_state);
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists client_machines_session_event on public.client_machines;
-create trigger client_machines_session_event after update of session_state on public.client_machines
-  for each row execute function public.outreacher_session_event();
 
 create or replace function private.outreacher_raise_attention(p_machine uuid, p_business uuid, p_code text, p_detail text)
 returns void
@@ -438,7 +445,7 @@ begin
   end if;
   select * into v_row from private.outreach_bootstrap where machine_id = p_machine for update;
   if v_row.machine_id is null or v_row.server_id is null or v_row.ipv4 is null then
-    return jsonb_build_object('ok', false, 'reason', 'binding_pending', 'status', 425);
+    return jsonb_build_object('ok', false, 'reason', 'identity_pending', 'status', 425);
   end if;
   v_hash := encode(extensions.digest(coalesce(p_token, ''), 'sha256'), 'hex');
   if v_hash is distinct from v_row.token_hash
@@ -457,7 +464,7 @@ begin
     perform private.outreacher_raise_attention(p_machine, v_machine.business_id, 'bootstrap_replay', 'A bootstrap token was presented again.');
     return jsonb_build_object('ok', false, 'reason', 'replay', 'status', 403);
   end if;
-  if v_machine.status <> 'provisioning' and v_machine.status <> 'health_check' then
+  if v_machine.status <> 'provisioning' then
     return jsonb_build_object('ok', false, 'reason', 'status', 'status_code', 409);
   end if;
   update private.outreach_bootstrap set used_at = now() where machine_id = p_machine;
@@ -555,7 +562,7 @@ begin
   if v_row.id is null or v_row.revoked_at is not null or v_row.status in ('revoked', 'deleted', 'deleting', 'failed', 'suspended', 'stopped') then
     return jsonb_build_object('ok', false, 'reason', 'revoked');
   end if;
-  if v_row.status not in ('provisioning', 'health_check', 'ready', 'paused') then
+  if v_row.status not in ('provisioning', 'awaiting_login', 'running', 'paused', 'error', 'suspended') then
     return jsonb_build_object('ok', false, 'reason', 'status');
   end if;
   return jsonb_build_object('ok', true, 'business_id', v_row.business_id, 'machine_id', v_row.id, 'status', v_row.status);
@@ -605,7 +612,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'disabled');
   end if;
   select * into v_config from public.acq_outreacher_config where business_id = p_business for update;
-  if v_config.business_id is null or v_config.paused then
+  if v_config.business_id is not null and v_config.paused then
     return jsonb_build_object('ok', false, 'reason', 'paused');
   end if;
   select * into v_workforce from public.business_workforce
@@ -631,19 +638,16 @@ begin
   if v_machine.id is null or v_machine.subscription_status not in ('active', 'trialing') then
     return jsonb_build_object('ok', false, 'reason', 'subscription');
   end if;
-  if v_machine.revoked_at is not null or v_machine.status is distinct from 'ready' then
+  if v_machine.revoked_at is not null or v_machine.status is distinct from 'running' then
     return jsonb_build_object('ok', false, 'reason', 'machine');
   end if;
-  if v_machine.session_state is distinct from 'connected' then
+  if v_machine.session_state is distinct from 'ok' then
     return jsonb_build_object('ok', false, 'reason', 'session');
-  end if;
-  if v_machine.sending_mode is distinct from 'live' and v_machine.sending_mode is distinct from 'dry_run' then
-    return jsonb_build_object('ok', false, 'reason', 'sending_off');
   end if;
   if public.acq_in_quiet_hours(v_settings.timezone, v_settings.quiet_start, v_settings.quiet_end) then
     return jsonb_build_object('ok', false, 'reason', 'quiet_hours');
   end if;
-  if p_action_kind not in ('dm', 'warmup', 'like', 'follow', 'view', 'comment') then
+  if p_action_kind not in ('dm', 'like', 'follow', 'view') then
     return jsonb_build_object('ok', false, 'reason', 'error');
   end if;
   v_day := (date_trunc('day', now() at time zone coalesce(nullif(btrim(v_settings.timezone), ''), 'Europe/Madrid'))) at time zone coalesce(nullif(btrim(v_settings.timezone), ''), 'Europe/Madrid');
@@ -651,13 +655,13 @@ begin
     where business_id = p_business
       and (
         (status = 'claimed' and claim_expires_at > now())
-        or (status = 'reported' and created_at >= v_day)
+        or (status = 'reported' and coalesce(result, '') is distinct from 'dry_run' and created_at >= v_day)
       );
   select count(*) into v_hourly from public.outreach_send_ledger
     where business_id = p_business
       and (
         (status = 'claimed' and claim_expires_at > now() and created_at >= now() - interval '1 hour')
-        or (status = 'reported' and created_at >= now() - interval '1 hour')
+        or (status = 'reported' and coalesce(result, '') is distinct from 'dry_run' and created_at >= now() - interval '1 hour')
       );
   if v_daily >= v_controls.daily_cap then
     return jsonb_build_object('ok', false, 'reason', 'daily_cap');
@@ -697,7 +701,7 @@ exception when others then
 end;
 $$;
 
-create or replace function public.outreacher_can_send(p_business uuid, p_action_kind text, p_target text)
+create or replace function public.outreacher_can_send(business_id uuid, action_kind text, target text)
 returns jsonb
 language plpgsql
 security invoker
@@ -707,19 +711,61 @@ begin
   if coalesce(auth.role(), '') <> 'service_role' then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
-  return private.outreacher_can_send(p_business, p_action_kind, p_target);
+  return private.outreacher_can_send(business_id, action_kind, target);
 exception when others then
   return jsonb_build_object('ok', false, 'reason', 'error');
 end;
 $$;
 
-create or replace function public.outreacher_report_send(
-  p_business uuid,
-  p_machine uuid,
-  p_claim uuid,
-  p_result text,
-  p_detail jsonb
-)
+create or replace function public.outreacher_claim_check(claim_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.outreach_send_ledger%rowtype;
+  v_machine public.client_machines%rowtype;
+  v_controls public.acq_dm_controls%rowtype;
+  v_global public.outreacher_global%rowtype;
+  v_settings public.acq_settings%rowtype;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    return jsonb_build_object('ok', false, 'reason', 'forbidden');
+  end if;
+  select * into v_row from public.outreach_send_ledger where id = claim_id;
+  if v_row.id is null or v_row.status is distinct from 'claimed' or v_row.claim_expires_at <= now() then
+    return jsonb_build_object('ok', false, 'reason', 'expired');
+  end if;
+  select * into v_machine from public.client_machines where id = v_row.machine_id;
+  if v_machine.id is null or v_machine.revoked_at is not null or v_machine.status is distinct from 'running' or v_machine.session_state is distinct from 'ok' then
+    return jsonb_build_object('ok', false, 'reason', 'machine');
+  end if;
+  select * into v_global from public.outreacher_global where id = 1;
+  if v_global.killed then
+    return jsonb_build_object('ok', false, 'reason', 'global_kill');
+  end if;
+  select * into v_controls from public.acq_dm_controls where business_id = v_row.business_id;
+  if v_controls.killed then
+    return jsonb_build_object('ok', false, 'reason', 'killed');
+  end if;
+  if v_controls.business_id is null or v_controls.enabled is not true then
+    return jsonb_build_object('ok', false, 'reason', 'disabled');
+  end if;
+  select * into v_settings from public.acq_settings where agent_id = v_row.business_id;
+  if v_settings.ig_paused then
+    return jsonb_build_object('ok', false, 'reason', 'ig_paused');
+  end if;
+  if v_settings.system_enabled is not true then
+    return jsonb_build_object('ok', false, 'reason', 'system_off');
+  end if;
+  return jsonb_build_object('ok', true, 'claim_id', v_row.id, 'expires_at', v_row.claim_expires_at);
+exception when others then
+  return jsonb_build_object('ok', false, 'reason', 'error');
+end;
+$$;
+
+create or replace function public.outreacher_report_send(claim_id uuid, result text, detail jsonb)
 returns jsonb
 language plpgsql
 security definer
@@ -731,17 +777,20 @@ begin
   if coalesce(auth.role(), '') <> 'service_role' then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
-  select * into v_row from public.outreach_send_ledger where id = p_claim for update;
-  if v_row.id is null or v_row.business_id is distinct from p_business or v_row.machine_id is distinct from p_machine then
+  if result is null or result not in ('sent', 'dry_run', 'failed', 'skipped') then
+    return jsonb_build_object('ok', false, 'reason', 'result_invalid');
+  end if;
+  select * into v_row from public.outreach_send_ledger where id = claim_id for update;
+  if v_row.id is null then
     return jsonb_build_object('ok', false, 'reason', 'unauthorized');
   end if;
   if v_row.status is distinct from 'claimed' or v_row.claim_expires_at <= now() then
     return jsonb_build_object('ok', false, 'reason', 'expired');
   end if;
   update public.outreach_send_ledger
-    set status = 'reported', result = left(coalesce(p_result, ''), 80), detail = coalesce(p_detail, '{}'::jsonb)
-    where id = p_claim;
-  return jsonb_build_object('ok', true);
+    set status = 'reported', result = result, detail = coalesce(detail, '{}'::jsonb)
+    where id = claim_id;
+  return jsonb_build_object('ok', true, 'claim_id', claim_id, 'result', result);
 exception when others then
   return jsonb_build_object('ok', false, 'reason', 'error');
 end;
@@ -780,7 +829,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'expired');
   end if;
   select * into v_machine from public.client_machines where id = v_row.machine_id;
-  if v_machine.id is null or v_machine.revoked_at is not null or v_machine.status not in ('ready', 'paused', 'health_check') then
+  if v_machine.id is null or v_machine.revoked_at is not null or v_machine.status not in ('awaiting_login', 'running', 'paused') then
     return jsonb_build_object('ok', false, 'reason', 'revoked');
   end if;
   update private.outreach_live_tickets set used_at = now() where jti = p_jti;
@@ -1027,6 +1076,7 @@ revoke all on function public.acq_worker_pipeline(text, text, jsonb) from public
 grant execute on function public.acq_worker_pipeline(text, text, jsonb) to service_role;
 
 revoke all on function public.outreacher_can_send(uuid, text, text) from public, anon, authenticated;
+revoke all on function public.outreacher_claim_check(uuid) from public, anon, authenticated;
 revoke all on function public.outreacher_claim_bootstrap(uuid, text, text, text) from public, anon, authenticated;
 revoke all on function public.outreacher_rotate_refresh(uuid, text, text, timestamptz) from public, anon, authenticated;
 revoke all on function public.outreacher_store_refresh(uuid, text, timestamptz) from public, anon, authenticated;
@@ -1034,16 +1084,16 @@ revoke all on function public.outreacher_save_bootstrap(uuid, text, timestamptz,
 revoke all on function public.outreacher_machine_gate(uuid, uuid) from public, anon, authenticated;
 revoke all on function public.outreacher_note_stripe_event(text, text) from public, anon, authenticated;
 revoke all on function public.outreacher_raise_attention(uuid, uuid, text, text) from public, anon, authenticated;
-revoke all on function public.outreacher_report_send(uuid, uuid, uuid, text, jsonb) from public, anon, authenticated;
+revoke all on function public.outreacher_report_send(uuid, text, jsonb) from public, anon, authenticated;
 revoke all on function public.outreacher_save_ticket(text, uuid, timestamptz) from public, anon, authenticated;
 revoke all on function public.outreacher_consume_ticket(text) from public, anon, authenticated;
 revoke all on function public.outreacher_touch_machine() from public, anon, authenticated;
-revoke all on function public.outreacher_session_event() from public, anon, authenticated;
 revoke all on function private.outreacher_can_send(uuid, text, text) from public, anon, authenticated;
 revoke all on function private.outreacher_pipeline_gate(uuid, text, jsonb) from public, anon, authenticated;
 revoke all on function private.outreacher_raise_attention(uuid, uuid, text, text) from public, anon, authenticated;
 
 grant execute on function public.outreacher_can_send(uuid, text, text) to service_role;
+grant execute on function public.outreacher_claim_check(uuid) to service_role;
 grant execute on function public.outreacher_claim_bootstrap(uuid, text, text, text) to service_role;
 grant execute on function public.outreacher_rotate_refresh(uuid, text, text, timestamptz) to service_role;
 grant execute on function public.outreacher_store_refresh(uuid, text, timestamptz) to service_role;
@@ -1051,11 +1101,10 @@ grant execute on function public.outreacher_save_bootstrap(uuid, text, timestamp
 grant execute on function public.outreacher_machine_gate(uuid, uuid) to service_role;
 grant execute on function public.outreacher_note_stripe_event(text, text) to service_role;
 grant execute on function public.outreacher_raise_attention(uuid, uuid, text, text) to service_role;
-grant execute on function public.outreacher_report_send(uuid, uuid, uuid, text, jsonb) to service_role;
+grant execute on function public.outreacher_report_send(uuid, text, jsonb) to service_role;
 grant execute on function public.outreacher_save_ticket(text, uuid, timestamptz) to service_role;
 grant execute on function public.outreacher_consume_ticket(text) to service_role;
 grant execute on function public.outreacher_touch_machine() to service_role;
-grant execute on function public.outreacher_session_event() to service_role;
 grant execute on function private.outreacher_can_send(uuid, text, text) to service_role;
 
 do $pub$

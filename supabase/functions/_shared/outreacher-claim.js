@@ -14,7 +14,6 @@ export const CLAIM_REASONS = [
   "subscription",
   "machine",
   "session",
-  "sending_off",
   "quiet_hours",
   "daily_cap",
   "hourly_cap",
@@ -59,7 +58,7 @@ export function decideClaim(input) {
     if (controls && controls.killed === true) return refuse("killed");
     if (!controls || controls.enabled !== true) return refuse("disabled");
     const config = snapshot.config;
-    if (!config || config.paused === true) return refuse("paused");
+    if (config && config.paused === true) return refuse("paused");
     const workforce = snapshot.workforce;
     if (!workforce || workforce.status !== "active") return refuse("workforce");
     const settings = snapshot.settings;
@@ -68,24 +67,23 @@ export function decideClaim(input) {
     if (settings.system_enabled !== true) return refuse("system_off");
     const machine = snapshot.machine;
     if (!machine || !["active", "trialing"].includes(machine.subscription_status)) return refuse("subscription");
-    if (machine.revoked_at || machine.status !== "ready") return refuse("machine");
-    if (machine.session_state !== "connected") return refuse("session");
-    if (machine.sending_mode === "off" || !machine.sending_mode) return refuse("sending_off");
+    if (machine.revoked_at || machine.status !== "running") return refuse("machine");
+    if (machine.session_state !== "ok") return refuse("session");
     const quiet = snapshot.quiet != null
       ? snapshot.quiet === true
       : inQuietHours(snapshot.now || new Date(), settings.timezone, settings.quiet_start, settings.quiet_end);
     if (quiet) return refuse("quiet_hours");
     const dailyCap = Number(controls.daily_cap);
-    const hourlyCap = Number(config.hourly_cap);
-    if (!Number.isFinite(dailyCap) || !Number.isFinite(hourlyCap)) return refuse("error");
+    const hourlyCap = config && config.hourly_cap != null ? Number(config.hourly_cap) : null;
+    if (!Number.isFinite(dailyCap)) return refuse("error");
     if (Number(snapshot.dailyCount || 0) >= dailyCap) return refuse("daily_cap");
-    if (Number(snapshot.hourlyCount || 0) >= hourlyCap) return refuse("hourly_cap");
+    if (hourlyCap != null && Number(snapshot.hourlyCount || 0) >= hourlyCap) return refuse("hourly_cap");
     const target = String(snapshot.target || "").replace(/^@+/, "").trim().toLowerCase();
     if (!/^[a-z0-9._]{1,30}$/.test(target)) return refuse("target");
     if (snapshot.dnc === true) return refuse("dnc");
     if (snapshot.contacted === true) return refuse("already_contacted");
     const kind = String(snapshot.actionKind || "");
-    if (!["dm", "warmup", "like", "follow", "view", "comment"].includes(kind)) return refuse("error");
+    if (!["dm", "like", "follow", "view"].includes(kind)) return refuse("error");
     return {
       ok: true,
       reason: "claimed",

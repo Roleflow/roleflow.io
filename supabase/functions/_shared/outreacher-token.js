@@ -69,8 +69,21 @@ function fromB64url(text) {
   return new Uint8Array([...binary].map((char) => char.charCodeAt(0)));
 }
 
-export async function signMachineJwt(claims, secret, nowMs) {
-  if (!secret) throw new Error("missing_machine_jwt_secret");
+function pemToBytes(pem) {
+  const body = String(pem || "").replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  return fromB64url(body.replace(/\+/g, "-").replace(/\//g, "_"));
+}
+
+async function importPrivateKey(pem) {
+  return crypto.subtle.importKey("pkcs8", pemToBytes(pem), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+}
+
+async function importPublicKey(pem) {
+  return crypto.subtle.importKey("spki", pemToBytes(pem), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+}
+
+export async function signMachineJwt(claims, privateKeyPem, nowMs) {
+  if (!privateKeyPem) throw new Error("missing_machine_jwt_secret");
   const now = Math.floor(Number(nowMs) / 1000);
   const payload = {
     iss: "roleflow-outreacher",
@@ -83,32 +96,57 @@ export async function signMachineJwt(claims, secret, nowMs) {
     iat: now,
     exp: now + Math.floor(MACHINE_JWT_TTL_MS / 1000)
   };
-  const header = b64urlJson({ alg: "HS256", typ: "JWT" });
+  const header = b64urlJson({ alg: "ES256", typ: "JWT", kid: "outreacher-1" });
   const body = b64urlJson(payload);
-  const sig = b64url(await hmacBytes(secret, header + "." + body));
-  return { token: header + "." + body + "." + sig, claims: payload };
+  const key = await importPrivateKey(privateKeyPem);
+  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(header + "." + body));
+  return { token: header + "." + body + "." + b64url(new Uint8Array(signature)), claims: payload };
 }
 
-export async function readMachineJwt(token, secret, nowMs) {
+export async function readMachineJwt(token, publicKeyPem, nowMs) {
   const parts = String(token || "").split(".");
-  if (parts.length !== 3 || !secret) return { ok: false, reason: "unauthorized" };
-  const expected = b64url(await hmacBytes(secret, parts[0] + "." + parts[1]));
-  if (!timingSafeEqual(expected, parts[2])) return { ok: false, reason: "unauthorized" };
+  if (parts.length !== 3 || !publicKeyPem) return { ok: false, reason: "unauthorized" };
+  let header;
   let claims;
   try {
+    header = JSON.parse(new TextDecoder().decode(fromB64url(parts[0])));
     claims = JSON.parse(new TextDecoder().decode(fromB64url(parts[1])));
   } catch {
     return { ok: false, reason: "unauthorized" };
   }
+  if (!header || header.alg !== "ES256" || header.kid !== "outreacher-1") return { ok: false, reason: "unauthorized" };
+  const key = await importPublicKey(publicKeyPem);
+  const valid = await crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    fromB64url(parts[2]),
+    new TextEncoder().encode(parts[0] + "." + parts[1])
+  );
+  if (!valid) return { ok: false, reason: "unauthorized" };
   const now = Math.floor(Number(nowMs) / 1000);
-  if (!claims || claims.role !== "outreacher" || !claims.exp || claims.exp <= now) {
+  if (!claims || claims.role !== "outreacher" || claims.iss !== "roleflow-outreacher" || claims.aud !== "authenticated") {
+    return { ok: false, reason: "unauthorized" };
+  }
+  if (!claims.machine_id || !claims.business_id || claims.sub !== claims.machine_id) return { ok: false, reason: "unauthorized" };
+  if (!claims.exp || claims.exp <= now || claims.exp - claims.iat !== Math.floor(MACHINE_JWT_TTL_MS / 1000)) {
     return { ok: false, reason: "unauthorized" };
   }
   return { ok: true, claims };
 }
 
 // Allowed while the machine may still call Roleflow. Sends are a separate claim.
-const MACHINE_CALL_STATUSES = new Set(["provisioning", "health_check", "ready", "paused"]);
+const MACHINE_CALL_STATUSES = new Set(["provisioning", "awaiting_login", "running", "paused", "error", "suspended"]);
+
+export function machineKeyEnv(read) {
+  const get = read || ((name) => {
+    if (typeof Deno !== "undefined" && Deno.env) return Deno.env.get(name) || "";
+    return "";
+  });
+  return {
+    privateKey: get("OUTREACHER_JWT_PRIVATE_KEY") || "",
+    publicKey: get("OUTREACHER_JWT_PUBLIC_KEY") || ""
+  };
+}
 
 export function authorizeMachineCall(claims, row, nowMs) {
   if (!claims || claims.role !== "outreacher") return { ok: false, reason: "unauthorized" };
@@ -127,7 +165,7 @@ export function authorizeMachineCall(claims, row, nowMs) {
 // Binding is checked at exchange time. The server id and address are recorded
 // from the create-server response, after cloud-init was already written.
 export function evaluateBootstrap({ hash, presentedHash, expiresAt, usedAt, boundServerId, boundIp, serverId, sourceIp, nowMs }) {
-  if (!boundServerId || !boundIp) return { ok: false, reason: "binding_pending", status: 425 };
+  if (!boundServerId || !boundIp) return { ok: false, reason: "identity_pending", status: 425 };
   if (!hash || !presentedHash || !timingSafeEqual(hash, presentedHash)) return { ok: false, reason: "unauthorized", status: 401 };
   if (String(serverId || "") !== String(boundServerId)) return { ok: false, reason: "unauthorized", status: 401 };
   if (String(sourceIp || "") !== String(boundIp)) return { ok: false, reason: "unauthorized", status: 401 };
