@@ -233,13 +233,15 @@ const sent = await postOfficial(clipRow, "test-key", async (url, init) => {
   if (url.endsWith("/media/upload-direct")) return { ok: true, status: 200, json: async () => ({ url: "https://cdn.example/clip.wav" }) };
   return { ok: true, status: 200, json: async () => ({ ok: true }) };
 }, {
-  download: async () => ({ bytes: wav, mime: "audio/wav", filename: "clip.wav", kind: "audio" })
+  download: async () => ({ bytes: wav, mime: "audio/wav", filename: "clip.wav", kind: "audio" }),
+  sleep: async () => {}
 });
 assert.equal(sent.ok, true);
 assert.equal(calls[0].url, "https://zernio.com/api/v1/media/upload-direct");
 assert.equal(calls[0].init.headers.Authorization, "Bearer test-key");
-assert.equal(calls[1].url, "https://zernio.com/api/v1/inbox/conversations/2108532849767337/messages");
-const sentBody = JSON.parse(calls[1].init.body);
+assert.equal(calls[1].url, "https://zernio.com/api/v1/inbox/conversations/2108532849767337/typing");
+assert.equal(calls[2].url, "https://zernio.com/api/v1/inbox/conversations/2108532849767337/messages");
+const sentBody = JSON.parse(calls[2].init.body);
 assert.equal(sentBody.attachmentUrl, "https://cdn.example/clip.wav");
 assert.equal(sentBody.attachmentType, "audio");
 assert.equal(sentBody.message, undefined);

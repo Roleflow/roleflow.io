@@ -21,7 +21,8 @@ import { deliveryMime, sniffAudio } from "../_shared/clip-audio.js";
 import { loadGatewayConfig } from "../_shared/gateway-http.js";
 import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
-import { textBody, privateReplyBody, typingBody, seenBody, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
+import { textBody, privateReplyBody, sendWithPresence, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
+import { textLeadMs } from "../_shared/typing-plan.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
 import { agentEnabled, agentKeyForKind } from "../_shared/agent-control.js";
@@ -748,26 +749,19 @@ async function deliverGateway(db, businessId, thread, bubbles, kind) {
 }
 
 async function postGraph(token, body) {
-  await fetch(`https://graph.instagram.com/${GRAPH()}/me/messages`, {
+  const url = `https://graph.instagram.com/${GRAPH()}/me/messages`;
+  const post = (payload) => fetch(url, {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify(typingBody(body.recipient?.id || ""))
-  }).catch(() => null);
-  const response = await fetch(`https://graph.instagram.com/${GRAPH()}/me/messages`, {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(payload)
   });
-  if (response.ok) {
-    if (body.recipient?.id) {
-      await fetch(`https://graph.instagram.com/${GRAPH()}/me/messages`, {
-        method: "POST",
-        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify(seenBody(body.recipient.id))
-      }).catch(() => null);
-    }
-    return { ok: true };
-  }
+  const text = body && body.message && typeof body.message.text === "string" ? body.message.text : "";
+  const response = await sendWithPresence(body, {
+    post,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    leadMs: textLeadMs(text)
+  });
+  if (response.ok) return { ok: true };
   const payload = await response.json().catch(() => ({}));
   const retry = retryPlan(response.status, 1);
   return { ok: false, error: payload?.error?.message || "Instagram send failed.", retry };

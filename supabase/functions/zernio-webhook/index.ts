@@ -27,6 +27,7 @@ import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { readDmGate } from "../_shared/dm-gate.js";
+import { markSeen, nextDueInMs, textLeadMs, typeThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
@@ -144,13 +145,28 @@ async function lookupAccount(admin, accountId) {
   };
 }
 
+// Follow-up bubbles due within this window go out from this request, so they are
+// not held until the one-minute tick. Later ones stay with the tick.
+const FOLLOW_ON_HORIZON_MS = 20000;
+const FOLLOW_ON_BUDGET_MS = 60000;
+
 async function settle(admin, apiKey, jobs) {
-  for (const job of jobs) await planJob(admin, job);
+  for (const job of jobs) await planJob(admin, job, apiKey);
   const businesses = [...new Set(jobs.map((job) => job.account.businessId))];
-  for (const businessId of businesses) await sendPending(admin, apiKey, businessId);
+  const started = Date.now();
+  for (const businessId of businesses) {
+    await sendPending(admin, apiKey, businessId);
+    while (Date.now() - started < FOLLOW_ON_BUDGET_MS) {
+      const next = await admin.from("ig_outbox").select("run_at").eq("business_id", businessId).eq("transport", "official").eq("status", "pending").order("run_at", { ascending: true }).limit(5);
+      const delay = nextDueInMs(next.data || [], Date.now(), FOLLOW_ON_HORIZON_MS);
+      if (delay === null) break;
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      await sendPending(admin, apiKey, businessId);
+    }
+  }
 }
 
-async function planJob(admin, job) {
+async function planJob(admin, job, apiKey) {
   const current = await admin.from("ig_outbox").select("id, status, payload, kind").eq("id", job.id).maybeSingle();
   if (!current.data || current.data.status !== "pending" || !current.data.payload || current.data.payload.needsPlan !== true) return;
   if (current.data.kind === "comment_voice") {
@@ -204,6 +220,10 @@ async function planJob(admin, job) {
   })) {
     await admin.from("ig_outbox").update({ status: "blocked", last_error: "Outside office hours." }).eq("id", job.id).eq("status", "pending");
     return;
+  }
+  if (!thread.human_locked) {
+    const seenGate = await readDmGate(admin, job.account.businessId);
+    if (seenGate.open) await markSeen(job.event, job.account.accountId, apiKey, fetch);
   }
   const loaded = await loadSetterReply(admin, job.account.businessId, env);
   const runtime = loaded.chain[0];
@@ -328,7 +348,7 @@ async function planJob(admin, job) {
       kind: current.data.kind || "reply",
       transport: "official",
       payload: enqueueBody(job.event, parts[index], current.data.payload.conversationRowId),
-      run_at: new Date(Date.now() + (wait + index * 4) * 1000).toISOString(),
+      run_at: new Date(Date.now() + (wait + index * 4) * 1000 - textLeadMs(parts[index])).toISOString(),
       status: "pending",
       idempotency_key: String(job.id) + ":part:" + index
     });
@@ -344,11 +364,12 @@ async function planJob(admin, job) {
       bucket: chosen.bucket || "owner-clips"
     };
   }
+  const beforeTyping = waitBeforeTypingMs(wait, payload.text);
   if (wait > 25) {
-    await admin.from("ig_outbox").update({ payload, run_at: new Date(Date.now() + wait * 1000).toISOString() }).eq("id", job.id).eq("status", "pending");
+    await admin.from("ig_outbox").update({ payload, run_at: new Date(Date.now() + beforeTyping).toISOString() }).eq("id", job.id).eq("status", "pending");
     return;
   }
-  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+  if (beforeTyping > 0) await new Promise((resolve) => setTimeout(resolve, beforeTyping));
   await admin.from("ig_outbox").update({ payload }).eq("id", job.id).eq("status", "pending");
 }
 
@@ -396,18 +417,19 @@ async function sendOne(admin, apiKey, row) {
     return;
   }
   const request = sendRequest(prepared);
-  let result;
-  try {
-    const response = await fetch(API_BASE + request.path, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify(request.body)
-    });
-    const payload = await response.json().catch(() => ({}));
-    result = interpretSend(response.status, payload);
-  } catch (_error) {
-    result = { ok: false, status: "failed", error: "The reply was not sent." };
-  }
+  const result = await typeThenSend(prepared, apiKey, async () => {
+    try {
+      const response = await fetch(API_BASE + request.path, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(request.body)
+      });
+      const payload = await response.json().catch(() => ({}));
+      return interpretSend(response.status, payload);
+    } catch (_error) {
+      return { ok: false, status: "failed", error: "The reply was not sent." };
+    }
+  }, { fetchImpl: fetch });
   const written = outboxWriteStatus(result);
   await admin.from("ig_outbox").update({ status: written.status, last_error: written.last_error }).eq("id", row.id);
   if (!result.ok) return;

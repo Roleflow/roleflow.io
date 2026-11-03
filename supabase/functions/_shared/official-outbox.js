@@ -1,6 +1,7 @@
 import { API_BASE, interpretSend, privateReplyKind, sendRequest } from "./ig-gateway.js";
 import { withAttachment } from "./clip-send.js";
 import { sendBlocked } from "./agent-control.js";
+import { typeThenSend } from "./typing-plan.js";
 
 // The webhook waits at most this long inside the request. A longer configured
 // delay is stored on the outbox row and sent by the one-minute tick.
@@ -58,15 +59,17 @@ export async function postOfficial(row, apiKey, fetchImpl, extras) {
   }
   const request = sendRequest(prepared);
   const fetchFn = fetchImpl || fetch;
-  try {
-    const response = await fetchFn(API_BASE + request.path, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify(request.body)
-    });
-    const payload = await response.json().catch(() => ({}));
-    return interpretSend(response.status, payload);
-  } catch (_error) {
-    return { ok: false, status: "failed", error: "The reply was not sent." };
-  }
+  return typeThenSend(prepared, apiKey, async () => {
+    try {
+      const response = await fetchFn(API_BASE + request.path, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(request.body)
+      });
+      const payload = await response.json().catch(() => ({}));
+      return interpretSend(response.status, payload);
+    } catch (_error) {
+      return { ok: false, status: "failed", error: "The reply was not sent." };
+    }
+  }, { fetchImpl: fetchFn, sleep: extras && extras.sleep });
 }
