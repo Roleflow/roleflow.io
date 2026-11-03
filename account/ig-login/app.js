@@ -7,8 +7,18 @@ const ctx = view.getContext("2d");
 const token = location.hash.replace(/^#/, "");
 let open = true;
 
+const WAIT_NOTE = "Opening Instagram's page. This takes a few seconds.";
+const READY_NOTE = "Instagram's own page, including any code or check. Click the picture, then type.";
+const STUCK_NOTE = "Instagram's page isn't coming through. Close this tab and press Connect again from the business page.";
+const STUCK_MS = 25000;
+let painted = false;
+
 function paint(encoded) {
   if (!encoded) return;
+  if (!painted) {
+    painted = true;
+    note.textContent = READY_NOTE;
+  }
   const image = new Image();
   image.onload = () => {
     view.width = image.naturalWidth || 420;
@@ -35,6 +45,10 @@ async function main() {
     note.textContent = "Sign in from the business page, then connect again.";
     return;
   }
+  note.textContent = WAIT_NOTE;
+  setTimeout(() => {
+    if (!painted && open) note.textContent = STUCK_NOTE;
+  }, STUCK_MS);
   const topic = loginChannel(await hashLoginToken(token));
   const channel = supabase.channel(topic, {
     config: { private: true, broadcast: { ack: false, self: false } }
@@ -52,7 +66,10 @@ async function main() {
     open = false;
     note.textContent = "Connected as @" + (payload.handle || "");
   });
-  channel.subscribe();
+  channel.subscribe((state) => {
+    if (painted || !open) return;
+    if (state === "CHANNEL_ERROR" || state === "TIMED_OUT" || state === "CLOSED") note.textContent = STUCK_NOTE;
+  });
   view.addEventListener("mousemove", (event) => send({ method: "Input.dispatchMouseEvent", params: Object.assign({ type: "mouseMoved" }, point(event)) }));
   view.addEventListener("mousedown", (event) => send({ method: "Input.dispatchMouseEvent", params: Object.assign({ type: "mousePressed" }, point(event)) }));
   view.addEventListener("mouseup", (event) => send({ method: "Input.dispatchMouseEvent", params: Object.assign({ type: "mouseReleased" }, point(event)) }));

@@ -21,6 +21,9 @@ import { restRequest } from "./rest.mjs";
 
 const POLL_MS = 2000;
 const FRAME_MS = 500;
+// Resend the current picture this often even when it has not changed, so a page that
+// subscribes late (or after a reconnect) still gets a picture instead of a black box.
+const REFRESH_MS = 3000;
 
 async function call(env, fetchImpl, path, options) {
   const request = restRequest(env, path, options || {});
@@ -111,14 +114,19 @@ export async function runLoginRelay(options) {
       if (!safe || !browser.send) return;
       browser.send(safe).catch(() => {});
     };
+    let lastAt = 0;
+    const refreshMs = options.refreshMs || REFRESH_MS;
     browser.onFrame((frame) => { latest = frame; });
     const timer = setInterval(() => {
       if (!latest) return;
       const encoded = Buffer.from(latest).toString("base64");
-      if (encoded === last) return;
+      if (encoded === last && Date.now() - lastAt < refreshMs) return;
       const payload = framePayload(encoded);
       if (!payload) return;
-      if (channel.send("frame", payload)) last = encoded;
+      if (channel.send("frame", payload)) {
+        last = encoded;
+        lastAt = Date.now();
+      }
     }, options.frameMs || FRAME_MS);
     if (timer.unref) timer.unref();
     const session = { closed: false, timer, channel };
@@ -155,7 +163,9 @@ export async function runLoginRelay(options) {
   }
 
   async function tick() {
-    await beat();
+    // Only tell the panel the login service is live while the picture can actually reach it.
+    const live = !realtime || typeof realtime.isOpen !== "function" || realtime.isOpen();
+    if (live) await beat();
     const listed = await call(
       env,
       fetchImpl,
@@ -174,7 +184,7 @@ export async function runLoginRelay(options) {
         await disconnect(link);
         continue;
       }
-      if (link.purpose !== "login" || !realtime || !launch) continue;
+      if (link.purpose !== "login" || !realtime || !launch || !live) continue;
       let browser;
       try { browser = await launch(); } catch (_error) {
         log("browser_missing");
