@@ -46,8 +46,9 @@ export function localDate(date, timeZone) {
   }).format(date instanceof Date ? date : new Date(date));
 }
 
-export const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+export const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 export const HEARTBEAT_MISSES = 3;
+export const HEARTBEAT_FAILURE_MS = HEARTBEAT_INTERVAL_MS * HEARTBEAT_MISSES;
 export const FIRST_BOOT_MS = 10 * 60 * 1000;
 export const LATER_BOOT_MS = 5 * 60 * 1000;
 export const CONFIG_INTERVAL_MS = 5 * 60 * 1000;
@@ -58,7 +59,8 @@ export function bootDeadlineMs(hasBootedBefore) {
 
 export function heartbeatDelayMs(random) {
   const roll = typeof random === "function" ? random() : Math.random();
-  return Math.round((4 + 2 * Math.min(0.999999, Math.max(0, roll))) * 60 * 1000);
+  const clamped = Math.min(0.999999, Math.max(0, roll));
+  return Math.round((50 + 20 * clamped) * 1000);
 }
 
 export function pollDelayMs(random) {
