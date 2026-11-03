@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { trimToSentence } from "./split-reply.js";
+import { VOICE_PENDING_BODY, voiceAttachment } from "./voice-transcribe.js";
 
 export const CALLBACK_URL = "https://roleflow.io/app/instagram/callback";
 export const LOGO_URL = "https://roleflow.io/assets/logo.jpg";
@@ -252,7 +253,8 @@ export function normalizeEvent(payload, headerEventId) {
       username: String((message.sender && message.sender.username) || ""),
       externalId: String(message.id || id),
       standby: Boolean((body.metadata && body.metadata.standby) || (message.metadata && message.metadata.standby)),
-      kind: "message"
+      kind: "message",
+      ...voiceField(message)
     };
   }
   if (event === "message.sent") {
@@ -296,6 +298,30 @@ export function normalizeEvent(payload, headerEventId) {
     };
   }
   return { id, event, accountId, profileId, ignored: true, standby: false, kind: "" };
+}
+
+function voiceField(message) {
+  const voice = voiceAttachment(message && message.attachments);
+  if (!voice) return {};
+  return { voice: { ...voice, messageId: String((message && message.id) || "") } };
+}
+
+// What the inbox row shows before the note is transcribed.
+export function inboundStoreBody(event) {
+  const text = String((event && event.text) || "");
+  if (text.trim() || !(event && event.voice)) return text;
+  return VOICE_PENDING_BODY;
+}
+
+// The inbox's own endpoint that re-mints an expired voice note link.
+export function voiceRefreshRequest(event, apiKey) {
+  const voice = event && event.voice;
+  if (!voice || !voice.messageId || !event.conversationId || !event.accountId || !apiKey) return null;
+  return {
+    url: API_BASE + "/inbox/conversations/" + encodeURIComponent(event.conversationId) + "/messages/" + encodeURIComponent(voice.messageId) +
+      "/attachments/" + encodeURIComponent(String(voice.index || 0)) + "?accountId=" + encodeURIComponent(event.accountId),
+    headers: { Authorization: "Bearer " + apiKey }
+  };
 }
 
 export function shouldEnqueue(event, flags) {

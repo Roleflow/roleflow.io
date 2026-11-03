@@ -23,6 +23,8 @@ import { seedSections, PROMPT_ROLES, SECTION_KEYS } from "./ig/prompt-seed.js";
 import { encryptToken, decryptToken } from "./ig/crypto.js";
 import { textBody, privateReplyBody, sendWithPresence, withPolicy, retryPlan, underRateLimit } from "./ig/send.js";
 import { textLeadMs } from "../_shared/typing-plan.js";
+import { loadMemory, memoryRule, ourRecentBubbles, repeatedBubble, retryRule } from "../_shared/reply-memory.js";
+import { VOICE_FAILED_BODY, VOICE_PENDING_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceOptions, voiceRule } from "../_shared/voice-transcribe.js";
 import { messagingDecision } from "./ig/policy.js";
 import { pickSlots } from "./ig/slots.js";
 import { agentEnabled, agentKeyForKind } from "../_shared/agent-control.js";
@@ -182,7 +184,7 @@ async function acceptInbound(db, businessId, event) {
       business_id: businessId,
       thread_id: thread.id,
       direction: "in",
-      body: event.text || "",
+      body: event.text || (event.voice ? VOICE_PENDING_BODY : ""),
       meta_mid: event.mid || null,
       kind: event.kind
     });
@@ -206,7 +208,7 @@ async function acceptInbound(db, businessId, event) {
     business_id: businessId,
     thread_id: thread.id,
     kind: event.kind === "comment" ? "comment_private" : "reply",
-    payload: { text: event.text || "", comment_id: event.commentId || null, event_kind: event.kind },
+    payload: { text: event.text || "", comment_id: event.commentId || null, event_kind: event.kind, ...(event.voice ? { voice: event.voice, mid: event.mid || "" } : {}) },
     run_at: new Date(Date.now() + delay).toISOString(),
     idempotency_key: "job:" + eventId(event)
   });
@@ -284,6 +286,24 @@ async function runOutbox(db, row) {
   const stepContent = step ? await stepAsset(db, businessId, step) : null;
   const prompts = await currentPrompt(db, businessId, role);
   const env = Deno.env.toObject();
+  let heardVoice = row.payload?.voice_heard || null;
+  if (row.payload?.voice && row.kind === "reply") {
+    const heard = await understandVoice(row.payload.voice, env, await voiceOptions(db, businessId, {}));
+    const mid = String(row.payload.mid || "");
+    const typed = String(row.payload.text || "").trim();
+    if (!heard.ok) {
+      const message = voiceFailureMessage(heard.reason);
+      await db.from("ig_threads").update({ human_locked: true, updated_at: new Date().toISOString() }).eq("id", thread.id).eq("business_id", businessId);
+      await escalate(db, businessId, thread.target_id, "voice_note", message);
+      if (mid) await db.from("ig_messages").update({ body: typed ? typed + "\n\n" + VOICE_FAILED_BODY : VOICE_FAILED_BODY }).eq("business_id", businessId).eq("meta_mid", mid);
+      return finish("blocked", message);
+    }
+    if (mid) await db.from("ig_messages").update({ body: voiceBody(typed, heard.text) }).eq("business_id", businessId).eq("meta_mid", mid);
+    heardVoice = { transcribed: true, language: heard.language };
+    const { voice: _voice, ...rest } = row.payload;
+    row.payload = { ...rest, text: inboundText(typed, heard.text), voice_heard: heardVoice };
+    await db.from("ig_outbox").update({ payload: row.payload }).eq("id", row.id).eq("business_id", businessId);
+  }
   const loaded = await loadSetterReply(db, businessId, env);
   const booking = await loadBooking(db, businessId, prompts, settings);
   const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
@@ -295,7 +315,8 @@ async function runOutbox(db, row) {
   const keyLinks = await loadKeyLinks(db, businessId);
   let plan;
   try {
-    plan = await planTurn({
+    const memory = await loadMemory(db, { businessId, threadId: thread.id, excludeId: row.id });
+    const askTurn = (extra) => planTurn({
       thread: toThread(thread),
       eventKind: row.payload?.event_kind || "message",
       kind: "ai",
@@ -320,10 +341,13 @@ async function runOutbox(db, row) {
           state: thread.crm_state || thread.state,
           hoursSilent: (Date.now() - Date.parse(thread.last_user_message_at || "")) / 3600000,
           content: stepContent ? stepContent.text : ""
-        }) : ""),
-        messages: [{ role: "user", content: JSON.stringify({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {} }) }]
+        }) : "") + voiceRule(heardVoice) + memoryRule() + (extra || ""),
+        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: row.payload?.text || "", state: input.thread.state, attributes: input.thread.attributes || {}, recent_messages: memory }, heardVoice)) }]
       })
     });
+    plan = await askTurn("");
+    const repeated = plan && !plan.noResponse ? repeatedBubble((plan.bubbles || []).join("\n"), ourRecentBubbles(memory)) : "";
+    if (repeated) plan = await askTurn(retryRule(repeated));
   } catch (error) {
     const message = error instanceof Error ? error.message : "llm failed";
     if (error?.code === "llm_unconfigured" || row.attempts >= 5) {
@@ -657,7 +681,7 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
     const body = kind === "comment_private" && commentId
       ? privateReplyBody({ commentId, text })
       : withPolicy(textBody({ recipientId: thread.igsid, text }), decision);
-    const result = await postGraph(token, body);
+    const result = await postGraph(token, body, kind === "reply");
     if (!result.ok) return result;
     await db.from("ig_messages").insert({
       business_id: businessId,
@@ -748,7 +772,7 @@ async function deliverGateway(db, businessId, thread, bubbles, kind) {
   return { ok: true };
 }
 
-async function postGraph(token, body) {
+async function postGraph(token, body, replying) {
   const url = `https://graph.instagram.com/${GRAPH()}/me/messages`;
   const post = (payload) => fetch(url, {
     method: "POST",
@@ -759,7 +783,8 @@ async function postGraph(token, body) {
   const response = await sendWithPresence(body, {
     post,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    leadMs: textLeadMs(text)
+    leadMs: textLeadMs(text),
+    typing: replying === true
   });
   if (response.ok) return { ok: true };
   const payload = await response.json().catch(() => ({}));

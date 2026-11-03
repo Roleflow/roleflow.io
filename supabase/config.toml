@@ -434,6 +434,14 @@ verify_jwt = true
 [functions.onboarding-link]
 verify_jwt = false
 
+# outreach-billing checks the Stripe signature itself. Stripe cannot send a user JWT.
+[functions.outreach-billing]
+verify_jwt = false
+
+# outreach-provisioner checks the acquisition cron secret. pg_cron cannot send a user JWT.
+[functions.outreach-provisioner]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327

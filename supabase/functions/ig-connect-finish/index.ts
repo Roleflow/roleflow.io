@@ -6,6 +6,7 @@
 import { clientSafeText } from "../_shared/client-safe.js";
 import { callbackFailure, verifyState } from "../_shared/ig-gateway.js";
 import { adminClient, cors, json, loadGatewayConfig } from "../_shared/gateway-http.js";
+import { SCOPE_EXCEPTION_COPY, SCOPE_EXCEPTION_KIND, ensureWebhookScope, inboundWebhookUrl } from "../_shared/webhook-scope.js";
 
 const PANEL = "https://www.roleflow.io/account/acquisition/";
 
@@ -70,7 +71,25 @@ async function finish(body: { state?: string; account_id?: string; accountId?: s
       : "This connection link expired. Start again from the panel.";
     return { ok: false, error, businessId: checked.businessId };
   }
+  await listenToAccount(admin, config.apiKey, checked.businessId, accountId);
   return { ok: true, error: "", businessId: checked.businessId, username: String(saved.data.username || "") };
+}
+
+// The connect itself stays done even when this step fails; the failure is flagged.
+async function listenToAccount(admin, apiKey: string, businessId: string, accountId: string) {
+  const scoped = await ensureWebhookScope({
+    apiKey,
+    accountId,
+    functionUrl: inboundWebhookUrl(Deno.env.get("SUPABASE_URL") || "")
+  });
+  if (scoped.ok) return;
+  console.error("webhook_scope_failed", scoped.reason);
+  await admin.from("acq_exceptions").insert({
+    agent_id: businessId,
+    kind: SCOPE_EXCEPTION_KIND,
+    message: SCOPE_EXCEPTION_COPY,
+    target_id: null
+  });
 }
 
 function redirect(result: { ok: boolean; error?: string; businessId?: string }) {

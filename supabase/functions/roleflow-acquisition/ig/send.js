@@ -40,23 +40,24 @@ export function typingOffBody(recipientId) {
   return { recipient: { id: recipientId }, sender_action: "typing_off" };
 }
 
-// Seen first, typing only for a short length-scaled moment, the message, then
-// typing off, also when the send fails. Sender actions are best effort.
-export async function sendWithPresence(body, { post, sleep, leadMs }) {
+// Replying to the prospect: seen, typing for a short length-scaled moment, the
+// message, then typing off, also when the send fails. Anything we start (typing
+// false): seen and the pause only, never typing. Sender actions are best effort.
+export async function sendWithPresence(body, { post, sleep, leadMs, typing }) {
   const recipientId = body && body.recipient && body.recipient.id ? body.recipient.id : "";
   const action = async (payload) => {
     try { await post(payload); } catch (_error) { /* presence is best effort */ }
   };
   if (recipientId) {
     await action(seenBody(recipientId));
-    await action(typingBody(recipientId));
+    if (typing) await action(typingBody(recipientId));
     const lead = Math.max(0, Number(leadMs) || 0);
     if (lead > 0) await sleep(lead);
   }
   try {
     return await post(body);
   } finally {
-    if (recipientId) await action(typingOffBody(recipientId));
+    if (recipientId && typing) await action(typingOffBody(recipientId));
   }
 }
 

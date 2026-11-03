@@ -1,9 +1,11 @@
 // Human-looking presence around setter replies on Instagram.
-// Order for every reply: mark the lead's message seen when we start working on it,
-// show typing only a few seconds before each bubble, send the bubble.
-// The connected inbox has no typing-off call. Instagram clears the indicator when
-// the message lands, and it expires by itself after about 20 seconds, so typing is
-// never started before a long wait. The longest lead stays far below that limit.
+// Typing is shown only when we answer a message the prospect already sent: an
+// outbox row of kind "reply", which is only created from an inbound DM. Messages we
+// start (openers, follow-ups, comment-triggered DMs, outreach) and panel replies a
+// person wrote never show typing.
+// Order for every reply bubble: seen (when the lead's message is picked up), typing
+// for 1.5 to 6 seconds, the bubble. The connected inbox has no typing-off call;
+// Instagram clears the indicator when the message lands.
 
 import { API_BASE, privateReplyKind } from "./ig-gateway.js";
 
@@ -25,12 +27,19 @@ export function textLeadMs(text) {
   return typingLeadMs({ payload: { text } });
 }
 
-// "typing" shows the indicator, "read" marks the conversation seen.
+// True only for a bubble answering a message the prospect sent.
+export function repliesToProspect(row) {
+  if (!row || row.kind !== "reply") return false;
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const eventKind = payload.event_kind || payload.eventKind || "message";
+  return eventKind === "message";
+}
+
+// "typing" shows the indicator (replies to the prospect only), "read" marks seen.
 export function senderActionRequest(row, action) {
   if (action !== "typing" && action !== "read") return null;
   if (!row || privateReplyKind(row.kind)) return null;
-  // A person already typed a panel reply; it goes out at once, with no typing pause.
-  if (action === "typing" && row.kind === "human") return null;
+  if (action === "typing" && !repliesToProspect(row)) return null;
   const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
   const conversationId = String(payload.conversationId || "");
   const accountId = String(payload.accountId || "");
@@ -67,20 +76,27 @@ export function markSeen(event, accountId, apiKey, fetchImpl) {
 
 const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Typing on right before this bubble, held for a length-scaled moment, then send.
-export async function typeThenSend(row, apiKey, send, options) {
+// A short length-scaled pause before this bubble, then send. Typing is shown during
+// the pause only when the bubble answers the prospect. A panel reply a person
+// already wrote, and a private reply to a comment, go out at once.
+export function pausesBeforeSend(row) {
+  if (!row || privateReplyKind(row.kind) || row.kind === "human") return false;
+  return true;
+}
+
+export async function pauseThenSend(row, apiKey, send, options) {
   const opts = options || {};
   const sleep = opts.sleep || realSleep;
-  if (senderActionRequest(row, "typing")) {
-    await postSenderAction(row, apiKey, "typing", opts.fetchImpl);
+  if (pausesBeforeSend(row)) {
+    if (senderActionRequest(row, "typing")) await postSenderAction(row, apiKey, "typing", opts.fetchImpl);
     const lead = typingLeadMs(row);
     if (lead > 0) await sleep(lead);
   }
   return send();
 }
 
-// The inline wait before the first bubble, minus the typing moment that precedes it,
-// so the lead never sees typing for the whole configured delay.
+// The inline wait before the first bubble, minus the pause that precedes it,
+// so the total wait matches the configured delay.
 export function waitBeforeTypingMs(waitSeconds, firstText) {
   const wait = Math.max(0, Number(waitSeconds) || 0) * 1000;
   return Math.max(0, wait - textLeadMs(firstText));
@@ -99,3 +115,6 @@ export function nextDueInMs(rows, now, horizonMs) {
   }
   return best;
 }
+
+// Name used by PR #109.
+export const typeThenSend = pauseThenSend;

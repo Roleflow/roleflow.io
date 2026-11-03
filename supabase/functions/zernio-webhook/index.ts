@@ -12,6 +12,7 @@ import {
   enqueueBody,
   handleWebhook,
   idempotencyKey,
+  inboundStoreBody,
   interpretSend,
   outboxWriteStatus,
   planGatewayReply,
@@ -20,14 +21,17 @@ import {
   privateReplyKind,
   replyText,
   safeWebhookError,
-  sendRequest
+  sendRequest,
+  voiceRefreshRequest
 } from "../_shared/ig-gateway.js";
+import { VOICE_FAILED_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceMetadata, voiceOptions, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
 import { bookingBehaviour } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { readDmGate } from "../_shared/dm-gate.js";
-import { markSeen, nextDueInMs, textLeadMs, typeThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
+import { loadMemory, memoryRule, ourRecentBubbles, repeatedBubble, retryRule } from "../_shared/reply-memory.js";
+import { markSeen, nextDueInMs, textLeadMs, pauseThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
 import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
@@ -80,7 +84,7 @@ Deno.serve(async (req) => {
           p_username: event.username,
           p_conversation: event.conversationId || event.commentId || "",
           p_external: event.externalId,
-          p_body: event.text,
+          p_body: inboundStoreBody(event),
           p_at: new Date().toISOString(),
           p_kind: event.kind
         });
@@ -225,6 +229,17 @@ async function planJob(admin, job, apiKey) {
     const seenGate = await readDmGate(admin, job.account.businessId);
     if (seenGate.open) await markSeen(job.event, job.account.accountId, apiKey, fetch);
   }
+  let heardVoice = null;
+  if (job.event.voice) {
+    const heard = await understandVoice(job.event.voice, env, await voiceOptions(admin, job.account.businessId, { refresh: voiceRefreshRequest(job.event, apiKey) }));
+    if (!heard.ok) {
+      await voiceNotUnderstood(admin, job, current.data.payload.conversationRowId, heard.reason);
+      return;
+    }
+    await recordVoiceTranscript(admin, job, current.data.payload.conversationRowId, heard);
+    heardVoice = { transcribed: true, language: heard.language };
+    job.event = { ...job.event, text: inboundText(job.event.text, heard.text) };
+  }
   const loaded = await loadSetterReply(admin, job.account.businessId, env);
   const runtime = loaded.chain[0];
   if (!runtime) {
@@ -259,7 +274,8 @@ async function planJob(admin, job, apiKey) {
     const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", job.account.businessId).eq("active", true);
     const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
     const promptBody = expandPrompt(setterPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n" + systemPrompt({}, booking) + knowledge + clipInstructions(clips);
-    plan = await planGatewayReply({
+    const memory = await loadMemory(admin, { businessId: job.account.businessId, conversationRowId: current.data.payload.conversationRowId, threadId: job.threadId, excludeId: job.id });
+    const ask = (extra) => planGatewayReply({
       thread,
       eventKind: job.event.kind,
       text: job.event.text,
@@ -278,10 +294,13 @@ async function planJob(admin, job, apiKey) {
             : info.message
         }),
         tools: [bookingTool()],
-        system: promptBody,
-        messages: [{ role: "user", content: JSON.stringify({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {} }) }]
+        system: promptBody + voiceRule(heardVoice) + memoryRule() + (extra || ""),
+        messages: [{ role: "user", content: JSON.stringify(modelInbound({ inbound: job.event.text || "", state: thread.state, attributes: thread.attributes || {}, recent_messages: memory }, heardVoice)) }]
       })
     });
+    plan = await ask("");
+    const repeated = repeatedBubble(replyText(plan), ourRecentBubbles(memory));
+    if (repeated) plan = await ask(retryRule(repeated));
     plan.clipChoice = chooseClip({
       requestedId: plan.clipId || clipFromSlot(plan.voiceNoteSlot, clips),
       clips,
@@ -373,6 +392,32 @@ async function planJob(admin, job, apiKey) {
   await admin.from("ig_outbox").update({ payload }).eq("id", job.id).eq("status", "pending");
 }
 
+// The transcript replaces the "Voice note" placeholder on the stored inbound rows.
+async function recordVoiceTranscript(admin, job, conversationRowId, heard) {
+  const body = voiceBody(job.event.text, heard.text);
+  const externalId = String(job.event.externalId || "");
+  if (conversationRowId && externalId) {
+    await admin.from("acq_messages").update({ body, metadata: voiceMetadata(heard) }).eq("business_id", job.account.businessId).eq("conversation_id", conversationRowId).eq("external_id", externalId);
+  }
+  if (externalId) await admin.from("ig_messages").update({ body }).eq("business_id", job.account.businessId).eq("meta_mid", externalId);
+}
+
+// No guessed reply: the thread goes to a person and shows up under needs attention.
+async function voiceNotUnderstood(admin, job, conversationRowId, reason) {
+  const businessId = job.account.businessId;
+  const message = voiceFailureMessage(reason);
+  await admin.from("ig_outbox").update({ status: "blocked", last_error: message }).eq("id", job.id).eq("status", "pending");
+  if (job.threadId) await admin.from("ig_threads").update({ human_locked: true, updated_at: new Date().toISOString() }).eq("id", job.threadId).eq("business_id", businessId);
+  await admin.from("acq_exceptions").insert({ agent_id: businessId, kind: "voice_note", message, target_id: null });
+  const externalId = String(job.event.externalId || "");
+  const typed = String(job.event.text || "").trim();
+  const body = typed ? typed + "\n\n" + VOICE_FAILED_BODY : VOICE_FAILED_BODY;
+  if (conversationRowId && externalId) {
+    await admin.from("acq_messages").update({ body, metadata: { voice_note: { status: "failed", reason } } }).eq("business_id", businessId).eq("conversation_id", conversationRowId).eq("external_id", externalId);
+  }
+  if (externalId) await admin.from("ig_messages").update({ body }).eq("business_id", businessId).eq("meta_mid", externalId);
+}
+
 async function promptSections(admin, businessId, role) {
   const current = await admin.from("acq_prompt_current").select("version_id").eq("business_id", businessId).eq("role", role).maybeSingle();
   if (!current.data) return {};
@@ -417,7 +462,7 @@ async function sendOne(admin, apiKey, row) {
     return;
   }
   const request = sendRequest(prepared);
-  const result = await typeThenSend(prepared, apiKey, async () => {
+  const result = await pauseThenSend(prepared, apiKey, async () => {
     try {
       const response = await fetch(API_BASE + request.path, {
         method: "POST",
