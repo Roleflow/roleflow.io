@@ -39,12 +39,17 @@ assert.equal(first[0].idempotency_key, pending.idempotency_key);
 const second = claimOfficial([{ ...pending, status: "running", attempts: 1 }], due);
 assert.equal(second.length, 0);
 
-const calls = [];
+const allCalls = [];
+const slept = [];
 const result = await postOfficial(first[0], "test-key", async (url, init) => {
-  calls.push({ url, init });
-  return { status: 200, json: async () => ({ ok: true }) };
-});
+  allCalls.push({ url, init });
+  return { ok: true, status: 200, json: async () => ({ ok: true, success: true }) };
+}, { sleep: async (ms) => { slept.push(ms); } });
 assert.equal(result.ok, true);
+assert.equal(allCalls.length, 2);
+assert.equal(allCalls[0].url, "https://zernio.com/api/v1/inbox/conversations/2108532849767337/typing");
+assert.equal(slept.length, 1);
+const calls = allCalls.filter((call) => call.url.endsWith("/messages"));
 assert.equal(calls.length, 1);
 assert.equal(calls[0].url, "https://zernio.com/api/v1/inbox/conversations/2108532849767337/messages");
 assert.equal(calls[0].init.headers.Authorization, "Bearer test-key");
