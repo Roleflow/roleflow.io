@@ -128,7 +128,17 @@ function inspect() {
   return [...new Set(problems)];
 }
 
-const browser = await chromium.launch({ executablePath: CHROME, args: ["--no-sandbox"] });
+let browser = await chromium.launch({ executablePath: CHROME, args: ["--no-sandbox"] });
+// A long run can crash a renderer on a small machine; start a fresh browser and try once more.
+async function retry(fn) {
+  try { return await fn(); }
+  catch (error) {
+    if (!/crash|closed/i.test(String(error))) throw error;
+    await browser.close().catch(() => {});
+    browser = await chromium.launch({ executablePath: CHROME, args: ["--no-sandbox"] });
+    return fn();
+  }
+}
 async function open(viewport, mobile) {
   const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1 });
   await context.route("**/*", (route) => (ALLOW.has(new URL(route.request().url()).hostname) ? route.continue() : route.abort()));
@@ -138,15 +148,18 @@ let failures = 0;
 for (const [width, height] of PHONES) {
   for (const [label, url, act] of SCREENS) {
     if (ONLY && !ONLY.test(label)) continue;
-    const context = await open({ width, height }, true);
-    const page = await context.newPage();
-    await page.goto(BASE + url, { waitUntil: "load" });
-    await page.waitForTimeout(900);
-    if (act) await act(page);
-    const problems = await page.evaluate(inspect);
+    const problems = await retry(async () => {
+      const context = await open({ width, height }, true);
+      try {
+        const page = await context.newPage();
+        await page.goto(BASE + url, { waitUntil: "load" });
+        await page.waitForTimeout(900);
+        if (act) await act(page);
+        return await page.evaluate(inspect);
+      } finally { await context.close().catch(() => {}); }
+    });
     if (problems.length) { failures++; console.log("FAIL " + width + "px " + label); problems.slice(0, 12).forEach((p) => console.log("     " + p)); }
     else console.log("ok   " + width + "px " + label);
-    await context.close();
   }
 }
 const snapshot = (page) => page.evaluate(() => [...document.querySelectorAll("body *")].map((e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return [r.x, r.y, r.width, r.height, s.display, s.position, s.color, s.backgroundColor, s.fontSize, s.padding, s.margin, s.gridTemplateColumns, s.flexDirection].map((v) => (typeof v === "number" ? Math.round(v) : v)).join("|"); }).join("\n"));
