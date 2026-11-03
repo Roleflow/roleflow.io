@@ -5,7 +5,7 @@ import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { switchesText } from "./dashboard-switches.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
-import { loadOutreacher, normalizeHandle, outreacherCopy, outreacherPhase, renderOutreacher } from "./outreacher-page.js";
+import { loadOutreacher, normalizeHandle, outreacherCopy, outreacherPhase, readOutreachCheckoutStatus, renderOutreacher } from "./outreacher-page.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
@@ -231,6 +231,8 @@ boot();
 
 async function boot() {
   state.language = readLanguage(safeStorage());
+  state.outreachCheckoutAvailable = false;
+  const checkoutStatus = loadOutreachCheckoutStatus();
   const preview = readPreview();
   if (preview) {
     Object.assign(state, preview, { tab: tabFromHash(), preview: true });
@@ -299,6 +301,7 @@ async function boot() {
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
     captureInstagramNotice();
+    await checkoutStatus;
     paint();
     settleInstagramNotice();
     if (new URLSearchParams(location.search).get("add") === "1") {
@@ -447,6 +450,7 @@ async function bootBusiness(id, options) {
     if (adminHome) adminHome.hidden = !state.isAdmin;
     armEditorRequest();
     state.chatsPending = false;
+    await checkoutStatus;
     paint();
     settleInstagramNotice();
   }
@@ -4724,9 +4728,14 @@ function armOutreachPoll() {
   }, 8000);
 }
 
+async function loadOutreachCheckoutStatus() {
+  const status = await readOutreachCheckoutStatus(fetch, globalThis.ROLEFLOW_SUPABASE || {});
+  state.outreachCheckoutAvailable = status.available === true;
+}
+
 async function startOutreachCheckout(accepted) {
   const copy = outreacherCopy(language());
-  if (!accepted) return;
+  if (!accepted || state.outreachCheckoutAvailable !== true) return;
   if (state.preview) {
     toast(copy.checking);
     return;
@@ -4758,6 +4767,7 @@ async function startOutreachCheckout(accepted) {
 
 async function scheduleOutreachCancel() {
   const copy = outreacherCopy(language());
+  if (state.outreachCheckoutAvailable !== true) return;
   if (!state.machine || !state.machine.minimum_term_ends_at || state.machine.subscription_cancel_at) return;
   if (state.preview) {
     state.machine.subscription_cancel_at = state.machine.minimum_term_ends_at;
@@ -4860,12 +4870,8 @@ async function saveOutreachPause(paused) {
     paused: paused === true,
     ig_username: (state.outreacherConfig && state.outreacherConfig.ig_username) || null
   });
-  const controls = await state.supabase.from("acq_dm_controls").upsert({
-    business_id: state.businessId,
-    enabled: paused !== true
-  });
-  if ((saved.error || controls.error) && state.tab === "outreacher") {
-    state.outreachError = (saved.error || controls.error).message;
+  if (saved.error && state.tab === "outreacher") {
+    state.outreachError = saved.error.message;
   }
   paint();
 }

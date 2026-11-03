@@ -442,9 +442,9 @@ verify_jwt = false
 [functions.outreach-provisioner]
 verify_jwt = false
 
-# outreach-checkout creates a Stripe Checkout session for the signed-in editor.
+# outreach-checkout serves a public status read. Checkout and cancel check the user JWT themselves.
 [functions.outreach-checkout]
-verify_jwt = true
+verify_jwt = false
 
 # outreach-live returns a 10-minute ticket for that business's machine only.
 [functions.outreach-live]

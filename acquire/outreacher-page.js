@@ -9,6 +9,8 @@ const COPY = {
     startBody: "After checkout, this page shows setup, then a browser where you sign in. Sending stays off until you turn it on.",
     risk: "I understand Instagram can limit or close an account that sends automated messages. I accept that risk for this business.",
     price: "$249 setup + 10% of growth, 3-month minimum",
+    soon: "Coming soon – contact Roleflow to join the pilot",
+    soonLink: "contact Roleflow",
     termOpen: "Minimum term ends {date}. If you cancel before then, it ends on that date instead of immediately.",
     termScheduled: "Cancellation is scheduled for {date}.",
     cancel: "Cancel at end of minimum term",
@@ -45,7 +47,9 @@ const COPY = {
     startTitle: "Empieza tu prospección",
     startBody: "Después del pago, esta página muestra la preparación y luego un navegador donde entras. El envío sigue apagado hasta que lo actives.",
     risk: "Entiendo que Instagram puede limitar o cerrar una cuenta que envía mensajes automáticos. Acepto ese riesgo para este negocio.",
-    price: "$249 setup + 10% of growth, 3-month minimum",
+    price: "$249 de alta + 10% del crecimiento, mínimo de 3 meses",
+    soon: "Pronto – contacta con Roleflow para unirte al piloto",
+    soonLink: "contacta con Roleflow",
     termOpen: "El plazo mínimo termina el {date}. Si cancelas antes, termina ese día y no al momento.",
     termScheduled: "La cancelación está programada para el {date}.",
     cancel: "Cancelar al final del plazo mínimo",
@@ -77,6 +81,47 @@ const COPY = {
     handleInvalid: "Escribe un usuario de Instagram, sin @."
   }
 };
+
+export function soonParts(copy) {
+  const full = String(copy && copy.soon || "");
+  const link = String(copy && copy.soonLink || "");
+  const at = link ? full.indexOf(link) : -1;
+  if (at < 0) return { before: full, link: "", after: "" };
+  return { before: full.slice(0, at), link, after: full.slice(at + link.length) };
+}
+
+export function outreachControls(state) {
+  const available = Boolean(state && state.outreachCheckoutAvailable === true);
+  return { available, risk: available, checkout: available, cancel: available, soon: !available };
+}
+
+export const OUTREACH_CONTACT = "mailto:diego@roleflow.io";
+export const OUTREACH_SIGNUP = "/signup/?next=/account/acquisition/%23outreacher";
+
+export function landingCta(status) {
+  if (status && status.available === true) return { href: OUTREACH_SIGNUP, label: "Create an account" };
+  return { href: OUTREACH_CONTACT, label: "Contact us" };
+}
+
+export async function readOutreachCheckoutStatus(fetchImpl, config) {
+  const url = String(config && config.SUPABASE_URL || "").replace(/\/$/, "");
+  if (!url || !fetchImpl) return { available: false };
+  try {
+    const response = await fetchImpl(url + "/functions/v1/outreach-checkout", {
+      method: "POST",
+      headers: {
+        apikey: (config && config.SUPABASE_ANON_KEY) || "",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ action: "status" }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const payload = await response.json().catch(() => ({}));
+    return { available: response.ok === true && payload && payload.available === true };
+  } catch {
+    return { available: false };
+  }
+}
 
 export function outreacherCopy(language) {
   return COPY[language === "es" ? "es" : "en"];
@@ -142,7 +187,7 @@ function statusCard(ui, copy, phase, language) {
   const card = ui.el("section", { class: "agent outreach-card", id: "outreach-status" });
   const machine = ui.state && ui.state.machine;
   card.append(priceBlock(ui, copy, machine, language));
-  if (phase === "start") card.append(startBlock(ui, copy));
+  if (phase === "start" && outreachControls(ui.state).checkout) card.append(startBlock(ui, copy));
   if (phase === "setup") {
     card.append(ui.el("h3", { text: copy.setupTitle }));
     card.append(ui.el("p", { class: "mute", id: "outreach-setup", text: copy.setupBody }));
@@ -174,7 +219,8 @@ function priceBlock(ui, copy, machine, language) {
   block.append(ui.el("p", { class: "outreach-price", id: "outreach-price", text: copy.price }));
   const term = termCopy(copy, machine, language);
   if (term) block.append(ui.el("p", { class: "mute outreach-term", id: "outreach-term", text: term }));
-  if (canCancel(ui, machine)) {
+  if (outreachControls(ui.state).soon) block.append(soonNote(ui, copy));
+  else if (canCancel(ui, machine)) {
     const button = ui.button(copy.cancel, () => ui.scheduleOutreachCancel && ui.scheduleOutreachCancel());
     button.id = "outreach-cancel";
     button.classList.add("ghost");
@@ -184,9 +230,19 @@ function priceBlock(ui, copy, machine, language) {
 }
 
 function canCancel(ui, machine) {
+  if (!outreachControls(ui.state).cancel) return false;
   if (!ui.state || ui.state.canEdit !== true || !machine || !machine.minimum_term_ends_at) return false;
   if (machine.subscription_cancel_at) return false;
   return machine.status !== "deleted" && machine.status !== "suspended" && machine.status !== "deleting";
+}
+
+function soonNote(ui, copy) {
+  const parts = soonParts(copy);
+  const line = ui.el("p", { class: "mute outreach-soon", id: "outreach-soon" });
+  if (parts.before) line.append(parts.before);
+  if (parts.link) line.append(ui.el("a", { href: OUTREACH_CONTACT }, [parts.link]));
+  if (parts.after) line.append(parts.after);
+  return line;
 }
 
 function startBlock(ui, copy) {

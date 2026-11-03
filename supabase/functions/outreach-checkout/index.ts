@@ -1,9 +1,10 @@
-// Signed-in checkout and cancellation for the outreacher.
-// Subscription mode: a one-time setup price plus a monthly metered growth price.
-// verify_jwt stays on. This change does not deploy the function.
+// Checkout and cancellation for a signed-in editor, plus a public status read.
+// verify_jwt is off so the public page can ask whether checkout is configured.
+// Checkout and cancel still require the caller's user JWT. Status never calls Stripe.
+// This change does not deploy the function.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
-import { checkoutSessionParams, planMinimumTermCancel, stripeCancelParams, stripePeriodEndParams, cancelAtFromSubscription } from "../_shared/outreacher-pricing.js";
+import { checkoutAvailable, checkoutSessionParams, planMinimumTermCancel, stripeCancelParams, stripePeriodEndParams, cancelAtFromSubscription } from "../_shared/outreacher-pricing.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +19,17 @@ function json(status: number, body: Record<string, unknown>) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(405, { ok: false, error: "POST required." });
+  let body: { business_id?: string; country?: string; action?: string } = {};
+  try { body = await req.json(); } catch { body = {}; }
+  if (body.action === "status") {
+    return json(200, {
+      available: checkoutAvailable({
+        secret: Deno.env.get("STRIPE_SECRET_KEY") || "",
+        setupPriceId: Deno.env.get("STRIPE_OUTREACH_SETUP_PRICE_ID") || "",
+        growthPriceId: Deno.env.get("STRIPE_OUTREACH_GROWTH_PRICE_ID") || ""
+      })
+    });
+  }
   const key = Deno.env.get("STRIPE_SECRET_KEY") || "";
   const admin = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "", {
     auth: { persistSession: false, autoRefreshToken: false }
@@ -28,8 +40,6 @@ Deno.serve(async (req) => {
   });
   const user = await userClient.auth.getUser();
   if (!user.data.user) return json(401, { ok: false, error: "Sign in again." });
-  let body: { business_id?: string; country?: string; action?: string } = {};
-  try { body = await req.json(); } catch { body = {}; }
   const businessId = String(body.business_id || "");
   if (!/^[0-9a-f-]{36}$/i.test(businessId)) return json(400, { ok: false, error: "Choose a business." });
   const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });

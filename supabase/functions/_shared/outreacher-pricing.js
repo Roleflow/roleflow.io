@@ -30,6 +30,14 @@ export function assignMinimumTerm(machine, startMs, nowMs) {
   return machine.minimum_term_ends_at;
 }
 
+export function checkoutAvailable(env) {
+  const source = env || {};
+  const secret = String(source.secret || "").trim();
+  const setupPriceId = String(source.setupPriceId || "").trim();
+  const growthPriceId = String(source.growthPriceId || "").trim();
+  return Boolean(secret && setupPriceId && growthPriceId);
+}
+
 export function checkoutSessionParams({ setupPriceId, growthPriceId, businessId, origin, country }) {
   if (!setupPriceId || !growthPriceId) return { ok: false, reason: "missing_price" };
   const params = new URLSearchParams();
