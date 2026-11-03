@@ -5,7 +5,11 @@
 // A worker key is scoped to one business. Instagram passwords are not accepted or stored.
 // The publishable key is not accepted. No secret is read from the request body.
 //
-// Actions: ingest, queue, report, pause, voice_pick, summarize.
+// Actions: ingest, queue, report, pause, voice_pick, summarize,
+// plus the per-machine actions in machine.js (bootstrap, refresh, heartbeat, config,
+// qualify, draft, claim, claim_check, report_send, log_event, backup_slot, backup_commit).
+// A machine session is checked against the live client_machines row on every call.
+// The machine does not call the data API.
 // Voice notes are owner recordings. voice_pick and outreach queue items include
 // a one-hour signed URL. Picking a note does not count as a send. The bot
 // reports voice_send after it actually sends the file.
@@ -13,6 +17,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { agentEnabled } from "../_shared/agent-control.js";
 import { completeChat, loadBusinessRuntime, logLlmError } from "../_shared/llm-provider.js";
+import { authenticateMachine, callModel, clientIpFromHeaders, handleMachineAction, MACHINE_ACTIONS } from "./machine.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -53,6 +58,7 @@ Deno.serve(async (req) => {
   let scopedBusiness = "";
   let workerId = "";
   let editorUser = "";
+  let machineAuth: { business_id: string; machine_id: string } | null = null;
   const actionEarly = String(body.action || "");
   if (bearer.startsWith("rfw_")) {
     const auth = await service.rpc("acq_worker_auth", { p_key: bearer });
@@ -68,6 +74,13 @@ Deno.serve(async (req) => {
     const user = await service.auth.getUser(bearer);
     editorUser = user.data.user?.id || "";
     if (!editorUser) return json(401, { error: "Unauthorized." });
+  } else if (actionEarly === "bootstrap" || actionEarly === "refresh") {
+    scopedBusiness = "";
+  } else if (bearer.split(".").length === 3) {
+    const session = await authenticateMachine(service, bearer, machineKeyEnv(), new Date());
+    if (!session.ok) return json(session.status || 401, { error: session.error || "Unauthorized." });
+    scopedBusiness = session.business_id;
+    machineAuth = { business_id: session.business_id, machine_id: session.machine_id };
   } else {
     return json(401, { error: "Unauthorized." });
   }
@@ -78,6 +91,33 @@ Deno.serve(async (req) => {
   }
   const agentId = scopedBusiness || requested;
   const action = actionEarly;
+
+  if (machineAuth && !MACHINE_ACTIONS.has(action)) {
+    return json(403, { error: "That action is not available to this machine." });
+  }
+  if (MACHINE_ACTIONS.has(action)) {
+    if (action !== "bootstrap" && action !== "refresh" && !machineAuth) {
+      return json(401, { error: "Unauthorized." });
+    }
+    const businessId = machineAuth ? machineAuth.business_id : "";
+    const outcome = await handleMachineAction({
+      service,
+      body,
+      action,
+      businessId,
+      machineId: machineAuth ? machineAuth.machine_id : "",
+      ip: clientIpFromHeaders(req.headers),
+      now: new Date(),
+      env: machineKeyEnv(),
+      complete: (system: string, user: string) => callModel({
+        loadRuntime: () => loadBusinessRuntime(service, businessId, "setter", modelEnv()),
+        completeChat,
+        system,
+        user
+      })
+    });
+    return json(outcome.status, outcome.body);
+  }
 
   if (action === "chief_daily") {
     if (editorUser || workerId) return json(403, { error: "Unauthorized." });
@@ -152,6 +192,13 @@ Deno.serve(async (req) => {
   }
   return json(400, { error: "Unknown action." });
 });
+
+function machineKeyEnv() {
+  return {
+    privateKey: Deno.env.get("OUTREACHER_JWT_PRIVATE_KEY") || "",
+    publicKey: Deno.env.get("OUTREACHER_JWT_PUBLIC_KEY") || ""
+  };
+}
 
 function json(status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), { status, headers: cors });

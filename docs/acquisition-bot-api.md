@@ -111,3 +111,9 @@ Slots: `outreach_opener`, `gap_building`, `recovery_followup_1`, `recovery_follo
 ```
 
 Runs the Chief of Staff daily summary for this business.
+
+## Machine session
+
+The per-client outreacher does not call the data API and does not use a long-lived worker key. It calls this same function. `bootstrap` and `refresh` exchange a one-time bootstrap token for a one-hour ES256 JWT plus a rotating refresh token. Every later call sends `Authorization: Bearer <access JWT>`. The function checks that token against the live `client_machines` row. A body `business_id` for a different business returns 403, `That worker key is for a different business.`
+
+Actions: `bootstrap`, `refresh`, `heartbeat`, `config`, `qualify`, `draft`, `claim`, `claim_check`, `report_send`, `log_event`, `backup_slot`, `backup_commit`. Field lists, the ICP payload, the claim RPCs, and the switches that allow a real send are in `docs/auto-dm.md`. `draft` uses the saved panel prompt as the system text and does not rewrite it. `claim` calls `outreacher_can_send` with the business id from the JWT immediately before a DM, like, follow, or view. Sending stays off unless the panel and `ROLEFLOW_DM_LIVE=1` both allow it.

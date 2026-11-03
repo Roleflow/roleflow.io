@@ -1,0 +1,8 @@
+{
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "PasswordLeakDetectionEnabled": false,
+  "CredentialsEnableService": false,
+  "WebRtcIPHandlingPolicy": "disable_non_proxied_udp"
+}
