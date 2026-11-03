@@ -28,23 +28,37 @@ export function privateReplyBody({ commentId, text }) {
   return { recipient: { comment_id: commentId }, message: { text: String(text || "") } };
 }
 
+export function typingBody(recipientId) {
+  return { recipient: { id: recipientId }, sender_action: "typing_on" };
+}
+
 export function seenBody(recipientId) {
   return { recipient: { id: recipientId }, sender_action: "mark_seen" };
 }
 
-// Seen first, a short length-scaled pause, then the message. No typing indicator
-// is posted. Mark seen is best effort.
-export async function sendWithPresence(body, { post, sleep, leadMs }) {
+export function typingOffBody(recipientId) {
+  return { recipient: { id: recipientId }, sender_action: "typing_off" };
+}
+
+// Replying to the prospect: seen, typing for a short length-scaled moment, the
+// message, then typing off, also when the send fails. Anything we start (typing
+// false): seen and the pause only, never typing. Sender actions are best effort.
+export async function sendWithPresence(body, { post, sleep, leadMs, typing }) {
   const recipientId = body && body.recipient && body.recipient.id ? body.recipient.id : "";
   const action = async (payload) => {
     try { await post(payload); } catch (_error) { /* presence is best effort */ }
   };
   if (recipientId) {
     await action(seenBody(recipientId));
+    if (typing) await action(typingBody(recipientId));
     const lead = Math.max(0, Number(leadMs) || 0);
     if (lead > 0) await sleep(lead);
   }
-  return post(body);
+  try {
+    return await post(body);
+  } finally {
+    if (recipientId && typing) await action(typingOffBody(recipientId));
+  }
 }
 
 export function withPolicy(body, decision) {

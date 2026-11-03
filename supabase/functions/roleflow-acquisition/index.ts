@@ -676,7 +676,7 @@ async function deliver(db, businessId, thread, settings, bubbles, slot, decision
     const body = kind === "comment_private" && commentId
       ? privateReplyBody({ commentId, text })
       : withPolicy(textBody({ recipientId: thread.igsid, text }), decision);
-    const result = await postGraph(token, body);
+    const result = await postGraph(token, body, kind === "reply");
     if (!result.ok) return result;
     await db.from("ig_messages").insert({
       business_id: businessId,
@@ -767,7 +767,7 @@ async function deliverGateway(db, businessId, thread, bubbles, kind) {
   return { ok: true };
 }
 
-async function postGraph(token, body) {
+async function postGraph(token, body, replying) {
   const url = `https://graph.instagram.com/${GRAPH()}/me/messages`;
   const post = (payload) => fetch(url, {
     method: "POST",
@@ -778,7 +778,8 @@ async function postGraph(token, body) {
   const response = await sendWithPresence(body, {
     post,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    leadMs: textLeadMs(text)
+    leadMs: textLeadMs(text),
+    typing: replying === true
   });
   if (response.ok) return { ok: true };
   const payload = await response.json().catch(() => ({}));
