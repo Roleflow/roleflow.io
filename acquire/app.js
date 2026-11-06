@@ -227,9 +227,9 @@ window.addEventListener("hashchange", () => {
   paint();
 });
 
-boot();
-
 let outreachCheckoutStatus = Promise.resolve();
+
+boot();
 
 async function boot() {
   state.language = readLanguage(safeStorage());
@@ -3969,6 +3969,8 @@ function warmupAgentCard() {
   return card;
 }
 
+const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
+
 function setterAgentCard() {
   const rows = SETTER_ROLES.map((role) => roleRow(role));
   const provisioned = SETTER_ROLES.filter((role) => state.workforce.some((item) => item.role === role));
@@ -4102,7 +4104,6 @@ function currentSync(options) {
   });
 }
 
-const SETTER_ROLES = ["comment_to_dm", "qualification", "conversation_recovery", "appointment_booking"];
 
 async function enqueueEngine(kind, payload) {
   const saved = await state.supabase.rpc("acq_engine_enqueue", {

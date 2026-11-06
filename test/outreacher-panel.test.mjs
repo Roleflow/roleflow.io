@@ -40,6 +40,10 @@ assert.match(app, /outreachCheckoutStatus = loadOutreachCheckoutStatus\(\);/);
 assert.equal((app.match(/await outreachCheckoutStatus;/g) || []).length, 2);
 assert.doesNotMatch(app, /const checkoutStatus = loadOutreachCheckoutStatus/);
 assert.doesNotMatch(app, /await checkoutStatus;/);
+const bootCallAt = app.indexOf("\nboot();");
+const hoistAt = app.indexOf("let outreachCheckoutStatus = Promise.resolve();");
+assert.ok(hoistAt >= 0 && bootCallAt > hoistAt, "outreachCheckoutStatus must be declared before boot() runs");
+
 assert.match(fs.readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8"), /\[functions\.outreach-live\]\nverify_jwt = true/);
 assert.match(checkout, /STRIPE_OUTREACH_SETUP_PRICE_ID/);
 assert.match(checkout, /STRIPE_OUTREACH_GROWTH_PRICE_ID/);
