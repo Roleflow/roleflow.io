@@ -229,10 +229,12 @@ window.addEventListener("hashchange", () => {
 
 boot();
 
+let outreachCheckoutStatus = Promise.resolve();
+
 async function boot() {
   state.language = readLanguage(safeStorage());
   state.outreachCheckoutAvailable = false;
-  const checkoutStatus = loadOutreachCheckoutStatus();
+  outreachCheckoutStatus = loadOutreachCheckoutStatus();
   const preview = readPreview();
   if (preview) {
     Object.assign(state, preview, { tab: tabFromHash(), preview: true });
@@ -301,7 +303,7 @@ async function boot() {
     hideBoot();
     sub.textContent = "Preview of the owner dashboard. Sign in to load a live business.";
     captureInstagramNotice();
-    await checkoutStatus;
+    await outreachCheckoutStatus;
     paint();
     settleInstagramNotice();
     if (new URLSearchParams(location.search).get("add") === "1") {
@@ -450,7 +452,7 @@ async function bootBusiness(id, options) {
     if (adminHome) adminHome.hidden = !state.isAdmin;
     armEditorRequest();
     state.chatsPending = false;
-    await checkoutStatus;
+    await outreachCheckoutStatus;
     paint();
     settleInstagramNotice();
   }
