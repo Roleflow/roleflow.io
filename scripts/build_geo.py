@@ -9,7 +9,7 @@ from pages_data import PAGES
 
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://www.roleflow.io"
-ONE = "Roleflow is a Client Acquisition System. We build and run your Instagram DM system: every lead answered in seconds, voice notes in your own voice (cloned from a short recording), follow-ups sent automatically and only within 24 hours, and qualified leads booked on your calendar."
+ONE = "Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system: every lead answered in seconds, voice notes in your own voice (cloned from a short recording), follow-ups sent automatically and only within 24 hours, and qualified leads booked on your calendar."
 IG = "https://www.instagram.com/roleflow.io"
 TT = "https://www.tiktok.com/@roleflow.io"
 YT = "https://www.youtube.com/@roleflow"
@@ -59,7 +59,7 @@ def footer():
 <div><h2>Español</h2><ul>{lis(es_links)}</ul></div>
 </div>
 <p class="social">{social_html}</p>
-<p class="fine">© Roleflow. Client Acquisition System. <a href="mailto:diego@roleflow.io">diego@roleflow.io</a></p>
+<p class="fine">© Roleflow. AI Client Acquisition Engine. <a href="mailto:diego@roleflow.io">diego@roleflow.io</a></p>
 </div></footer>
 <script src="/assets/site-config.js"></script>
 <script src="/supabase/config.js"></script>
@@ -123,8 +123,8 @@ def head(page, lang):
 
 def org_node(lang):
     desc = page_desc = {
-        "en": "Client Acquisition System for Instagram DMs. We build and run the system: replies in seconds, voice notes in your own voice, follow-ups within 24 hours, and booked calls.",
-        "es": "Sistema de adquisición de clientes para DMs de Instagram. Lo montamos y lo operamos: respuestas en segundos, notas de voz en tu propia voz y llamadas agendadas.",
+        "en": "AI Client Acquisition Engine for Instagram DMs. We build and run the system: replies in seconds, voice notes in your own voice, follow-ups within 24 hours, and booked calls.",
+        "es": "Motor de adquisición de clientes con IA para DMs de Instagram. Lo montamos y lo operamos: respuestas en segundos, notas de voz en tu propia voz y llamadas agendadas.",
     }[lang]
     return {
         "@type": "Organization",
@@ -159,9 +159,9 @@ def app_node(lang):
         "@type": "Product",
         "@id": ORIGIN + "/#app",
         "name": "Roleflow",
-        "category": "Client Acquisition System",
+        "category": "AI Client Acquisition Engine",
         "applicationCategory": "BusinessApplication",
-        "applicationSubCategory": "Client Acquisition System",
+        "applicationSubCategory": "AI Client Acquisition Engine",
         "operatingSystem": "Web",
         "inLanguage": ["en", "es"],
         "publisher": {"@id": ORIGIN + "/#org"},
@@ -348,11 +348,11 @@ def llms():
         "",
         f"> {ONE}",
         "",
-        "Roleflow is a Client Acquisition System for high-ticket coaches, consultants, course creators and agency owners whose personal brand drives sales on Instagram. En español: sistema de adquisición de clientes.",
+        "Roleflow is an AI Client Acquisition Engine for high-ticket coaches, consultants, course creators and agency owners whose personal brand drives sales on Instagram. En español: motor de adquisición de clientes con IA.",
         "",
         "Who it fits: businesses with 20+ Instagram DMs a day, an offer above $1,000, a close rate above 20%, and $30k+/month cash collected.",
         "Who it does not fit: businesses selling mainly through WhatsApp, email or phone (Instagram DMs only), low-ticket offers, or very low DM volume.",
-        "Roleflow is an AI Client Acquisition Engine. Book a demo opens the on-site qualification (#qualify on English pages, and the same quiz in Spanish on /es/ pages). Public pages do not link to a calendar.",
+        "Roleflow is an AI Client Acquisition Engine. Apply To Work Together opens the on-site qualification (#qualify). Public pages do not link to a calendar.",
         "",
         "## Social",
         f"- Instagram: {IG}",
@@ -367,10 +367,6 @@ def llms():
         else:
             lines.append(f"- [{page['name_en']}]({url(url_for(page, 'en'))})")
     lines.append(f"- [Sign up]({ORIGIN}/signup/)")
-    lines.append("")
-    lines.append("## Español")
-    for page in PAGES:
-        lines.append(f"- [{page['name_es']}]({url(url_for(page, 'es'))})")
     lines.append("")
     (ROOT / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
 
@@ -422,7 +418,7 @@ def images():
     bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
     regular = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
     draw.text((72, 150), "Roleflow", font=bold, fill="#EEF1FA")
-    draw.text((72, 250), "Client Acquisition System", font=regular, fill="#E8B04A")
+    draw.text((72, 250), "AI Client Acquisition Engine", font=regular, fill="#E8B04A")
     draw.text((72, 300), "for Instagram DMs.", font=regular, fill="#E8B04A")
     blurb = "Replies in seconds. Voice notes in your own voice.\nFollow-ups within 24 hours. Booked calls."
     draw.multiline_text((72, 400), blurb, font=regular, fill="#EEF1FA", spacing=10)
@@ -492,8 +488,8 @@ def home_jsonld():
 def patch_home():
     path = ROOT / "index.html"
     text = path.read_text(encoding="utf-8")
-    title = "Roleflow | Client Acquisition System"
-    desc = "Client Acquisition System for Instagram DMs. We build and run the system, answer every lead in seconds, and book qualified calls on your calendar today."
+    title = "Roleflow | AI Client Acquisition Engine"
+    desc = "AI Client Acquisition Engine for Instagram DMs. We build and run the system, answer every lead in seconds, and book qualified calls on your calendar today."
     if len(desc) < 150 or len(desc) > 160:
         raise SystemExit(len(desc))
     head_extra = f'''<title>{title}</title>
@@ -534,7 +530,7 @@ def patch_home():
     )
     text = text.replace(
         '<p class="sub">We build and run your Instagram DM system. It answers every lead in seconds and sends voice notes in your own voice. You pay 10% of what it earns. Answer 4 questions to see if you qualify.</p>',
-        '<p class="sub">Roleflow is a Client Acquisition System. It answers every lead in seconds and sends voice notes in your own voice, cloned from a short recording. Answer 4 questions to see if you qualify.</p>',
+        '<p class="sub">Roleflow is an AI Client Acquisition Engine. It answers every lead in seconds and sends voice notes in your own voice, cloned from a short recording. Answer 4 questions to see if you qualify.</p>',
         1,
     )
     text = text.replace(
@@ -542,7 +538,7 @@ def patch_home():
         '<div id="quiz"><div class="panel" id="start"><div id="qz" tabindex="-1" style="outline:0" aria-live="polite"></div></div></div>',
         1,
     )
-    answer = "Roleflow is a Client Acquisition System. We build and run your Instagram DM system. It replies to every inbound DM in seconds, sends voice notes in your own voice, cloned from a short recording, follows up only within 24 hours, and books qualified calls. Your closers take the calls."
+    answer = "Roleflow is an AI Client Acquisition Engine. We build and run your Instagram DM system. It replies to every inbound DM in seconds, sends voice notes in your own voice, cloned from a short recording, follows up only within 24 hours, and books qualified calls. Your closers take the calls."
     if not 40 <= words(answer) <= 60:
         raise SystemExit(f"home answer {words(answer)}")
     home = next(p for p in PAGES if p.get("home"))
