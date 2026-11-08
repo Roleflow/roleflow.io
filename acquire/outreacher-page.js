@@ -1,6 +1,8 @@
 // Outreacher tab. One layout for every business. The client signs in inside
 // the Roleflow browser. This page has no password field.
 
+import { controllerView, validateWorkflow, windowEnd } from "./outreacher-workflow.js";
+
 const COPY = {
   en: {
     title: "Outreacher",
@@ -39,7 +41,43 @@ const COPY = {
     viewerTitle: "Roleflow browser",
     viewerBody: "Instagram opens in this window. You type the password here. Roleflow does not store it.",
     close: "Close",
-    handleInvalid: "Enter an Instagram username, without the @."
+    handleInvalid: "Enter an Instagram username, without the @.",
+    workflowTitle: "Workflow",
+    workflowBody: "These settings are saved for this business. Nothing is sent. The browser has to confirm them before they count as active.",
+    timezone: "Timezone",
+    activeStart: "Active hours start",
+    windowNote: "Checks run every 30 minutes for 16 hours, from {start} to {end} in {timezone}.",
+    newFollowers: "New followers",
+    postLikes: "Post likes",
+    dailyMin: "Minimum new people per day",
+    dailyMax: "Maximum new people per day",
+    drafts: "Draft lines",
+    draftsNote: "One line is one draft. A message can use only facts from the bio, and it stays a draft.",
+    saveWorkflow: "Save workflow",
+    previewSaved: "Saved in this preview. It is not confirmed on a browser.",
+    savedWaiting: "Saved. The browser has not confirmed it.",
+    desiredLine: "Desired version {version}. Not confirmed on the browser.",
+    confirmedLine: "Desired version {version}. The browser confirmed this version.",
+    needsSetup: "Needs setup",
+    desktopUnavailable: "Browser control is not available yet.",
+    profileMissing: "This account is not assigned to a browser profile.",
+    proxyMissing: "No dedicated proxy is assigned.",
+    proxyNote: "A proxy does not replace a separate login. Each account needs its own browser profile.",
+    connectController: "Connect",
+    pauseWorkflow: "Pause workflow",
+    pauseNote: "Pausing the workflow keeps drafts from being picked up. It does not start sending.",
+    stopWorkflow: "Stop workflow",
+    stopped: "Stopped. Roleflow has to clear this before the workflow can resume.",
+    activityTitle: "Activity",
+    activityEmpty: "No confirmed activity yet.",
+    unavailableNote: "Workflow saving is not on this account yet.",
+    workflowInvalid: "Check the timezone, the daily range, and at least one draft line.",
+    browserAccepted: "The controller accepted the request. The browser has not confirmed it.",
+    browserReceived: "The controller received the request. The browser has not confirmed it.",
+    failedLine: "The last request failed. Nothing was confirmed.",
+    expiredLine: "The last request expired before the browser confirmed it.",
+    offlineLine: "The browser is offline.",
+    fixtureLabel: "Test fixture. This is not a live account."
   },
   es: {
     title: "Prospección",
@@ -78,7 +116,43 @@ const COPY = {
     viewerTitle: "Navegador de Roleflow",
     viewerBody: "Instagram se abre en esta ventana. La contraseña la escribes aquí. Roleflow no la guarda.",
     close: "Cerrar",
-    handleInvalid: "Escribe un usuario de Instagram, sin @."
+    handleInvalid: "Escribe un usuario de Instagram, sin @.",
+    workflowTitle: "Flujo",
+    workflowBody: "Estos ajustes se guardan para este negocio. No se envía nada. El navegador tiene que confirmarlos para que cuenten como activos.",
+    timezone: "Zona horaria",
+    activeStart: "Inicio de las horas activas",
+    windowNote: "La revisión corre cada 30 minutos durante 16 horas, de {start} a {end} en {timezone}.",
+    newFollowers: "Nuevos seguidores",
+    postLikes: "Me gusta en publicaciones",
+    dailyMin: "Mínimo de personas nuevas por día",
+    dailyMax: "Máximo de personas nuevas por día",
+    drafts: "Líneas de borrador",
+    draftsNote: "Una línea es un borrador. Un mensaje solo puede usar datos de la biografía, y sigue siendo un borrador.",
+    saveWorkflow: "Guardar flujo",
+    previewSaved: "Guardado en esta vista previa. No está confirmado en un navegador.",
+    savedWaiting: "Guardado. El navegador no lo confirmó.",
+    desiredLine: "Versión deseada {version}. Sin confirmar en el navegador.",
+    confirmedLine: "Versión deseada {version}. El navegador confirmó esta versión.",
+    needsSetup: "Falta la configuración",
+    desktopUnavailable: "El control del navegador todavía no está disponible.",
+    profileMissing: "Esta cuenta no tiene un perfil de navegador asignado.",
+    proxyMissing: "No hay un proxy dedicado asignado.",
+    proxyNote: "Un proxy no reemplaza un acceso distinto. Cada cuenta necesita su propio perfil de navegador.",
+    connectController: "Conectar",
+    pauseWorkflow: "Pausar flujo",
+    pauseNote: "Pausar el flujo evita que se recojan borradores. No empieza el envío.",
+    stopWorkflow: "Detener flujo",
+    stopped: "Detenido. Roleflow tiene que quitar esto antes de que el flujo pueda seguir.",
+    activityTitle: "Actividad",
+    activityEmpty: "Todavía no hay actividad confirmada.",
+    unavailableNote: "Guardar el flujo todavía no está disponible en esta cuenta.",
+    workflowInvalid: "Revisa la zona horaria, el rango diario y al menos una línea de borrador.",
+    browserAccepted: "El controlador aceptó la solicitud. El navegador no la confirmó.",
+    browserReceived: "El controlador recibió la solicitud. El navegador no la confirmó.",
+    failedLine: "La última solicitud falló. No hubo confirmación.",
+    expiredLine: "La última solicitud venció antes de que el navegador la confirmara.",
+    offlineLine: "El navegador está desconectado.",
+    fixtureLabel: "Prueba de ensayo. Esta no es una cuenta real."
   }
 };
 
@@ -179,6 +253,7 @@ export function renderOutreacher(ui) {
   const wrap = ui.el("div", { class: "platform-home", id: "outreacher", "data-phase": phase });
   wrap.append(ui.pageHeader(ui, copy.title, copy.body, "outreacher", "send"));
   wrap.append(statusCard(ui, copy, phase, language));
+  wrap.append(workflowCard(ui, copy));
   if (ui.state && ui.state.outreachOpen) wrap.append(viewer(ui, copy));
   return wrap;
 }
@@ -323,6 +398,201 @@ function viewer(ui, copy) {
     frame.append(stage);
   }
   return frame;
+}
+
+export function workflowFromFields(fields) {
+  const source = fields || {};
+  const lines = String(source.drafts || "").split(/\n/).map((line) => line.trim()).filter(Boolean);
+  const sources = [];
+  if (source.newFollowers) sources.push("new_follower");
+  if (source.postLikes) sources.push("post_liker");
+  const dailyMin = Number(source.dailyMin);
+  const dailyMax = Number(source.dailyMax);
+  return {
+    timezone: String(source.timezone || "").trim(),
+    active_start: String(source.activeStart || "").slice(0, 5),
+    active_hours: 16,
+    poll_interval_min: 30,
+    sources,
+    daily_prospect_min: Number.isInteger(dailyMin) ? dailyMin : Number.NaN,
+    daily_prospect_max: Number.isInteger(dailyMax) ? dailyMax : Number.NaN,
+    draft_only: true,
+    personalize: "bio_facts_only",
+    templates: lines.map((text, index) => ({ id: "draft-" + (index + 1), text }))
+  };
+}
+
+export function workflowStatusText(copy, view) {
+  if (view && view.agreement === "confirmed" && view.desiredVersion) {
+    return copy.confirmedLine.replace("{version}", String(view.desiredVersion));
+  }
+  if (view && view.desiredVersion) return copy.desiredLine.replace("{version}", String(view.desiredVersion));
+  return copy.needsSetup;
+}
+
+export function workflowWindowText(copy, start, timezone) {
+  return copy.windowNote
+    .replace("{start}", start || "07:00")
+    .replace("{end}", windowEnd(start || "07:00"))
+    .replace("{timezone}", timezone || "America/Asuncion");
+}
+
+function workflowCard(ui, copy) {
+  const card = ui.el("section", { class: "agent outreach-card", id: "workflow-card" });
+  const state = ui.state || {};
+  const saved = state.controllerWorkflow || null;
+  const view = controllerView({
+    controller: state.controller,
+    profile: state.controllerProfile,
+    command: state.controllerCommand,
+    activity: state.controllerActivity,
+    unavailable: state.controllerUnavailable !== false
+  });
+  card.append(ui.el("h3", { text: copy.workflowTitle }));
+  card.append(ui.el("p", { class: "mute", text: copy.workflowBody }));
+  card.append(ui.el("p", { class: "integration-status", id: "workflow-connection", role: "status", text: copy.needsSetup }));
+  card.append(ui.el("p", { id: "workflow-desired", role: "status", text: workflowStatusText(copy, view) }));
+  if (view.commandStatus === "accepted") card.append(ui.el("p", { id: "workflow-progress", text: copy.browserAccepted }));
+  if (view.commandStatus === "acknowledged") card.append(ui.el("p", { id: "workflow-progress", text: copy.browserReceived }));
+  if (view.agreement === "failed" && !view.killed) card.append(ui.el("p", { id: "workflow-progress", text: copy.failedLine }));
+  if (view.agreement === "expired") card.append(ui.el("p", { id: "workflow-progress", text: copy.expiredLine }));
+  if (view.agreement === "offline") card.append(ui.el("p", { id: "workflow-progress", text: copy.offlineLine }));
+  card.append(ui.el("p", { id: "workflow-desktop", text: copy.desktopUnavailable }));
+  card.append(ui.el("p", { class: "mute", id: "workflow-profile", text: view.profileStatus === "unconfigured" ? copy.profileMissing : copy.proxyNote }));
+  if (view.proxy !== "assigned") card.append(ui.el("p", { id: "workflow-proxy", text: copy.proxyMissing }));
+  const connect = ui.button(copy.connectController, () => {});
+  connect.id = "workflow-connect";
+  connect.classList.add("ghost");
+  connect.disabled = true;
+  connect.setAttribute("aria-disabled", "true");
+  card.append(connect);
+  if (view.fixture) card.append(ui.el("p", { id: "workflow-fixture", text: copy.fixtureLabel }));
+  if (state.controllerNotice) card.append(ui.el("p", { id: "workflow-notice", role: "status", text: state.controllerNotice }));
+  if (state.controllerUnavailable !== false) {
+    card.append(ui.el("p", { class: "mute", id: "workflow-unavailable", text: copy.unavailableNote }));
+    card.append(activityBlock(ui, copy, view));
+    return card;
+  }
+  const mayEdit = state.canEdit === true;
+  const timezone = ui.el("input", {
+    id: "workflow-timezone",
+    type: "text",
+    maxlength: "64",
+    value: (saved && saved.timezone) || "America/Asuncion",
+    disabled: mayEdit ? null : true
+  });
+  const start = ui.el("input", {
+    id: "workflow-start",
+    type: "time",
+    value: (saved && saved.active_start) || "07:00",
+    disabled: mayEdit ? null : true
+  });
+  const window = ui.el("p", { class: "mute", id: "workflow-window", text: workflowWindowText(copy, start.value, timezone.value) });
+  const refreshWindow = () => { window.textContent = workflowWindowText(copy, start.value, timezone.value); };
+  timezone.addEventListener("input", refreshWindow);
+  start.addEventListener("input", refreshWindow);
+  const followers = ui.el("input", { id: "workflow-followers", type: "checkbox" });
+  const likes = ui.el("input", { id: "workflow-likes", type: "checkbox" });
+  const sourceList = saved && Array.isArray(saved.sources) ? saved.sources : ["new_follower", "post_liker"];
+  followers.checked = sourceList.includes("new_follower");
+  likes.checked = sourceList.includes("post_liker");
+  followers.disabled = !mayEdit;
+  likes.disabled = !mayEdit;
+  const dailyMin = ui.el("input", { id: "workflow-daily-min", type: "number", min: "20", max: "100", value: saved ? String(saved.daily_prospect_min) : "20" });
+  const dailyMax = ui.el("input", { id: "workflow-daily-max", type: "number", min: "20", max: "100", value: saved ? String(saved.daily_prospect_max) : "100" });
+  dailyMin.disabled = !mayEdit;
+  dailyMax.disabled = !mayEdit;
+  const drafts = ui.el("textarea", {
+    id: "workflow-drafts",
+    rows: "4",
+    maxlength: "2400"
+  });
+  drafts.value = saved && Array.isArray(saved.templates) ? saved.templates.map((row) => row.text).join("\n") : "";
+  drafts.disabled = !mayEdit;
+  card.append(ui.el("label", { text: copy.timezone }, [timezone]));
+  card.append(ui.el("label", { text: copy.activeStart }, [start]));
+  card.append(window);
+  card.append(ui.el("label", { class: "switch" }, [followers, copy.newFollowers]));
+  card.append(ui.el("label", { class: "switch" }, [likes, copy.postLikes]));
+  card.append(ui.el("label", { text: copy.dailyMin }, [dailyMin]));
+  card.append(ui.el("label", { text: copy.dailyMax }, [dailyMax]));
+  card.append(ui.el("label", { text: copy.drafts }, [drafts]));
+  card.append(ui.el("p", { class: "mute", text: copy.draftsNote }));
+  const save = ui.button(copy.saveWorkflow, () => ui.saveControllerWorkflow && ui.saveControllerWorkflow(workflowFromFields({
+    timezone: timezone.value,
+    activeStart: start.value,
+    newFollowers: followers.checked,
+    postLikes: likes.checked,
+    dailyMin: dailyMin.value,
+    dailyMax: dailyMax.value,
+    drafts: drafts.value
+  })));
+  save.id = "workflow-save";
+  save.disabled = !mayEdit;
+  card.append(save);
+  const paused = ui.el("input", { id: "workflow-pause", type: "checkbox" });
+  paused.checked = view.paused;
+  paused.disabled = !mayEdit || view.killed;
+  paused.addEventListener("change", () => ui.saveControllerPause && ui.saveControllerPause(paused.checked));
+  card.append(ui.el("label", { class: "switch" }, [paused, copy.pauseWorkflow]));
+  card.append(ui.el("p", { class: "mute", text: copy.pauseNote }));
+  if (view.killed) card.append(ui.el("p", { id: "workflow-stopped", role: "status", text: copy.stopped }));
+  const stop = ui.button(copy.stopWorkflow, () => ui.stopController && ui.stopController());
+  stop.id = "workflow-stop";
+  stop.disabled = !mayEdit || view.killed;
+  card.append(stop);
+  card.append(activityBlock(ui, copy, view));
+  const checked = saved ? validateWorkflow(saved) : null;
+  if (checked && !checked.ok) card.append(ui.el("p", { class: "claude-notice", id: "workflow-invalid", role: "alert", text: copy.workflowInvalid }));
+  return card;
+}
+
+function activityBlock(ui, copy, view) {
+  const block = ui.el("div", { id: "workflow-activity" });
+  block.append(ui.el("h3", { text: copy.activityTitle }));
+  const rows = (view.activity || []).filter((row) => ["prospect_seen", "draft_prepared", "duplicate_skipped", "qualification"].includes(row.kind));
+  if (!rows.length) {
+    block.append(ui.el("p", { class: "mute", id: "workflow-activity-empty", text: copy.activityEmpty }));
+    return block;
+  }
+  const list = ui.el("ul", { class: "workflow-activity" });
+  rows.forEach((row) => {
+    const facts = Array.isArray(row.bio_facts) ? row.bio_facts.filter(Boolean).join("; ") : "";
+    const text = [row.handle ? "@" + row.handle : "", row.source || "", facts, row.draft_text || ""].filter(Boolean).join(" · ");
+    const item = ui.el("li", { text: text || row.kind || "" });
+    if (row.test_only) item.append(ui.el("span", { class: "workflow-fixture", text: " " + copy.fixtureLabel }));
+    list.append(item);
+  });
+  block.append(list);
+  return block;
+}
+
+export async function loadController(supabase, businessId) {
+  if (!supabase || !businessId) return { unavailable: true, state: null, profile: null, workflow: null, activity: [], command: null };
+  const state = await supabase.from("outreacher_controller_state").select("paused, killed, desired_version, observed_version, controller_status, profile_id, last_error").eq("business_id", businessId).maybeSingle();
+  if (state.error) {
+    return {
+      unavailable: /schema cache|does not exist|PGRST|outreacher_controller_state/i.test(state.error.message || ""),
+      error: state.error.message,
+      state: null,
+      profile: null,
+      workflow: null,
+      activity: [],
+      command: null
+    };
+  }
+  const profile = await supabase.from("outreacher_profiles").select("id, profile_key, process_slot, ig_username, session_state, status, controller_seen_at").eq("business_id", businessId).limit(1).maybeSingle();
+  const version = await supabase.from("outreacher_workflow_versions").select("version, document").eq("business_id", businessId).order("version", { ascending: false }).limit(1).maybeSingle();
+  const activity = await supabase.from("outreacher_activity").select("id, kind, handle, source, bio_facts, draft_text, created_at").eq("business_id", businessId).order("created_at", { ascending: false }).limit(20);
+  const command = await supabase.from("outreacher_commands").select("id, operation, workflow_version, status, last_error, expires_at, accepted_at, acknowledged_at, observed_at").eq("business_id", businessId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return {
+    unavailable: false,
+    state: state.data,
+    profile: profile.error ? null : profile.data,
+    workflow: version.error || !version.data ? null : version.data.document,
+    activity: activity.error ? [] : activity.data || [],
+    command: command.error ? null : command.data
+  };
 }
 
 export async function loadOutreacher(supabase, businessId) {

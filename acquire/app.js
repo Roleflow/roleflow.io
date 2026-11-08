@@ -5,7 +5,8 @@ import { delayError } from "./studio-ops-model.js";
 import { practiceDelaySeconds } from "./setter-delay.js";
 import { switchesText } from "./dashboard-switches.js";
 import { gateSetter, localTry, renderCalendar, renderDashboardHome, renderGrokAgent, renderInstagramConnect, renderModelKey, renderSetter, text as agentText } from "./client-pages.js";
-import { loadOutreacher, normalizeHandle, outreacherCopy, outreacherPhase, readOutreachCheckoutStatus, renderOutreacher } from "./outreacher-page.js";
+import { loadController, loadOutreacher, normalizeHandle, outreacherCopy, outreacherPhase, readOutreachCheckoutStatus, renderOutreacher } from "./outreacher-page.js";
+import { createStore, saveWorkflow, setControl, validateWorkflow } from "./outreacher-workflow.js";
 import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
@@ -574,6 +575,17 @@ async function loadAll(id, token) {
     state.machine = outreachRow.machine;
     state.outreacherConfig = outreachRow.config;
   }
+  const controllerRow = await loadController(q, id);
+  if (!live()) return false;
+  if (controllerRow.unavailable) state.controllerUnavailable = true;
+  else {
+    state.controllerUnavailable = false;
+    state.controller = controllerRow.state;
+    state.controllerProfile = controllerRow.profile;
+    state.controllerWorkflow = controllerRow.workflow;
+    state.controllerActivity = controllerRow.activity;
+    state.controllerCommand = controllerRow.command;
+  }
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
@@ -971,6 +983,9 @@ function pageUi() {
     scheduleOutreachCancel,
     openOutreachBrowser,
     saveOutreachPause,
+    saveControllerWorkflow,
+    saveControllerPause,
+    stopController,
     signAudio,
     targetDetail: leadDetail,
     saveBrief,
@@ -4727,7 +4742,17 @@ function armOutreachPoll() {
     if (loaded.unavailable) return;
     state.machine = loaded.machine;
     state.outreacherConfig = loaded.config;
-    if (state.tab === "outreacher" && outreacherPhase(state) !== before) paint();
+    const controllerRow = await loadController(state.supabase, state.businessId);
+    if (!controllerRow.unavailable) {
+      state.controllerUnavailable = false;
+      state.controller = controllerRow.state;
+      state.controllerProfile = controllerRow.profile;
+      state.controllerWorkflow = controllerRow.workflow;
+      state.controllerActivity = controllerRow.activity;
+      state.controllerCommand = controllerRow.command;
+    }
+    const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest("#workflow-card");
+    if (!typing && state.tab === "outreacher" && outreacherPhase(state) !== before) paint();
   }, 8000);
 }
 
@@ -4876,6 +4901,117 @@ async function saveOutreachPause(paused) {
   if (saved.error && state.tab === "outreacher") {
     state.outreachError = saved.error.message;
   }
+  paint();
+}
+
+async function applyControllerPreview(result, notice) {
+  const copy = outreacherCopy(language());
+  if (!result.ok) {
+    state.outreachError = result.reason === "killed" ? copy.stopped : copy.workflowInvalid;
+    paint();
+    return;
+  }
+  state.controllerStore = result.store;
+  if (result.state) state.controller = result.state;
+  state.controllerCommand = result.command;
+  state.controllerActivity = result.store.activity.filter((row) => !row.test_only && ["prospect_seen", "draft_prepared", "duplicate_skipped", "qualification"].includes(row.kind));
+  state.controllerUnavailable = false;
+  state.controllerNotice = notice;
+  state.outreachError = "";
+  paint();
+}
+
+async function saveControllerWorkflow(documentFields) {
+  const copy = outreacherCopy(language());
+  const checked = validateWorkflow(documentFields);
+  if (!checked.ok) {
+    state.outreachError = copy.workflowInvalid;
+    paint();
+    return;
+  }
+  if (state.preview) {
+    const result = await saveWorkflow(state.controllerStore || createStore(), {
+      businessId: state.businessId,
+      document: checked.workflow,
+      now: new Date()
+    });
+    state.controllerWorkflow = checked.workflow;
+    await applyControllerPreview(result, copy.previewSaved);
+    return;
+  }
+  const saved = await state.supabase.rpc("outreacher_save_workflow", {
+    p_business: state.businessId,
+    p_document: checked.workflow
+  });
+  if (saved.error || !saved.data || saved.data.ok !== true) {
+    state.outreachError = copy.workflowInvalid;
+    paint();
+    return;
+  }
+  state.controllerNotice = copy.savedWaiting;
+  state.outreachError = "";
+  const loaded = await loadController(state.supabase, state.businessId);
+  if (!loaded.unavailable) {
+    state.controllerUnavailable = false;
+    state.controller = loaded.state;
+    state.controllerProfile = loaded.profile;
+    state.controllerWorkflow = loaded.workflow;
+    state.controllerActivity = loaded.activity;
+    state.controllerCommand = loaded.command;
+  }
+  paint();
+}
+
+async function saveControllerPause(paused) {
+  const copy = outreacherCopy(language());
+  const action = paused ? "pause" : "resume";
+  if (state.preview) {
+    const result = await setControl(state.controllerStore || createStore(), {
+      businessId: state.businessId,
+      action,
+      now: new Date()
+    });
+    await applyControllerPreview(result, copy.previewSaved);
+    return;
+  }
+  const saved = await state.supabase.rpc("outreacher_set_controller", { p_business: state.businessId, p_action: action });
+  if (saved.error || !saved.data || saved.data.ok !== true) {
+    state.outreachError = saved.data && saved.data.reason === "killed" ? copy.stopped : copy.workflowInvalid;
+    paint();
+    return;
+  }
+  const loaded = await loadController(state.supabase, state.businessId);
+  if (!loaded.unavailable) {
+    state.controller = loaded.state;
+    state.controllerCommand = loaded.command;
+    state.controllerActivity = loaded.activity;
+  }
+  paint();
+}
+
+async function stopController() {
+  const copy = outreacherCopy(language());
+  if (state.preview) {
+    const result = await setControl(state.controllerStore || createStore(), {
+      businessId: state.businessId,
+      action: "kill",
+      now: new Date()
+    });
+    await applyControllerPreview(result, copy.previewSaved);
+    return;
+  }
+  const saved = await state.supabase.rpc("outreacher_set_controller", { p_business: state.businessId, p_action: "kill" });
+  if (saved.error || !saved.data || saved.data.ok !== true) {
+    state.outreachError = copy.workflowInvalid;
+    paint();
+    return;
+  }
+  const loaded = await loadController(state.supabase, state.businessId);
+  if (!loaded.unavailable) {
+    state.controller = loaded.state;
+    state.controllerCommand = loaded.command;
+  }
+  state.controllerNotice = copy.stopped;
   paint();
 }
 
@@ -5183,6 +5319,14 @@ function readPreview() {
     },
     outreachOpen: params.get("outreacher") === "live",
     outreachUrl: "",
+    controllerUnavailable: false,
+    controller: { paused: true, killed: false, desired_version: null, observed_version: null, controller_status: "needs_setup", last_error: "" },
+    controllerProfile: null,
+    controllerWorkflow: null,
+    controllerActivity: [],
+    controllerCommand: null,
+    controllerNotice: "",
+    controllerStore: null,
     previewSync: params.get("sync") || "",
     previewError: params.get("sync") === "failed" ? "The workflow was rejected." : "",
     settings: { system_enabled: params.get("sync") === "ready" ? false : true, daily_cap: 30, timezone: "Europe/Madrid", quiet_start: "22:00", quiet_end: "08:00", warmup_like_count: 2, warmup_spacing_days: 1, ig_paused: false, share_bps: 1000, ai_voice_future: false, onboarding_step: params.get("step") || "profile", studio_setter_sync: false, booking_fallback_url: "", reply_delay_seconds: 30, reply_delay_max_seconds: 120, setter_voice: params.get("voice") == null || params.get("voice") === "" ? 50 : clampVoice(params.get("voice")), setter_claude_mode: params.get("claude") === "saved" || params.get("claude") === "ok" || params.get("claude") === "bad" ? "own" : "default" },
