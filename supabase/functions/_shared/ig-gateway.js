@@ -303,7 +303,11 @@ export function normalizeEvent(payload, headerEventId) {
 function voiceField(message) {
   const voice = voiceAttachment(message && message.attachments);
   if (!voice) return {};
-  return { voice: { ...voice, messageId: String((message && message.id) || "") } };
+  // The attachment re-mint takes the platform message id (Instagram mid).
+  // message.id is the inbox's own id and is not accepted on that path.
+  const platformId = String((message && (message.platformMessageId || message.platform_message_id)) || "");
+  const internalId = String((message && message.id) || "");
+  return { voice: { ...voice, messageId: platformId || internalId } };
 }
 
 // What the inbox row shows before the note is transcribed.
@@ -319,7 +323,7 @@ export function voiceRefreshRequest(event, apiKey) {
   if (!voice || !voice.messageId || !event.conversationId || !event.accountId || !apiKey) return null;
   return {
     url: API_BASE + "/inbox/conversations/" + encodeURIComponent(event.conversationId) + "/messages/" + encodeURIComponent(voice.messageId) +
-      "/attachments/" + encodeURIComponent(String(voice.index || 0)) + "?accountId=" + encodeURIComponent(event.accountId),
+      "/attachments/" + encodeURIComponent(String(voice.index || 0)) + "?accountId=" + encodeURIComponent(event.accountId) + "&format=json",
     headers: { Authorization: "Bearer " + apiKey }
   };
 }
@@ -424,11 +428,13 @@ export function enqueueBody(event, text, conversationRowId) {
 }
 
 export function planPayload(event, conversationRowId) {
-  return {
+  const payload = {
     ...enqueueBody(event, "", conversationRowId),
     needsPlan: true,
     inbound: String((event && event.text) || "").slice(0, 4000)
   };
+  if (event && event.voice) payload.voice = event.voice;
+  return payload;
 }
 
 export function replyText(plan) {
