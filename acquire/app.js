@@ -1,3 +1,4 @@
+import { explicitAcquisition } from "../auth/landing.js";
 import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { toast } from "../auth/ui.js";
 import { NAV_GROUPS, canonicalTab, navLabel, readLanguage, writeLanguage } from "./client-nav.mjs";
@@ -16,7 +17,7 @@ import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conve
 import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { clampDmCap } from "./auto-dm.js";
 import { hashLoginToken, heartbeatFresh, LOGIN_TTL_MS, loginExpiry, mintLoginToken, panelLoginHash } from "./dm-login.js";
-import { roleflowSections } from "./setter-sections.js";
+import { promptFromSections, roleflowSections } from "./setter-sections.js";
 import { advanceStatus, intakeBundle, normalizeDraft } from "./onboarding-build.js";
 import { parseBulkThreads } from "./winning-conversations.js";
 import { localSopReview } from "./sop-page.js";
@@ -244,6 +245,7 @@ async function boot() {
       writeLanguage(safeStorage(), requested);
     }
     state.canEdit = preview.canEdit === true;
+    state.setterPromptSaved = Boolean(String(state.setterPrompt || "").trim());
     state.canManageKeys = state.canEdit === true;
     state.setterVoice = clampVoice(preview.settings && preview.settings.setter_voice);
     if (preview.promptDraft) {
@@ -324,6 +326,10 @@ async function boot() {
     return;
   }
   state.user = data.session.user;
+  if (!explicitAcquisition(location.href)) {
+    location.replace("/businesses/");
+    return;
+  }
   const accountProfile = await state.supabase.from("profiles").select("id, email, full_name").eq("id", state.user.id).maybeSingle();
   if (!accountProfile.error && accountProfile.data) state.accountProfile = accountProfile.data;
   paintProfile();
@@ -699,7 +705,13 @@ async function loadAll(id, token) {
   ]);
   if (!live()) return false;
   state.agentSwitches = switches.error ? [] : switches.data || [];
+  state.setterPromptSaved = Boolean(setterPrompt.data && String(setterPrompt.data.body || "").trim());
   state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
+  if (!state.setterPromptSaved) {
+    const currentSections = state.setterPrompts.find((row) => row.id === state.setterCurrentId) || state.setterPrompts[0];
+    const drafted = promptFromSections(currentSections && currentSections.sections);
+    if (drafted) state.setterPrompt = drafted;
+  }
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
   const winning = await q.from("acq_winning_conversations").select("id, title, raw_text, messages, outcome, notes, created_at, updated_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30);
   if (!live()) return false;
@@ -808,6 +820,17 @@ async function loadEarlier() {
   paint();
 }
 
+function setterTrainingLink() {
+  const es = language() === "es";
+  const block = el("section", { class: "agent", id: "setter-training" });
+  block.append(el("h3", { text: es ? "Entrenar el setter" : "Train the Agentic Setter" }));
+  block.append(el("p", { text: es
+    ? "El editor del setter es el mismo en cada negocio. Ábrelo para revisar el prompt y guardarlo."
+    : "The setter editor is the same on every business. Open it to review the prompt and save it." }));
+  block.append(el("a", { class: "btn sm", href: "#setter" }, [es ? "Abrir el setter" : "Open the setter"]));
+  return block;
+}
+
 function paint() {
   parkAssistant();
   if (state.tab !== "assistant") state.assistantExpanded = false;
@@ -843,6 +866,7 @@ function paint() {
   if (state.tab === "settings") {
     root.append(renderModelKey(ui));
     root.append(renderInstagramConnect(ui));
+    if (!state.setterPromptSaved || new URLSearchParams(location.search).get("connect") === "1") root.append(setterTrainingLink());
     root.append(renderConfiguration(ui));
     root.append(renderSalesLinks(ui));
     root.append(renderTeam(ui));
