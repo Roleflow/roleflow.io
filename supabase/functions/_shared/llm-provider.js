@@ -181,8 +181,7 @@ export function redactSecret(text, secret) {
   return out
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
-    .replace(/\bxai-[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
-    .slice(0, 240);
+    .replace(/\bxai-[A-Za-z0-9_-]{8,}\b/g, "[redacted]");
 }
 
 export function anthropicAcceptsTemperature(model) {
