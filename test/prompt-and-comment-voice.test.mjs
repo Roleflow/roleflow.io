@@ -60,7 +60,7 @@ assert.match(trial, /sent: false/);
 assert.doesNotMatch(trial, /acq_agent_switches/);
 assert.doesNotMatch(trial, /slice\(-12\)/);
 assert.doesNotMatch(trial, /one short/);
-assert.doesNotMatch(trial, /maxTokens/);
+assert.match(trial, /maxTokens: SETTER_MAX_TOKENS/);
 assert.doesNotMatch(trial, /localTrialText/);
 assert.match(trial, /key_source/);
 assert.match(trial, /practiceError/);

@@ -1,10 +1,15 @@
 import { clampVoice, prepareVoice } from "./setter-voice.js";
+import { salvageCutOffText } from "./split-reply.js";
 
 // One chat completion path for every Roleflow caller.
 // Platform keys stay in the function environment. A business key is passed in
 // already decrypted and is never written to the returned error text.
 
 export const CLAUDE_SONNET_MODEL = "claude-sonnet-5-5";
+
+// Default output budget for a setter reply. Claude requires max_tokens and
+// used to default to 1024, which can cut a multi-bubble pricing reply mid-word.
+export const SETTER_MAX_TOKENS = 4096;
 
 export const PROVIDERS = {
   xai: {
@@ -464,10 +469,16 @@ function temperatureRejected(error) {
 // True when the provider stopped because it ran out of output tokens.
 export function hitTokenLimit(payload) {
   const body = payload && typeof payload === "object" ? payload : {};
-  if (body.choices && body.choices[0] && body.choices[0].finish_reason === "length") return true;
-  if (body.stop_reason === "max_tokens") return true;
+  const reasons = [];
+  const choice = body.choices && body.choices[0];
+  if (choice) reasons.push(choice.finish_reason, choice.native_finish_reason);
+  reasons.push(body.stop_reason, body.stopReason);
   const candidate = body.candidates && body.candidates[0];
-  return Boolean(candidate && candidate.finishReason === "MAX_TOKENS");
+  if (candidate) reasons.push(candidate.finishReason, candidate.finish_reason);
+  return reasons.some((reason) => {
+    const value = String(reason || "").toLowerCase().replace(/-/g, "_");
+    return value === "max_tokens" || value === "length";
+  });
 }
 
 export function largerBudget(maxTokens) {
@@ -486,15 +497,26 @@ async function once(runtime, input) {
   }
 }
 
-// A reply that hit the token limit is never returned. Retry once with a larger
-// budget; if it is still cut off, throw so the caller falls back or fails the
-// reply instead of sending a fragment.
+// A cut-off reply is retried once with a larger budget. If it is still cut
+// off, only complete sentences are kept. A bare fragment is never returned.
 async function sendWhole(runtime, input) {
   try {
     return await sendOnce(runtime, input);
   } catch (error) {
-    if (!(error && error.code === "cut_off") || input.retriedCutOff) throw error;
-    return sendOnce(runtime, { ...input, maxTokens: largerBudget(input.maxTokens), retriedCutOff: true });
+    if (!(error && error.code === "cut_off")) throw error;
+    if (!input.retriedCutOff) {
+      try {
+        return await sendOnce(runtime, { ...input, maxTokens: largerBudget(input.maxTokens), retriedCutOff: true });
+      } catch (second) {
+        if (!(second && second.code === "cut_off")) throw second;
+        error = second;
+      }
+    }
+    const saved = salvageCutOffText(error.text || "");
+    if (saved) {
+      return { ...(error.result || {}), text: saved, trimmedCutOff: true };
+    }
+    throw error;
   }
 }
 
@@ -529,12 +551,7 @@ async function sendOnce(runtime, input) {
     throw error;
   }
   const parsed = parseChat(runtime.provider, payload);
-  if (hitTokenLimit(payload) && input.allowCutOff !== true) {
-    const error = new Error("The model response was cut off.");
-    error.code = "cut_off";
-    throw error;
-  }
-  return {
+  const result = {
     text: parsed.text,
     toolCalls: parsed.toolCalls,
     provider: runtime.provider,
@@ -543,6 +560,14 @@ async function sendOnce(runtime, input) {
     usage: readUsage(runtime.provider, payload),
     voice: input.voice == null || input.voice === "" ? undefined : clampVoice(input.voice)
   };
+  if (hitTokenLimit(payload) && input.allowCutOff !== true) {
+    const error = new Error("The model response was cut off.");
+    error.code = "cut_off";
+    error.text = parsed.text;
+    error.result = result;
+    throw error;
+  }
+  return result;
 }
 
 function openaiRequest({ runtime, spec, model, system, messages, json, toolList, responseFormat, heat, maxTokens }) {

@@ -56,7 +56,7 @@ Non-negotiable output contract:
 }
 
 export async function completeJson({ env, system, messages, fetchImpl, tools, runtime, fallback, chain, onError, responseFormat, maxTokens, temperature }) {
-  const { completeChat, runtimeFromEnv } = await import("../../_shared/llm-provider.js");
+  const { completeChat, runtimeFromEnv, SETTER_MAX_TOKENS } = await import("../../_shared/llm-provider.js");
   const steps = Array.isArray(chain) ? chain.filter((step) => step && step.apiKey) : [];
   const chosen = steps[0] || runtime || runtimeFromEnv(env || {});
   if (chosen && chosen.provider === "xai" && !chosen.endpoint) chosen.endpoint = XAI_CHAT_URL;
@@ -78,7 +78,7 @@ export async function completeJson({ env, system, messages, fetchImpl, tools, ru
     tools,
     json: !responseFormat && !(tools && tools.length),
     responseFormat,
-    maxTokens,
+    maxTokens: maxTokens == null ? SETTER_MAX_TOKENS : maxTokens,
     temperature,
     onError
   });
