@@ -11,6 +11,7 @@ import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
 import { splitReply } from "./split-reply.js";
+import { trialHistory } from "./trial-thread.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
@@ -1090,6 +1091,7 @@ function pageUi() {
     reviewOnboardingPrompt,
     saveCommentSlot,
     sendTrial,
+    transcribeTrial,
     startTrial,
     restartTrial,
     addCommentRule,
@@ -2123,18 +2125,53 @@ function ensureTrial() {
 }
 
 function startTrial(scenario) {
-  state.setterTrial = { scenario: scenario || "follower", messages: [] };
+  const previous = state.setterTrial;
+  const epoch = ((previous && previous.epoch) || 0) + 1;
+  if (previous) previous.epoch = epoch;
+  state.setterTrial = { scenario: scenario || "follower", messages: [], epoch };
   paint();
 }
 
 function restartTrial() {
   const trial = ensureTrial();
-  state.setterTrial = { scenario: trial.scenario || "follower", messages: [] };
+  const epoch = (trial.epoch || 0) + 1;
+  trial.epoch = epoch;
+  state.setterTrial = { scenario: trial.scenario || "follower", messages: [], epoch };
   paint();
 }
 
+function bytesToBase64(bytes) {
+  const list = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  const size = 0x2000;
+  for (let index = 0; index < list.length; index += size) {
+    binary += String.fromCharCode.apply(null, list.subarray(index, index + size));
+  }
+  return btoa(binary);
+}
+
+async function transcribeTrial(bytes, mime) {
+  if (!state.supabase) return { ok: false, reason: "signed_out" };
+  try {
+    const { data, error } = await state.supabase.functions.invoke("client-dashboard", {
+      body: {
+        business_id: state.businessId,
+        action: "transcribe_trial",
+        audio: bytesToBase64(bytes),
+        mime: mime || ""
+      }
+    });
+    if (error) return { ok: false, reason: "transcribe" };
+    if (!data || data.ok === false) return { ok: false, reason: (data && data.reason) || "transcribe" };
+    return { ok: true, transcript: data.transcript || "", language: data.language || "", duration: Number(data.duration) || 0 };
+  } catch (_error) {
+    return { ok: false, reason: "transcribe" };
+  }
+}
+
 async function sendTrial(prompt, message, options) {
-  const sample = String(message || "").trim();
+  const voice = options && options.voice;
+  const sample = String((voice && voice.transcript) || message || "").trim();
   const body = String(prompt || "");
   const followup = options && Number(options.followup);
   const asBusiness = Boolean(options && options.sender === "business");
@@ -2146,16 +2183,27 @@ async function sendTrial(prompt, message, options) {
   const minValue = delayMin ? delayMin.value : (state.settings && state.settings.reply_delay_seconds);
   const maxValue = delayMax ? delayMax.value : (state.settings && state.settings.reply_delay_max_seconds);
   const trial = ensureTrial();
-  const history = (trial.messages || []).filter((item) => item.role === "user" || item.role === "assistant").map((item) => ({
-    role: item.role,
-    content: item.text || ""
-  }));
+  const epoch = trial.epoch || 0;
+  const history = trialHistory(trial.messages);
+  const still = () => state.setterTrial === trial && (trial.epoch || 0) === epoch;
   if (asBusiness) {
     trial.messages = (trial.messages || []).concat([{ role: "assistant", text: sample, business: true }]);
     paint();
     return;
   }
-  if (!followup) trial.messages = (trial.messages || []).concat([{ role: "user", text: sample }]);
+  if (!followup) {
+    const entry = { role: "user", text: sample };
+    if (voice && voice.transcript) {
+      entry.voice = {
+        transcript: sample,
+        language: voice.language || "",
+        duration: Number(voice.duration) || 0,
+        mime: voice.mime || "",
+        playbackUrl: voice.playbackUrl || ""
+      };
+    }
+    trial.messages = (trial.messages || []).concat([entry]);
+  }
   paint();
   let result;
   if (!state.supabase) {
@@ -2181,12 +2229,15 @@ async function sendTrial(prompt, message, options) {
         followup: followup || 0,
         lead_state: (options && options.leadState) || (trial.leadState || ""),
         comment_when: commentWhenForTrial(),
-        voice: clampVoice(state.setterVoice)
+        voice: clampVoice(state.setterVoice),
+        voice_note: Boolean(voice && voice.transcript),
+        voice_language: (voice && voice.language) || ""
       });
     } catch (error) {
       result = { ok: false, error: error.message };
     }
   }
+  if (!still()) return;
   if (!result.ok) {
     const error = safeTrialError(result.error);
     trial.messages = trial.messages.concat([{ role: "assistant", error }]);
@@ -2213,12 +2264,15 @@ async function sendTrial(prompt, message, options) {
   const label = result.version && result.version.draft
     ? "Unsaved draft" + (result.version.version ? ", after version " + result.version.version : "")
     : "Version " + ((result.version && result.version.version) || 1);
+  if (!still()) return;
   const waited = practiceDelaySeconds(minValue, maxValue, state.practiceSimulateDelay === true, Math.random);
   if (waited > 0) await new Promise((resolve) => setTimeout(resolve, waited * 1000));
+  if (!still()) return;
   if (result.provider) state.onboarding = Object.assign({}, state.onboarding || {}, { status: advanceStatus(state.onboarding && state.onboarding.status, "tested") });
   const parts = splitReply(result.reply || "", state.settings && state.settings.reply_split_words != null ? state.settings.reply_split_words : 15);
   for (let index = 0; index < parts.length; index += 1) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 700));
+    if (!still()) return;
     trial.messages = trial.messages.concat([{
       role: "assistant",
       text: parts[index],
@@ -2229,6 +2283,7 @@ async function sendTrial(prompt, message, options) {
       model: result.model || "",
       versionLabel: index === 0 ? label : "",
       prompt: result.prompt || body,
+      followup: Boolean(followup),
       delayLine: index === parts.length - 1 ? (waited > 0 ? "Waited " + waited + " seconds." : "Delay skipped.") : "Next message"
     }]);
     paint();
