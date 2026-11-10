@@ -12,5 +12,6 @@ if (isConfigured()) {
   session = data.session;
 }
 if (onboardingHash(window.location.hash)) {
-  window.location.replace(session ? "/account/acquisition/?onboarding=1" : "/login/?next=/account/");
+  const onboardingNext = "/account/acquisition/?onboarding=1";
+  window.location.replace(session ? onboardingNext : "/login/?next=" + encodeURIComponent(onboardingNext));
 }

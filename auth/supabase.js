@@ -1,4 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
+import { postLoginDestination } from "./landing.js";
 import { authReturnUrl, safeNext } from "./return-url.js";
 
 export { authReturnUrl, safeNext };
@@ -34,6 +35,8 @@ export function getSupabase() {
 
 export async function destinationAfterLogin(supabase, next) {
   let target = safeNext(next);
+  const businesses = postLoginDestination(target);
+  if (businesses) return businesses;
   const home = target === "/account/" || target === "/account" || target === "/admin/" || target === "/admin" || target.startsWith("/admin/") || target.startsWith("/admin#");
   if (!home || !supabase) return target;
   const { data } = await supabase.auth.getUser();

@@ -77,8 +77,8 @@ if (arriving.type === "recovery") {
         if (!legacySetter && adminPeek.data) {
           window.location.replace(window.location.hash === "#applications" ? "/admin/#applications" : "/admin/");
         } else if (!legacySetter) {
-          const setup = window.location.hash.startsWith("#onboarding") ? "?onboarding=1#onboarding" : "";
-          window.location.replace("/account/acquisition/" + setup);
+          if (window.location.hash.startsWith("#onboarding")) window.location.replace("/account/acquisition/?onboarding=1#onboarding");
+          else window.location.replace("/businesses/");
         } else if (adminPeek.data && !window.location.hash) {
           window.location.replace("/admin/");
         } else {
@@ -95,8 +95,8 @@ if (arriving.type === "recovery") {
         if (subRes.error && !missingTable(subRes.error)) {
           showGate(subRes.error.message);
         } else if (!usesLegacySetter(subRes.data)) {
-          const setup = window.location.hash.startsWith("#onboarding") ? "?onboarding=1" : "";
-          window.location.replace("/account/acquisition/" + setup);
+          if (window.location.hash.startsWith("#onboarding")) window.location.replace("/account/acquisition/?onboarding=1");
+          else window.location.replace("/businesses/");
         } else {
           submission = subRes.data;
           if (!submission) {

@@ -118,6 +118,11 @@ export function roleflowSections(input) {
   return sections;
 }
 
+export function promptFromSections(sections) {
+  const record = sections && typeof sections === "object" ? sections : {};
+  return SETTER_SECTION_DEFS.map((section) => String(record[section.id] || "").trim()).filter(Boolean).join("\n\n");
+}
+
 export function missingSource(payload, sections) {
   const blob = SETTER_SECTION_DEFS.map((section) => sections[section.id] || "").join("\n");
   const missing = [];

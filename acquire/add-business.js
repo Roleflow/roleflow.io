@@ -107,8 +107,24 @@ export function openAddBusiness({ supabase, preview }) {
     const next = document.createElement("button");
     next.type = "submit";
     next.className = "btn sm";
-    next.textContent = step === STEPS.length - 1 ? "Create business" : "Continue";
+    next.value = "create";
+    next.textContent = "Create business";
     actions.append(next);
+    if (step < STEPS.length - 1) {
+      const details = document.createElement("button");
+      details.type = "button";
+      details.className = "btn sm ghost";
+      details.textContent = "Add details";
+      details.addEventListener("click", () => {
+        if (step === 0 && !String(answers.name || "").trim()) {
+          note.textContent = "Add the business name.";
+          return;
+        }
+        step += 1;
+        paint();
+      });
+      actions.append(details);
+    }
     form.append(actions);
     const intake = document.createElement("a");
     intake.className = "btn sm ghost";
@@ -122,13 +138,8 @@ export function openAddBusiness({ supabase, preview }) {
     form.append(note);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (step < STEPS.length - 1) {
-        if (step === 0 && !String(answers.name || "").trim()) {
-          note.textContent = "Add the business name.";
-          return;
-        }
-        step += 1;
-        paint();
+      if (step === 0 && !String(answers.name || "").trim()) {
+        note.textContent = "Add the business name.";
         return;
       }
       next.disabled = true;

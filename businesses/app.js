@@ -47,6 +47,8 @@ const app = document.getElementById("biz-app");
 const nav = document.getElementById("biz-nav");
 const logoutBtn = document.getElementById("nav-logout");
 logoutBtn.addEventListener("click", logout);
+let panelWorkspaces = [];
+let panelEnabled = new Map();
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -426,6 +428,15 @@ async function boot(supabase, user) {
   const stageRes = await supabase.from("acq_onboarding").select("business_id, status");
   if (!stageRes.error) (stageRes.data || []).forEach((row) => stages.set(row.business_id, row.status));
 
+  const workspaceRes = await supabase.from("acq_workspaces").select("id, name, owner_id, created_at").order("name", { ascending: true });
+  panelWorkspaces = workspaceRes.error ? [] : (workspaceRes.data || []);
+  panelEnabled = new Map();
+  const workspaceIds = panelWorkspaces.map((row) => row.id);
+  if (workspaceIds.length) {
+    const enabledRes = await supabase.from("acq_settings").select("agent_id, system_enabled").in("agent_id", workspaceIds);
+    if (!enabledRes.error) (enabledRes.data || []).forEach((row) => panelEnabled.set(row.agent_id, row.system_enabled === true));
+  }
+
   function paint() {
     cancelWorkforce();
     const route = parseRoute();
@@ -519,24 +530,76 @@ function paintSide(user, agents, route, isAdmin, roles) {
   else nav.prepend(block);
 }
 
+function panelBusinessHref(id, target) {
+  const business = "/account/acquisition/?business=" + encodeURIComponent(id);
+  if (target === "instagram") return business + "&connect=1#settings";
+  if (target === "setter") return business + "#setter";
+  return business + "#dashboard";
+}
+
+function paintPanelRoster(supabase, user) {
+  const es = gridLanguage() === "es";
+  const section = el("section", { id: "panel-businesses" });
+  section.append(el("p", { class: "roster-note", text: es
+    ? "Abre uno, conecta Instagram o empieza el prompt del setter. Añadir crea el mismo panel."
+    : "Open one, connect Instagram, or start the setter prompt. Adding a business creates the same panel." }));
+  const grid = el("div", { class: "biz-board", id: "panel-board" });
+  if (!panelWorkspaces.length) {
+    grid.append(el("div", { class: "state" }, [
+      el("h2", { text: es ? "Todavía no hay negocios" : "No businesses yet" }),
+      el("p", { text: es ? "Añade el nombre. El negocio nuevo usa el mismo panel." : "Add the business name. The new business uses the same panel." })
+    ]));
+  }
+  panelWorkspaces.forEach((workspace) => {
+    const on = panelEnabled.get(workspace.id) === true;
+    const card = businessCard({
+      name: workspace.name || (es ? "Negocio sin nombre" : "Untitled business"),
+      active: on,
+      activeText: on ? (es ? "IA activa" : "AI active") : (es ? "IA en pausa" : "AI paused"),
+      shared: Boolean(user && workspace.owner_id && workspace.owner_id !== user.id),
+      sharedText: es ? "Compartido" : "Shared",
+      created: createdPhrase(workspace.created_at, es ? "es" : "en"),
+      leadLabel: es ? "Leads · últimos 7 días" : "Leads · last 7 days",
+      total: null,
+      days: [],
+      chartLabel: "No leads in the last 7 days",
+      href: panelBusinessHref(workspace.id)
+    });
+    const links = el("p", { class: "links" });
+    links.append(el("a", { href: panelBusinessHref(workspace.id, "instagram") }, [es ? "Conectar Instagram" : "Connect Instagram"]));
+    links.append(document.createTextNode(" · "));
+    links.append(el("a", { href: panelBusinessHref(workspace.id, "setter") }, [es ? "Entrenar el setter" : "Train the setter"]));
+    card.append(links);
+    grid.append(card);
+  });
+  grid.append(addBusinessCard({
+    id: "panel-add-business",
+    text: es ? "Añadir negocio" : "Add business",
+    onClick: () => openAddBusiness({ supabase, preview: false })
+  }));
+  section.append(grid);
+  return section;
+}
+
 function paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds, stages) {
   const es = gridLanguage() === "es";
   heading.classList.add("biz-title");
   heading.textContent = isAdmin ? "Businesses" : (es ? "Tus negocios" : "Your businesses");
   document.title = isAdmin ? "Businesses · Roleflow" : (es ? "Tus negocios · Roleflow" : "Your businesses · Roleflow");
   const owned = agents.some((agent) => agent.client_id === user.id);
-  sub.textContent = agents.length
-    ? (isAdmin ? "Every setter in the cache, including ones with no linked client." : (es ? "Cada tarjeta abre leads, workflow, equipo y archivos." : "Each card opens leads, workflow, workforce, and assets."))
-    : (isAdmin ? "No setters are in the cache yet." : (es ? "Ningún negocio está vinculado a esta cuenta." : "No business is linked to this account yet."));
+  sub.textContent = es
+    ? "Abre un negocio o añade otro. Cada uno usa el mismo panel."
+    : "Open a business or add another. Each one uses the same panel.";
   paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, false, owned, sharedIds || new Set(), stages);
 }
 
 function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sample, owned, sharedIds, stages) {
   const es = gridLanguage() === "es";
   app.innerHTML = "";
+  if (!sample) app.append(paintPanelRoster(supabase, user));
   if (statsError) app.append(el("p", { class: "err", text: "Stats could not be loaded. " + statsError }));
   const grid = el("div", { class: "biz-board", id: "biz-board" });
-  if (!agents.length) {
+  if (!agents.length && sample) {
     grid.append(el("div", { class: "state" }, [
       el("h2", { text: es ? "Todavía no hay negocios" : "No businesses yet" }),
       el("p", { text: isAdmin ? "Setters show here after they are in the cache, even before a client is linked." : (es ? "Añade el nombre del negocio, o espera a que un admin lo vincule." : "Add the business name, or wait until an admin links one.") })
@@ -564,8 +627,8 @@ function paintBoard(supabase, user, agents, statsById, peopleById, isAdmin, stat
     if (isAdmin && pendingIds.has(agent.id)) card.append(el("p", { class: "pending-flag", text: "Pending publish" }));
     grid.append(card);
   });
-  if (!isAdmin) grid.append(addCard(supabase, user, owned, sample));
-  app.append(grid);
+  if (!isAdmin && sample) grid.append(addCard(supabase, user, owned, sample));
+  if (agents.length || sample) app.append(grid);
 }
 
 function scrollRow(row, direction) {
