@@ -3,10 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { DM_CHAR_LIMIT, splitReply, trimToSentence } from "../supabase/functions/_shared/split-reply.js";
+import { DM_CHAR_LIMIT, dropIncompleteTail, salvageCutOffText, splitReply, trimToSentence } from "../supabase/functions/_shared/split-reply.js";
 import { clampBubbles } from "../supabase/functions/roleflow-acquisition/ig/send.js";
 import { enqueueBody, planGatewayReply, replyText } from "../supabase/functions/_shared/ig-gateway.js";
-import { completeChat, hitTokenLimit, largerBudget } from "../supabase/functions/_shared/llm-provider.js";
+import { SETTER_MAX_TOKENS, completeChat, hitTokenLimit, largerBudget } from "../supabase/functions/_shared/llm-provider.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -82,6 +82,9 @@ test("token-limit stops are detected for every provider", () => {
   assert.equal(hitTokenLimit({ choices: [{ finish_reason: "length" }] }), true);
   assert.equal(hitTokenLimit({ choices: [{ finish_reason: "stop" }] }), false);
   assert.equal(hitTokenLimit({ candidates: [{ finishReason: "MAX_TOKENS" }] }), true);
+  assert.equal(hitTokenLimit({ choices: [{ finish_reason: "max_tokens" }] }), true);
+  assert.equal(hitTokenLimit({ choices: [{ native_finish_reason: "max_tokens" }] }), true);
+  assert.equal(hitTokenLimit({ candidates: [{ finishReason: "length" }] }), true);
   assert.equal(hitTokenLimit(null), false);
   assert.equal(largerBudget(undefined), 4096);
   assert.equal(largerBudget(2000), 8000);
@@ -125,6 +128,43 @@ test("key checks with a tiny budget still accept a short cut-off answer", async 
   assert.match(read("supabase/functions/llm-check/index.ts"), /allowCutOff: true/);
 });
 
+
+test("a trailing mid-word fragment is dropped from a split reply", () => {
+  const cut = "The first month is a trial so you can see it work. After that it is a simple monthly fee. Book a time if you want the details. if you record nothing, n";
+  const parts = splitReply(cut, 15);
+  assert.deepEqual(parts, [
+    "The first month is a trial so you can see it work.",
+    "After that it is a simple monthly fee.",
+    "Book a time if you want the details."
+  ]);
+  assert.equal(dropIncompleteTail(cut), "The first month is a trial so you can see it work. After that it is a simple monthly fee. Book a time if you want the details.");
+  assert.equal(dropIncompleteTail("if you record nothing, n"), "");
+  assert.equal(dropIncompleteTail("Sounds good"), "Sounds good");
+  assert.equal(dropIncompleteTail("are you on the real estate side or"), "");
+  assert.equal(salvageCutOffText(cut), "The first month is a trial so you can see it work. After that it is a simple monthly fee. Book a time if you want the details.");
+  assert.equal(salvageCutOffText("are you on the real estate side or"), "");
+});
+
+test("a retry that is still cut off keeps only complete sentences", async () => {
+  const fetchImpl = async () => anthropicReply("The first month is a trial so you can see it work. if you record nothing, n", "max_tokens");
+  const result = await completeChat({ runtime, system: "s", messages: [{ role: "user", content: "What does it cost?" }], fetchImpl });
+  assert.equal(result.text, "The first month is a trial so you can see it work.");
+  assert.equal(result.trimmedCutOff, true);
+});
+
+test("the test chat and live setter use a 4096-token budget and never slice a reply mid-word", () => {
+  assert.equal(SETTER_MAX_TOKENS, 4096);
+  const dashboard = read("supabase/functions/client-dashboard/index.ts");
+  assert.match(dashboard, /maxTokens: SETTER_MAX_TOKENS/);
+  assert.match(dashboard, /trimToSentence\(dropIncompleteTail\(clientSafeText\(resolved\.text\)\), 8000\)/);
+  assert.doesNotMatch(dashboard, /clientSafeText\(resolved\.text\)\.slice\(0, 8000\)/);
+  const live = read("supabase/functions/roleflow-acquisition/ig/llm.js");
+  assert.match(live, /maxTokens: maxTokens == null \? SETTER_MAX_TOKENS : maxTokens/);
+  const webhook = read("supabase/functions/zernio-webhook/index.ts");
+  assert.match(webhook, /splitReply\(text, splitWords\)/);
+  const engine = read("supabase/functions/roleflow-acquisition/index.ts");
+  assert.match(engine, /splitReply\(item\.text, splitWords\)/);
+});
 test("panel and edge copies of splitReply stay identical", () => {
   assert.equal(read("acquire/split-reply.js"), read("supabase/functions/_shared/split-reply.js"));
 });

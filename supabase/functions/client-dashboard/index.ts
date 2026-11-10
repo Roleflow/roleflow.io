@@ -21,10 +21,11 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
-import { PROVIDERS, clientReplyView, completeChat, healthView, loadSetterReply, logLlmError, probeClaude, redactSecret } from "../_shared/llm-provider.js";
+import { PROVIDERS, SETTER_MAX_TOKENS, clientReplyView, completeChat, healthView, loadSetterReply, logLlmError, probeClaude, redactSecret } from "../_shared/llm-provider.js";
 import { buildInstruction as winningInstruction, draftBrief } from "../_shared/winning-conversations.js";
 import { advanceStatus, buildInstruction as intakeInstruction, hashToken, intakeBundle, normalizeDraft, playbookFromSources, textFromDocxXml, textFromUpload } from "../_shared/onboarding-build.js";
 import { clientSafeText } from "../_shared/client-safe.js";
+import { dropIncompleteTail, trimToSentence } from "../_shared/split-reply.js";
 import { VOICE_MAX_CHARS, transcribeTrialVoice, trialVoiceError, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
@@ -214,7 +215,8 @@ async function previewSetter(admin, businessId, userId, body) {
         body.voice_note === true ? voiceRule({ transcribed: true, language: String(body.voice_language || "") }) : "",
         "Reply as the setter. Follow the system prompt for length and style. You may include a voice token and the booking token when that prompt calls for them. Do not call tools. This is a practice thread and it sends nothing."
       ].filter(Boolean).join("\n\n"),
-      messages
+      messages,
+      maxTokens: SETTER_MAX_TOKENS
     });
   } catch (error) {
     return json(200, clientReplyView({ ok: false, error: practiceError(error, loaded.chain.map((step) => step.apiKey)), sent: false }, loaded.chain.map((step) => step.apiKey)));
@@ -222,7 +224,8 @@ async function previewSetter(admin, businessId, userId, body) {
   const text = unwrapModelText(result && result.text).trim();
   if (!text) return json(200, { ok: false, error: "The model returned an empty reply.", sent: false });
   const resolved = resolveOutgoing(text, { voices: catalog, bookingLink });
-  const reply = clientSafeText(resolved.text).slice(0, 8000);
+  const reply = trimToSentence(dropIncompleteTail(clientSafeText(resolved.text)), 8000);
+  if (!reply) return json(200, { ok: false, error: "The model response was cut off.", sent: false });
   const providerId = String(result.provider || runtime.provider || "");
   const spec = PROVIDERS[providerId];
   const versions = await admin.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", businessId).order("version", { ascending: false }).limit(30);
