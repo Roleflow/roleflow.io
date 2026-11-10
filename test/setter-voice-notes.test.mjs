@@ -7,8 +7,10 @@ import {
   VOICE_MAX_CHARS,
   VOICE_MAX_SECONDS,
   downloadVoice,
+  graphVoiceRefresh,
   inboundText,
   languageName,
+  mediaUrlFromJson,
   metaVoiceAttachment,
   modelInbound,
   transcribeAudio,
@@ -40,20 +42,25 @@ const payload = {
     platform: "instagram",
     direction: "incoming",
     text: null,
+    platformMessageId: "mid_ig_1",
     attachments: [{ type: "audio", url: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1" }],
     sender: { id: "lead_1", username: "lead" }
   }
 };
 const event = normalizeEvent(payload, "");
 assert.equal(event.text, "");
-assert.deepEqual(event.voice, { url: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1", index: 0, mimeType: "", messageId: "msg_1" });
+assert.deepEqual(event.voice, { url: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1", index: 0, mimeType: "", messageId: "mid_ig_1" });
 assert.equal(inboundStoreBody(event), "Voice note");
 assert.equal(inboundStoreBody({ text: "hola" }), "hola");
 assert.equal(planPayload(event, "row").needsPlan, true);
+assert.equal(planPayload(event, "row").voice.messageId, "mid_ig_1");
+assert.equal(planPayload({ text: "hola" }, "row").voice, undefined);
 const refresh = voiceRefreshRequest(event, "key");
-assert.equal(refresh.url, "https://zernio.com/api/v1/inbox/conversations/conv_1/messages/msg_1/attachments/0?accountId=acct");
+assert.equal(refresh.url, "https://zernio.com/api/v1/inbox/conversations/conv_1/messages/mid_ig_1/attachments/0?accountId=acct&format=json");
 assert.equal(refresh.headers.Authorization, "Bearer key");
 assert.equal(voiceRefreshRequest(event, ""), null);
+const internalOnly = normalizeEvent({ ...payload, message: { ...payload.message, platformMessageId: "" } }, "");
+assert.equal(internalOnly.voice.messageId, "msg_1");
 
 // Only real audio counts. Shared reels, posts and stickers are not voice notes.
 assert.equal(voiceAttachment([{ type: "video", url: "https://x/a.mp4", originalType: "ig_reel" }]), null);
@@ -168,7 +175,79 @@ assert.ok(hook.indexOf("understandVoice(") < hook.indexOf("planGatewayReply({"),
 assert.match(hook, /system: promptBody \+ voiceRule\(heardVoice\)/);
 const acquisition = read("supabase/functions/roleflow-acquisition/index.ts");
 assert.match(acquisition, /understandVoice\(row\.payload\.voice, env/);
+assert.match(acquisition, /graphVoiceRefresh\(row\.payload\.mid, token, GRAPH\(\)\)/);
 assert.match(acquisition, /escalate\(db, businessId, thread\.target_id, "voice_note", message\)/);
 assert.ok(acquisition.indexOf("understandVoice(") < acquisition.indexOf("plan = await planTurn("), "transcribe before planning");
+
+// Official Meta webhook: a voice note's transcript is the inbound the setter sees.
+// A text DM is left exactly as typed. A failed transcription adds no words.
+const metaVoice = extractEvents({
+  entry: [{
+    id: "ig",
+    messaging: [{
+      sender: { id: "lead" },
+      timestamp: 1,
+      message: { mid: "m-voice", attachments: [{ type: "audio", payload: { url: "https://cdn.fb/v.mp4" } }] }
+    }]
+  }]
+});
+assert.equal(metaVoice[0].text, "");
+const metaHeard = await understandVoice(metaVoice[0].voice, { XAI_API_KEY: "x" }, {
+  fetchImpl: async (url) => url.startsWith("https://cdn.fb") ? okAudio() : sttOk({ text: "I want the Saturday slot", language: "en", duration: 2 })
+});
+assert.equal(metaHeard.text, "I want the Saturday slot");
+const metaModel = modelInbound({ inbound: inboundText(metaVoice[0].text, metaHeard.text) }, { transcribed: true, language: metaHeard.language });
+assert.equal(metaModel.inbound, "I want the Saturday slot");
+assert.equal(metaModel.inbound_type, "voice_note");
+const metaText = extractEvents({
+  entry: [{ id: "ig", messaging: [{ sender: { id: "lead" }, timestamp: 2, message: { mid: "m-text", text: "Saturday works" } }] }]
+});
+assert.equal(metaText[0].voice, undefined);
+assert.equal(metaText[0].text, "Saturday works");
+assert.equal(modelInbound({ inbound: inboundText(metaText[0].text, "") }, null).inbound, "Saturday works");
+assert.equal(modelInbound({ inbound: inboundText(metaText[0].text, "") }, null).inbound_type, undefined);
+const metaFailed = await understandVoice(metaVoice[0].voice, { XAI_API_KEY: "x" }, {
+  fetchImpl: async () => ({ ok: false, status: 403, headers: new Headers() })
+});
+assert.equal(metaFailed.ok, false);
+assert.equal(metaFailed.text, undefined);
+assert.equal(inboundText(metaVoice[0].text, metaFailed.text), "");
+
+// An expired CDN link is re-minted from the Graph message, then transcribed.
+const graph = graphVoiceRefresh("m-voice", "ig-token", "v21.0");
+assert.equal(graph.url, "https://graph.instagram.com/v21.0/m-voice?fields=attachments");
+assert.equal(graph.headers.Authorization, "Bearer ig-token");
+assert.equal(graph.url.includes("ig-token"), false);
+assert.equal(graphVoiceRefresh("m-voice", "", "v21.0"), null);
+assert.equal(mediaUrlFromJson({
+  attachments: { data: [{ mime_type: "audio/mp4", file_url: "https://cdn.fresh/note.m4a" }] }
+}), "https://cdn.fresh/note.m4a");
+assert.equal(mediaUrlFromJson({ url: "https://cdn.fresh/a.mp4" }), "https://cdn.fresh/a.mp4");
+assert.equal(mediaUrlFromJson({ attachments: { data: [{ mime_type: "image/jpeg", file_url: "https://cdn.fresh/p.jpg" }] } }), "");
+const reminted = [];
+const fromGraph = await understandVoice(metaVoice[0].voice, { XAI_API_KEY: "x" }, {
+  refresh: graph,
+  fetchImpl: async (url, init) => {
+    reminted.push({ url, auth: init && init.headers && init.headers.Authorization });
+    if (url.startsWith("https://cdn.fb")) return { ok: false, status: 403, headers: new Headers() };
+    if (url.includes("graph.instagram.com")) {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ attachments: { data: [{ mime_type: "audio/mp4", file_url: "https://cdn.fresh/note.m4a" }] } })
+      };
+    }
+    if (url.startsWith("https://cdn.fresh")) return okAudio();
+    return sttOk({ text: "book me for Saturday", language: "en", duration: 3 });
+  }
+});
+assert.equal(fromGraph.ok, true);
+assert.equal(fromGraph.text, "book me for Saturday");
+assert.equal(reminted[1].url, graph.url);
+assert.equal(reminted[1].auth, "Bearer ig-token");
+assert.equal(reminted[2].url, "https://cdn.fresh/note.m4a");
+assert.equal(reminted[2].auth, undefined);
+assert.equal(inboundText("", fromGraph.text), "book me for Saturday");
 
 console.log("setter voice note tests passed");

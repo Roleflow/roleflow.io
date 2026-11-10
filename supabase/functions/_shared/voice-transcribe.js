@@ -68,7 +68,52 @@ export function voiceAttachment(attachments) {
 // Same rule for Meta's own webhook shape: message.attachments[].{type, payload.url}.
 export function metaVoiceAttachment(message) {
   const list = message && Array.isArray(message.attachments) ? message.attachments : [];
-  return voiceAttachment(list.map((item) => ({ type: item && item.type, url: item && item.payload && item.payload.url })));
+  return voiceAttachment(list.map((item) => ({ type: item && item.type, url: item && item.payload && item.payload.url, mimeType: item && (item.mimeType || item.mime_type) })));
+}
+
+// A JSON media response (inbox re-mint, or a Graph message read) into one https URL.
+export function mediaUrlFromJson(body) {
+  const root = body && typeof body === "object" ? body : {};
+  const direct = [root.url, root.data && root.data.url, root.attachment && root.attachment.url];
+  for (const value of direct) {
+    const url = String(value || "");
+    if (url.startsWith("https://")) return url;
+  }
+  const groups = [];
+  if (Array.isArray(root.attachments)) groups.push(root.attachments);
+  if (root.attachments && Array.isArray(root.attachments.data)) groups.push(root.attachments.data);
+  if (root.message && Array.isArray(root.message.attachments)) groups.push(root.message.attachments);
+  if (root.message && root.message.attachments && Array.isArray(root.message.attachments.data)) groups.push(root.message.attachments.data);
+  for (const group of groups) {
+    const voice = voiceAttachment(group.map(normalizeListedAttachment));
+    if (voice && voice.url) return voice.url;
+  }
+  return "";
+}
+
+function normalizeListedAttachment(item) {
+  const row = item && typeof item === "object" ? item : {};
+  const image = row.image_data && row.image_data.url;
+  const video = row.video_data && row.video_data.url;
+  return {
+    type: row.type || "",
+    mimeType: row.mime_type || row.mimeType || "",
+    url: row.url || row.file_url || row.fileUrl || image || video || "",
+    payload: row.payload
+  };
+}
+
+// Re-read one Instagram message with the stored Graph token when the CDN link expired.
+// The token stays in the Authorization header and is never written into the URL.
+export function graphVoiceRefresh(mid, token, version) {
+  const id = String(mid || "");
+  const access = String(token || "");
+  if (!id || !access) return null;
+  const graph = String(version || "v21.0").replace(/^\/+|\/+$/g, "") || "v21.0";
+  return {
+    url: "https://graph.instagram.com/" + graph + "/" + encodeURIComponent(id) + "?fields=attachments",
+    headers: { Authorization: "Bearer " + access }
+  };
 }
 
 export function transcribers(env) {
@@ -122,8 +167,8 @@ export async function downloadVoice(voice, options) {
       const type = headerValue(response, "content-type");
       if (type.includes("application/json")) {
         const body = await response.json().catch(() => ({}));
-        const next = String((body && (body.url || (body.data && body.data.url) || (body.attachment && body.attachment.url))) || "");
-        if (!next.startsWith("https://")) return { ok: false };
+        const next = mediaUrlFromJson(body);
+        if (!next.startsWith("https://") || next === url) return { ok: false };
         return tryUrl(next, {});
       }
       const read = await readCapped(response, maxBytes);

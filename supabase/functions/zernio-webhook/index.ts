@@ -230,6 +230,9 @@ async function planJob(admin, job, apiKey) {
     if (seenGate.open) await markSeen(job.event, job.account.accountId, apiKey, fetch);
   }
   let heardVoice = null;
+  if (!job.event.voice && current.data.payload && current.data.payload.voice) {
+    job.event = { ...job.event, voice: current.data.payload.voice };
+  }
   if (job.event.voice) {
     const heard = await understandVoice(job.event.voice, env, await voiceOptions(admin, job.account.businessId, { refresh: voiceRefreshRequest(job.event, apiKey) }));
     if (!heard.ok) {
