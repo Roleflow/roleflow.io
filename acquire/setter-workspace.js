@@ -1,11 +1,24 @@
 // Agentic Setter workspace. Practice stays in the browser until the signed-in
-// preview calls the selected model. Nothing here sends an Instagram message.
+// preview calls the selected model. A voice note is transcribed on the server
+// and the setter answers that transcript. Undo removes turns from the stored
+// thread, so the next reply only remembers what is left. Nothing here sends
+// an Instagram message.
 
 import { PROMPT_MAX, diffLines } from "./prompt-history.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
 import { MAX_CHARS, briefDocument, formatDelta, parseBriefDocument } from "./studio-model.js";
 import { SIM_STATES, blankConversation, filterSimulations, lengthDelta, loadSimulations, saveSimulations } from "./sim-log.js";
 import { splitReply } from "./split-reply.js";
+import { recorderStartOptions } from "./voice-audio.js";
+import {
+  TRIAL_VOICE_MAX_BYTES,
+  TRIAL_VOICE_MAX_MS,
+  canRewindTo,
+  exchangeStart,
+  releaseVoiceUrls,
+  rewindTrial,
+  trialVoiceOutcome
+} from "./trial-thread.js";
 
 const COPY = {
   en: {
@@ -77,7 +90,20 @@ const COPY = {
     voiceHumanHint: "More varied, casual, and short. Slang can match the winning conversations.",
     voiceAiHint: "More consistent, structured, and predictable.",
     draftNote: "This is a draft. Save it to keep a new version. The setter stays off until you turn it on.",
-    promptNote: "This is the setter system prompt. The simulator uses this text. Saving keeps a version and does not turn the setter on."
+    promptNote: "This is the setter system prompt. The simulator uses this text. Saving keeps a version and does not turn the setter on.",
+    undo: "Undo",
+    rewind: "Rewind to here",
+    record: "Record a voice note",
+    stopRecord: "Stop recording",
+    upload: "Upload a voice note",
+    recording: "Recording… press the mic to stop.",
+    transcribing: "Transcribing the voice note…",
+    voiceEmpty: "No speech was heard in that voice note. Nothing was sent to the setter.",
+    voiceLong: "That voice note is too long to transcribe. Nothing was sent to the setter.",
+    voiceSetup: "Voice transcription is not set up. Nothing was sent to the setter.",
+    voiceSignIn: "Sign in to transcribe a voice note. Nothing was sent to the setter.",
+    voiceMic: "The microphone is not available. Upload an audio file instead. Nothing was sent to the setter.",
+    voiceFailed: "That voice note could not be transcribed. Nothing was sent to the setter."
   },
   es: {
     business: "Negocio",
@@ -148,7 +174,20 @@ const COPY = {
     voiceHumanHint: "Más variado, casual y corto. La jerga puede seguir las conversaciones que convirtieron.",
     voiceAiHint: "Más consistente, estructurado y predecible.",
     draftNote: "Esto es un borrador. Guárdalo para crear una versión. El setter sigue apagado hasta que lo actives.",
-    promptNote: "Este es el prompt de sistema del setter. El simulador usa este texto. Guardar crea una versión y no activa el setter."
+    promptNote: "Este es el prompt de sistema del setter. El simulador usa este texto. Guardar crea una versión y no activa el setter.",
+    undo: "Deshacer",
+    rewind: "Volver a este mensaje",
+    record: "Grabar una nota de voz",
+    stopRecord: "Parar la grabación",
+    upload: "Subir una nota de voz",
+    recording: "Grabando… pulsa el micrófono para parar.",
+    transcribing: "Transcribiendo la nota de voz…",
+    voiceEmpty: "No se oyó voz en esa nota. No se envió nada al setter.",
+    voiceLong: "Esa nota de voz es demasiado larga. No se envió nada al setter.",
+    voiceSetup: "La transcripción de voz no está configurada. No se envió nada al setter.",
+    voiceSignIn: "Entra para transcribir una nota de voz. No se envió nada al setter.",
+    voiceMic: "El micrófono no está disponible. Sube un archivo de audio. No se envió nada al setter.",
+    voiceFailed: "Esa nota de voz no se pudo transcribir. No se envió nada al setter."
   }
 };
 
@@ -228,7 +267,10 @@ const MARKS = {
   show: ["M9 6l6 6-6 6"],
   chats: ["M5 6h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3V7a1 1 0 0 1 1-1z"],
   reset: ["M4 12a8 8 0 1 0 2.3-5.6", "M4 4v5h5"],
-  clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"]
+  clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"],
+  undo: ["M9 14 4 9 9 4", "M4 9h10.5a5.5 5.5 0 1 1 0 11H12"],
+  mic: ["M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z", "M19 11a7 7 0 0 1-14 0", "M12 18v3"],
+  upload: ["M12 16V4", "M7 9l5-5 5 5", "M5 20h14"]
 };
 
 function mark(name) {
@@ -680,6 +722,7 @@ function simulatorColumn(ui, copy, desk) {
   const title = ui.el("div", { class: "sim-title" });
   title.append(ui.el("h2", { text: copy.simulator }), ui.el("span", { class: "version-badge", text: badge }));
   const hide = iconButton(ui, "hide", copy.hide, () => {
+    stopTrialRecorder(desk, true);
     desk.simCollapsed = true;
     ui.paint();
   });
@@ -690,8 +733,12 @@ function simulatorColumn(ui, copy, desk) {
     ui.paint();
   });
   if (desk.panel === "conversations") convos.classList.add("is-on");
+  const trial = ui.state.setterTrial || { messages: [] };
+  const undo = iconButton(ui, "undo", copy.undo, () => undoTrial(ui, null));
+  undo.id = "setter-trial-undo";
+  if (exchangeStart(trial.messages) < 0) undo.disabled = true;
   const reset = iconButton(ui, "reset", copy.reset, () => resetConversation(ui));
-  const head = ui.el("div", { class: "sim-head" }, [title, ui.el("div", { class: "sim-actions" }, [hide, convos, reset])]);
+  const head = ui.el("div", { class: "sim-head" }, [title, ui.el("div", { class: "sim-actions" }, [undo, hide, convos, reset])]);
   sim.append(head);
 
   const statePick = ui.el("select", { id: "sim-lead-state", class: "lead-pill", "aria-label": copy.state, "data-state": desk.leadState });
@@ -714,20 +761,57 @@ function simulatorColumn(ui, copy, desk) {
     ui.paint();
   }));
 
-  const trial = ui.state.setterTrial || { messages: [] };
   const log = ui.el("div", { id: "setter-trial-log", class: "dm-thread sim-thread" });
-  (trial.messages || []).forEach((message) => log.append(trialBubble(ui, message, copy)));
+  (trial.messages || []).forEach((message, index) => log.append(trialBubble(ui, message, copy, index)));
   if (!(trial.messages || []).length) log.append(ui.el("p", { class: "mute", text: copy.empty }));
   sim.append(log);
 
-  const compose = ui.el("form", { class: "sim-compose" });
+  const compose = ui.el("form", { class: "sim-compose", id: "setter-trial-compose" });
+  const mic = iconButton(ui, "mic", desk.recording ? copy.stopRecord : copy.record, () => toggleTrialRecord(ui, copy));
+  mic.id = "setter-trial-mic";
+  mic.setAttribute("aria-pressed", desk.recording ? "true" : "false");
+  if (desk.recording) mic.classList.add("is-on", "is-recording");
+  if (desk.transcribing) mic.disabled = true;
+  const file = ui.el("input", {
+    id: "setter-trial-file",
+    class: "sim-file",
+    type: "file",
+    accept: "audio/*",
+    "aria-label": copy.upload
+  });
+  file.addEventListener("change", () => {
+    const chosen = file.files && file.files[0];
+    file.value = "";
+    if (chosen) acceptTrialVoice(ui, copy, chosen);
+  });
+  const upload = iconButton(ui, "upload", copy.upload, () => file.click());
+  upload.id = "setter-trial-upload";
+  if (desk.recording || desk.transcribing) upload.disabled = true;
   const input = ui.el("input", { id: "setter-trial-input", type: "text", maxlength: "500", placeholder: copy.compose, "aria-label": copy.compose });
-  compose.append(input, roundSend(ui, copy.send));
+  input.value = desk.compose || "";
+  input.addEventListener("input", () => { desk.compose = input.value; });
+  if (desk.focusCompose) {
+    desk.focusCompose = false;
+    queueMicrotask(() => {
+      input.focus();
+      const end = input.value.length;
+      try { input.setSelectionRange(end, end); } catch (_error) { /* the field is text */ }
+    });
+  }
+  compose.append(mic, upload, file, input, roundSend(ui, copy.send));
   compose.addEventListener("submit", (event) => {
     event.preventDefault();
     submitSim(ui, input.value, false);
   });
   sim.append(compose);
+  const status = ui.el("p", {
+    id: "setter-trial-status",
+    class: "mute sim-status",
+    role: "status",
+    hidden: desk.statusText ? null : true,
+    text: desk.statusText || ""
+  });
+  sim.append(status);
 
   const follow = ui.el("input", {
     id: "followup-number",
@@ -788,7 +872,10 @@ function paintConversationList(ui, copy, desk, list) {
       text: row.title || ((row.messages && row.messages[0] && row.messages[0].text) || row.leadState || "Conversation")
     });
     button.addEventListener("click", () => {
-      ui.state.setterTrial = { scenario: "follower", messages: (row.messages || []).slice(), leadState: row.leadState };
+      stopTrialRecorder(desk, true);
+      const epoch = ((ui.state.setterTrial && ui.state.setterTrial.epoch) || 0) + 1;
+      if (ui.state.setterTrial) ui.state.setterTrial.epoch = epoch;
+      ui.state.setterTrial = { scenario: "follower", messages: (row.messages || []).slice(), leadState: row.leadState, epoch };
       desk.leadState = row.leadState || desk.leadState;
       desk.panel = "";
       ui.paint();
@@ -799,6 +886,7 @@ function paintConversationList(ui, copy, desk, list) {
 
 function resetConversation(ui) {
   const desk = deskState(ui.state);
+  stopTrialRecorder(desk, true);
   const trial = ui.state.setterTrial || { messages: [] };
   if ((trial.messages || []).length) {
     const versions = sortedVersions(ui);
@@ -812,7 +900,10 @@ function resetConversation(ui) {
     ui.state.simConversations = [row].concat(ensureSimulations(ui.state).filter((item) => item.id !== row.id));
     rememberSims(ui);
   }
-  ui.state.setterTrial = { scenario: "follower", messages: [], leadState: desk.leadState };
+  const epoch = (trial.epoch || 0) + 1;
+  trial.epoch = epoch;
+  ui.state.setterTrial = { scenario: "follower", messages: [], leadState: desk.leadState, epoch };
+  desk.compose = "";
   ui.paint();
 }
 
@@ -822,7 +913,191 @@ function submitSim(ui, text, followup) {
   if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [] };
   ui.state.setterTrial.leadState = desk.leadState;
   if (followup) ui.sendTrial(prompt, "", { followup: Number(desk.followupNumber) || 1, leadState: desk.leadState });
-  else ui.sendTrial(prompt, text, { sender: desk.sender, leadState: desk.leadState });
+  else {
+    desk.compose = "";
+    ui.sendTrial(prompt, text, { sender: desk.sender, leadState: desk.leadState });
+  }
+}
+
+function undoTrial(ui, index) {
+  const desk = deskState(ui.state);
+  stopTrialRecorder(desk, true);
+  const trial = ui.state.setterTrial || { messages: [] };
+  const messages = trial.messages || [];
+  const start = index == null ? exchangeStart(messages) : index;
+  if (start < 0) return;
+  if (index != null && !canRewindTo(messages[start])) return;
+  const next = rewindTrial(messages, start);
+  if (!next.changed) return;
+  releaseVoiceUrls(next.removed);
+  trial.messages = next.messages;
+  trial.epoch = (trial.epoch || 0) + 1;
+  ui.state.setterTrial = trial;
+  if (next.sender) desk.sender = next.sender;
+  if (next.draft) {
+    desk.compose = next.draft;
+    desk.focusCompose = true;
+  }
+  ui.paint();
+}
+
+function voiceFailCopy(copy, reason) {
+  if (reason === "empty") return copy.voiceEmpty;
+  if (reason === "too_long") return copy.voiceLong;
+  if (reason === "no_provider") return copy.voiceSetup;
+  if (reason === "signed_out") return copy.voiceSignIn;
+  if (reason === "mic") return copy.voiceMic;
+  return copy.voiceFailed;
+}
+
+function setTrialStatus(ui, text) {
+  const desk = deskState(ui.state);
+  desk.statusText = text || "";
+  const node = document.getElementById("setter-trial-status");
+  if (!node) return;
+  node.hidden = !desk.statusText;
+  node.textContent = desk.statusText;
+}
+
+function rememberCompose(desk) {
+  const field = document.getElementById("setter-trial-input");
+  if (field) desk.compose = field.value;
+}
+
+function stopTrialRecorder(desk, discard) {
+  if (desk.recordTimer) {
+    clearInterval(desk.recordTimer);
+    desk.recordTimer = 0;
+  }
+  const recorder = desk.recorder;
+  desk.recording = false;
+  desk.recorder = null;
+  if (recorder && recorder.state === "recording") {
+    desk.discardRecording = discard === true;
+    recorder.stop();
+  }
+}
+
+async function toggleTrialRecord(ui, copy) {
+  const desk = deskState(ui.state);
+  if (desk.transcribing) return;
+  if (desk.recorder && desk.recorder.state === "recording") {
+    desk.recorder.stop();
+    return;
+  }
+  const media = typeof navigator !== "undefined" ? navigator.mediaDevices : null;
+  if (!media || !media.getUserMedia || typeof MediaRecorder !== "function") {
+    appendTrialError(ui, voiceFailCopy(copy, "mic"));
+    return;
+  }
+  let stream;
+  try {
+    stream = await media.getUserMedia({ audio: true });
+  } catch (_error) {
+    appendTrialError(ui, voiceFailCopy(copy, "mic"));
+    return;
+  }
+  const supports = (type) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type);
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, recorderStartOptions(supports));
+  } catch (_error) {
+    try { recorder = new MediaRecorder(stream); }
+    catch (_inner) {
+      stream.getTracks().forEach((track) => track.stop());
+      appendTrialError(ui, voiceFailCopy(copy, "mic"));
+      return;
+    }
+  }
+  const chunks = [];
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size) chunks.push(event.data);
+  });
+  recorder.addEventListener("stop", () => {
+    stream.getTracks().forEach((track) => track.stop());
+    const discard = desk.discardRecording === true;
+    desk.discardRecording = false;
+    desk.recorder = null;
+    desk.recording = false;
+    if (desk.recordTimer) {
+      clearInterval(desk.recordTimer);
+      desk.recordTimer = 0;
+    }
+    if (discard) {
+      desk.statusText = "";
+      return;
+    }
+    const type = recorder.mimeType || (chunks[0] && chunks[0].type) || "audio/webm";
+    acceptTrialVoice(ui, copy, new Blob(chunks, { type }));
+  });
+  desk.recorder = recorder;
+  desk.recording = true;
+  desk.recordStarted = Date.now();
+  recorder.start();
+  setTrialStatus(ui, copy.recording);
+  const mic = document.getElementById("setter-trial-mic");
+  if (mic) {
+    mic.classList.add("is-on", "is-recording");
+    mic.setAttribute("aria-pressed", "true");
+    mic.setAttribute("aria-label", copy.stopRecord);
+  }
+  desk.recordTimer = setInterval(() => {
+    if (Date.now() - desk.recordStarted >= TRIAL_VOICE_MAX_MS && desk.recorder && desk.recorder.state === "recording") desk.recorder.stop();
+  }, 400);
+}
+
+async function acceptTrialVoice(ui, copy, blob) {
+  const desk = deskState(ui.state);
+  rememberCompose(desk);
+  desk.transcribing = true;
+  desk.statusText = copy.transcribing;
+  ui.paint();
+  let playbackUrl = "";
+  try {
+    if (!blob || !blob.size) return showTrialVoiceError(ui, copy, "empty", "");
+    if (blob.size > TRIAL_VOICE_MAX_BYTES) return showTrialVoiceError(ui, copy, "too_long", "");
+    playbackUrl = URL.createObjectURL(blob);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const result = ui.transcribeTrial ? await ui.transcribeTrial(bytes, blob.type || "") : { ok: false, reason: "signed_out" };
+    const outcome = trialVoiceOutcome(result);
+    if (!outcome.send) return showTrialVoiceError(ui, copy, outcome.reason, playbackUrl);
+    desk.transcribing = false;
+    desk.statusText = "";
+    const prompt = String(ui.state.setterPrompt || "").trim() || currentPromptValue(ui);
+    if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [] };
+    ui.state.setterTrial.leadState = desk.leadState;
+    ui.sendTrial(prompt, outcome.transcript, {
+      sender: "lead",
+      leadState: desk.leadState,
+      voice: {
+        transcript: outcome.transcript,
+        language: outcome.language,
+        duration: outcome.duration,
+        mime: blob.type || "",
+        playbackUrl
+      }
+    });
+  } catch (_error) {
+    showTrialVoiceError(ui, copy, "transcribe", playbackUrl);
+  }
+}
+
+function showTrialVoiceError(ui, copy, reason, playbackUrl) {
+  const desk = deskState(ui.state);
+  desk.transcribing = false;
+  desk.statusText = "";
+  if (playbackUrl) releaseVoiceUrls([{ voice: { playbackUrl } }]);
+  appendTrialError(ui, voiceFailCopy(copy, reason));
+}
+
+function appendTrialError(ui, text) {
+  if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [], epoch: 0 };
+  const trial = ui.state.setterTrial;
+  trial.messages = (trial.messages || []).concat([{ role: "user", error: text, voiceError: true }]);
+  const desk = deskState(ui.state);
+  desk.transcribing = false;
+  desk.statusText = "";
+  ui.paint();
 }
 
 function delayFields(ui, copy) {
@@ -862,18 +1137,32 @@ function delayFields(ui, copy) {
   return row;
 }
 
-function trialBubble(ui, message, copy) {
+function trialBubble(ui, message, copy, index) {
   const role = message.role === "assistant" ? "setter" : "lead";
   const bubble = ui.el("article", { class: "dm-bubble " + role });
   if (message.error) {
+    bubble.classList.add("is-error");
     bubble.append(ui.el("p", { text: message.error }));
     return bubble;
   }
-  if (message.text) bubble.append(ui.el("p", { text: message.text }));
+  if (message.voice && (message.voice.playbackUrl || message.voice.transcript)) {
+    if (message.voice.playbackUrl) {
+      const audio = ui.el("audio", { controls: true, preload: "metadata" });
+      audio.src = message.voice.playbackUrl;
+      bubble.append(audio);
+    }
+    const transcript = message.voice.transcript || message.text || "";
+    if (transcript) bubble.append(ui.el("p", { class: "dm-transcript", text: transcript }));
+  } else if (message.text) bubble.append(ui.el("p", { text: message.text }));
   const line = message.modelLine || (message.preview ? copy.previewReply : (message.business ? copy.businessLine : ""));
   if (line) bubble.append(ui.el("p", { class: "mute dm-model", text: line }));
   if (message.versionLabel) bubble.append(ui.el("p", { class: "mute", text: message.versionLabel }));
   if (message.delayLine) bubble.append(ui.el("p", { class: "mute", text: message.delayLine }));
+  if (canRewindTo(message)) {
+    const back = iconButton(ui, "undo", copy.rewind, () => undoTrial(ui, index));
+    back.classList.add("sim-rewind");
+    bubble.append(back);
+  }
   return bubble;
 }
 

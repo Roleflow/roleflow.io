@@ -15,6 +15,9 @@
 //                         the setter keeps its current model and the fallback is logged.
 // SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are injected.
 // If no model key is set, the practice thread returns an error and does not invent a reply.
+// transcribe_trial turns a practice voice note into text with the same speech-to-text
+// path as an inbound voice note. It does not store the audio, write a lead, or send
+// a message. The speech key stays in this function.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
@@ -22,6 +25,7 @@ import { PROVIDERS, clientReplyView, completeChat, healthView, loadSetterReply, 
 import { buildInstruction as winningInstruction, draftBrief } from "../_shared/winning-conversations.js";
 import { advanceStatus, buildInstruction as intakeInstruction, hashToken, intakeBundle, normalizeDraft, playbookFromSources, textFromDocxXml, textFromUpload } from "../_shared/onboarding-build.js";
 import { clientSafeText } from "../_shared/client-safe.js";
+import { VOICE_MAX_CHARS, transcribeTrialVoice, trialVoiceError, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
 import { normalizeCap } from "../_shared/comment-voice.js";
@@ -61,6 +65,7 @@ Deno.serve(async (req) => {
   if (action === "save_prompt") return savePrompt(admin, businessId, user.data.user.id, body.prompt, body.voice);
   if (action === "restore_prompt") return restorePrompt(admin, businessId, user.data.user.id, body.version_id);
   if (action === "preview_setter") return previewSetter(admin, businessId, user.data.user.id, body);
+  if (action === "transcribe_trial") return transcribeTrial(body);
   if (action === "claude_health") return claudeHealth();
   if (action === "build_setter_prompt") return buildSetterPrompt(admin, businessId);
   if (action === "create_onboarding_link") return createOnboardingLink(admin, businessId, user.data.user.id);
@@ -154,7 +159,7 @@ async function writePrompt(admin, businessId, userId, prompt, options) {
 
 async function previewSetter(admin, businessId, userId, body) {
   const prompt = String(body.prompt || "").trim().slice(0, PROMPT_MAX);
-  const message = String(body.message || "").trim().slice(0, 500);
+  const message = String(body.message || "").trim().slice(0, body.voice_note === true ? VOICE_MAX_CHARS : 500);
   const followup = Math.max(0, Math.min(12, Number(body.followup) || 0));
   if (!prompt) return json(200, { ok: false, error: "Save a system prompt first." });
   if (!message && !followup) return json(200, { ok: false, error: "Write a message to try." });
@@ -206,6 +211,7 @@ async function previewSetter(admin, businessId, userId, body) {
         commentGuide,
         scenario.context,
         "Lead state: " + String(body.lead_state || "open") + ".",
+        body.voice_note === true ? voiceRule({ transcribed: true, language: String(body.voice_language || "") }) : "",
         "Reply as the setter. Follow the system prompt for length and style. You may include a voice token and the booking token when that prompt calls for them. Do not call tools. This is a practice thread and it sends nothing."
       ].filter(Boolean).join("\n\n"),
       messages
@@ -281,6 +287,32 @@ async function saveBookingLink(admin, businessId, value) {
   const saved = await admin.from("acq_settings").upsert({ agent_id: businessId, booking_fallback_url: link });
   if (saved.error) return json(200, { ok: false, error: "The booking link was not saved." });
   return json(200, { ok: true, booking_link: bookingLinkFor(link), sent: false });
+}
+
+async function transcribeTrial(body) {
+  const env = {
+    XAI_API_KEY: Deno.env.get("XAI_API_KEY") || "",
+    OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || ""
+  };
+  const heard = await transcribeTrialVoice({
+    base64: typeof body.audio === "string" ? body.audio : "",
+    mime: typeof body.mime === "string" ? body.mime : ""
+  }, env, { retryMs: 400 });
+  if (!heard.ok) {
+    return json(200, {
+      ok: false,
+      reason: heard.reason || "transcribe",
+      error: clientSafeText(trialVoiceError(heard.reason)),
+      sent: false
+    });
+  }
+  return json(200, {
+    ok: true,
+    transcript: heard.text,
+    language: heard.language || "",
+    duration: heard.duration || 0,
+    sent: false
+  });
 }
 
 async function saveCommentVoice(admin, businessId, body) {

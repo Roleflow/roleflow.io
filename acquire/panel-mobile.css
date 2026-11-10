@@ -187,6 +187,15 @@
   body.platform .setter-delay > .btn { grid-column: 1 / -1; min-height: 44px; }
   body.platform .setter-delay > label:has(#reply-split-words) { grid-column: 1 / -1; }
   body.platform .setter-desk .desk-num { min-height: 40px; }
+  body.platform .sim-head { align-items: flex-start; }
+  body.platform .sim-meta { align-items: flex-start; }
+  body.platform .sim-compose { width: 100%; min-width: 0; box-sizing: border-box; min-height: 52px; flex-wrap: nowrap; }
+  body.platform .sim-compose .icon-btn,
+  body.platform .sim-compose .desk-send { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
+  body.platform .dm-bubble { max-width: 100%; }
+  body.platform .dm-bubble audio { width: 100%; max-width: 100%; }
+  body.platform .follow-row { align-items: center; }
+  body.platform .follow-row .desk-ghost { min-height: 40px; }
 
   /* ---------- Settings ---------- */
   body.platform .acq > .platform-home:has(.config-layout) { order: -1; }

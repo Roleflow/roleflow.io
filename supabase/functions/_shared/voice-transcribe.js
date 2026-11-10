@@ -309,16 +309,66 @@ export async function transcribeAudio(audio, env, options) {
   return { ok: false, reason: "transcribe" };
 }
 
+// The checks after a transcript comes back. Shared by live notes and the practice thread.
+export function judgeTranscript(heard) {
+  if (!heard || heard.ok !== true) return { ok: false, reason: (heard && heard.reason) || "transcribe" };
+  if (heard.duration > VOICE_MAX_SECONDS) return { ok: false, reason: "too_long" };
+  if (!heard.text) return { ok: false, reason: "empty" };
+  if (heard.text.length > VOICE_MAX_CHARS) return { ok: false, reason: "too_long" };
+  return heard;
+}
+
 // Download, transcribe and check the result. Never returns a partial transcript.
 export async function understandVoice(voice, env, options) {
   const audio = await downloadVoice(voice, options);
   if (!audio.ok) return { ok: false, reason: audio.reason || "download" };
   const heard = await transcribeAudio(audio, env, options);
-  if (!heard.ok) return heard;
-  if (heard.duration > VOICE_MAX_SECONDS) return { ok: false, reason: "too_long" };
-  if (!heard.text) return { ok: false, reason: "empty" };
-  if (heard.text.length > VOICE_MAX_CHARS) return { ok: false, reason: "too_long" };
-  return heard;
+  return judgeTranscript(heard);
+}
+
+const TRIAL_FAIL = {
+  empty: "No speech was heard in that voice note. Nothing was sent to the setter.",
+  too_long: "That voice note is too long to transcribe. Nothing was sent to the setter.",
+  no_provider: "Voice transcription is not set up. Nothing was sent to the setter.",
+  transcribe: "That voice note could not be transcribed. Nothing was sent to the setter."
+};
+
+export function trialVoiceError(reason) {
+  return TRIAL_FAIL[reason] || TRIAL_FAIL.transcribe;
+}
+
+export function bytesFromBase64(value, maxBytes) {
+  const limit = maxBytes || VOICE_MAX_BYTES;
+  const raw = String(value || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+  if (!raw) return { ok: false, reason: "empty" };
+  if (raw.length > Math.ceil(limit * 4 / 3) + 4) return { ok: false, reason: "too_long" };
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) return { ok: false, reason: "transcribe" };
+  let binary = "";
+  try { binary = atob(raw); } catch (_error) { return { ok: false, reason: "transcribe" }; }
+  if (binary.length > limit) return { ok: false, reason: "too_long" };
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return { ok: true, bytes };
+}
+
+// Practice-thread audio is already in hand. Same transcriber as an inbound note,
+// without a download and without writing a lead or sending a message.
+export async function transcribeTrialVoice(audio, env, options) {
+  const opts = options || {};
+  const maxBytes = opts.maxBytes || VOICE_MAX_BYTES;
+  const source = audio && typeof audio === "object" ? audio : {};
+  let bytes = source.bytes;
+  if (!bytes) {
+    const decoded = bytesFromBase64(source.base64 || source.audio, maxBytes);
+    if (!decoded.ok) return decoded;
+    bytes = decoded.bytes;
+  } else if (bytes.byteLength > maxBytes) {
+    return { ok: false, reason: "too_long" };
+  }
+  if (!bytes || !bytes.byteLength) return { ok: false, reason: "empty" };
+  const mime = audioMime(bytes, source.mime || source.mimeType);
+  const heard = await transcribeAudio({ bytes, mime }, env, opts);
+  return judgeTranscript(heard);
 }
 
 // What the setter model receives when the lead spoke instead of typing.
