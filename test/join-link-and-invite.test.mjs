@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { inviteMail, inviteRequest, openInvite, rateLimiter } from "../supabase/functions/_shared/hooks-invite.js";
 import { JOIN_ROLE_DEFAULT, joinLinkNote, joinLinkUrl, joinRole } from "../acquire/team-access.js";
-import { joinDestination } from "../signup/entry.js";
+import { joinDestination, linkRoleLabel, signupMetadata, signupNeeds, signupReturnPath } from "../signup/entry.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -111,3 +111,34 @@ assert.match(sql, /update public\.acq_workspaces set join_code = null/);
 assert.match(sql, /drop function if exists public\.acq_regenerate_join_code\(uuid\);/);
 assert.doesNotMatch(sql, /for (insert|update) to authenticated/, "links are written only through the RPC");
 assert.match(sql, /check \(role in \('tester', 'prompt_editor', 'editor'\)\)/);
+
+
+// --- sign-up from a link needs no access code or Instagram handle ------------------
+assert.deepEqual(signupNeeds({}), { accessCode: true, instagram: true }, "no link: access code and Instagram");
+assert.deepEqual(signupNeeds({ inviteOk: true }), { accessCode: false, instagram: false });
+assert.deepEqual(signupNeeds({ joinOk: true }), { accessCode: false, instagram: false });
+assert.deepEqual(signupMetadata({ name: "A", instagram: "", inviteToken: "tok", inviteOk: true, accessCode: "x" }), { full_name: "A", instagram: "", invite_token: "tok" });
+assert.deepEqual(signupMetadata({ name: "A", instagram: "h", joinCode: "c", joinOk: true }), { full_name: "A", instagram: "h", join_code: "c" });
+assert.deepEqual(signupMetadata({ name: "A", instagram: "h", joinCode: "c", joinOk: false, accessCode: "Code" }), { full_name: "A", instagram: "h", access_code: "Code" }, "a dead link falls back to the access code");
+assert.deepEqual(signupMetadata({ name: "A", instagram: "h", inviteToken: "t", inviteOk: false, accessCode: "Code" }), { full_name: "A", instagram: "h", access_code: "Code" });
+assert.equal(signupReturnPath({ joinCode: "abc", joinOk: true }), "/signup/?mode=login&join=abc");
+assert.equal(signupReturnPath({ inviteToken: "t", inviteOk: true }), "/signup/?mode=login&invite=t");
+assert.equal(signupReturnPath({}), "/signup/?mode=login");
+assert.equal(linkRoleLabel("tester"), "Tester", "invited testers are no longer called Viewer");
+assert.equal(linkRoleLabel("prompt_editor"), "Tester + prompt edits");
+
+const signupJs = read("signup/signup.js");
+assert.match(signupJs, /rpc\("acq_preview_join", \{ p_code: joinCode \}\)/);
+assert.match(signupJs, /data: signupMetadata\(\{ name, instagram, accessCode, inviteToken, inviteOk, joinCode, joinOk \}\)/);
+assert.match(signupJs, /if \(needs\.instagram && !instagram\) return showError/, "Instagram is optional for link sign-ups");
+assert.match(signupJs, /if \(needs\.accessCode && !accessCode\) return showError/);
+assert.doesNotMatch(signupJs, /if \(!instagram\) return showError/);
+
+const enforce = sql.slice(sql.indexOf("function private.enforce_signup_access_code()"));
+assert.match(enforce, /- 'invite_member_id' - 'acq_invite_id' - 'acq_join_business_id' - 'acq_join_role'/, "client-supplied markers are stripped");
+assert.match(enforce, /from public\.acq_join_links as l where l\.code = join_code/, "the server checks the join link");
+assert.ok(enforce.indexOf("acq_join_links as l") < enforce.indexOf("select access_code into expected"), "a live link is checked before the access code");
+assert.match(sql, /grant execute on function public\.acq_preview_join\(text\) to anon, authenticated;/);
+const newUser = sql.slice(sql.indexOf("function public.handle_new_user()"));
+assert.match(newUser, /join_role in \('tester', 'prompt_editor', 'editor'\)/);
+assert.match(newUser, /on conflict \(business_id, user_id\) do nothing;\n    if acq_role is null then acq_role := join_role; end if;/);

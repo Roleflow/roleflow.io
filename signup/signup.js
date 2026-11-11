@@ -2,7 +2,7 @@ import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, safeNe
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
 import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
-import { inviteDestination, joinDestination } from "./entry.js";
+import { inviteDestination, joinDestination, linkRoleLabel, signupMetadata, signupNeeds, signupReturnPath } from "./entry.js";
 
 bindShell();
 
@@ -102,6 +102,7 @@ const params = new URLSearchParams(window.location.search);
 let invite = null;
 let inviteToken = params.get("invite") || "";
 let joinCode = params.get("join") || "";
+let joinLink = null;
 const tabs = [tabSignup, tabLogin];
 
 function wantsLogin() {
@@ -122,13 +123,15 @@ function showTab(mode) {
     ? 'Log <span class="g">in</span>'
     : 'Create your <span class="g">account</span>';
   const invited = invite && invite.email;
-  const roleLabel = invited && invite.role === "editor" ? "Editor" : "Viewer";
+  const roleLabel = invited ? linkRoleLabel(invite.role) : "";
   document.getElementById("page-sub").textContent = invited
     ? "You're invited to " + invite.business_name + " as " + roleLabel + ". No access code is needed. Log in if you already have an account. This invite only adds that business."
     : inviteToken
       ? "Use the invited email to log in or create an account. We'll add you to that business."
-      : joinCode
-        ? "This link joins a business. Log in or create an account and we'll add you."
+      : joinLink
+        ? "This link joins " + joinLink.business_name + " as " + linkRoleLabel(joinLink.role) + ". No access code is needed. Log in if you already have an account."
+        : joinCode
+        ? "This link is turned off or was replaced. Ask the business owner for a new one, or sign up with an access code."
         : login
           ? "Open your account to continue onboarding, or email yourself a sign-in link."
           : "AI Client Acquisition Engine for coaches and info businesses. This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
@@ -242,6 +245,21 @@ if (!isConfigured()) {
       });
     }
     const inviteEmail = () => (invite && invite.email ? String(invite.email) : "");
+    // A valid invite or a team join link that is on: no access code and no
+    // Instagram handle. The sign-up trigger checks the link again server-side.
+    function relaxForLink() {
+      const needs = signupNeeds({ inviteOk: Boolean(inviteEmail()), joinOk: Boolean(joinLink) });
+      const access = document.getElementById("access-code");
+      const accessLabel = access.closest("label");
+      if (accessLabel) accessLabel.hidden = !needs.accessCode;
+      access.required = needs.accessCode;
+      const instagramInput = document.getElementById("instagram");
+      instagramInput.required = needs.instagram;
+      const instagramLabel = instagramInput.closest("label");
+      if (instagramLabel && !needs.instagram && instagramLabel.firstChild && instagramLabel.firstChild.nodeType === 3) {
+        instagramLabel.firstChild.textContent = "Instagram handle (optional)";
+      }
+    }
     function showEntryError(message) {
       const text = message || "That link could not be used.";
       showError(text);
@@ -283,16 +301,16 @@ if (!isConfigured()) {
       const preview = await supabase.rpc("preview_invite", { p_token: inviteToken });
       invite = preview.data || null;
       if (invite && invite.email) {
-        const access = document.getElementById("access-code");
-        const accessLabel = access.closest("label");
-        if (accessLabel) accessLabel.hidden = true;
-        access.required = false;
+        relaxForLink();
         document.getElementById("email").value = invite.email;
         document.getElementById("email").readOnly = true;
         document.getElementById("login-email").value = invite.email;
       }
       showTab(wantsLogin() ? "login" : "signup");
     } else if (joinCode) {
+      const preview = await supabase.rpc("acq_preview_join", { p_code: joinCode });
+      joinLink = preview.data && preview.data.business_name ? preview.data : null;
+      if (joinLink) relaxForLink();
       showTab(wantsLogin() ? "login" : "signup");
     }
     const resolved = await resolveSession(supabase, window.location.href);
@@ -326,9 +344,11 @@ if (!isConfigured()) {
         const confirm = document.getElementById("confirm").value;
         if (!name) return showError("Enter your name.");
         if (!/^\S+@\S+\.\S+$/.test(email)) return showError("Enter a valid email address.");
-        if (!instagram) return showError("Enter your Instagram handle.");
         const inviteOk = Boolean(inviteEmail());
-        if (!inviteOk && !accessCode) return showError("Enter your access code.");
+        const joinOk = !inviteOk && Boolean(joinLink);
+        const needs = signupNeeds({ inviteOk, joinOk });
+        if (needs.instagram && !instagram) return showError("Enter your Instagram handle.");
+        if (needs.accessCode && !accessCode) return showError("Enter your access code.");
         if (password.length < 8) return showError("Use at least 8 characters in the password.");
         if (password !== confirm) return showError("Those passwords do not match.");
         const button = form.querySelector("button[type=submit]");
@@ -337,11 +357,9 @@ if (!isConfigured()) {
           email,
           password,
           options: {
-            data: inviteOk
-              ? { full_name: name, instagram, invite_token: inviteToken }
-              : { full_name: name, instagram, access_code: accessCode },
+            data: signupMetadata({ name, instagram, accessCode, inviteToken, inviteOk, joinCode, joinOk }),
             emailRedirectTo: authReturnUrl(
-              inviteOk ? "/signup/?mode=login&invite=" + encodeURIComponent(inviteToken) : "/signup/?mode=login",
+              signupReturnPath({ inviteToken, inviteOk, joinCode, joinOk }),
               params.get("next"),
               window.location.href
             )
@@ -366,7 +384,7 @@ if (!isConfigured()) {
           window.location.replace("/account/acquisition/?onboarding=1");
           return;
         }
-        okEl.textContent = inviteOk
+        okEl.textContent = inviteOk || joinOk
           ? "Check your email to confirm the account. The link brings you back to this invite."
           : "Check your email to confirm the account, then log in. The link brings you back to your account.";
         toast(okEl.textContent, "ok");

@@ -149,5 +149,45 @@ await as(A, async () => {
 });
 ok(await fails(() => as(null, () => db.query("select public.acq_join_workspace($1)", [editorCode]))), "signed out cannot join");
 
+
+// --- Sign-up from a link needs no access code ---------------------------------
+const signup = (email, meta) => one("insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id, raw_user_meta_data m", [email, JSON.stringify(meta)]);
+const memberRole = async (uid) => ((await one("select role from public.acq_members where business_id = $1 and user_id = $2", [W, uid])) || {}).role;
+const ownBiz = async (uid) => (await one("select count(*)::int n from public.acq_workspaces where owner_id = $1", [uid])).n;
+let tCode;
+await as(O, async () => { tCode = (await one("select public.acq_regenerate_join_code($1, 'tester') r", [W])).r.join_code; });
+// Preview works signed out, only for a link that is on.
+await db.exec("set role anon");
+ok((await one("select public.acq_preview_join($1) p", [tCode])).p?.role === "tester", "anon: preview shows the link's role");
+ok((await one("select public.acq_preview_join('abcd1234') p")).p === null, "anon: old code has no preview");
+await db.exec("reset role");
+ok(await fails(() => signup("nolink@x.co", { full_name: "N" })), "no link, no access code: rejected");
+const j1 = await signup("joiner@x.co", { full_name: "J", join_code: tCode.toUpperCase() });
+ok(!("join_code" in j1.m) && !("access_code" in j1.m), "join code is not kept on the user");
+ok(await memberRole(j1.id) === "tester", "tester-link sign-up without access code joins as Tester");
+ok(await ownBiz(j1.id) === 0, "tester-link sign-up does not open an empty business of their own");
+let eCode;
+await as(O, async () => { eCode = (await one("select public.acq_regenerate_join_code($1, 'editor') r", [W])).r.join_code; });
+ok(await fails(() => signup("late@x.co", { full_name: "L", join_code: tCode })), "replaced link without access code: rejected");
+const j2 = await signup("ed@x.co", { full_name: "E", join_code: eCode });
+ok(await memberRole(j2.id) === "editor", "editor-link sign-up joins as Editor");
+ok(await ownBiz(j2.id) === 1, "editor-link sign-up still gets their own business, like before");
+await as(O, async () => { await db.query("delete from public.acq_join_links where business_id = $1", [W]); });
+ok(await fails(() => signup("off@x.co", { full_name: "O", join_code: eCode })), "turned-off link without access code: rejected");
+const j3 = await signup("off2@x.co", { full_name: "O", join_code: eCode, access_code: "Code2026" });
+ok(await memberRole(j3.id) === undefined, "turned-off link with access code: account created, no membership");
+const f1 = await signup("forge@x.co", { full_name: "F", access_code: "Code2026", acq_join_business_id: W, acq_join_role: "editor" });
+ok(!("acq_join_business_id" in f1.m) && await memberRole(f1.id) === undefined, "forged join marker is stripped: no membership");
+ok(await fails(() => signup("forge2@x.co", { full_name: "F", acq_join_business_id: W, acq_join_role: "editor" })), "forged join marker without code: rejected");
+// Per-email invites (#129) still skip the code, and an expired one does not.
+const IT = "f".repeat(64), XT = "9".repeat(64);
+await db.query("insert into public.acq_invites (business_id, email, scopes, token, role, expires_at) values ($1, 'inv@x.co', '{}', $2, 'tester', now() + interval '14 days'), ($1, 'old@x.co', '{}', $3, 'tester', now() - interval '1 day')", [W, IT, XT]);
+const i1 = await signup("inv@x.co", { full_name: "I", invite_token: IT });
+ok(await memberRole(i1.id) === "tester" && await ownBiz(i1.id) === 0, "email invite sign-up without access code joins as Tester");
+ok(await fails(() => signup("old@x.co", { full_name: "X", invite_token: XT })), "expired email invite without access code: rejected");
+ok(await fails(() => signup("someone@x.co", { full_name: "S", invite_token: IT })), "invite token for another email: rejected");
+const ok2 = await signup("plain@x.co", { full_name: "P", access_code: "Code2026" });
+ok(await ownBiz(ok2.id) === 1, "plain access-code sign-up unchanged");
+
 console.log(failures ? failures + " FAILED" : "ALL PASS");
 process.exit(failures ? 1 : 0);
