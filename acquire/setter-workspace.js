@@ -13,10 +13,12 @@ import { recorderStartOptions } from "./voice-audio.js";
 import {
   TRIAL_VOICE_MAX_BYTES,
   TRIAL_VOICE_MAX_MS,
+  blankTrial,
   canRewindTo,
   exchangeStart,
   releaseVoiceUrls,
   rewindTrial,
+  trialBelongsTo,
   trialVoiceOutcome
 } from "./trial-thread.js";
 
@@ -198,6 +200,7 @@ function copyFor(ui) {
 export function deskState(state) {
   const id = state.businessId || "";
   if (!state.setterDesk || state.setterDesk.businessId !== id) {
+    if (state.setterDesk) stopTrialRecorder(state.setterDesk, true);
     const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
     const panel = params.get("panel");
     state.setterDesk = {
@@ -244,7 +247,9 @@ function versionSource(ui, row, copy) {
 
 function rememberSims(ui) {
   const list = ui.state.simConversations || [];
-  saveSimulations(safeStorage(), ui.state.businessId, list);
+  const id = String(ui.state.businessId || "");
+  ui.state.simConversationsWorkspaceId = id;
+  saveSimulations(safeStorage(), id, list);
 }
 
 function safeStorage() {
@@ -252,9 +257,13 @@ function safeStorage() {
 }
 
 export function ensureSimulations(state) {
-  if (Array.isArray(state.simConversations)) return state.simConversations;
-  const stored = loadSimulations(safeStorage(), state.businessId);
+  const id = String(state.businessId || "");
+  if (Array.isArray(state.simConversations) && state.simConversationsWorkspaceId === id) {
+    return state.simConversations;
+  }
+  const stored = loadSimulations(safeStorage(), id);
   state.simConversations = stored.length ? stored : (state.previewSimulations || []);
+  state.simConversationsWorkspaceId = id;
   return state.simConversations;
 }
 
@@ -875,7 +884,7 @@ function paintConversationList(ui, copy, desk, list) {
       stopTrialRecorder(desk, true);
       const epoch = ((ui.state.setterTrial && ui.state.setterTrial.epoch) || 0) + 1;
       if (ui.state.setterTrial) ui.state.setterTrial.epoch = epoch;
-      ui.state.setterTrial = { scenario: "follower", messages: (row.messages || []).slice(), leadState: row.leadState, epoch };
+      ui.state.setterTrial = blankTrial(ui.state.businessId, { messages: row.messages || [], leadState: row.leadState, epoch });
       desk.leadState = row.leadState || desk.leadState;
       desk.panel = "";
       ui.paint();
@@ -902,7 +911,7 @@ function resetConversation(ui) {
   }
   const epoch = (trial.epoch || 0) + 1;
   trial.epoch = epoch;
-  ui.state.setterTrial = { scenario: "follower", messages: [], leadState: desk.leadState, epoch };
+  ui.state.setterTrial = blankTrial(ui.state.businessId, { leadState: desk.leadState, epoch });
   desk.compose = "";
   ui.paint();
 }
@@ -910,7 +919,9 @@ function resetConversation(ui) {
 function submitSim(ui, text, followup) {
   const desk = deskState(ui.state);
   const prompt = String(ui.state.setterPrompt || "").trim() || currentPromptValue(ui);
-  if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [] };
+  if (!trialBelongsTo(ui.state.setterTrial, ui.state.businessId)) {
+    ui.state.setterTrial = blankTrial(ui.state.businessId, { leadState: desk.leadState });
+  }
   ui.state.setterTrial.leadState = desk.leadState;
   if (followup) ui.sendTrial(prompt, "", { followup: Number(desk.followupNumber) || 1, leadState: desk.leadState });
   else {
@@ -990,11 +1001,16 @@ async function toggleTrialRecord(ui, copy) {
     appendTrialError(ui, voiceFailCopy(copy, "mic"));
     return;
   }
+  const workspaceId = ui.state.businessId;
   let stream;
   try {
     stream = await media.getUserMedia({ audio: true });
   } catch (_error) {
     appendTrialError(ui, voiceFailCopy(copy, "mic"));
+    return;
+  }
+  if (ui.state.businessId !== workspaceId || desk !== deskState(ui.state)) {
+    stream.getTracks().forEach((track) => track.stop());
     return;
   }
   const supports = (type) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type);
@@ -1048,23 +1064,33 @@ async function toggleTrialRecord(ui, copy) {
 
 async function acceptTrialVoice(ui, copy, blob) {
   const desk = deskState(ui.state);
+  const workspaceId = ui.state.businessId;
   rememberCompose(desk);
   desk.transcribing = true;
   desk.statusText = copy.transcribing;
   ui.paint();
   let playbackUrl = "";
+  const stale = () => ui.state.businessId !== workspaceId || desk !== (ui.state.setterDesk || desk);
   try {
     if (!blob || !blob.size) return showTrialVoiceError(ui, copy, "empty", "");
     if (blob.size > TRIAL_VOICE_MAX_BYTES) return showTrialVoiceError(ui, copy, "too_long", "");
     playbackUrl = URL.createObjectURL(blob);
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const result = ui.transcribeTrial ? await ui.transcribeTrial(bytes, blob.type || "") : { ok: false, reason: "signed_out" };
+    if (stale()) {
+      if (playbackUrl) releaseVoiceUrls([{ voice: { playbackUrl } }]);
+      desk.transcribing = false;
+      desk.statusText = "";
+      return;
+    }
     const outcome = trialVoiceOutcome(result);
     if (!outcome.send) return showTrialVoiceError(ui, copy, outcome.reason, playbackUrl);
     desk.transcribing = false;
     desk.statusText = "";
     const prompt = String(ui.state.setterPrompt || "").trim() || currentPromptValue(ui);
-    if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [] };
+    if (!trialBelongsTo(ui.state.setterTrial, ui.state.businessId)) {
+      ui.state.setterTrial = blankTrial(ui.state.businessId, { leadState: desk.leadState });
+    }
     ui.state.setterTrial.leadState = desk.leadState;
     ui.sendTrial(prompt, outcome.transcript, {
       sender: "lead",
@@ -1091,7 +1117,9 @@ function showTrialVoiceError(ui, copy, reason, playbackUrl) {
 }
 
 function appendTrialError(ui, text) {
-  if (!ui.state.setterTrial) ui.state.setterTrial = { scenario: "follower", messages: [], epoch: 0 };
+  if (!trialBelongsTo(ui.state.setterTrial, ui.state.businessId)) {
+    ui.state.setterTrial = blankTrial(ui.state.businessId, { epoch: 0 });
+  }
   const trial = ui.state.setterTrial;
   trial.messages = (trial.messages || []).concat([{ role: "user", error: text, voiceError: true }]);
   const desk = deskState(ui.state);
