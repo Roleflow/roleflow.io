@@ -164,3 +164,10 @@ assert.match(between(dash, "async function teamList(", "\nasync function "), /de
 const teamInviteUi = between(app, "async function teamInvite(", "\nasync function ");
 assert.match(teamInviteUi, /if \(state\.teamSaving\) return;/, "one invite request at a time");
 assert.match(teamInviteUi, /finally \{\n    state\.teamSaving = false;/);
+
+// Cancel removes only the one invite row it was given (Diego, 2026-11-11).
+const remove = between(dash, "async function teamRemove(", "\nasync function ");
+const inviteCancel = remove.slice(0, remove.indexOf("const memberId"));
+assert.match(inviteCancel, /\.delete\(\)\.eq\("id", inviteId\)\.eq\("business_id", businessId\)\.is\("accepted_at", null\)/, "cancel deletes by invite id on this business");
+assert.doesNotMatch(inviteCancel, /ilike\("email"/, "cancel does not sweep same-email invites");
+assert.equal((inviteCancel.match(/\.delete\(\)/g) || []).length, 1, "one delete, one row");

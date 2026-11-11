@@ -771,12 +771,8 @@ async function teamRemove(admin, businessId, body) {
   const inviteId = String(body.invite_id || "");
   if (inviteId) {
     if (!UUID.test(inviteId)) return json(200, { ok: false, error: "That invite is not on this business." });
-    const row = await admin.from("acq_invites").select("id, email").eq("id", inviteId).eq("business_id", businessId).is("accepted_at", null).maybeSingle();
-    if (row.error || !row.data) return json(200, { ok: false, error: "That invite is not on this business." });
-    // The list shows one row per email, so cancelling it cancels that email's
-    // older open duplicates on this business too.
-    const pattern = String(row.data.email || "").toLowerCase().replace(/[\\%_]/g, (char) => "\\" + char);
-    const removed = await admin.from("acq_invites").delete().eq("business_id", businessId).ilike("email", pattern).is("accepted_at", null).select("id");
+    // Cancel removes only this one invite row; other invites stay as they are.
+    const removed = await admin.from("acq_invites").delete().eq("id", inviteId).eq("business_id", businessId).is("accepted_at", null).select("id");
     if (removed.error || !(removed.data || []).length) return json(200, { ok: false, error: "That invite is not on this business." });
     return json(200, { ok: true, sent: false, removed: removed.data.length });
   }
