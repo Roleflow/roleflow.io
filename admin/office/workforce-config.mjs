@@ -176,9 +176,8 @@ export function validateOfficeConfig(config) {
   };
 }
 
-// Code default for an office that has no saved row. readOffice in
-// office-editor.mjs is the phase 2 read: it loads a saved config and falls
-// back to this template when the office tables are not there yet.
+// Code default for an office that has no saved row. The template is what the
+// shared office renderer falls back to.
 export async function loadOfficeConfig(businessId) {
   void businessId;
   return clone(DEFAULT_OFFICE_CONFIG);

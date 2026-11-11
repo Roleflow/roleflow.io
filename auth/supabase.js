@@ -43,11 +43,13 @@ export async function destinationAfterLogin(supabase, next) {
   const id = data.user?.id;
   if (!id) return target;
   const admin = await supabase.from("admins").select("user_id").eq("user_id", id).maybeSingle();
-  if (target === "/admin/office" || target.startsWith("/admin/office/") || target.startsWith("/admin/office?")) {
-    const hash = target.includes("#") ? target.slice(target.indexOf("#")) : "";
-    target = "/admin/hq/" + hash;
+  const adminPath = target.split(/[?#]/)[0];
+  if (
+    adminPath === "/admin/office" || adminPath.startsWith("/admin/office/")
+    || adminPath === "/admin/hq" || adminPath.startsWith("/admin/hq/")
+  ) {
+    target = "/admin/";
   }
-  if (admin.data && (target === "/admin/hq" || target.startsWith("/admin/hq/") || target.startsWith("/admin/hq?"))) return target;
   if (admin.data && (target === "/admin" || target === "/admin/" || target.startsWith("/admin/") || target.startsWith("/admin#") || target.startsWith("/admin?"))) return target;
   if (admin.data) return "/admin/";
   if (target === "/account/" || target === "/account") return "/account/acquisition/";

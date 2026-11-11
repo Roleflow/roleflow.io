@@ -110,7 +110,7 @@ assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "
 
 assert.match(read("signup/signup.js"), /get\("mode"\) === "login"/);
 assert.match(read("signup/signup.js"), /isLoginTab/);
-for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/hq/app.js", "admin/office/scene.js", "admin/office/factory.mjs"]) {
+for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "auth/sidebar.js", "businesses/app.js", "admin/office/scene.js", "admin/office/factory.mjs"]) {
   const tmp = path.join(os.tmpdir(), "roleflow-syntax-" + file.replaceAll("/", "-") + ".mjs");
   fs.writeFileSync(tmp, read(file));
   const checked = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
@@ -153,24 +153,16 @@ assert.match(scene, /YOUR APPROVAL/);
 assert.match(scene, /Next step: Your approval/);
 assert.match(read("admin/office/factory.mjs"), /kind: "org"/);
 assert.match(read("admin/office/org.mjs"), /agents below the C-suite/);
-assert.match(read("admin/office/desk.mjs"), /in_progress/);
-assert.match(read("admin/hq/app.js"), /currentDesk/);
-assert.match(read("admin/hq/app.js"), /rosterCounts/);
 assert.match(read("admin/office/scene.js"), /buildOrg/);
 assert.match(read("admin/office/factory.mjs"), /Back Office/);
 assert.doesNotMatch(read("admin/office/factory.mjs"), /coming soon/);
 assert.match(scene, /addTether/);
-assert.match(read("admin/hq/app.js"), /plan\.groups/);
 assert.match(scene, /Setty AI/);
 assert.match(scene, /Zerochats/);
 assert.match(scene, /1 in - 10 out/);
 assert.match(scene, /YOUR POSTS/);
 assert.match(scene, /ON THE BALCONY/);
 assert.match(scene, /syncCards/);
-const hq = read("admin/hq/app.js");
-assert.match(hq, /layout: "factory"/);
-assert.match(hq, /\/docs\/brand-brain\.md/);
-assert.match(hq, /factoryCards/);
 assert.match(read("docs/brand-brain.md"), /Brand Brain/);
 assert.match(read(".vercelignore"), /!docs\/brand-brain\.md/);
 const workforce = read("businesses/workforce.js");
@@ -180,17 +172,14 @@ assert.match(workforce, /Brand Brain/);
 assert.match(workforce, /DM setter/);
 assert.match(read("admin/office/factory.mjs"), /Leads In/);
 assert.match(read("admin/office/factory.mjs"), /Overseer, on the balcony/);
-assert.match(hq, /hqPlan\(activeAgents\(\)\)/);
-assert.match(hq, /data-action": "cam"/);
-assert.match(hq, /statusBubble/);
+assert.match(workforce, /plan\.groups/);
 assert.match(workforce, /data-cam/);
 assert.match(workforce, /statusBubble/);
-const hqCss = read("admin/hq/hq.css");
-assert.match(hqCss, /\.cam-tabs/);
-assert.match(hqCss, /scroll-snap-type:x mandatory/);
-assert.match(hqCss, /body\.hq #hq-nav\.app-nav\{position:fixed/);
-assert.match(hqCss, /#hq-panel\{top:auto/);
-assert.match(hqCss, /\.hq-need \.btn\{min-height:52px/);
+assert.match(read("businesses/workforce.css"), /\.cam-tabs/);
+assert.doesNotMatch(read("index.html") + read("businesses/app.js") + read("admin/index.html"), /\/admin\/hq\//);
+assert.doesNotMatch(read("admin/hq/index.html") + read("admin/office/index.html"), /#office|AI Workforce|Needs Diego/);
+assert.match(read("vercel.json"), /"source": "\/admin\/hq\/"[\s\S]{0,80}"destination": "\/admin\/"/);
+assert.match(read("vercel.json"), /"source": "\/admin\/office\/"[\s\S]{0,80}"destination": "\/admin\/"/);
 
 assert.match(read("index.html"), /id="drawer-applications" href="\/admin\/#applications" hidden>Applications Tracker/);
 assert.match(read("index.html"), /id="drawer-admin" href="\/admin\/" hidden>Client tracking/);

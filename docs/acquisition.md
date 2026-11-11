@@ -1,6 +1,6 @@
 # Client acquisition
 
-Roleflow’s acquisition product lives in each signed-in user’s account at `/account/acquisition/`. Admin and Agentic HQ stay Diego’s cross-business tools. Admins open the same account panel and can switch businesses because workspace read access includes admins.
+Roleflow’s acquisition product lives in each signed-in user’s account at `/account/acquisition/`. Admin stays Diego’s cross-business tool. Admins open the same account panel and can switch businesses because workspace read access includes admins.
 
 `/acquire/` redirects to `/account/acquisition/`. Styles and scripts stay under `/acquire/` so the redirect does not hide them.
 
