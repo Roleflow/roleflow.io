@@ -16,6 +16,10 @@ export function inviteDestination(memberData, acqData, acqError) {
 }
 
 export function joinDestination(data, errorMessage) {
+  // A team link joins as Tester by default; testers land on the businesses page.
+  if (data && data.ok && data.business_id && (data.role === "tester" || data.role === "prompt_editor")) {
+    return { ok: true, href: "/businesses/" };
+  }
   if (data && data.ok && data.business_id) {
     return {
       ok: true,

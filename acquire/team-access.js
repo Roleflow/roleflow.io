@@ -86,3 +86,25 @@ export function roleText(role, language) {
   if (role === "viewer") return language === "es" ? "Lector" : "Viewer";
   return language === "es" ? "Miembro" : "Member";
 }
+
+// Team join link. Only the owner sees or changes it, and it joins as Tester
+// unless the owner picked another role for it.
+export const JOIN_ROLE_DEFAULT = "tester";
+
+export function joinRole(role) {
+  return ROLE_OPTIONS.some((option) => option.id === role) ? role : JOIN_ROLE_DEFAULT;
+}
+
+export function joinLinkUrl(origin, code) {
+  const value = String(code || "").trim();
+  if (!/^[0-9a-f]{24}$/.test(value)) return "";
+  return String(origin || "") + "/signup/?join=" + encodeURIComponent(value);
+}
+
+export function joinLinkNote(role, language) {
+  const es = language === "es";
+  const label = roleText(joinRole(role), es ? "es" : "en");
+  return es
+    ? "Quien abra este enlace e inicie sesión entra como " + label + "."
+    : "Anyone who opens this link and signs in joins as " + label + ".";
+}

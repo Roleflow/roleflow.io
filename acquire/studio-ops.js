@@ -1,4 +1,4 @@
-import { ROLE_OPTIONS, roleText } from "./team-access.js";
+import { JOIN_ROLE_DEFAULT, ROLE_OPTIONS, joinLinkNote, joinLinkUrl, joinRole, roleText } from "./team-access.js";
 import {
   QUESTIONS, CRM_STATES, DAYS, WEBHOOK_EVENTS, REPLY_BUCKETS,
   officeError, delayError, webhookError, tagError, llmChoiceError,
@@ -785,20 +785,44 @@ export function renderTeam(ui) {
   const wrap = ui.el("div", { class: "platform-home", id: "team-access" });
   wrap.append(ui.pageHeader(ui, es ? "Equipo y acceso" : "Team and access", es ? "Da acceso a una persona solo a este negocio." : "Give someone access to this business only.", "team", "userplus"));
   wrap.append(accessCard(ui, es));
-  const business = (ui.state.businesses || []).find((row) => row.id === ui.state.businessId);
-  const code = business && business.join_code;
-  const card = ui.el("section", { class: "agent" });
-  card.append(ui.el("h3", { text: es ? "Enlace de equipo" : "Team link" }));
-  card.append(ui.el("p", { class: "mute", text: es ? "Quien use este enlace entra como Editor, con todo el panel." : "Anyone who uses this link joins as an Editor with the full panel." }));
-  if (!code) card.append(ui.el("p", { text: es ? "Este negocio aún no tiene código." : "This business has no join code yet." }));
-  else card.append(ui.el("p", { class: "team-link", text: location.origin + "/signup/?join=" + encodeURIComponent(code) }));
-  if (ui.state.canEdit) {
-    const regen = ui.button("Regenerate link", () => ui.regenerateJoin());
-    regen.classList.add("ghost");
-    card.append(regen);
-  }
-  wrap.append(card);
+  if (ui.state.canManageTeam) wrap.append(joinLinkCard(ui, es));
   return wrap;
+}
+
+// Owner only. The link joins as Tester unless the owner picks another role.
+function joinLinkCard(ui, es) {
+  const card = ui.el("section", { class: "agent", id: "team-join-link" });
+  card.append(ui.el("h3", { text: es ? "Enlace de equipo" : "Team link" }));
+  const team = ui.state.team;
+  if (!team) {
+    card.append(ui.el("p", { class: "mute", role: "status", text: es ? "Cargando el enlace…" : "Loading the link…" }));
+    return card;
+  }
+  const link = team.joinLink || null;
+  const url = link ? joinLinkUrl(location.origin, link.code) : "";
+  if (url) {
+    card.append(ui.el("p", { class: "mute", text: joinLinkNote(link.role, es ? "es" : "en") }));
+    card.append(linkRow(ui, es, url, "team-join-url"));
+  } else {
+    card.append(ui.el("p", { class: "mute", text: es ? "No hay enlace activo. Crea uno solo si quieres que cualquiera con el enlace pueda entrar." : "No link is on. Create one only if you want anyone with the link to be able to join." }));
+  }
+  if (team.joinError) card.append(ui.el("p", { class: "claude-notice", role: "status", text: team.joinError }));
+  const role = ui.el("select", { id: "team-join-role" });
+  ROLE_OPTIONS.forEach((option) => role.append(ui.el("option", { value: option.id, text: option.label[es ? "es" : "en"] })));
+  role.value = joinRole(link ? link.role : JOIN_ROLE_DEFAULT);
+  card.append(ui.el("label", { text: es ? "Entran como" : "Joins as" }, [role]));
+  const create = ui.button(url ? (es ? "Crear enlace nuevo" : "Make a new link") : (es ? "Crear enlace" : "Create link"), () => ui.regenerateJoin(role.value));
+  create.classList.add("ghost");
+  card.append(create);
+  if (url) {
+    const off = ui.button(es ? "Desactivar enlace" : "Turn off link", async () => {
+      if (!window.confirm(es ? "¿Desactivar el enlace de equipo? Nadie más podrá entrar con él." : "Turn off the team link? Nobody else can join with it.")) return;
+      await ui.disableJoin();
+    });
+    off.classList.add("ghost");
+    card.append(off);
+  }
+  return card;
 }
 
 function accessCard(ui, es) {
