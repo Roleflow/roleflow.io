@@ -7,7 +7,7 @@ export const DM_CHAR_LIMIT = 1000;
 
 const TERMINAL = /[.!?…]["'"')\]]*$/u;
 const SHORT_OK = new Set(["i", "a", "ok", "no", "yes", "yo", "hi", "hey", "u", "we", "us", "me", "it", "he", "she", "they", "ya", "nah", "yep", "nope", "hmm", "oh", "wow", "thx", "ty"]);
-const DANGLING = new Set(["and", "or", "but", "if", "the", "a", "an", "to", "for", "of", "with", "without", "on", "in", "at", "by", "from", "as", "than", "then", "so", "because", "when", "while", "though", "although", "that", "this", "these", "those", "my", "your", "our", "their", "its", "n"]);
+const DANGLING = new Set(["and", "or", "but", "if", "the", "a", "an", "to", "for", "of", "with", "without", "on", "in", "at", "by", "from", "as", "than", "then", "so", "because", "when", "while", "though", "although", "that", "this", "these", "those", "my", "your", "our", "their", "its", "it's", "whats", "what's", "how's", "hows", "n"]);
 
 export function splitReply(text, maxWords) {
   const body = dropIncompleteTail(String(text || "").trim());
@@ -52,6 +52,9 @@ export function dropIncompleteTail(text) {
   if (isTerminal(body)) return body;
   const parts = splitSentences(body);
   const last = parts[parts.length - 1] || "";
+  // A trailing unpunctuated clause after a complete sentence is a cut-off,
+  // even when it ends on a real word ("how are you handling", "the engine sour").
+  if (parts.length > 1 && !isTerminal(last)) return parts.slice(0, -1).join(" ").trim();
   if (isFinishedPart(last)) return body;
   return parts.slice(0, -1).join(" ").trim();
 }

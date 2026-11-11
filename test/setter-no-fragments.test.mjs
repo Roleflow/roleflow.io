@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { DM_CHAR_LIMIT, dropIncompleteTail, salvageCutOffText, splitReply, trimToSentence } from "../supabase/functions/_shared/split-reply.js";
 import { clampBubbles } from "../supabase/functions/roleflow-acquisition/ig/send.js";
 import { enqueueBody, planGatewayReply, replyText } from "../supabase/functions/_shared/ig-gateway.js";
-import { SETTER_MAX_TOKENS, completeChat, hitTokenLimit, largerBudget } from "../supabase/functions/_shared/llm-provider.js";
+import { SETTER_MAX_TOKENS, clientReplyView, completeChat, hitTokenLimit, largerBudget, redactSecret } from "../supabase/functions/_shared/llm-provider.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -167,4 +167,69 @@ test("the test chat and live setter use a 4096-token budget and never slice a re
 });
 test("panel and edge copies of splitReply stay identical", () => {
   assert.equal(read("acquire/split-reply.js"), read("supabase/functions/_shared/split-reply.js"));
+});
+
+test("a 240-character practice-chat cut is trimmed to complete sentences", () => {
+  const examples = [
+    {
+      bubbles: [
+        "hey, good to meet you. we install an ai engine in your Instagram dms.",
+        "it qualifies, follows up, sends voice notes in your own voice, and books calls 24/7.",
+        "so you get more fitness clients without babysitting the inbox. how are you handling"
+      ],
+      ends: "inbox."
+    },
+    {
+      bubbles: [
+        "so what's included is a 100% custom build for your account.",
+        "the prompt, your voice notes, follow up, reply timing, and the booking path. pricing works the same all three months.",
+        "no setup, no retainer, just a share of growth the engine sour"
+      ],
+      ends: "months."
+    },
+    {
+      bubbles: [
+        "got it, around twenty leads a month from Instagram on the fitness coaching side.",
+        "setup is custom, we build the prompt, your voice notes, follow up and booking path around your account.",
+        "what's your main offer right now, and roughly what's"
+      ],
+      ends: "account."
+    }
+  ];
+  for (const example of examples) {
+    const sliced = example.bubbles.join(" ");
+    const kept = dropIncompleteTail(sliced);
+    assert.ok(kept.endsWith(example.ends), kept);
+    assert.equal(kept.includes("how are you handling"), false);
+    assert.equal(kept.includes("engine sour"), false);
+    assert.equal(kept.includes("roughly what's"), false);
+    for (const words of [15, 20]) {
+      const parts = splitReply(sliced, words);
+      assert.ok(parts.length > 0, "words=" + words);
+      assert.ok(parts.every((part) => /[.!?]$/.test(part)), parts.join(" | "));
+      assert.equal(parts.join(" "), kept);
+    }
+  }
+  assert.equal(dropIncompleteTail("what's your main offer right now, and roughly what's"), "");
+  assert.equal(dropIncompleteTail("Sounds good"), "Sounds good");
+});
+
+test("clientReplyView redacts secrets but does not cap the reply at 240 characters", () => {
+  const sentence = "we install an ai engine in your Instagram dms. ";
+  const reply = sentence.repeat(8).trim();
+  assert.ok(reply.length > 240);
+  const view = clientReplyView({ ok: true, reply }, ["sk-ant-api03-this-is-a-fake-test-key"]);
+  assert.equal(view.reply, reply);
+  assert.equal(redactSecret(reply, "sk-ant-api03-this-is-a-fake-test-key"), reply);
+  const hidden = "sk-ant-api03-this-is-a-fake-test-key";
+  const leaked = ("pong " + hidden + " " + sentence.repeat(6)).trim();
+  const cleaned = clientReplyView({ ok: true, reply: leaked }, [hidden]);
+  assert.equal(cleaned.reply.includes(hidden), false);
+  assert.ok(cleaned.reply.includes("[redacted]"));
+  assert.ok(cleaned.reply.length > 240);
+  const source = read("supabase/functions/_shared/llm-provider.js");
+  const start = source.indexOf("export function redactSecret");
+  const end = source.indexOf("export function anthropicAcceptsTemperature");
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(source.slice(start, end), /\.slice\(\s*0\s*,\s*240\s*\)/);
 });
