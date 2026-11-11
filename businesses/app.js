@@ -7,6 +7,7 @@ import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
 import { openAddBusiness } from "../acquire/add-business.js";
 import { addBusinessCard, businessCard } from "./biz-board.js";
+import { isTesterRole, mergeTesterBusinesses, roleText } from "../acquire/team-access.js";
 import { cancelWorkforce, fixtureClient, mountWorkforce } from "./workforce.js";
 
 bindShell();
@@ -291,7 +292,19 @@ function readBizFixture() {
 
 const preview = readBizFixture();
 const arriving = rememberCallback(window.location.href);
-if (readGridPreview() && !preview) {
+if (readGridPreview() && !preview && new URLSearchParams(location.search).get("tester") === "1") {
+  hideBoot();
+  const es = gridLanguage() === "es";
+  heading.classList.add("biz-title");
+  heading.textContent = es ? "Tus negocios" : "Your businesses";
+  sub.textContent = es ? "Vista previa de un tester. Datos de ejemplo." : "Preview of a tester. Sample data.";
+  panelWorkspaces = mergeTesterBusinesses([], [
+    { business_id: "preview", name: "Value Add Marketing", role: "tester" },
+    { business_id: "second", name: "A business with a much longer name than usual", role: "prompt_editor" }
+  ]);
+  app.innerHTML = "";
+  app.append(paintPanelRoster(null, { id: "tester" }));
+} else if (readGridPreview() && !preview) {
   hideBoot();
   const lang = gridLanguage();
   const es = lang === "es";
@@ -429,9 +442,10 @@ async function boot(supabase, user) {
   if (!stageRes.error) (stageRes.data || []).forEach((row) => stages.set(row.business_id, row.status));
 
   const workspaceRes = await supabase.from("acq_workspaces").select("id, name, owner_id, created_at").order("name", { ascending: true });
-  panelWorkspaces = workspaceRes.error ? [] : (workspaceRes.data || []);
+  const testerRes = await supabase.rpc("acq_my_tester_businesses");
+  panelWorkspaces = mergeTesterBusinesses(workspaceRes.error ? [] : (workspaceRes.data || []), testerRes.error ? [] : (testerRes.data || []));
   panelEnabled = new Map();
-  const workspaceIds = panelWorkspaces.map((row) => row.id);
+  const workspaceIds = panelWorkspaces.filter((row) => !row.tester_role).map((row) => row.id);
   if (workspaceIds.length) {
     const enabledRes = await supabase.from("acq_settings").select("agent_id, system_enabled").in("agent_id", workspaceIds);
     if (!enabledRes.error) (enabledRes.data || []).forEach((row) => panelEnabled.set(row.agent_id, row.system_enabled === true));
@@ -537,10 +551,44 @@ function panelBusinessHref(id, target) {
   return business + "#dashboard";
 }
 
+// A business this person can only test: open the Agentic Setter, nothing else.
+function testerCard(workspace, es) {
+  const card = businessCard({
+    name: workspace.name || (es ? "Negocio sin nombre" : "Untitled business"),
+    active: false,
+    activeText: es ? "Chat de práctica" : "Practice chat",
+    shared: true,
+    sharedText: roleText(workspace.tester_role, es ? "es" : "en"),
+    created: "",
+    leadLabel: es ? "Acceso de tester" : "Tester access",
+    total: null,
+    days: [],
+    chartLabel: "",
+    href: panelBusinessHref(workspace.id, "setter")
+  });
+  card.classList.add("is-tester");
+  card.querySelectorAll(".lead-row, .lead-chart, .biz-created").forEach((node) => node.remove());
+  card.append(el("p", { class: "roster-note", text: es
+    ? "Lee el prompt del setter y pruébalo en el chat de práctica. No envía nada a Instagram."
+    : "Read the setter prompt and try it in the practice chat. Nothing is sent to Instagram." }));
+  const links = el("p", { class: "links" });
+  links.append(el("a", { href: panelBusinessHref(workspace.id, "setter") }, [es ? "Probar el setter" : "Test the setter"]));
+  card.append(links);
+  return card;
+}
+
+function testerOnly(rows, user) {
+  const list = rows || [];
+  return list.length > 0 && list.every((row) => isTesterRole(row.tester_role)) && !list.some((row) => user && row.owner_id === user.id);
+}
+
 function paintPanelRoster(supabase, user) {
   const es = gridLanguage() === "es";
   const section = el("section", { id: "panel-businesses" });
-  section.append(el("p", { class: "roster-note", text: es
+  if (testerOnly(panelWorkspaces, user)) section.append(el("p", { class: "roster-note", text: es
+    ? "Estos son los negocios que te compartieron. Abre uno para probar su setter."
+    : "These are the businesses shared with you. Open one to test its setter." }));
+  else section.append(el("p", { class: "roster-note", text: es
     ? "Abre uno, conecta Instagram o empieza el prompt del setter. Añadir crea el mismo panel."
     : "Open one, connect Instagram, or start the setter prompt. Adding a business creates the same panel." }));
   const grid = el("div", { class: "biz-board", id: "panel-board" });
@@ -551,6 +599,10 @@ function paintPanelRoster(supabase, user) {
     ]));
   }
   panelWorkspaces.forEach((workspace) => {
+    if (isTesterRole(workspace.tester_role)) {
+      grid.append(testerCard(workspace, es));
+      return;
+    }
     const on = panelEnabled.get(workspace.id) === true;
     const card = businessCard({
       name: workspace.name || (es ? "Negocio sin nombre" : "Untitled business"),
@@ -572,7 +624,7 @@ function paintPanelRoster(supabase, user) {
     card.append(links);
     grid.append(card);
   });
-  grid.append(addBusinessCard({
+  if (!testerOnly(panelWorkspaces, user)) grid.append(addBusinessCard({
     id: "panel-add-business",
     text: es ? "Añadir negocio" : "Add business",
     onClick: () => openAddBusiness({ supabase, preview: false })

@@ -1,6 +1,7 @@
+import { ROLE_OPTIONS, roleText } from "./team-access.js";
 import {
-  QUESTIONS, CRM_STATES, DAYS, WEBHOOK_EVENTS, SCOPES, REPLY_BUCKETS,
-  officeError, delayError, webhookError, tagError, scopeError, llmChoiceError,
+  QUESTIONS, CRM_STATES, DAYS, WEBHOOK_EVENTS, REPLY_BUCKETS,
+  officeError, delayError, webhookError, tagError, llmChoiceError,
   inRange, conversationsPerDay, agentPerformance, tagConversion, linkConversions,
   funnel, followupRate, replyBuckets, heatmaps, originBreakdown, originOf, topOrigins,
   projectRevenue, commandItems, filterCommands, snippet, originCsv
@@ -780,63 +781,121 @@ export function renderPerformance(ui) {
 }
 
 export function renderTeam(ui) {
-  const wrap = ui.el("div", { class: "platform-home" });
-  wrap.append(ui.pageHeader(ui, "Team", "Invite by email, choose what they can open, and share a link.", "team", "userplus"));
+  const es = ui.language && ui.language() === "es";
+  const wrap = ui.el("div", { class: "platform-home", id: "team-access" });
+  wrap.append(ui.pageHeader(ui, es ? "Equipo y acceso" : "Team and access", es ? "Da acceso a una persona solo a este negocio." : "Give someone access to this business only.", "team", "userplus"));
+  wrap.append(accessCard(ui, es));
   const business = (ui.state.businesses || []).find((row) => row.id === ui.state.businessId);
   const code = business && business.join_code;
   const card = ui.el("section", { class: "agent" });
-  card.append(ui.el("h3", { text: "Invite link" }));
-  if (!code) card.append(ui.el("p", { text: "This business has no join code yet." }));
-  else card.append(ui.el("p", { text: location.origin + "/signup/?join=" + encodeURIComponent(code) }));
+  card.append(ui.el("h3", { text: es ? "Enlace de equipo" : "Team link" }));
+  card.append(ui.el("p", { class: "mute", text: es ? "Quien use este enlace entra como Editor, con todo el panel." : "Anyone who uses this link joins as an Editor with the full panel." }));
+  if (!code) card.append(ui.el("p", { text: es ? "Este negocio aún no tiene código." : "This business has no join code yet." }));
+  else card.append(ui.el("p", { class: "team-link", text: location.origin + "/signup/?join=" + encodeURIComponent(code) }));
   if (ui.state.canEdit) {
     const regen = ui.button("Regenerate link", () => ui.regenerateJoin());
     regen.classList.add("ghost");
     card.append(regen);
   }
   wrap.append(card);
-  const form = ui.el("form", { class: "agent" });
-  form.append(ui.el("h3", { text: "Invite by email" }));
-  const email = ui.field("Email", "");
-  const picked = new Set(["conversations"]);
-  const scopes = ui.el("div");
-  SCOPES.forEach((scope) => {
-    const box = ui.el("input", { type: "checkbox" });
-    box.checked = scope.id === "conversations";
-    box.addEventListener("change", () => { if (box.checked) picked.add(scope.id); else picked.delete(scope.id); });
-    scopes.append(ui.el("label", { class: "switch", text: " " + scope.label }, [box]));
-  });
-  form.append(email.label, scopes);
-  if (ui.state.canEdit) form.append(ui.button("Create invite", async (event) => {
-    event.preventDefault();
-    const problem = scopeError([...picked]);
-    if (problem) return ui.toast(problem, "bad");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.input.value.trim())) return ui.toast("Enter an email.", "bad");
-    await ui.createInvite({ email: email.input.value.trim(), scopes: [...picked] });
-  }));
-  form.addEventListener("submit", (event) => event.preventDefault());
-  wrap.append(form);
-  const pending = ui.state.invites || [];
-  const open = ui.el("section", { class: "agent" });
-  open.append(ui.el("h3", { text: "Open invites" }));
-  if (!pending.length) open.append(ui.el("p", { text: "No open email invites." }));
-  pending.filter((row) => !row.accepted_at).forEach((row) => {
-    open.append(ui.el("p", { text: row.email + " · " + (row.scopes || []).join(", ") }));
-    open.append(ui.el("p", { class: "mute", text: location.origin + "/signup/?invite=" + encodeURIComponent(row.token) }));
-  });
-  wrap.append(open);
-  const list = ui.el("section", { class: "agent" });
-  list.append(ui.el("h3", { text: "People" }));
-  const members = ui.state.memberRows || [];
-  if (!members.length) list.append(ui.el("p", { text: "No members on file yet." }));
-  members.forEach((row) => {
-    const profile = (ui.state.memberProfiles || []).find((item) => item.id === row.user_id);
-    const who = profile && (profile.email || profile.full_name) ? (profile.email || profile.full_name) : "Member";
-    const role = row.role === "owner" ? "Owner" : row.role === "editor" ? "Editor" : "Viewer";
-    const scopeText = (row.scopes || []).length ? row.scopes.join(", ") : "conversations, configuration, analysis";
-    list.append(ui.el("p", { text: who + " · " + role + " · " + scopeText }));
-  });
-  wrap.append(list);
   return wrap;
+}
+
+function accessCard(ui, es) {
+  const card = ui.el("section", { class: "agent team-card", id: "team-access-card" });
+  card.append(ui.el("h3", { text: es ? "Acceso por negocio" : "Business access" }));
+  card.append(ui.el("p", { class: "mute", text: es
+    ? "Un tester abre solo este negocio: lee el prompt del Agentic Setter y lo prueba en el chat de práctica. No puede activar el setter, cambiar Auto-DMs, conectar Instagram, ver chats o facturación, ni abrir otros negocios."
+    : "A tester opens only this business: they read the Agentic Setter prompt and try it in the practice chat. They can't turn the setter live, change Auto-DMs, connect Instagram, see chats or billing, or open other businesses." }));
+  if (!ui.state.canManageTeam) {
+    card.append(ui.el("p", { text: es ? "Solo el dueño del negocio gestiona el acceso." : "Only the business owner manages access." }));
+    return card;
+  }
+  const form = ui.el("form", { class: "team-form", id: "team-invite-form" });
+  const email = ui.el("input", { id: "team-email", type: "email", autocomplete: "off", maxlength: "254", placeholder: "name@example.com" });
+  const role = ui.el("select", { id: "team-role" });
+  ROLE_OPTIONS.forEach((option) => role.append(ui.el("option", { value: option.id, text: option.label[es ? "es" : "en"] })));
+  const hint = ui.el("p", { class: "mute team-hint", id: "team-role-hint" });
+  const paintHint = () => {
+    const option = ROLE_OPTIONS.find((item) => item.id === role.value) || ROLE_OPTIONS[0];
+    hint.textContent = option.hint[es ? "es" : "en"];
+  };
+  paintHint();
+  role.addEventListener("change", paintHint);
+  form.append(
+    ui.el("label", { text: "Email" }, [email]),
+    ui.el("label", { text: es ? "Rol" : "Role" }, [role]),
+    hint,
+    ui.button(es ? "Dar acceso" : "Give access", null, "submit")
+  );
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const value = email.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return ui.toast(es ? "Escribe un email." : "Enter an email.", "bad");
+    await ui.teamInvite({ email: value, role: role.value });
+  });
+  card.append(form);
+  if (ui.state.teamLastLink) card.append(linkRow(ui, es, ui.state.teamLastLink, "team-new-link"));
+  const team = ui.state.team;
+  if (!team) {
+    card.append(ui.el("p", { class: "mute", role: "status", text: es ? "Cargando el acceso…" : "Loading access…" }));
+    return card;
+  }
+  if (team.error) card.append(ui.el("p", { class: "claude-notice", role: "status", text: team.error }));
+  card.append(ui.el("h4", { text: es ? "Personas" : "People" }));
+  const people = ui.el("ul", { class: "team-list", id: "team-people" });
+  (team.people || []).forEach((row) => {
+    const item = ui.el("li", { class: "team-row" });
+    item.append(ui.el("span", { class: "team-who", text: row.email || row.name || (es ? "Miembro" : "Member") }));
+    item.append(ui.el("span", { class: "chip team-role", text: roleText(row.role, es ? "es" : "en") }));
+    if (row.removable) {
+      const remove = ui.button(es ? "Quitar" : "Remove", async () => {
+        if (!window.confirm(es ? "¿Quitar el acceso de " + (row.email || "esta persona") + "?" : "Remove access for " + (row.email || "this person") + "?")) return;
+        await ui.teamRemove({ user_id: row.user_id });
+      });
+      remove.classList.add("ghost");
+      item.append(remove);
+    }
+    people.append(item);
+  });
+  if (!(team.people || []).length) people.append(ui.el("li", { class: "mute", text: es ? "Nadie más todavía." : "Nobody else yet." }));
+  card.append(people);
+  const invites = team.invites || [];
+  if (invites.length) {
+    card.append(ui.el("h4", { text: es ? "Esperando registro" : "Waiting to sign up" }));
+    const list = ui.el("ul", { class: "team-list", id: "team-invites" });
+    invites.forEach((row) => {
+      const item = ui.el("li", { class: "team-row" });
+      item.append(ui.el("span", { class: "team-who", text: row.email }));
+      item.append(ui.el("span", { class: "chip team-role", text: roleText(row.role, es ? "es" : "en") }));
+      const copy = ui.button(es ? "Copiar enlace" : "Copy link", () => copyText(ui, es, row.link));
+      copy.classList.add("ghost");
+      const cancel = ui.button(es ? "Cancelar" : "Cancel", async () => ui.teamRemove({ invite_id: row.id }));
+      cancel.classList.add("ghost");
+      item.append(copy, cancel);
+      list.append(item);
+    });
+    card.append(list);
+  }
+  return card;
+}
+
+function linkRow(ui, es, link, id) {
+  const row = ui.el("div", { class: "team-row team-new", id });
+  row.append(ui.el("span", { class: "team-who team-link", text: link }));
+  const copy = ui.button(es ? "Copiar enlace" : "Copy link", () => copyText(ui, es, link));
+  copy.classList.add("ghost");
+  row.append(copy);
+  return row;
+}
+
+async function copyText(ui, es, text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    ui.toast(es ? "Enlace copiado." : "Link copied.");
+  } catch (_error) {
+    ui.toast(text);
+  }
 }
 
 export function bindOps(ui) {
