@@ -11,7 +11,7 @@ import { COMMENT_SLOT, commentSlotView } from "./comment-slot.js";
 import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
 import { splitReply } from "./split-reply.js";
-import { trialHistory } from "./trial-thread.js";
+import { activateTrial, blankTrial, trialBelongsTo, trialHistory, trialIsLive } from "./trial-thread.js";
 import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
@@ -412,6 +412,7 @@ async function bootBusiness(id, options) {
     state.studioScore = null;
     state.setterDesk = null;
     state.simConversations = null;
+    state.simConversationsWorkspaceId = "";
     state.flow = null;
     state.chatDraft = "";
     state.openThread = "";
@@ -419,49 +420,63 @@ async function bootBusiness(id, options) {
     state.ig = null;
     state.connectError = "";
   }
+  const activated = activateTrial(id, state.setterTrial, state.trialByWorkspace);
+  state.setterTrial = activated.trial;
+  state.trialByWorkspace = activated.store;
   state.businessId = id;
   pick.value = id;
-  const business = state.businesses.find((row) => row.id === id);
-  const members = state.user
-    ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at, scopes").eq("business_id", id)
-    : { data: [] };
-  if (token !== bootToken) return;
-  state.memberRows = members.error ? [] : members.data || [];
-  state.members = state.memberRows.filter((row) => row.status === "active");
-  const profileIds = state.memberRows.map((row) => row.user_id).filter(Boolean);
-  if (profileIds.length) {
-    const profiles = await state.supabase.from("profiles").select("id, email, full_name").in("id", profileIds);
+  if (!quiet) {
+    hideBoot();
+    if (state.tab === "chats") {
+      app.innerHTML = '<div class="chat-skel" role="status" aria-busy="true"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>';
+    } else {
+      app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
+    }
+  }
+  try {
+    const business = state.businesses.find((row) => row.id === id);
+    const members = state.user
+      ? await state.supabase.from("acq_members").select("business_id, user_id, role, status, created_at, scopes").eq("business_id", id)
+      : { data: [] };
     if (token !== bootToken) return;
-    state.memberProfiles = profiles.error ? [] : profiles.data || [];
-  } else state.memberProfiles = [];
-  const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
-  state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
-  state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
-  state.chatsPending = !quiet && state.tab === "chats";
-  if (!quiet && state.tab === "chats") {
-    app.innerHTML = '<div class="chat-skel" role="status" aria-busy="true"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>';
-  } else if (!quiet) app.innerHTML = '<div class="state" role="status"><span class="skel"></span><p>Loading this business…</p></div>';
-  const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
-  if (token !== bootToken) return;
-  if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
-    showMessage("Pipeline is not ready", missing(ensured.error) ? "Apply the acquisition migrations, then refresh." : ensured.error.message);
-    return;
-  }
-  const loaded = await loadAll(id, token);
-  if (token !== bootToken) return;
-  if (state.openThread && state.supabase) {
-    const messages = await state.supabase.from("ig_messages").select("id, thread_id, direction, body, kind, created_at").eq("thread_id", state.openThread).eq("business_id", id).order("created_at", { ascending: true });
-    state.messages = messages.error ? [] : messages.data || [];
-  }
+    state.memberRows = members.error ? [] : members.data || [];
+    state.members = state.memberRows.filter((row) => row.status === "active");
+    const profileIds = state.memberRows.map((row) => row.user_id).filter(Boolean);
+    if (profileIds.length) {
+      const profiles = await state.supabase.from("profiles").select("id, email, full_name").in("id", profileIds);
+      if (token !== bootToken) return;
+      state.memberProfiles = profiles.error ? [] : profiles.data || [];
+    } else state.memberProfiles = [];
+    const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
+    state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
+    state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
+    state.chatsPending = !quiet && state.tab === "chats";
+    const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
+    if (token !== bootToken) return;
+    if (ensured.error && !/not allowed/i.test(ensured.error.message || "")) {
+      showMessage("Pipeline is not ready", missing(ensured.error) ? "Apply the acquisition migrations, then refresh." : ensured.error.message);
+      return;
+    }
+    const loaded = await loadAll(id, token);
+    if (token !== bootToken) return;
+    if (state.openThread && state.supabase) {
+      const messages = await state.supabase.from("ig_messages").select("id, thread_id, direction, body, kind, created_at").eq("thread_id", state.openThread).eq("business_id", id).order("created_at", { ascending: true });
+      state.messages = messages.error ? [] : messages.data || [];
+    }
     if (loaded) {
-    state.tab = tabFromHash();
-    const adminHome = document.getElementById("nav-admin-home");
-    if (adminHome) adminHome.hidden = !state.isAdmin;
-    armEditorRequest();
-    state.chatsPending = false;
-    await outreachCheckoutStatus;
-    paint();
-    settleInstagramNotice();
+      state.tab = tabFromHash();
+      const adminHome = document.getElementById("nav-admin-home");
+      if (adminHome) adminHome.hidden = !state.isAdmin;
+      armEditorRequest();
+      state.chatsPending = false;
+      await outreachCheckoutStatus;
+      if (token !== bootToken) return;
+      paint();
+      settleInstagramNotice();
+    }
+  } catch (error) {
+    if (token !== bootToken) return;
+    showMessage("Could not load this business", (error && error.message) || "Refresh and try again.");
   }
 }
 
@@ -834,6 +849,7 @@ function setterTrainingLink() {
 
 function paint() {
   parkAssistant();
+  hideBoot();
   if (state.tab !== "assistant") state.assistantExpanded = false;
   markTab();
   app.innerHTML = "";
@@ -2120,7 +2136,11 @@ function previewToneUrl() {
 }
 
 function ensureTrial() {
-  if (!state.setterTrial) state.setterTrial = { scenario: "follower", messages: [] };
+  if (!trialBelongsTo(state.setterTrial, state.businessId)) {
+    const activated = activateTrial(state.businessId, state.setterTrial, state.trialByWorkspace);
+    state.setterTrial = activated.trial;
+    state.trialByWorkspace = activated.store;
+  }
   return state.setterTrial;
 }
 
@@ -2128,7 +2148,7 @@ function startTrial(scenario) {
   const previous = state.setterTrial;
   const epoch = ((previous && previous.epoch) || 0) + 1;
   if (previous) previous.epoch = epoch;
-  state.setterTrial = { scenario: scenario || "follower", messages: [], epoch };
+  state.setterTrial = blankTrial(state.businessId, { scenario: scenario || "follower", epoch });
   paint();
 }
 
@@ -2136,7 +2156,7 @@ function restartTrial() {
   const trial = ensureTrial();
   const epoch = (trial.epoch || 0) + 1;
   trial.epoch = epoch;
-  state.setterTrial = { scenario: trial.scenario || "follower", messages: [], epoch };
+  state.setterTrial = blankTrial(state.businessId, { scenario: trial.scenario || "follower", epoch });
   paint();
 }
 
@@ -2152,15 +2172,17 @@ function bytesToBase64(bytes) {
 
 async function transcribeTrial(bytes, mime) {
   if (!state.supabase) return { ok: false, reason: "signed_out" };
+  const workspaceId = state.businessId;
   try {
     const { data, error } = await state.supabase.functions.invoke("client-dashboard", {
       body: {
-        business_id: state.businessId,
+        business_id: workspaceId,
         action: "transcribe_trial",
         audio: bytesToBase64(bytes),
         mime: mime || ""
       }
     });
+    if (state.businessId !== workspaceId) return { ok: false, reason: "stale" };
     if (error) return { ok: false, reason: "transcribe" };
     if (!data || data.ok === false) return { ok: false, reason: (data && data.reason) || "transcribe" };
     return { ok: true, transcript: data.transcript || "", language: data.language || "", duration: Number(data.duration) || 0 };
@@ -2185,7 +2207,7 @@ async function sendTrial(prompt, message, options) {
   const trial = ensureTrial();
   const epoch = trial.epoch || 0;
   const history = trialHistory(trial.messages);
-  const still = () => state.setterTrial === trial && (trial.epoch || 0) === epoch;
+  const still = () => state.setterTrial === trial && trialIsLive(trial, state.businessId, epoch);
   if (asBusiness) {
     trial.messages = (trial.messages || []).concat([{ role: "assistant", text: sample, business: true }]);
     paint();
@@ -5326,6 +5348,7 @@ function readPreview() {
       { id: "preview-prompt-2", version: 2, body: "You are the setter for this business. Ask one question at a time. Do not promise a growth number.\nWhen they ask about the system, send {{voice:opener_coaching}} and share {{booking_link}}.", created_at: "2026-10-26T08:00:00Z", created_by: null }
     ],
     setterTrial: params.get("reply") === "claude" ? {
+      workspaceId: selected,
       scenario: "follower",
       leadState: "discovering",
       messages: [
@@ -5341,6 +5364,7 @@ function readPreview() {
         }
       ]
     } : {
+      workspaceId: selected,
       scenario: "follower",
       leadState: "discovering",
       messages: [

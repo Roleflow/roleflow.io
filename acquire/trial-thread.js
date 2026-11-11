@@ -102,3 +102,46 @@ export function releaseVoiceUrls(messages) {
     }
   }
 }
+
+// Each business keeps its own practice thread. Switching parks the previous
+// one and brings back this business's thread, or starts an empty one. In-flight
+// replies are invalidated by bumping the previous thread's epoch.
+
+export function blankTrial(workspaceId, options) {
+  const extra = options || {};
+  return {
+    workspaceId: String(workspaceId || ""),
+    scenario: extra.scenario || "follower",
+    messages: Array.isArray(extra.messages) ? extra.messages.slice() : [],
+    leadState: extra.leadState || "",
+    epoch: Number(extra.epoch) || 0
+  };
+}
+
+export function trialBelongsTo(trial, workspaceId) {
+  const id = String(workspaceId || "");
+  return Boolean(trial && id && String(trial.workspaceId || "") === id);
+}
+
+export function trialIsLive(trial, workspaceId, epoch) {
+  if (!trialBelongsTo(trial, workspaceId)) return false;
+  if (epoch != null && (trial.epoch || 0) !== epoch) return false;
+  return true;
+}
+
+export function activateTrial(workspaceId, previous, store) {
+  const id = String(workspaceId || "");
+  const parked = store && typeof store === "object" ? Object.assign({}, store) : {};
+  const previousId = previous ? String(previous.workspaceId || "") : "";
+  if (previousId && previousId === id && previous) return { trial: previous, store: parked };
+  const epoch = ((previous && previous.epoch) || 0) + 1;
+  if (previous) previous.epoch = epoch;
+  if (previousId) parked[previousId] = previous;
+  const saved = parked[id];
+  if (Object.prototype.hasOwnProperty.call(parked, id)) delete parked[id];
+  if (saved && String(saved.workspaceId || "") === id) {
+    saved.epoch = epoch;
+    return { trial: saved, store: parked };
+  }
+  return { trial: blankTrial(id, { epoch }), store: parked };
+}
