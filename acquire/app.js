@@ -27,7 +27,7 @@ import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { joinRole, mergeTesterBusinesses, panelAbilities, panelRole, shouldOpenOwnWorkspace, testerTab } from "./team-access.js";
-import { markPromptLoaded, promptReady, promptSaveTarget, resetPromptState, stillOn } from "./prompt-scope.js";
+import { businessReady, businessSwitching, endBusinessSwitch, markBusinessLoaded, markPromptLoaded, promptReady, promptSaveTarget, resetPromptState, startBusinessSwitch, stillOn } from "./prompt-scope.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
@@ -440,11 +440,15 @@ async function bootBusiness(id, options) {
     // business. Clear them so nothing from it can show or be saved here.
     resetPromptState(state);
   }
+  // A new business: nothing saves until it has loaded, and the header shows
+  // its name right away instead of the previous business's.
+  if (state.businessId !== id || state.businessLoadedFor !== id) startBusinessSwitch(state, id);
   const activated = activateTrial(id, state.setterTrial, state.trialByWorkspace);
   state.setterTrial = activated.trial;
   state.trialByWorkspace = activated.store;
   state.businessId = id;
   pick.value = id;
+  paintBusinessName();
   if (!quiet) {
     hideBoot();
     if (state.tab === "chats") {
@@ -481,6 +485,7 @@ async function bootBusiness(id, options) {
       state.canManageKeys = false;
       const opened = await loadTester(id);
       if (token !== bootToken || !opened) return;
+      markBusinessLoaded(state, id);
       state.tab = testerTab();
       if (location.hash.replace("#", "").split("/")[0] !== state.tab) history.replaceState(null, "", location.pathname + location.search + "#" + state.tab);
       state.chatsPending = false;
@@ -508,12 +513,15 @@ async function bootBusiness(id, options) {
       state.chatsPending = false;
       await outreachCheckoutStatus;
       if (token !== bootToken) return;
+      markBusinessLoaded(state, id);
       paint();
       settleInstagramNotice();
     }
   } catch (error) {
     if (token !== bootToken) return;
     showMessage("Could not load this business", (error && error.message) || "Refresh and try again.");
+  } finally {
+    if (token === bootToken) endBusinessSwitch(state, id);
   }
 }
 
@@ -920,6 +928,13 @@ function setterTrainingLink() {
 }
 
 function paint() {
+  // Mid-switch, the old business's settings and panels are still in state.
+  // Show the loading screen (with the new name in the header) until it loads.
+  if (businessSwitching(state)) {
+    markTab();
+    app.innerHTML = '<div class="state" role="status" id="business-loading"><span class="skel"></span><p>Loading this business…</p></div>';
+    return;
+  }
   if (state.testerMode) hideBoot();
   if (state.testerMode) {
     paintTester();
@@ -1162,6 +1177,7 @@ function pageUi() {
     setSending,
     saveSetterPrompt,
     promptReady: () => promptReady(state),
+    businessReady: () => businessReady(state),
     saveAutoDm,
     startDmLogin,
     disconnectDm,
@@ -1518,6 +1534,7 @@ async function dashboardCall(body) {
 }
 
 async function setAgent(key, enabled) {
+  if (waitForBusiness()) return;
   if (!state.canEdit) {
     toast("You can't edit this business.", "bad");
     return;
@@ -2588,6 +2605,7 @@ function readyToSave() {
 
 async function saveBrief(fields, cards, note) {
   if (!readyToSave()) return toast("This preview does not save.", "bad");
+  if (waitForBusiness()) return;
   const count = charCount(fields, cards);
   if (count > MAX_CHARS) return toast("Shorten the text before saving.", "bad");
   const brief = await state.supabase.from("acq_business_briefs").upsert({
@@ -2633,6 +2651,7 @@ async function saveBrief(fields, cards, note) {
 
 async function saveAgent(card) {
   if (!readyToSave()) return toast("This preview does not save.", "bad");
+  if (waitForBusiness()) return;
   const saved = await state.supabase.from("acq_agent_cards").upsert({
     business_id: state.businessId,
     role: card.role,
@@ -3484,6 +3503,7 @@ async function signClip(path) {
 }
 
 async function patchSettings(patch, enginePayload) {
+  if (waitForBusiness()) return;
   const saved = await state.supabase.from("acq_settings").update(patch).eq("agent_id", state.businessId);
   if (saved.error) {
     toast(saved.error.message, "bad");
@@ -5292,12 +5312,26 @@ function markTab() {
   const product = sectionText(language(), "productName");
   const footerName = document.getElementById("panel-footer-name");
   if (footerName) footerName.textContent = product;
-  const business = state.businesses.find((row) => row.id === state.businessId);
+  paintBusinessName();
+  document.title = label + " · " + product;
+}
+
+// Header and sidebar name of the open business.
+function paintBusinessName() {
+  const business = (state.businesses || []).find((row) => row.id === state.businessId);
   const name = business && business.agent_name ? business.agent_name : "This business";
   if (sub) sub.textContent = name;
   const avatar = document.getElementById("biz-avatar");
   if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "R";
-  document.title = label + " · " + product;
+  const pinned = document.getElementById("panel-biz-name");
+  if (pinned) pinned.textContent = name;
+}
+
+// Writes to the open business wait until it has fully loaded.
+function waitForBusiness() {
+  if (businessReady(state)) return false;
+  toast(language() === "es" ? "Espera a que cargue este negocio." : "Wait until this business has loaded.", "bad");
+  return true;
 }
 
 function tabGroup(tab) {

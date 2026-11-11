@@ -99,7 +99,7 @@ assert.match(app, /promptReady: \(\) => promptReady\(state\),/);
 
 const desk = read("acquire/setter-workspace.js");
 const editor = between(desk, "function editorColumn(", "\nfunction ");
-assert.match(editor, /const ready = !prompts \|\| promptIsReady\(ui\);/);
+assert.match(editor, /const ready = prompts \? promptIsReady\(ui\) : businessIsReady\(ui\);/);
 assert.match(editor, /prompts \? \(ready \? savedPrompt\(ui\.state\) : ""\)/, "editor is empty until loaded");
 assert.match(editor, /if \(!ready\) save\.disabled = true;/);
 assert.match(editor, /if \(!ready\) edit\.disabled = true;/);

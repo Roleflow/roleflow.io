@@ -230,6 +230,20 @@ function promptIsReady(ui) {
   return typeof ui.promptReady === "function" ? ui.promptReady() !== false : true;
 }
 
+// Settings, agent and simulator saves stay off until the open business has
+// fully loaded, so values from the previous business are never saved here.
+function businessIsReady(ui) {
+  return typeof ui.businessReady === "function" ? ui.businessReady() !== false : true;
+}
+
+function lockUntilLoaded(ui, node) {
+  if (!businessIsReady(ui)) {
+    node.disabled = true;
+    node.setAttribute("data-wait-business", "1");
+  }
+  return node;
+}
+
 function savedPrompt(state) {
   return state.setterDraft != null ? state.setterDraft : (state.setterPrompt || "");
 }
@@ -391,7 +405,7 @@ function editorColumn(ui, copy, desk, es) {
   const prompts = desk.mode !== "business";
   // Until this business's own prompt has loaded, the editor shows nothing and
   // cannot save, so one business's prompt can never be saved into another.
-  const ready = !prompts || promptIsReady(ui);
+  const ready = prompts ? promptIsReady(ui) : businessIsReady(ui);
   const value = prompts ? (ready ? savedPrompt(ui.state) : "") : businessText(ui);
   const max = prompts ? PROMPT_MAX : MAX_CHARS;
   const head = ui.el("div", { class: "editor-head" });
@@ -676,6 +690,7 @@ function voiceControl(ui, copy, suffix) {
     "aria-label": copy.voice
   });
   if (!ui.state.canEdit) input.disabled = true;
+  lockUntilLoaded(ui, input);
   input.addEventListener("input", () => {
     const next = clampVoice(input.value);
     ui.state.setterVoice = next;
@@ -1174,7 +1189,7 @@ function delayFields(ui, copy) {
     ui.el("label", { text: copy.waitFrom }, [min]),
     ui.el("label", { text: copy.waitTo }, [max]),
     ui.el("span", { class: "mute", text: copy.seconds }),
-    ghost(ui, copy.saveDelay, () => ui.saveReplyDelay(min.value, max.value))
+    lockUntilLoaded(ui, ghost(ui, copy.saveDelay, () => ui.saveReplyDelay(min.value, max.value)))
   );
   const split = ui.el("input", {
     id: "reply-split-words",
@@ -1184,7 +1199,7 @@ function delayFields(ui, copy) {
     value: String(settings.reply_split_words == null ? 15 : settings.reply_split_words),
     "aria-label": copy.splitLabel
   });
-  row.append(ui.el("label", { text: copy.splitLabel }, [split]), ghost(ui, copy.save, () => ui.saveReplySplit(split.value)));
+  row.append(ui.el("label", { text: copy.splitLabel }, [split]), lockUntilLoaded(ui, ghost(ui, copy.save, () => ui.saveReplySplit(split.value))));
   return row;
 }
 
@@ -1227,6 +1242,7 @@ function agentSettings(ui, copy, desk) {
   const on = (ui.state.agentSwitches || []).some((row) => row.agent_key === "setter" && row.enabled);
   const toggle = ui.el("input", { id: "setter-agent-on", type: "checkbox" });
   toggle.checked = on;
+  lockUntilLoaded(ui, toggle);
   card.append(ui.el("label", { text: copy.name }, [name]));
   card.append(ui.el("label", { class: "switch" }, [toggle, " " + (on ? copy.on : copy.off)]));
   card.append(ui.el("h3", { text: copy.delegations }));
@@ -1238,6 +1254,7 @@ function agentSettings(ui, copy, desk) {
   card.append(when, to);
   const saveAgent = ui.button(copy.saveAgent, null, "submit");
   saveAgent.classList.add("desk-save");
+  lockUntilLoaded(ui, saveAgent);
   card.append(saveAgent);
   card.append(ghost(ui, copy.close, () => {
     desk.settingsOpen = false;
@@ -1245,6 +1262,7 @@ function agentSettings(ui, copy, desk) {
   }));
   card.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!businessIsReady(ui)) return;
     const nextOn = toggle.checked;
     if (nextOn !== on && ui.setAgent) await ui.setAgent("setter", nextOn);
     desk.agentName = name.value.trim();
