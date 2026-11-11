@@ -2,7 +2,7 @@ import { getSupabase, isConfigured, logout } from "../auth/supabase.js";
 import { clearAuthParams, clearCallbackMemory, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, toast } from "../auth/ui.js";
 import { liveSections } from "../account/setter-model.js";
-import { activitySeries, categoryTone, createdPhrase, gridStageLabel, initials, last7, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
+import { activitySeries, categoryTone, createdPhrase, gridStageLabel, initials, last7, legacyBoardAgents, scrub, seriesTotal, stageChip, windowSeries, withinDays } from "./model.js";
 import { mountAssets } from "./assets.js";
 import { mountMembers } from "./members.js";
 import { openAddBusiness } from "../acquire/add-business.js";
@@ -412,7 +412,7 @@ async function boot(supabase, user) {
     supabase.from("business_access").select("agent_id, role"),
     isAdmin ? supabase.from("onboarding_submissions").select("user_id, publish_agent_id, publish_status").eq("publish_status", "pending") : none,
     supabase.from("acq_onboarding").select("business_id, status"),
-    supabase.from("acq_workspaces").select("id, name, owner_id, created_at").order("name", { ascending: true }),
+    supabase.from("acq_workspaces").select("id, name, owner_id, created_at, engine_business_id").order("name", { ascending: true }),
     supabase.rpc("acq_my_tester_businesses")
   ]);
 
@@ -474,7 +474,7 @@ async function boot(supabase, user) {
       go("#" + route.id + "/leads");
       return;
     }
-    if (route.kind === "grid") paintGrid(supabase, user, agents, statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds, stages);
+    if (route.kind === "grid") paintGrid(supabase, user, legacyBoardAgents(agents, panelWorkspaces), statsById, peopleById, isAdmin, statsError, pendingIds, sharedIds, stages);
     else paintDetail(supabase, user, agents, statsById, route, isAdmin, peopleById, roles);
     paintSide(user, agents, route.kind === "detail" ? route : null, isAdmin, roles);
   }

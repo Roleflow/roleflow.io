@@ -166,3 +166,12 @@ export function nextProof(index, length, direction) {
   const size = length || 1;
   return (index + (direction || 1) + size) % size;
 }
+
+// The page lists panel businesses (acq_workspaces) first, then the older
+// setter-cache businesses (client_ai_setters). A panel business that runs on a
+// setter-cache business (engine_business_id) is the same business, so its
+// setter-cache card is left out instead of showing it twice under its old name.
+export function legacyBoardAgents(agents, workspaces) {
+  const linked = new Set((workspaces || []).map((row) => row && row.engine_business_id).filter(Boolean).map(String));
+  return (agents || []).filter((agent) => agent && !linked.has(String(agent.id)));
+}

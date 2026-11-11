@@ -43,3 +43,41 @@ export function promptSaveTarget(state) {
 export function stillOn(state, businessId) {
   return Boolean(state) && String(state.businessId || "") === String(businessId || "");
 }
+
+// The whole business (settings, agent cards, switches), not only its prompt.
+// While the panel switches business, nothing that writes to "this business"
+// may run: the form values on screen could still be the old business's, and
+// the save would go to the new one.
+export function startBusinessSwitch(state, businessId) {
+  state.businessLoadedFor = "";
+  state.switchingTo = String(businessId || "");
+  return state;
+}
+
+export function markBusinessLoaded(state, businessId) {
+  state.businessLoadedFor = String(businessId || "");
+  if (state.switchingTo === state.businessLoadedFor) state.switchingTo = "";
+  return state;
+}
+
+// A switch that failed or was replaced stops showing the loading screen, but
+// the business still does not count as loaded, so saves stay off.
+export function endBusinessSwitch(state, businessId) {
+  if (state.switchingTo === String(businessId || "")) state.switchingTo = "";
+  return state;
+}
+
+// True when everything on screen belongs to the open business. The local
+// preview has no database, so it is always ready.
+export function businessReady(state) {
+  if (!state) return false;
+  if (!state.supabase) return true;
+  const id = String(state.businessId || "");
+  return Boolean(id) && state.businessLoadedFor === id;
+}
+
+// True while the open business is still loading after a switch; the panel
+// shows the loading screen instead of the old business's panels.
+export function businessSwitching(state) {
+  return Boolean(state && state.supabase && state.switchingTo && state.switchingTo === String(state.businessId || ""));
+}
