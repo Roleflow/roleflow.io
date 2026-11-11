@@ -268,7 +268,9 @@ function promptEditor(ui) {
   area.value = ui.state.setterDraft != null ? ui.state.setterDraft : (ui.state.setterPrompt || "");
   area.addEventListener("input", () => { ui.state.setterDraft = area.value; });
   const bar = ui.el("div", { class: "setter-bar" });
-  bar.append(ui.button("Save prompt", () => ui.saveSetterPrompt(area.value)));
+  const save = ui.button("Save prompt", () => ui.saveSetterPrompt(area.value));
+  if (typeof ui.promptReady === "function" && ui.promptReady() === false) save.disabled = true;
+  bar.append(save);
   bar.append(versionControls(ui, area));
   prompt.append(bar, delayFields(ui));
   const booking = ui.el("input", {

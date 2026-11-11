@@ -35,7 +35,7 @@ import { clientSafeText } from "../_shared/client-safe.js";
 import { dropIncompleteTail, trimToSentence } from "../_shared/split-reply.js";
 import { VOICE_MAX_CHARS, transcribeTrialVoice, trialVoiceError, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
-import { accessView, denyMessage, inviteEmail, inviteToken, legacyAccess, mayRemoveMember, mayRun, normalizeAccess, normalizeInvite, roleLabel, testerLoadView } from "../_shared/team-access.js";
+import { accessView, dedupeInvites, denyMessage, inviteEmail, inviteToken, legacyAccess, mayRemoveMember, mayRun, normalizeAccess, normalizeInvite, reusableInvite, roleLabel, testerLoadView } from "../_shared/team-access.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
 import { normalizeCap } from "../_shared/comment-voice.js";
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
@@ -696,8 +696,7 @@ async function teamList(admin, businessId) {
     people.unshift({ user_id: ownerId, email: profile.email || "", name: profile.full_name || "", role: "owner", role_label: "Owner", removable: false });
   }
   const now = Date.now();
-  const pending = (invites.error ? [] : invites.data || [])
-    .filter((row) => !row.expires_at || Date.parse(row.expires_at) > now)
+  const pending = dedupeInvites(invites.error ? [] : invites.data || [], now)
     .map((row) => ({
       id: row.id,
       email: row.email,
@@ -736,7 +735,22 @@ async function teamInvite(admin, businessId, userId, body) {
     const emailed = await sendTeamEmail(asked.email, mail);
     return json(200, { ok: true, added: true, emailed: emailed.ok, email_error: emailed.error || "", sent: false });
   }
-  await admin.from("acq_invites").delete().eq("business_id", businessId).ilike("email", pattern).is("accepted_at", null);
+  // One open invite per email: reuse the newest open one (new role, fresh
+  // expiry) instead of adding a duplicate. Existing rows are not deleted.
+  const open = await admin.from("acq_invites").select("id, email, token, created_at, expires_at, accepted_at").eq("business_id", businessId).ilike("email", pattern).is("accepted_at", null).order("created_at", { ascending: false }).limit(20);
+  const reuse = open.error ? null : reusableInvite(open.data || [], asked.email);
+  if (reuse) {
+    const updated = await admin.from("acq_invites").update({
+      role: asked.role,
+      scopes: scopesFor(asked.role),
+      invited_by: userId,
+      expires_at: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    }).eq("id", reuse.id).eq("business_id", businessId).select("id").single();
+    if (updated.error) return json(200, { ok: false, error: "The invite was not saved. Apply the business testers migration first." });
+    const reusedLink = SITE + "/signup/?invite=" + encodeURIComponent(reuse.token);
+    const resent = await sendTeamEmail(asked.email, inviteEmail(name, asked.role, reusedLink, false));
+    return json(200, { ok: true, added: false, reused: true, invite_id: reuse.id, link: reusedLink, emailed: resent.ok, email_error: resent.error || "", sent: false });
+  }
   const token = inviteToken(crypto.getRandomValues(new Uint8Array(32)));
   const created = await admin.from("acq_invites").insert({
     business_id: businessId,
@@ -757,9 +771,10 @@ async function teamRemove(admin, businessId, body) {
   const inviteId = String(body.invite_id || "");
   if (inviteId) {
     if (!UUID.test(inviteId)) return json(200, { ok: false, error: "That invite is not on this business." });
-    const removed = await admin.from("acq_invites").delete().eq("id", inviteId).eq("business_id", businessId).select("id");
+    // Cancel removes only this one invite row; other invites stay as they are.
+    const removed = await admin.from("acq_invites").delete().eq("id", inviteId).eq("business_id", businessId).is("accepted_at", null).select("id");
     if (removed.error || !(removed.data || []).length) return json(200, { ok: false, error: "That invite is not on this business." });
-    return json(200, { ok: true, sent: false });
+    return json(200, { ok: true, sent: false, removed: removed.data.length });
   }
   const memberId = String(body.user_id || "");
   if (!UUID.test(memberId)) return json(200, { ok: false, error: "Pick a person to remove." });

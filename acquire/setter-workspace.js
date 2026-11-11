@@ -92,6 +92,7 @@ const COPY = {
     voiceHumanHint: "More varied, casual, and short. Slang can match the winning conversations.",
     voiceAiHint: "More consistent, structured, and predictable.",
     draftNote: "This is a draft. Save it to keep a new version. The setter stays off until you turn it on.",
+    promptLoading: "Loading this business's prompt…",
     promptNote: "This is the setter system prompt. The simulator uses this text. Saving keeps a version and does not turn the setter on.",
     undo: "Undo",
     rewind: "Rewind to here",
@@ -176,6 +177,7 @@ const COPY = {
     voiceHumanHint: "Más variado, casual y corto. La jerga puede seguir las conversaciones que convirtieron.",
     voiceAiHint: "Más consistente, estructurado y predecible.",
     draftNote: "Esto es un borrador. Guárdalo para crear una versión. El setter sigue apagado hasta que lo actives.",
+    promptLoading: "Cargando el prompt de este negocio…",
     promptNote: "Este es el prompt de sistema del setter. El simulador usa este texto. Guardar crea una versión y no activa el setter.",
     undo: "Deshacer",
     rewind: "Volver a este mensaje",
@@ -222,6 +224,10 @@ export function deskState(state) {
     };
   }
   return state.setterDesk;
+}
+
+function promptIsReady(ui) {
+  return typeof ui.promptReady === "function" ? ui.promptReady() !== false : true;
 }
 
 function savedPrompt(state) {
@@ -383,7 +389,10 @@ function editorColumn(ui, copy, desk, es) {
   const column = ui.el("section", { class: "desk-editor", id: "desk-editor" });
   if (ui.state.testerMode && desk.mode === "business") desk.mode = "prompts";
   const prompts = desk.mode !== "business";
-  const value = prompts ? savedPrompt(ui.state) : businessText(ui);
+  // Until this business's own prompt has loaded, the editor shows nothing and
+  // cannot save, so one business's prompt can never be saved into another.
+  const ready = !prompts || promptIsReady(ui);
+  const value = prompts ? (ready ? savedPrompt(ui.state) : "") : businessText(ui);
   const max = prompts ? PROMPT_MAX : MAX_CHARS;
   const head = ui.el("div", { class: "editor-head" });
   head.append(ui.el("h2", { text: prompts ? copy.prompts : copy.business }));
@@ -394,6 +403,7 @@ function editorColumn(ui, copy, desk, es) {
   if (desk.editing) {
     const save = ui.button(copy.save, () => saveEditor(ui, prompts));
     save.classList.add("desk-save");
+    if (!ready) save.disabled = true;
     tools.append(save);
     tools.append(ghost(ui, copy.cancel, () => {
       desk.editing = false;
@@ -409,6 +419,7 @@ function editorColumn(ui, copy, desk, es) {
       ui.paint();
     });
     if (!ui.state.canEdit && !(prompts && ui.state.canEditPrompt)) edit.disabled = true;
+    if (!ready) edit.disabled = true;
     tools.append(edit);
   }
   tools.append(segment(ui, [["text", copy.text], ["markdown", copy.markdown]], desk.showPreview ? "" : desk.format, (id) => {
@@ -438,7 +449,8 @@ function editorColumn(ui, copy, desk, es) {
       "aria-label": prompts ? copy.prompts : copy.business
     });
     area.value = value;
-    if (!desk.editing) area.readOnly = true;
+    if (!desk.editing || !ready) area.readOnly = true;
+    if (!ready) area.placeholder = copy.promptLoading;
     area.addEventListener("input", () => {
       if (prompts) ui.state.setterDraft = area.value;
       else desk.businessDraft = area.value;
@@ -448,6 +460,7 @@ function editorColumn(ui, copy, desk, es) {
     column.append(area);
   }
 
+  if (prompts && !ready) column.append(ui.el("p", { class: "mute", id: "setter-prompt-loading", role: "status", text: copy.promptLoading }));
   if (prompts) {
     column.append(ui.el("p", { class: "mute", text: copy.promptNote }));
     if (ui.state.promptDraft) column.append(draftDiff(ui, copy, value));
@@ -605,11 +618,13 @@ function aiBar(ui, copy, desk) {
   wrap.append(bar, status);
   if (ui.state.promptDraft) {
     const actions = ui.el("div", { class: "filters", id: "prompt-draft-actions" });
-    actions.append(ui.button(copy.apply, async () => {
+    const apply = ui.button(copy.apply, async () => {
       desk.editing = false;
       desk.panel = "versions";
       await ui.saveSetterPrompt(ui.state.setterDraft || (ui.state.promptDraft && ui.state.promptDraft.body));
-    }));
+    });
+    if (!promptIsReady(ui)) apply.disabled = true;
+    actions.append(apply);
     actions.append(ghost(ui, copy.discard, () => {
       ui.state.promptDraft = null;
       ui.state.setterDraft = ui.state.setterPrompt || "";
