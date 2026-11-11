@@ -106,7 +106,7 @@ assert.equal(isLoginTab("", "#error=access_denied&error_description=Email+link+i
 
 assert.match(friendlyAuthError({ message: "Invalid login credentials" }), /don't match/);
 assert.match(friendlyAuthError({ message: "Email not confirmed" }), /Confirm your email/);
-assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "Invalid access code.");
+assert.equal(friendlyAuthError({ message: "Database error saving new user" }), "The account could not be created. Try again in a minute.");
 
 assert.match(read("signup/signup.js"), /get\("mode"\) === "login"/);
 assert.match(read("signup/signup.js"), /isLoginTab/);
@@ -117,7 +117,7 @@ for (const file of ["signup/signup.js", "login/login.js", "reset/reset.js", "aut
   assert.equal(checked.status, 0, file + "\n" + checked.stderr);
 }
 assert.match(read("signup/index.html"), /id="login-form"/);
-assert.match(read("signup/index.html"), /id="access-code"/);
+assert.doesNotMatch(read("signup/index.html"), /id="access-code"/);
 assert.match(read("login/login.js"), /shouldCreateUser:\s*false/);
 assert.doesNotMatch(read("login/login.js"), /hash\.includes\("access_token"\)/);
 assert.match(read("login/login.js"), /resolveSession/);

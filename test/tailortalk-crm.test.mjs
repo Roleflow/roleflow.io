@@ -262,7 +262,8 @@ const migrationNames = [
   "20261103190000_client_machines.sql",
   "20261103200000_outreacher_pricing.sql",
   "20261111120000_business_testers.sql",
-  "20261111180000_join_link_least_privilege.sql"
+  "20261111180000_join_link_least_privilege.sql",
+  "20261111200000_signup_without_access_code.sql"
 ];
 assert.deepEqual(
   migrationNames,

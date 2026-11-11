@@ -40,12 +40,12 @@ export function friendlyAuthError(error) {
     error && error.code
   ].filter(Boolean).join(" ");
   if (/invalid invite/i.test(raw)) return "This invite link is not valid.";
-  if (/invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) return "Invalid access code.";
+  if (/invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) return "The account could not be created. Try again in a minute.";
   if (/email not confirmed/i.test(raw)) return "Confirm your email first. Open the link in that message, then log in.";
   if (/invalid login credentials/i.test(raw)) return "That email and password don't match.";
   if (/user already registered|already been registered/i.test(raw)) return "An account with that email already exists. Log in instead.";
   if (/otp_expired|invalid or has expired|email link is invalid/i.test(raw)) return "That email link is invalid or expired. Request a new one.";
-  if (/signups not allowed|user not found|not allowed/i.test(raw)) return "No account uses that email yet. Sign up with your access code first.";
+  if (/signups not allowed|user not found|not allowed/i.test(raw)) return "No account uses that email yet. Sign up first.";
   const message = (error && error.message) || "";
   if (message && message.length < 180 && !/access_token|refresh_token/i.test(message)) return message;
   return "Something went wrong. Try again.";

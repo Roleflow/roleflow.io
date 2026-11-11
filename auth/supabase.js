@@ -69,7 +69,7 @@ export function signupErrorMessage(error) {
     .filter(Boolean)
     .join(" ");
   if (/invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) {
-    return "Invalid access code.";
+    return "The account could not be created. Try again in a minute.";
   }
   return (error && error.message) || "Could not create the account.";
 }

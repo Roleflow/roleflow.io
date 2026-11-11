@@ -155,13 +155,11 @@ if (!drawer || !toggle) {
       const name = document.getElementById("drawer-full-name").value.trim();
       const email = document.getElementById("drawer-email").value.trim();
       const instagram = normalizeHandle(document.getElementById("drawer-instagram").value);
-      const accessCode = document.getElementById("drawer-access-code").value.trim();
       const password = document.getElementById("drawer-password").value;
       const confirm = document.getElementById("drawer-confirm").value;
       if (!name) return (signupError.textContent = "Enter your name.");
       if (!/^\S+@\S+\.\S+$/.test(email)) return (signupError.textContent = "Enter a valid email address.");
       if (!instagram) return (signupError.textContent = "Enter your Instagram handle.");
-      if (!accessCode) return (signupError.textContent = "Enter your access code.");
       if (password.length < 8) return (signupError.textContent = "Use at least 8 characters in the password.");
       if (password !== confirm) return (signupError.textContent = "Those passwords do not match.");
       const button = signupForm.querySelector("button[type=submit]");
@@ -170,7 +168,7 @@ if (!drawer || !toggle) {
         email,
         password,
         options: {
-          data: { full_name: name, instagram, access_code: accessCode },
+          data: { full_name: name, instagram },
           emailRedirectTo: authReturnUrl("/login/", "/account/", window.location.href)
         }
       });
@@ -225,7 +223,7 @@ if (!drawer || !toggle) {
       button.disabled = false;
       if (error) {
         loginError.textContent = /signups not allowed|user not found|not allowed/i.test(error.message || "")
-          ? "No account uses that email yet. Sign up with your access code first."
+          ? "No account uses that email yet. Sign up first."
           : error.message;
         return;
       }
