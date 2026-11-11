@@ -26,6 +26,7 @@ import { previewOnboarding } from "./onboarding-panel.js";
 import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
+import { mergeTesterBusinesses, panelAbilities, panelRole, shouldOpenOwnWorkspace, testerTab } from "./team-access.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
@@ -84,6 +85,10 @@ const state = {
   supabase: null,
   user: null,
   canEdit: false,
+  canEditPrompt: false,
+  canManageTeam: false,
+  testerMode: false,
+  team: null,
   businesses: [],
   businessId: "",
   settings: null,
@@ -246,6 +251,15 @@ async function boot() {
       writeLanguage(safeStorage(), requested);
     }
     state.canEdit = preview.canEdit === true;
+    state.canEditPrompt = state.canEdit;
+    state.canManageTeam = state.canEdit;
+    const previewRole = new URLSearchParams(location.search).get("role");
+    if (previewRole === "tester" || previewRole === "prompt_editor") {
+      Object.assign(state, panelAbilities(previewRole));
+      state.tab = testerTab();
+    }
+    if (state.canManageTeam && new URLSearchParams(location.search).get("team") === "1") state.team = previewTeam();
+    markTesterChrome();
     state.setterPromptSaved = Boolean(String(state.setterPrompt || "").trim());
     state.canManageKeys = state.canEdit === true;
     state.setterVoice = clampVoice(preview.settings && preview.settings.setter_voice);
@@ -362,9 +376,10 @@ async function boot() {
     showMessage("Could not load businesses", listed.error.message);
     return;
   }
-  const visible = listed.data || [];
-  const owns = visible.some((row) => row.owner_id === state.user.id);
-  if (!owns) {
+  const testerRes = await state.supabase.rpc("acq_my_tester_businesses");
+  const testerRows = testerRes.error ? [] : testerRes.data || [];
+  const visible = mergeTesterBusinesses(listed.data || [], testerRows);
+  if (shouldOpenOwnWorkspace(visible, state.user.id)) {
     const opened = await state.supabase.rpc("acq_open_workspace", { p_name: "Acquisition" });
     if (opened.error) {
       showMessage("Could not open a workspace", opened.error.message);
@@ -372,7 +387,7 @@ async function boot() {
     }
     listed = await state.supabase.from("acq_workspaces").select("id, name, owner_id, join_code, engine_business_id").order("created_at", { ascending: true });
   }
-  state.businesses = (listed.data || []).map((row) => ({ ...row, agent_name: row.name || "Acquisition" }));
+  state.businesses = mergeTesterBusinesses(listed.data || [], testerRows).map((row) => ({ ...row, agent_name: row.name || "Acquisition" }));
   if (!state.businesses.length) {
     showMessage("No business yet", "Create an account workspace, or join one with its code from Setup.");
     return;
@@ -450,6 +465,23 @@ async function bootBusiness(id, options) {
     const mine = state.members.find((row) => state.user && row.user_id === state.user.id);
     state.canEdit = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && (mine.role === "owner" || mine.role === "editor"));
     state.canManageKeys = state.isAdmin || Boolean(business && state.user && business.owner_id === state.user.id) || Boolean(mine && mine.role === "owner");
+    const abilities = panelAbilities(panelRole({ isAdmin: state.isAdmin, userId: state.user && state.user.id, business, member: mine }));
+    state.testerMode = abilities.testerMode;
+    state.canEditPrompt = state.canEdit || abilities.canEditPrompt;
+    state.canManageTeam = abilities.canManageTeam || Boolean(mine && mine.role === "owner");
+    state.team = null;
+    markTesterChrome();
+    if (state.testerMode) {
+      state.canEdit = false;
+      state.canManageKeys = false;
+      const opened = await loadTester(id);
+      if (token !== bootToken || !opened) return;
+      state.tab = testerTab();
+      if (location.hash.replace("#", "").split("/")[0] !== state.tab) history.replaceState(null, "", location.pathname + location.search + "#" + state.tab);
+      state.chatsPending = false;
+      paint();
+      return;
+    }
     state.chatsPending = !quiet && state.tab === "chats";
     const ensured = await state.supabase.rpc("acq_ensure", { p_agent: id });
     if (token !== bootToken) return;
@@ -848,6 +880,11 @@ function setterTrainingLink() {
 }
 
 function paint() {
+  if (state.testerMode) hideBoot();
+  if (state.testerMode) {
+    paintTester();
+    return;
+  }
   parkAssistant();
   hideBoot();
   if (state.tab !== "assistant") state.assistantExpanded = false;
@@ -887,6 +924,7 @@ function paint() {
     root.append(renderConfiguration(ui));
     root.append(renderSalesLinks(ui));
     root.append(renderTeam(ui));
+    if (state.canManageTeam && !state.team && !state.preview) loadTeam();
   }
   if (ENGINE_TABS.has(state.tab) && state.tab !== "inbox" && state.tab !== "billing") {
     const host = el("div");
@@ -1064,8 +1102,9 @@ function pageUi() {
     createApiKey,
     revokeApiKey,
     cloneBusiness,
-    createInvite,
     regenerateJoin,
+    teamInvite,
+    teamRemove,
     saveOrigin,
     markNotification,
     syncSetter,
@@ -1630,7 +1669,7 @@ async function saveAutoDm(draft) {
 }
 
 async function saveSetterPrompt(value) {
-  if (!state.canEdit) {
+  if (!state.canEdit && !state.canEditPrompt) {
     toast("You can't edit this business.", "bad");
     return false;
   }
@@ -1651,7 +1690,7 @@ async function saveSetterPrompt(value) {
     return true;
   }
   try {
-    const saved = await dashboardCall({ action: "save_prompt", prompt: body, voice: clampVoice(state.setterVoice) });
+    const saved = await dashboardCall({ action: "save_prompt", prompt: body, voice: state.testerMode ? undefined : clampVoice(state.setterVoice) });
     rememberPrompt(saved.prompt || body, saved.version, saved.tested_at);
     toast(agentText(language()).saved);
     state.promptDraft = null;
@@ -2046,7 +2085,7 @@ async function checkClaude() {
 }
 
 async function restoreSetterPrompt(version) {
-  if (!state.canEdit || !version) return;
+  if ((!state.canEdit && !state.canEditPrompt) || !version) return;
   if (!state.supabase) {
     await saveSetterPrompt(version.body);
     return;
@@ -2242,7 +2281,7 @@ async function sendTrial(prompt, message, options) {
     });
   } else {
     try {
-      result = await dashboardCall({
+      const request = {
         action: "preview_setter",
         prompt: body,
         message: followup ? "" : sample,
@@ -2254,7 +2293,14 @@ async function sendTrial(prompt, message, options) {
         voice: clampVoice(state.setterVoice),
         voice_note: Boolean(voice && voice.transcript),
         voice_language: (voice && voice.language) || ""
-      });
+      };
+      // A tester has no copy of the business settings, so let the server use
+      // the saved voice and comment rules instead of panel defaults.
+      if (state.testerMode) {
+        delete request.comment_when;
+        delete request.voice;
+      }
+      result = await dashboardCall(request);
     } catch (error) {
       result = { ok: false, error: error.message };
     }
@@ -3516,30 +3562,124 @@ async function cloneBusiness(name) {
   }
 }
 
-async function createInvite(row) {
-  if (!readyToSave()) return;
-  const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
-  const saved = await state.supabase.from("acq_invites").insert({
-    business_id: state.businessId,
-    email: row.email.toLowerCase(),
-    scopes: row.scopes,
-    token
-  });
-  if (saved.error) {
-    toast(saved.error.message, "bad");
-    return;
+// Tester access: the server (client-dashboard) returns only the setter prompt.
+// Nothing else about the business is loaded or shown.
+function markTesterChrome() {
+  if (typeof document === "undefined" || !document.body) return;
+  document.body.classList.toggle("is-tester", state.testerMode === true);
+}
+
+async function loadTester(id) {
+  state.settings = null;
+  state.agentSwitches = [];
+  state.agentCards = [];
+  state.promptVersions = [];
+  state.setterPrompts = [];
+  state.setterCurrentId = "";
+  state.voices = [];
+  state.brief = null;
+  state.llmKeys = [];
+  state.llmErrors = [];
+  state.claudeNotice = "";
+  state.notifications = [];
+  state.invites = [];
+  state.memberRows = [];
+  state.members = [];
+  state.contacts = [];
+  state.targets = [];
+  state.conversations = [];
+  state.recentMessages = [];
+  state.threads = [];
+  state.ig = null;
+  state.bookingLink = bookingLinkFor("");
+  try {
+    const data = await dashboardCall({ action: "load", business_id: id });
+    state.setterPrompt = String(data.prompt || "");
+    state.setterPromptSaved = Boolean(state.setterPrompt.trim());
+    state.setterTestedAt = data.tested_at || null;
+    state.setterDraft = null;
+    if (data.access) state.canEditPrompt = data.access.can_edit_prompt === true;
+    if (data.language === "es" || data.language === "en") state.language = writeLanguage(safeStorage(), data.language);
+    hideBoot();
+    return true;
+  } catch (error) {
+    showMessage(language() === "es" ? "No se pudo abrir este negocio" : "Could not open this business", error.message);
+    return false;
   }
-  await state.supabase.from("acq_notifications").insert({
-    business_id: state.businessId,
-    title: "Invite created",
-    body: row.email + " can open " + row.scopes.join(", ") + "."
-  });
-  const mailed = await state.supabase.functions.invoke("roleflow-hooks", {
-    body: { action: "invite", email: row.email, token, business_id: state.businessId }
-  });
-  const mailedError = mailed.data && mailed.data.error;
-  toast(mailedError ? "Invite saved. " + mailedError : "Invite saved.");
-  await bootBusiness(state.businessId, { quiet: true });
+}
+
+function paintTester() {
+  state.tab = testerTab();
+  if (location.hash.replace("#", "").split("/")[0] !== state.tab) history.replaceState(null, "", location.pathname + location.search + "#" + state.tab);
+  markTab();
+  app.innerHTML = "";
+  const root = el("div", { class: "acq" });
+  const es = language() === "es";
+  const note = el("p", { class: "tester-note", id: "tester-note", role: "note" });
+  note.append(el("strong", { text: es ? "Acceso de tester. " : "Tester access. " }));
+  note.append(document.createTextNode(state.canEditPrompt
+    ? (es ? "Puedes editar el prompt y probarlo en el chat de práctica. Guardar cambia el setter en vivo. El chat de práctica no envía nada a Instagram." : "You can edit the prompt and try it in the practice chat. Saving changes the live setter. The practice chat never sends anything to Instagram.")
+    : (es ? "Puedes leer el prompt y probarlo en el chat de práctica. El chat de práctica no envía nada a Instagram." : "You can read the prompt and try it in the practice chat. The practice chat never sends anything to Instagram.")));
+  root.append(note);
+  root.append(renderSetter(pageUi()));
+  app.append(root);
+}
+
+async function loadTeam() {
+  if (!state.supabase || !state.canManageTeam || state.teamLoading) return;
+  state.teamLoading = true;
+  try {
+    const data = await dashboardCall({ action: "team_list" });
+    state.team = { people: data.people || [], invites: data.invites || [], error: "" };
+  } catch (error) {
+    state.team = { people: [], invites: [], error: error.message };
+  }
+  state.teamLoading = false;
+  if (state.tab === "settings") paint();
+}
+
+async function teamInvite(row) {
+  if (!state.canManageTeam) return toast("Only the business owner can manage access.", "bad");
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  try {
+    const saved = await dashboardCall({ action: "team_invite", email: row.email, role: row.role });
+    state.teamLastLink = saved.added ? "" : String(saved.link || "");
+    const es = language() === "es";
+    if (saved.added) toast(saved.emailed ? (es ? "Acceso añadido. Le enviamos un email." : "Access added. They got an email.") : (es ? "Acceso añadido. Ya puede iniciar sesión." : "Access added. They can log in now."));
+    else toast(saved.emailed ? (es ? "Invitación enviada por email." : "Invite emailed.") : (es ? "Invitación creada. Comparte el enlace." : "Invite created. Share the link."));
+    state.team = null;
+    await loadTeam();
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+async function teamRemove(row) {
+  if (!state.canManageTeam) return toast("Only the business owner can manage access.", "bad");
+  if (!readyToSave()) return toast("This preview does not save.", "bad");
+  try {
+    await dashboardCall(row.invite_id ? { action: "team_remove", invite_id: row.invite_id } : { action: "team_remove", user_id: row.user_id });
+    toast(language() === "es" ? "Acceso quitado." : "Access removed.");
+    state.teamLastLink = "";
+    state.team = null;
+    await loadTeam();
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+function previewTeam() {
+  return {
+    people: [
+      { user_id: "owner", email: "owner@example.com", name: "Owner", role: "owner", role_label: "Owner", removable: false },
+      { user_id: "t1", email: "maria.tester.with.a.long.address@example.com", name: "Maria", role: "tester", role_label: "Tester", removable: true },
+      { user_id: "t2", email: "sam@example.com", name: "Sam", role: "prompt_editor", role_label: "Tester + prompt edits", removable: true }
+    ],
+    invites: [
+      { id: "i1", email: "new.person@example.com", role: "tester", role_label: "Tester", link: location.origin + "/signup/?invite=preview" }
+    ],
+    error: ""
+  };
 }
 
 async function regenerateJoin() {

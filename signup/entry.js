@@ -1,6 +1,10 @@
 export function inviteDestination(memberData, acqData, acqError) {
   if (memberData) return { ok: true, href: "/account/acquisition/#dashboard" };
   const businessId = acqData && acqData.business_id;
+  // Testers land on the businesses page, which lists only what they were given.
+  if (businessId && (acqData.role === "tester" || acqData.role === "prompt_editor")) {
+    return { ok: true, href: "/businesses/" };
+  }
   if (businessId) {
     return {
       ok: true,

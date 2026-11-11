@@ -18,6 +18,13 @@
 // transcribe_trial turns a practice voice note into text with the same speech-to-text
 // path as an inbound voice note. It does not store the audio, write a lead, or send
 // a message. The speech key stays in this function.
+//
+// Access per action (see _shared/team-access.js): testers reach only load
+// (prompt only), preview_setter, and transcribe_trial; a "Tester + prompt
+// edits" member can also save or restore the prompt; team_* actions are for
+// the business owner or an admin. Everything else needs full edit access.
+// team_invite emails through Resend when RESEND_API_KEY is set (RESEND_FROM
+// optional); otherwise it returns the invite link for the owner to share.
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { normalizePolicy, setterMayEnable } from "../_shared/agent-control.js";
@@ -28,6 +35,7 @@ import { clientSafeText } from "../_shared/client-safe.js";
 import { dropIncompleteTail, trimToSentence } from "../_shared/split-reply.js";
 import { VOICE_MAX_CHARS, transcribeTrialVoice, trialVoiceError, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, userClientFrom } from "../_shared/gateway-http.js";
+import { accessView, denyMessage, inviteEmail, inviteToken, legacyAccess, mayRemoveMember, mayRun, normalizeAccess, normalizeInvite, roleLabel, testerLoadView } from "../_shared/team-access.js";
 import { PROMPT_MAX } from "../_shared/prompt-history.js";
 import { normalizeCap } from "../_shared/comment-voice.js";
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
@@ -60,12 +68,15 @@ Deno.serve(async (req) => {
   if (action === "save_language") return saveLanguage(admin, user.data.user.id, body.language);
   const businessId = String(body.business_id || "");
   if (!UUID.test(businessId)) return json(400, { ok: false, error: "Pick a business first." });
-  const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
-  if (allowed.error || allowed.data !== true) return json(403, { ok: false, error: "You can't edit this business." });
-  if (action === "load") return load(admin, businessId, user.data.user.id);
+  const access = await accessFor(userClient, businessId);
+  if (!mayRun(access, action)) return json(403, { ok: false, error: denyMessage(access, action) });
+  if (action === "load") return access.tester ? testerLoad(admin, businessId, user.data.user.id, access) : load(admin, businessId, user.data.user.id, access);
+  if (action === "team_list") return teamList(admin, businessId);
+  if (action === "team_invite") return teamInvite(admin, businessId, user.data.user.id, body);
+  if (action === "team_remove") return teamRemove(admin, businessId, body);
   if (action === "save_prompt") return savePrompt(admin, businessId, user.data.user.id, body.prompt, body.voice);
   if (action === "restore_prompt") return restorePrompt(admin, businessId, user.data.user.id, body.version_id);
-  if (action === "preview_setter") return previewSetter(admin, businessId, user.data.user.id, body);
+  if (action === "preview_setter") return previewSetter(admin, businessId, user.data.user.id, body, access);
   if (action === "transcribe_trial") return transcribeTrial(body);
   if (action === "claude_health") return claudeHealth();
   if (action === "build_setter_prompt") return buildSetterPrompt(admin, businessId);
@@ -80,7 +91,26 @@ Deno.serve(async (req) => {
   return json(400, { ok: false, error: "Unknown action." });
 });
 
-async function load(admin, businessId, userId) {
+// One RPC answers what this person may do on this business. Before the
+// business_testers migration is applied it does not exist, so fall back to the
+// old acq_can_edit check and behave exactly as before.
+async function accessFor(userClient, businessId) {
+  const summary = await userClient.rpc("acq_access", { p_workspace: businessId });
+  if (!summary.error && summary.data && typeof summary.data === "object") return normalizeAccess(summary.data);
+  const allowed = await userClient.rpc("acq_can_edit", { p_workspace: businessId });
+  return legacyAccess(!allowed.error && allowed.data === true);
+}
+
+async function testerLoad(admin, businessId, userId, access) {
+  const [prompt, prefs] = await Promise.all([
+    admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle(),
+    admin.from("acq_user_prefs").select("language").eq("user_id", userId).maybeSingle()
+  ]);
+  if (prompt.error) return json(200, { ok: false, error: "The setter prompt could not be loaded." });
+  return json(200, testerLoadView(prompt.data && prompt.data.body, prompt.data && prompt.data.tested_at, prefs.data && prefs.data.language, access));
+}
+
+async function load(admin, businessId, userId, access) {
   const [switches, prompt, policy, prefs] = await Promise.all([
     admin.from("acq_agent_switches").select("agent_key, enabled").eq("business_id", businessId),
     admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle(),
@@ -94,7 +124,8 @@ async function load(admin, businessId, userId) {
     prompt: prompt.data ? prompt.data.body || "" : "",
     tested_at: prompt.data ? prompt.data.tested_at : null,
     policy: normalizePolicy(policy.data || {}),
-    language: prefs.data && prefs.data.language === "es" ? "es" : "en"
+    language: prefs.data && prefs.data.language === "es" ? "es" : "en",
+    access: accessView(access)
   });
 }
 
@@ -158,7 +189,7 @@ async function writePrompt(admin, businessId, userId, prompt, options) {
   return { prompt: body, tested_at: testedAt, version };
 }
 
-async function previewSetter(admin, businessId, userId, body) {
+async function previewSetter(admin, businessId, userId, body, access) {
   const prompt = String(body.prompt || "").trim().slice(0, PROMPT_MAX);
   const message = String(body.message || "").trim().slice(0, body.voice_note === true ? VOICE_MAX_CHARS : 500);
   const followup = Math.max(0, Math.min(12, Number(body.followup) || 0));
@@ -233,7 +264,7 @@ async function previewSetter(admin, businessId, userId, body) {
   const current = await admin.from("acq_agent_prompts").select("body, tested_at").eq("business_id", businessId).maybeSingle();
   const savedBody = current.data ? String(current.data.body || "") : "";
   let testedAt = current.data ? current.data.tested_at : null;
-  if (savedBody === prompt) {
+  if (savedBody === prompt && access && access.canEditPrompt) {
     testedAt = new Date().toISOString();
     await admin.from("acq_agent_prompts").upsert({
       business_id: businessId,
@@ -627,3 +658,140 @@ async function buildSetterPrompt(admin, businessId) {
   }, loaded.chain.map((step) => step.apiKey)));
 }
 
+
+// Team access. Only the business owner or an admin reaches these (mayRun).
+// Invites are app-level codes on acq_invites, never Supabase sessions or
+// sign-in links. The person signs up or logs in through the normal flow.
+
+const SITE = "https://www.roleflow.io";
+const INVITE_DAYS = 14;
+
+async function teamList(admin, businessId) {
+  const [workspace, members, invites] = await Promise.all([
+    admin.from("acq_workspaces").select("id, owner_id").eq("id", businessId).maybeSingle(),
+    admin.from("acq_members").select("user_id, role, status, created_at").eq("business_id", businessId).eq("status", "active"),
+    admin.from("acq_invites").select("id, email, role, token, created_at, expires_at").eq("business_id", businessId).is("accepted_at", null).order("created_at", { ascending: false }).limit(50)
+  ]);
+  if (workspace.error || !workspace.data) return json(200, { ok: false, error: "Business not found." });
+  if (members.error) return json(200, { ok: false, error: "Access could not be loaded." });
+  const ownerId = workspace.data.owner_id;
+  const rows = members.data || [];
+  const ids = [...new Set(rows.map((row) => row.user_id).concat(ownerId ? [ownerId] : []))];
+  const profiles = ids.length ? await admin.from("profiles").select("id, email, full_name").in("id", ids) : { data: [] };
+  const byId = new Map(((profiles.data) || []).map((row) => [row.id, row]));
+  const people = rows.map((row) => {
+    const profile = byId.get(row.user_id) || {};
+    const role = row.user_id === ownerId ? "owner" : row.role;
+    return {
+      user_id: row.user_id,
+      email: profile.email || "",
+      name: profile.full_name || "",
+      role,
+      role_label: roleLabel(role),
+      removable: mayRemoveMember({ ...row, role }, ownerId)
+    };
+  });
+  if (ownerId && !people.some((row) => row.user_id === ownerId)) {
+    const profile = byId.get(ownerId) || {};
+    people.unshift({ user_id: ownerId, email: profile.email || "", name: profile.full_name || "", role: "owner", role_label: "Owner", removable: false });
+  }
+  const now = Date.now();
+  const pending = (invites.error ? [] : invites.data || [])
+    .filter((row) => !row.expires_at || Date.parse(row.expires_at) > now)
+    .map((row) => ({
+      id: row.id,
+      email: row.email,
+      role: row.role || "editor",
+      role_label: roleLabel(row.role || "editor"),
+      expires_at: row.expires_at,
+      link: SITE + "/signup/?invite=" + encodeURIComponent(row.token)
+    }));
+  return json(200, { ok: true, people, invites: pending, sent: false });
+}
+
+async function teamInvite(admin, businessId, userId, body) {
+  const asked = normalizeInvite(body);
+  if (!asked.ok) return json(200, { ok: false, error: asked.error });
+  const workspace = await admin.from("acq_workspaces").select("id, name, owner_id").eq("id", businessId).maybeSingle();
+  if (workspace.error || !workspace.data) return json(200, { ok: false, error: "Business not found." });
+  const name = workspace.data.name || "a business";
+  const pattern = asked.email.replace(/[\\%_]/g, (char) => "\\" + char);
+  const found = await admin.from("profiles").select("id, email").ilike("email", pattern).limit(2);
+  if (found.error) return json(200, { ok: false, error: "Access could not be saved." });
+  const account = (found.data || []).find((row) => String(row.email || "").toLowerCase() === asked.email);
+  if (account) {
+    if (account.id === workspace.data.owner_id) return json(200, { ok: false, error: "That person owns this business." });
+    const current = await admin.from("acq_members").select("role").eq("business_id", businessId).eq("user_id", account.id).maybeSingle();
+    if (current.data && current.data.role === "owner") return json(200, { ok: false, error: "That person owns this business." });
+    const saved = await admin.from("acq_members").upsert({
+      business_id: businessId,
+      user_id: account.id,
+      role: asked.role,
+      status: "active",
+      scopes: scopesFor(asked.role)
+    }, { onConflict: "business_id,user_id" });
+    if (saved.error) return json(200, { ok: false, error: "Access was not saved. Apply the business testers migration first." });
+    await admin.from("acq_invites").delete().eq("business_id", businessId).ilike("email", pattern).is("accepted_at", null);
+    const mail = inviteEmail(name, asked.role, SITE + "/login/", true);
+    const emailed = await sendTeamEmail(asked.email, mail);
+    return json(200, { ok: true, added: true, emailed: emailed.ok, email_error: emailed.error || "", sent: false });
+  }
+  await admin.from("acq_invites").delete().eq("business_id", businessId).ilike("email", pattern).is("accepted_at", null);
+  const token = inviteToken(crypto.getRandomValues(new Uint8Array(32)));
+  const created = await admin.from("acq_invites").insert({
+    business_id: businessId,
+    email: asked.email,
+    role: asked.role,
+    scopes: scopesFor(asked.role),
+    token,
+    invited_by: userId,
+    expires_at: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  }).select("id").single();
+  if (created.error) return json(200, { ok: false, error: "The invite was not saved. Apply the business testers migration first." });
+  const link = SITE + "/signup/?invite=" + encodeURIComponent(token);
+  const emailed = await sendTeamEmail(asked.email, inviteEmail(name, asked.role, link, false));
+  return json(200, { ok: true, added: false, invite_id: created.data.id, link, emailed: emailed.ok, email_error: emailed.error || "", sent: false });
+}
+
+async function teamRemove(admin, businessId, body) {
+  const inviteId = String(body.invite_id || "");
+  if (inviteId) {
+    if (!UUID.test(inviteId)) return json(200, { ok: false, error: "That invite is not on this business." });
+    const removed = await admin.from("acq_invites").delete().eq("id", inviteId).eq("business_id", businessId).select("id");
+    if (removed.error || !(removed.data || []).length) return json(200, { ok: false, error: "That invite is not on this business." });
+    return json(200, { ok: true, sent: false });
+  }
+  const memberId = String(body.user_id || "");
+  if (!UUID.test(memberId)) return json(200, { ok: false, error: "Pick a person to remove." });
+  const [workspace, member] = await Promise.all([
+    admin.from("acq_workspaces").select("owner_id").eq("id", businessId).maybeSingle(),
+    admin.from("acq_members").select("user_id, role").eq("business_id", businessId).eq("user_id", memberId).maybeSingle()
+  ]);
+  if (workspace.error || !workspace.data) return json(200, { ok: false, error: "Business not found." });
+  if (member.error || !member.data) return json(200, { ok: false, error: "That person is not on this business." });
+  if (!mayRemoveMember(member.data, workspace.data.owner_id)) return json(200, { ok: false, error: "The owner can't be removed." });
+  const removed = await admin.from("acq_members").delete().eq("business_id", businessId).eq("user_id", memberId);
+  if (removed.error) return json(200, { ok: false, error: "Access was not removed." });
+  return json(200, { ok: true, sent: false });
+}
+
+function scopesFor(role) {
+  return role === "editor" ? ["conversations", "configuration", "analysis"] : [];
+}
+
+async function sendTeamEmail(to, mail) {
+  const key = Deno.env.get("RESEND_API_KEY") || "";
+  if (!key) return { ok: false, error: "Email is not set up, so share the link yourself." };
+  const from = Deno.env.get("RESEND_FROM") || "Roleflow <notifications@roleflow.io>";
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject: mail.subject, text: mail.text })
+    });
+    if (!response.ok) return { ok: false, error: "The email was not sent, so share the link yourself." };
+    return { ok: true, error: "" };
+  } catch (_error) {
+    return { ok: false, error: "The email was not sent, so share the link yourself." };
+  }
+}

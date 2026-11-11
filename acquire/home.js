@@ -1,4 +1,5 @@
 import { navLabel, NAV_GROUPS } from "./client-nav.mjs";
+import { navGroupsFor } from "./team-access.js";
 import { sectionText } from "./section-copy.js";
 import { renderOffice } from "./office.js";
 import { persistCollapsedGroups, readCollapsedGroups } from "./sidebar-state.js";
@@ -40,7 +41,7 @@ const HOW = {
   stats: "Stats counts leads, agents, tags, links, the funnel, follow-ups, and reply time for the range you pick. Explain with assistant asks about that chart. Empty means that event has not happened.",
   performance: "Performance groups leads by origin: story, post, reel, ad, or a keyword you name. The 12-month figure is a projection from numbers you type, not revenue already earned.",
   configuration: "Eight questions control when the AI answers, who it answers, when it stops, how it writes, how a lead is filed, who is notified, integrations, and cloning this business. A save stays in this panel.",
-  team: "Team lists people on this business. An email invite carries Conversations, Configuration, or Analysis. Regenerating the link replaces the join code."
+  team: "Team and access lists people on this business. The owner gives someone Tester, Tester + prompt edits, or Editor access by email, and can remove it. Regenerating the team link replaces the join code."
 };
 
 
@@ -62,7 +63,7 @@ export function mountNav(ui) {
   const closed = new Set(readCollapsedGroups(groupStorage()));
   const language = ui.language ? ui.language() : "en";
   slide.replaceChildren();
-  NAV_GROUPS.forEach((group) => {
+  navGroupsFor(NAV_GROUPS, ui.state.testerMode === true).forEach((group) => {
     const shut = closed.has(group.id);
     const block = ui.el("div", { class: shut ? "nav-group is-collapsed" : "nav-group" });
     const items = ui.el("div", { class: "nav-group-items", id: "nav-group-" + group.id });

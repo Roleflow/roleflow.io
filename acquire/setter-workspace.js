@@ -359,7 +359,8 @@ export function renderSetterDesk(ui) {
 
 function modeRail(ui, copy, desk) {
   const rail = ui.el("nav", { class: "desk-modes", role: "tablist", "aria-label": copy.prompts });
-  [["business", copy.business], ["prompts", copy.prompts]].forEach(([id, label]) => {
+  const modes = ui.state.testerMode ? [["prompts", copy.prompts]] : [["business", copy.business], ["prompts", copy.prompts]];
+  modes.forEach(([id, label]) => {
     const tab = ui.el("button", {
       type: "button",
       role: "tab",
@@ -380,6 +381,7 @@ function modeRail(ui, copy, desk) {
 
 function editorColumn(ui, copy, desk, es) {
   const column = ui.el("section", { class: "desk-editor", id: "desk-editor" });
+  if (ui.state.testerMode && desk.mode === "business") desk.mode = "prompts";
   const prompts = desk.mode !== "business";
   const value = prompts ? savedPrompt(ui.state) : businessText(ui);
   const max = prompts ? PROMPT_MAX : MAX_CHARS;
@@ -406,7 +408,7 @@ function editorColumn(ui, copy, desk, es) {
       desk.showPreview = false;
       ui.paint();
     });
-    if (!ui.state.canEdit) edit.disabled = true;
+    if (!ui.state.canEdit && !(prompts && ui.state.canEditPrompt)) edit.disabled = true;
     tools.append(edit);
   }
   tools.append(segment(ui, [["text", copy.text], ["markdown", copy.markdown]], desk.showPreview ? "" : desk.format, (id) => {
@@ -449,10 +451,12 @@ function editorColumn(ui, copy, desk, es) {
   if (prompts) {
     column.append(ui.el("p", { class: "mute", text: copy.promptNote }));
     if (ui.state.promptDraft) column.append(draftDiff(ui, copy, value));
-    column.append(qualityRow(ui, copy, desk));
-    const versions = versionsPanel(ui, copy, desk);
-    if (versions) column.append(versions);
-    column.append(aiBar(ui, copy, desk));
+    if (!ui.state.testerMode) {
+      column.append(qualityRow(ui, copy, desk));
+      const versions = versionsPanel(ui, copy, desk);
+      if (versions) column.append(versions);
+      column.append(aiBar(ui, copy, desk));
+    }
   }
   else column.append(ui.el("p", { class: "mute", text: es ? "Este texto es el brief del negocio. Guardar escribe los campos que reconoces." : "This text is the business brief. Save writes the headings it recognizes." }));
   return column;
@@ -760,9 +764,12 @@ function simulatorColumn(ui, copy, desk) {
     statePick.setAttribute("data-state", statePick.value);
   });
   const meta = ui.el("div", { class: "sim-meta" });
-  meta.append(ui.el("a", { class: "model-chip", id: "sim-model-chip", href: "#settings/model" }, [answeredChip(ui, copy)]), statePick);
+  const chip = ui.state.testerMode
+    ? ui.el("span", { class: "model-chip", id: "sim-model-chip" }, [answeredChip(ui, copy)])
+    : ui.el("a", { class: "model-chip", id: "sim-model-chip", href: "#settings/model" }, [answeredChip(ui, copy)]);
+  meta.append(chip, statePick);
   sim.append(meta);
-  sim.append(voiceControl(ui, copy, ""));
+  if (!ui.state.testerMode) sim.append(voiceControl(ui, copy, ""));
   if (desk.panel === "conversations") sim.append(conversationsPanel(ui, copy, desk));
 
   sim.append(segment(ui, [["lead", copy.lead], ["business", copy.businessSender]], desk.sender, (id) => {
@@ -835,13 +842,14 @@ function simulatorColumn(ui, copy, desk) {
   const followBtn = ghost(ui, copy.follow, () => submitSim(ui, "", true));
   followBtn.prepend(mark("clock"));
   sim.append(ui.el("div", { class: "follow-row" }, [followBtn, follow]));
-  sim.append(delayFields(ui, copy));
+  if (!ui.state.testerMode) sim.append(delayFields(ui, copy));
 
   const simulate = ui.el("input", { id: "practice-delay", type: "checkbox" });
   simulate.checked = ui.state.practiceSimulateDelay === true;
   simulate.addEventListener("change", () => { ui.state.practiceSimulateDelay = simulate.checked; });
   sim.append(ui.el("label", { class: "switch" }, [simulate, " " + copy.delay]));
 
+  if (ui.state.testerMode) return sim;
   const settings = ghost(ui, copy.settings, () => {
     desk.settingsOpen = !desk.settingsOpen;
     ui.paint();

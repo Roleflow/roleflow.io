@@ -361,3 +361,20 @@ body.platform .assistant-panel.is-docked{position:static;width:100%;max-width:no
   body.platform.assistant-modal .app-main::before{left:0}
   body.platform .assistant-panel.is-modal{left:8px;width:auto;right:8px;top:8px;height:calc(100dvh - 16px)}
 }
+
+/* Team and access (Settings) and the tester view of the Agentic Setter. */
+.team-card h4{margin:16px 0 8px;font-size:.95rem}
+.team-form{display:grid;gap:10px;margin:12px 0}
+.team-form label{display:grid;gap:6px;min-width:0}
+.team-form input,.team-form select{width:100%;min-width:0;box-sizing:border-box}
+.team-form .btn{justify-self:start}
+.team-hint{margin:0}
+.team-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.team-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 12px;border-radius:12px;background:#101A33;min-width:0}
+.team-who{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
+.team-role{white-space:nowrap}
+.team-link{overflow-wrap:anywhere;word-break:break-all}
+.team-new{margin:0 0 12px}
+.tester-note{margin:0 0 14px;padding:10px 12px;border-radius:12px;background:#101A33;color:#C9D2EA;overflow-wrap:anywhere}
+.tester-note strong{color:#fff}
+body.is-tester #assistant-open,body.is-tester #assistant-panel,body.is-tester #profile-settings,body.is-tester #nav-admin-home{display:none !important}
