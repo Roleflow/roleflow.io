@@ -41,7 +41,7 @@ const HOW = {
   stats: "Stats counts leads, agents, tags, links, the funnel, follow-ups, and reply time for the range you pick. Explain with assistant asks about that chart. Empty means that event has not happened.",
   performance: "Performance groups leads by origin: story, post, reel, ad, or a keyword you name. The 12-month figure is a projection from numbers you type, not revenue already earned.",
   configuration: "Eight questions control when the AI answers, who it answers, when it stops, how it writes, how a lead is filed, who is notified, integrations, and cloning this business. A save stays in this panel.",
-  team: "Team and access lists people on this business. The owner gives someone Tester, Tester + prompt edits, or Editor access by email, and can remove it. Regenerating the team link replaces the join code."
+  team: "Team and access lists people on this business. The owner gives someone Tester, Tester + prompt edits, or Editor access by email, and can remove it. The owner can also turn on a team link: it joins as Tester unless the owner picks another role, and making a new link stops the old one."
 };
 
 

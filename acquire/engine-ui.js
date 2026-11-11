@@ -374,9 +374,8 @@ function paintIntegrations(host, ctx) {
   host.append(worker);
 
   const join = el("article", { class: "agent" });
-  const workspace = (state.businesses || []).find((row) => row.id === state.businessId);
   join.append(el("h3", { text: "Workspace" }));
-  join.append(el("p", { text: "Join code: " + ((workspace && workspace.join_code) || "—") }));
+  join.append(el("p", { class: "mute", text: "The owner manages the team link in Settings, under Team link." }));
   const code = field("Join another business", "");
   join.append(code.label);
   if (state.supabase) {
@@ -386,7 +385,8 @@ function paintIntegrations(host, ctx) {
       else if (saved.data && saved.data.ok === false) toast(saved.data.error || "That code did not match.", "bad");
       else {
         toast("You joined that business.");
-        location.href = "/account/acquisition/?business=" + encodeURIComponent(saved.data.business_id);
+        const tester = saved.data.role === "tester" || saved.data.role === "prompt_editor";
+        location.href = tester ? "/businesses/" : "/account/acquisition/?business=" + encodeURIComponent(saved.data.business_id);
       }
     }));
   }

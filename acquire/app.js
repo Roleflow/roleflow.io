@@ -26,7 +26,7 @@ import { previewOnboarding } from "./onboarding-panel.js";
 import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
-import { mergeTesterBusinesses, panelAbilities, panelRole, shouldOpenOwnWorkspace, testerTab } from "./team-access.js";
+import { joinRole, mergeTesterBusinesses, panelAbilities, panelRole, shouldOpenOwnWorkspace, testerTab } from "./team-access.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
@@ -1103,6 +1103,7 @@ function pageUi() {
     revokeApiKey,
     cloneBusiness,
     regenerateJoin,
+    disableJoin,
     teamInvite,
     teamRemove,
     saveOrigin,
@@ -3634,6 +3635,13 @@ async function loadTeam() {
   } catch (error) {
     state.team = { people: [], invites: [], error: error.message };
   }
+  try {
+    const link = await state.supabase.from("acq_join_links").select("code, role, created_at").eq("business_id", state.businessId).maybeSingle();
+    state.team.joinLink = link.error ? null : link.data || null;
+    state.team.joinError = link.error ? (language() === "es" ? "No se pudo cargar el enlace de equipo." : "The team link could not be loaded.") : "";
+  } catch (_error) {
+    state.team.joinLink = null;
+  }
   state.teamLoading = false;
   if (state.tab === "settings") paint();
 }
@@ -3678,21 +3686,29 @@ function previewTeam() {
     invites: [
       { id: "i1", email: "new.person@example.com", role: "tester", role_label: "Tester", link: location.origin + "/signup/?invite=preview" }
     ],
+    joinLink: { code: "0123456789abcdef01234567", role: "tester" },
     error: ""
   };
 }
 
-async function regenerateJoin() {
+async function regenerateJoin(role) {
+  if (!state.canManageTeam) return toast("Only the business owner can manage access.", "bad");
   if (!readyToSave()) return;
-  const saved = await state.supabase.rpc("acq_regenerate_join_code", { p_business: state.businessId });
-  if (saved.error) toast(saved.error.message, "bad");
-  else {
-    const code = saved.data && saved.data.join_code;
-    const business = state.businesses.find((item) => item.id === state.businessId);
-    if (business && code) business.join_code = code;
-    toast("Invite link regenerated.");
-    paint();
-  }
+  const saved = await state.supabase.rpc("acq_regenerate_join_code", { p_business: state.businessId, p_role: joinRole(role) });
+  if (saved.error) return toast(saved.error.message, "bad");
+  toast(language() === "es" ? "Enlace de equipo creado. El anterior ya no funciona." : "Team link created. Any older link no longer works.");
+  state.team = null;
+  await loadTeam();
+}
+
+async function disableJoin() {
+  if (!state.canManageTeam) return toast("Only the business owner can manage access.", "bad");
+  if (!readyToSave()) return;
+  const removed = await state.supabase.from("acq_join_links").delete().eq("business_id", state.businessId);
+  if (removed.error) return toast(removed.error.message, "bad");
+  toast(language() === "es" ? "Enlace de equipo desactivado." : "Team link turned off.");
+  state.team = null;
+  await loadTeam();
 }
 
 async function saveOrigin(row) {

@@ -4,6 +4,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { clientReplyView, completeChat, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
 import { flushSyncNotice, loadResendConfig, sendSyncNotice, SYNC_INBOX } from "../_shared/sync-notice.js";
+import { inviteMail, inviteRequest, openInvite, rateLimiter } from "../_shared/hooks-invite.js";
+
+const inviteAllowed = rateLimiter(5, 10 * 60 * 1000);
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -66,22 +69,30 @@ async function convert(req: Request, body: { lead?: string; state?: string }) {
   return json(404, { error: "That lead was not found for this key." });
 }
 
-async function invite(req: Request, body: { email?: string; token?: string; business_id?: string }) {
+async function invite(req: Request, body: { token?: string; business_id?: string }) {
   const userClient = userClientFrom(req);
   const { data: userData, error: userError } = await userClient.auth.getUser();
   if (userError || !userData.user) return json(401, { error: "Sign in required." });
+  const request = inviteRequest(body);
+  if (!request.ok) return json(request.status, { error: request.error });
+  const allowed = await userClient.rpc("acq_can_manage_team", { p_workspace: request.businessId });
+  if (allowed.error || allowed.data !== true) return json(403, { error: "Only the business owner can send invites." });
+  const row = await userClient.from("acq_invites")
+    .select("business_id, email, token, accepted_at, expires_at")
+    .eq("business_id", request.businessId)
+    .eq("token", request.token)
+    .maybeSingle();
+  if (row.error) return json(404, { error: "That invite was not found." });
+  const open = openInvite(row.data, request.businessId, request.token);
+  if (!open.ok) return json(open.status, { error: open.error });
+  if (!inviteAllowed(userData.user.id)) return json(429, { error: "Too many invite emails. Try again in a few minutes." });
   const resend = Deno.env.get("RESEND_API_KEY") || "";
   if (!resend) return json(200, { error: "Email sending is not configured yet. Share the link." });
-  const link = "https://www.roleflow.io/signup/?invite=" + encodeURIComponent(String(body.token || ""));
+  const mail = inviteMail(open.email, request.token);
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + resend, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: "Roleflow <notifications@roleflow.io>",
-      to: [String(body.email || "")],
-      subject: "You are invited to a Roleflow business",
-      text: "Open this link to join: " + link
-    })
+    body: JSON.stringify({ from: "Roleflow <notifications@roleflow.io>", ...mail })
   });
   if (!response.ok) return json(200, { error: "The invite is saved. The email was not sent." });
   return json(200, { emailed: true });

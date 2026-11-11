@@ -110,7 +110,7 @@ test("phase 3 screens stay in the panel and off the live setter", () => {
   const assistant = readFileSync(new URL("../acquire/assistant.js", import.meta.url), "utf8");
   assert.match(ops, /Explain with assistant/);
   assert.doesNotMatch(ops, /coming soon/);
-  assert.match(ops, /Regenerate link/);
+  assert.match(ops, /Make a new link/);
   assert.match(assistant, /Confirm/);
   assert.match(app, /acq_clone_business/);
   assert.doesNotMatch(ops, /enqueueEngine/);
