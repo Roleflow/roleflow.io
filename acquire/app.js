@@ -27,6 +27,7 @@ import { bindAssistant } from "./assistant.js";
 import { sectionText } from "./section-copy.js";
 import { bindOps, paintChrome } from "./studio-ops.js";
 import { joinRole, mergeTesterBusinesses, panelAbilities, panelRole, shouldOpenOwnWorkspace, testerTab } from "./team-access.js";
+import { markPromptLoaded, promptReady, promptSaveTarget, resetPromptState, stillOn } from "./prompt-scope.js";
 import { bindSidebar } from "./dock.js";
 import { closeOffice } from "./office.js";
 import { callSetterEngine, renderEngine } from "./engine-ui.js";
@@ -180,6 +181,7 @@ const state = {
   setterPrompt: "",
   winningConversations: [],
   promptDraft: null,
+  promptLoadedFor: "",
   setterTestedAt: null,
   followupPolicy: null,
   language: "en"
@@ -434,6 +436,9 @@ async function bootBusiness(id, options) {
     state.messages = [];
     state.ig = null;
     state.connectError = "";
+    // The prompt editor, its draft, and the version list belong to the old
+    // business. Clear them so nothing from it can show or be saved here.
+    resetPromptState(state);
   }
   const activated = activateTrial(id, state.setterTrial, state.trialByWorkspace);
   state.setterTrial = activated.trial;
@@ -526,6 +531,93 @@ function armEditorRequest() {
 async function loadAll(id, token) {
   const live = () => token == null || token === bootToken;
   const q = state.supabase;
+  // Every read for this business starts now and runs at the same time. They
+  // used to run one after another (about 25 round trips), which kept
+  // "Loading this business…" on screen for 15 to 25 seconds. Results are still
+  // applied in the same order, with the same checks, as before.
+  const llmSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const replyQuery = (cols) => q.from("acq_messages").select(cols).eq("business_id", id).eq("role", "assistant").gte("sent_at", llmSince).order("sent_at", { ascending: false }).limit(20);
+  const later = {
+    voiceSends: Promise.resolve(q.from("acq_voice_sends").select("voice_note_id, result, target_id, notes").eq("agent_id", id).order("sent_at", { ascending: false }).limit(500)),
+    clips: Promise.resolve(q.from("acq_owner_clips").select("id, label, when_to_use, kind, mime_type, byte_size, active, storage_path, speech_provider, created_at").eq("business_id", id).order("created_at", { ascending: false })),
+    hints: Promise.resolve(q.rpc("acq_llm_key_hints", { p_business: id })),
+    llmNote: Promise.resolve(q.from("acq_llm_errors").select("message").eq("business_id", id).eq("provider", "anthropic").order("created_at", { ascending: false }).limit(1)),
+    llmErrors: Promise.resolve(q.from("acq_llm_errors").select("provider, model, message, fell_back, created_at").eq("business_id", id).gte("created_at", llmSince).order("created_at", { ascending: false }).limit(5)),
+    gatewayIg: Promise.resolve(q.from("ig_gateway_accounts").select("status, username").eq("business_id", id).maybeSingle()),
+    assistantReplies: Promise.resolve(replyQuery("role, sender, delivery_status, sent_at")),
+    dmControls: Promise.resolve(q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason, ig_handle, session_ready").eq("business_id", id).maybeSingle()),
+    dmLoginBeat: Promise.resolve(q.from("acq_dm_login_service").select("seen_at").eq("id", 1).maybeSingle()),
+    dmCampaigns: Promise.resolve(q.from("acq_dm_campaigns").select("id, name, template, handles, exclusions, enabled").eq("business_id", id).order("created_at", { ascending: false }).limit(20)),
+    outreachRow: loadOutreacher(q, id),
+    recentMessages: Promise.resolve(q.from("acq_messages").select("conversation_id, body, sent_at, sender").eq("business_id", id).order("sent_at", { ascending: false }).limit(300)),
+    stageEvents: Promise.resolve(q.from("acq_stage_events").select("contact_id, target_id, from_state, to_state, actor, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(400)),
+    commentSettings: Promise.resolve(q.from("acq_comment_settings").select("auto_reply, dm_without_keyword, public_replies").eq("business_id", id).maybeSingle()),
+    syncLogs: Promise.resolve(q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20)),
+    winning: Promise.resolve(q.from("acq_winning_conversations").select("id, title, raw_text, messages, outcome, notes, created_at, updated_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30)),
+    b_brief: Promise.all([
+      q.from("acq_business_briefs").select("business_id, fields, updated_at").eq("business_id", id).maybeSingle(),
+      q.from("acq_brief_versions").select("id, fields, cards, char_count, note, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
+      q.from("acq_agent_cards").select("id, role, name, instructions, delegations, updated_at").eq("business_id", id),
+      q.from("acq_lead_notes").select("id, contact_id, target_id, body, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(200),
+      q.from("acq_message_queue").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(200),
+      q.from("acq_offer_links").select("id, name, body, url, coupon, average_ticket_cents, send_instructions, send_as_button, button_label, agent_roles").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("acq_schedule_endpoints").select("id, provider, name, availability_url, booking_url, condition, has_api_key").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("acq_value_assets").select("id, kind, title, url, label, storage_path, send_instructions, placement, agent_roles").eq("business_id", id).order("created_at", { ascending: false })
+    ]),
+    b_followups: Promise.all([
+      q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id, voice_note_id, state_prompts, enabled").eq("business_id", id).order("hours", { ascending: true }),
+      q.from("acq_welcome_steps").select("id, position, delay_hours, mode, body").eq("business_id", id).order("position", { ascending: true }),
+      q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at, step_id, sent_via").eq("business_id", id).order("created_at", { ascending: false }).limit(100),
+      q.from("acq_reminders").select("id, contact_id, target_id, kind, source, title, due_at, status, created_at").eq("business_id", id).order("due_at", { ascending: true }).limit(200),
+      q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies, scope, publication_ref, reply_kind, voice_path, voice_mime").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
+    ]),
+    b_manualSteps: Promise.all([
+      q.from("acq_manual_followup_steps").select("id, wait_half_days, mode, body, asset_id").eq("business_id", id).order("wait_half_days", { ascending: true }),
+      q.from("acq_followup_sends").select("id, track, step_id, contact_id, target_id, status, reason, replied, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(500)
+    ]),
+    b_stateRules: Promise.all([
+      q.from("acq_state_rules").select("crm_state, condition").eq("business_id", id),
+      q.from("acq_tag_rules").select("id, name, rule_kind, rule_text, notify_email").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("acq_webhooks").select("id, url, events, paused, has_secret").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("acq_api_keys").select("id, label, prefix, created_at, revoked_at").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("acq_invites").select("id, email, scopes, token, accepted_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
+      q.from("acq_notifications").select("id, title, body, created_at, read_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
+      q.from("acq_origins").select("id, name, keyword").eq("business_id", id).order("created_at", { ascending: false })
+    ]),
+    b_agentPrompts: Promise.all([
+      q.from("agent_prompts").select("id, agent_role, body, note, char_count, score, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(80),
+      q.from("agent_routines").select("id, agent_role, name, cron, timezone, enabled, instructions, last_run_at").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("agent_runs").select("id, agent_role, routine_id, started_at, ended_at, status, summary, error").eq("business_id", id).order("started_at", { ascending: false }).limit(40),
+      q.from("agent_actions").select("id, agent_role, run_id, type, target, status, approved_by, error, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
+      q.from("agent_settings").select("agent_role, auto_approve").eq("business_id", id)
+    ]),
+    b_setterPrompts: Promise.all([
+      q.from("acq_prompt_versions").select("id, role, version, sections, created_at").eq("business_id", id).eq("role", "inbound_manager").order("version", { ascending: false }).limit(20),
+      q.from("acq_prompt_current").select("version_id").eq("business_id", id).eq("role", "inbound_manager").maybeSingle(),
+      q.from("acq_agent_tools").select("id, agent_role, kind, name, config, created_at").eq("business_id", id).order("created_at", { ascending: false }),
+      q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
+    ]),
+    b_switches: Promise.all([
+      q.from("acq_agent_switches").select("agent_key, enabled").eq("business_id", id),
+      q.from("acq_agent_prompts").select("body, tested_at").eq("business_id", id).eq("agent_key", "setter").maybeSingle(),
+      q.from("acq_followup_policy").select("*").eq("business_id", id).maybeSingle(),
+      state.user ? q.from("acq_user_prefs").select("language").eq("user_id", state.user.id).maybeSingle() : Promise.resolve({ data: null, error: null })
+    ]),
+    b_intake: Promise.all([
+      q.from("acq_onboarding").select("offer, price, ideal, booking_link, criteria, disqualifiers, status, sources, draft").eq("business_id", id).maybeSingle(),
+      q.from("acq_onboarding_materials").select("id, name, kind, body, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
+      q.from("acq_onboarding_links").select("id, expires_at, revoked_at, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(10)
+    ]),
+    b_promptVersions: Promise.all([
+      q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by, setter_voice").eq("business_id", id).order("version", { ascending: false }).limit(30),
+      q.from("acq_comment_voice_rules").select("id, keywords, intent, message, clip_id, position").eq("business_id", id).order("position", { ascending: true }),
+      q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
+      q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
+      q.from("acq_comment_slots").select("when_to_send, voice_note_id").eq("business_id", id).maybeSingle()
+    ])
+  };
+  Object.values(later).forEach((pending) => pending.catch(() => {}));
   const [settings, workforce, targets, outreach, steps, bookings, deals, reports, exceptions, activity, voices, performance, threads, ig, google, workers, dnc, setterLink, contacts, messages, conversations, outbox, connectRequests] = await Promise.all([
     q.from("acq_settings").select("*").eq("agent_id", id).maybeSingle(),
     q.from("business_workforce").select("role, status, parameters, daily_count, daily_count_on, last_run_at, last_error").eq("agent_id", id),
@@ -568,25 +660,23 @@ async function loadAll(id, token) {
   state.exceptions = exceptions.error ? [] : exceptions.data || [];
   state.activity = activity.error ? [] : activity.data || [];
   state.voices = voices.error ? [] : voices.data || [];
-  const voiceSends = await q.from("acq_voice_sends").select("voice_note_id, result, target_id, notes").eq("agent_id", id).order("sent_at", { ascending: false }).limit(500);
+  const voiceSends = await later.voiceSends;
   state.voiceSends = voiceSends.error ? [] : voiceSends.data || [];
-  const clips = await q.from("acq_owner_clips").select("id, label, when_to_use, kind, mime_type, byte_size, active, storage_path, speech_provider, created_at").eq("business_id", id).order("created_at", { ascending: false });
+  const clips = await later.clips;
   if (!live()) return false;
   state.ownerClips = clips.error ? [] : clips.data || [];
-  const hints = await q.rpc("acq_llm_key_hints", { p_business: id });
+  const hints = await later.hints;
   if (!live()) return false;
   state.llmKeys = hints.error || !Array.isArray(hints.data) ? [] : hints.data;
-  const llmNote = await q.from("acq_llm_errors").select("message").eq("business_id", id).eq("provider", "anthropic").order("created_at", { ascending: false }).limit(1);
+  const llmNote = await later.llmNote;
   const note = !llmNote.error && llmNote.data && llmNote.data[0] ? String(llmNote.data[0].message || "") : "";
   state.claudeNotice = /Claude API key was rejected/.test(note) ? note : "";
-  const llmSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const llmErrors = await q.from("acq_llm_errors").select("provider, model, message, fell_back, created_at").eq("business_id", id).gte("created_at", llmSince).order("created_at", { ascending: false }).limit(5);
-  const gatewayIg = await q.from("ig_gateway_accounts").select("status, username").eq("business_id", id).maybeSingle();
+  const llmErrors = await later.llmErrors;
+  const gatewayIg = await later.gatewayIg;
   if (!live()) return false;
   state.llmErrors = llmErrors.error ? [] : llmErrors.data || [];
   state.gatewayIg = gatewayIg.error ? null : gatewayIg.data || null;
-  const replyQuery = (cols) => q.from("acq_messages").select(cols).eq("business_id", id).eq("role", "assistant").gte("sent_at", llmSince).order("sent_at", { ascending: false }).limit(20);
-  let assistantReplies = await replyQuery("role, sender, delivery_status, sent_at");
+  let assistantReplies = await later.assistantReplies;
   if (assistantReplies.error) assistantReplies = await replyQuery("role, sender, sent_at");
   if (!live()) return false;
   state.assistantReplies = assistantReplies.error ? [] : assistantReplies.data || [];
@@ -599,10 +689,10 @@ async function loadAll(id, token) {
   state.workers = workers.error ? [] : workers.data || [];
   state.dnc = dnc.error ? [] : dnc.data || [];
   state.setterLink = setterLink.error ? null : setterLink.data;
-  let dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason, ig_handle, session_ready").eq("business_id", id).maybeSingle();
+  let dmControls = await later.dmControls;
   if (dmControls.error) dmControls = await q.from("acq_dm_controls").select("enabled, killed, daily_cap, paused_reason").eq("business_id", id).maybeSingle();
-  const dmLoginBeat = await q.from("acq_dm_login_service").select("seen_at").eq("id", 1).maybeSingle();
-  const dmCampaigns = await q.from("acq_dm_campaigns").select("id, name, template, handles, exclusions, enabled").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
+  const dmLoginBeat = await later.dmLoginBeat;
+  const dmCampaigns = await later.dmCampaigns;
   if (!live()) return false;
   if (!dmControls.error && dmControls.data) {
     state.autoDm = {
@@ -622,7 +712,7 @@ async function loadAll(id, token) {
     state.autoDm = null;
   }
   state.dmCampaigns = dmCampaigns.error ? [] : dmCampaigns.data || [];
-  const outreachRow = await loadOutreacher(q, id);
+  const outreachRow = await later.outreachRow;
   if (!live()) return false;
   if (!outreachRow.unavailable) {
     state.machine = outreachRow.machine;
@@ -631,24 +721,15 @@ async function loadAll(id, token) {
   state.contacts = contacts.error ? [] : contacts.data || [];
   state.messageCount = messages.error ? 0 : messages.count || 0;
   state.conversations = conversations.error ? [] : conversations.data || [];
-  const recentMessages = await q.from("acq_messages").select("conversation_id, body, sent_at, sender").eq("business_id", id).order("sent_at", { ascending: false }).limit(300);
+  const recentMessages = await later.recentMessages;
   state.recentMessages = recentMessages.error ? [] : recentMessages.data || [];
-  const stageEvents = await q.from("acq_stage_events").select("contact_id, target_id, from_state, to_state, actor, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(400);
+  const stageEvents = await later.stageEvents;
   state.stageEvents = stageEvents.error ? [] : stageEvents.data || [];
   state.engineMessages = [];
   state.threadMore = false;
   state.outbox = outbox.error ? [] : outbox.data || [];
   state.connectRequests = connectRequests.error ? [] : connectRequests.data || [];
-  const [brief, versions, cards, notes, queue, links, schedules, assets] = await Promise.all([
-    q.from("acq_business_briefs").select("business_id, fields, updated_at").eq("business_id", id).maybeSingle(),
-    q.from("acq_brief_versions").select("id, fields, cards, char_count, note, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
-    q.from("acq_agent_cards").select("id, role, name, instructions, delegations, updated_at").eq("business_id", id),
-    q.from("acq_lead_notes").select("id, contact_id, target_id, body, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(200),
-    q.from("acq_message_queue").select("id, contact_id, target_id, body, status, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(200),
-    q.from("acq_offer_links").select("id, name, body, url, coupon, average_ticket_cents, send_instructions, send_as_button, button_label, agent_roles").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_schedule_endpoints").select("id, provider, name, availability_url, booking_url, condition, has_api_key").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_value_assets").select("id, kind, title, url, label, storage_path, send_instructions, placement, agent_roles").eq("business_id", id).order("created_at", { ascending: false })
-  ]);
+  const [brief, versions, cards, notes, queue, links, schedules, assets] = await later.b_brief;
   if (!live()) return false;
   state.brief = brief.error ? null : brief.data;
   state.briefVersions = versions.error ? [] : versions.data || [];
@@ -658,24 +739,14 @@ async function loadAll(id, token) {
   state.offerLinks = links.error ? [] : links.data || [];
   state.scheduleEndpoints = schedules.error ? [] : schedules.data || [];
   state.valueAssets = assets.error ? [] : assets.data || [];
-  const [followups, welcomes, manuals, reminders, commentCtas, storyCtas] = await Promise.all([
-    q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id, voice_note_id, state_prompts, enabled").eq("business_id", id).order("hours", { ascending: true }),
-    q.from("acq_welcome_steps").select("id, position, delay_hours, mode, body").eq("business_id", id).order("position", { ascending: true }),
-    q.from("acq_manual_followups").select("id, contact_id, target_id, body, status, created_at, step_id, sent_via").eq("business_id", id).order("created_at", { ascending: false }).limit(100),
-    q.from("acq_reminders").select("id, contact_id, target_id, kind, source, title, due_at, status, created_at").eq("business_id", id).order("due_at", { ascending: true }).limit(200),
-    q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies, scope, publication_ref, reply_kind, voice_path, voice_mime").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_story_ctas").select("id, keyword, agent_role, extra_instructions").eq("business_id", id).order("created_at", { ascending: false })
-  ]);
+  const [followups, welcomes, manuals, reminders, commentCtas, storyCtas] = await later.b_followups;
   if (!live()) return false;
   state.followupSteps = followups.error ? [] : followups.data || [];
   if (followups.error) {
     const plainSteps = await q.from("acq_followup_steps").select("id, hours, mode, body, crm_state, asset_id").eq("business_id", id).order("hours", { ascending: true });
     state.followupSteps = plainSteps.error ? [] : plainSteps.data || [];
   }
-  const [manualSteps, followSends] = await Promise.all([
-    q.from("acq_manual_followup_steps").select("id, wait_half_days, mode, body, asset_id").eq("business_id", id).order("wait_half_days", { ascending: true }),
-    q.from("acq_followup_sends").select("id, track, step_id, contact_id, target_id, status, reason, replied, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(500)
-  ]);
+  const [manualSteps, followSends] = await later.b_manualSteps;
   state.manualSteps = manualSteps.error ? [] : manualSteps.data || [];
   state.followupSends = followSends.error ? [] : followSends.data || [];
   state.welcomeSteps = welcomes.error ? [] : welcomes.data || [];
@@ -691,17 +762,9 @@ async function loadAll(id, token) {
     const plainCtas = await q.from("acq_comment_ctas").select("id, keyword, match_mode, dm_text, button_label, button_url, agent_role, reply_to_comments, dm_anyone, public_replies").eq("business_id", id).order("created_at", { ascending: false });
     state.commentCtas = plainCtas.error ? [] : plainCtas.data || [];
   }
-  const commentSettings = await q.from("acq_comment_settings").select("auto_reply, dm_without_keyword, public_replies").eq("business_id", id).maybeSingle();
+  const commentSettings = await later.commentSettings;
   state.commentSettings = commentSettings.error || !commentSettings.data ? { auto_reply: false, dm_without_keyword: false, public_replies: [] } : commentSettings.data;
-  const [stateRules, tagRules, webhooks, apiKeys, invites, notifications, origins] = await Promise.all([
-    q.from("acq_state_rules").select("crm_state, condition").eq("business_id", id),
-    q.from("acq_tag_rules").select("id, name, rule_kind, rule_text, notify_email").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_webhooks").select("id, url, events, paused, has_secret").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_api_keys").select("id, label, prefix, created_at, revoked_at").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("acq_invites").select("id, email, scopes, token, accepted_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
-    q.from("acq_notifications").select("id, title, body, created_at, read_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30),
-    q.from("acq_origins").select("id, name, keyword").eq("business_id", id).order("created_at", { ascending: false })
-  ]);
+  const [stateRules, tagRules, webhooks, apiKeys, invites, notifications, origins] = await later.b_stateRules;
   if (!live()) return false;
   state.stateRules = stateRules.error ? [] : stateRules.data || [];
   state.tagRules = tagRules.error ? [] : tagRules.data || [];
@@ -718,58 +781,39 @@ async function loadAll(id, token) {
     sops: Boolean(brief.error),
     content: Boolean(assets.error)
   };
-  const syncLogs = await q.from("acq_sync_log").select("id, direction, action, result, detail, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20);
+  const syncLogs = await later.syncLogs;
   if (!live()) return false;
   state.syncLogs = syncLogs.error ? [] : syncLogs.data || [];
-  const [agentPrompts, agentRoutines, agentRuns, agentActions, agentSettings] = await Promise.all([
-    q.from("agent_prompts").select("id, agent_role, body, note, char_count, score, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(80),
-    q.from("agent_routines").select("id, agent_role, name, cron, timezone, enabled, instructions, last_run_at").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("agent_runs").select("id, agent_role, routine_id, started_at, ended_at, status, summary, error").eq("business_id", id).order("started_at", { ascending: false }).limit(40),
-    q.from("agent_actions").select("id, agent_role, run_id, type, target, status, approved_by, error, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
-    q.from("agent_settings").select("agent_role, auto_approve").eq("business_id", id)
-  ]);
+  const [agentPrompts, agentRoutines, agentRuns, agentActions, agentSettings] = await later.b_agentPrompts;
   if (!live()) return false;
   state.agentPrompts = agentPrompts.error ? [] : agentPrompts.data || [];
   state.agentRoutines = agentRoutines.error ? [] : agentRoutines.data || [];
   state.agentRuns = agentRuns.error ? [] : agentRuns.data || [];
   state.agentActions = agentActions.error ? [] : agentActions.data || [];
   state.agentSettings = agentSettings.error ? [] : agentSettings.data || [];
-  const [setterPrompts, setterCurrent, agentTools, setterOutbox] = await Promise.all([
-    q.from("acq_prompt_versions").select("id, role, version, sections, created_at").eq("business_id", id).eq("role", "inbound_manager").order("version", { ascending: false }).limit(20),
-    q.from("acq_prompt_current").select("version_id").eq("business_id", id).eq("role", "inbound_manager").maybeSingle(),
-    q.from("acq_agent_tools").select("id, agent_role, kind, name, config, created_at").eq("business_id", id).order("created_at", { ascending: false }),
-    q.from("engine_outbox").select("id, kind, status, created_at, error, result_agent_id").eq("business_id", id).order("created_at", { ascending: false }).limit(40)
-  ]);
+  const [setterPrompts, setterCurrent, agentTools, setterOutbox] = await later.b_setterPrompts;
   if (!live()) return false;
   state.setterPrompts = setterPrompts.error ? [] : (setterPrompts.data || []).map((row) => ({ ...row, sections: roleflowSections(row.sections) }));
   state.setterCurrentId = setterCurrent.error || !setterCurrent.data ? "" : setterCurrent.data.version_id;
   state.agentTools = agentTools.error ? [] : agentTools.data || [];
   state.setterOutbox = setterOutbox.error ? [] : setterOutbox.data || [];
-  const [switches, setterPrompt, followPolicy, prefs] = await Promise.all([
-    q.from("acq_agent_switches").select("agent_key, enabled").eq("business_id", id),
-    q.from("acq_agent_prompts").select("body, tested_at").eq("business_id", id).eq("agent_key", "setter").maybeSingle(),
-    q.from("acq_followup_policy").select("*").eq("business_id", id).maybeSingle(),
-    state.user ? q.from("acq_user_prefs").select("language").eq("user_id", state.user.id).maybeSingle() : Promise.resolve({ data: null, error: null })
-  ]);
+  const [switches, setterPrompt, followPolicy, prefs] = await later.b_switches;
   if (!live()) return false;
   state.agentSwitches = switches.error ? [] : switches.data || [];
   state.setterPromptSaved = Boolean(setterPrompt.data && String(setterPrompt.data.body || "").trim());
-  state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (state.setterPrompt || "") : setterPrompt.data.body || "";
+  const promptWasLoaded = state.promptLoadedFor === id;
+  state.setterPrompt = setterPrompt.error || !setterPrompt.data ? (promptWasLoaded ? (state.setterPrompt || "") : "") : setterPrompt.data.body || "";
   if (!state.setterPromptSaved) {
     const currentSections = state.setterPrompts.find((row) => row.id === state.setterCurrentId) || state.setterPrompts[0];
     const drafted = promptFromSections(currentSections && currentSections.sections);
     if (drafted) state.setterPrompt = drafted;
   }
   state.setterTestedAt = setterPrompt.error || !setterPrompt.data ? null : setterPrompt.data.tested_at;
-  const winning = await q.from("acq_winning_conversations").select("id, title, raw_text, messages, outcome, notes, created_at, updated_at").eq("business_id", id).order("created_at", { ascending: false }).limit(30);
+  const winning = await later.winning;
   if (!live()) return false;
   state.winningConversations = winning.error ? [] : winning.data || [];
   state.sectionErrors.winning = Boolean(winning.error);
-  const [intake, intakeFiles, intakeLinks] = await Promise.all([
-    q.from("acq_onboarding").select("offer, price, ideal, booking_link, criteria, disqualifiers, status, sources, draft").eq("business_id", id).maybeSingle(),
-    q.from("acq_onboarding_materials").select("id, name, kind, body, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
-    q.from("acq_onboarding_links").select("id, expires_at, revoked_at, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(10)
-  ]);
+  const [intake, intakeFiles, intakeLinks] = await later.b_intake;
   if (!live()) return false;
   state.onboarding = intake.error || !intake.data ? (state.onboarding || null) : intake.data;
   state.onboardingMaterials = intakeFiles.error ? [] : intakeFiles.data || [];
@@ -778,18 +822,14 @@ async function loadAll(id, token) {
   state.onboardingLinks = intakeLinks.error ? [] : intakeLinks.data || [];
   state.onboardingDraft = intake.data && intake.data.draft && intake.data.draft.prompt ? intake.data.draft : state.onboardingDraft;
   state.bookingLink = bookingLinkFor(state.settings && state.settings.booking_fallback_url);
-  const [promptVersions, voiceRules, voiceSettings, voiceLog, commentSlot] = await Promise.all([
-    q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by, setter_voice").eq("business_id", id).order("version", { ascending: false }).limit(30),
-    q.from("acq_comment_voice_rules").select("id, keywords, intent, message, clip_id, position").eq("business_id", id).order("position", { ascending: true }),
-    q.from("acq_comment_voice_settings").select("daily_cap").eq("business_id", id).maybeSingle(),
-    q.from("acq_comment_voice_log").select("id, comment_text, commenter_username, matched, queued, reason, clip_id, created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(40),
-    q.from("acq_comment_slots").select("when_to_send, voice_note_id").eq("business_id", id).maybeSingle()
-  ]);
+  const [promptVersions, voiceRules, voiceSettings, voiceLog, commentSlot] = await later.b_promptVersions;
   if (!live()) return false;
   if (promptVersions.error) {
     const plainVersions = await q.from("acq_agent_prompt_versions").select("id, version, body, created_at, created_by").eq("business_id", id).order("version", { ascending: false }).limit(30);
     state.promptVersions = plainVersions.error ? (state.promptVersions || []) : plainVersions.data || [];
   } else state.promptVersions = promptVersions.data || [];
+  // Save turns on only once this business's own prompt has loaded.
+  if (!setterPrompt.error) markPromptLoaded(state, id);
   if (state.settings && state.settings.setter_voice != null) state.setterVoice = clampVoice(state.settings.setter_voice);
   state.commentVoiceRules = voiceRules.error ? [] : voiceRules.data || [];
   state.commentVoiceCap = voiceSettings.error || !voiceSettings.data ? 30 : voiceSettings.data.daily_cap;
@@ -1121,6 +1161,7 @@ function pageUi() {
     setAgent,
     setSending,
     saveSetterPrompt,
+    promptReady: () => promptReady(state),
     saveAutoDm,
     startDmLogin,
     disconnectDm,
@@ -1674,6 +1715,11 @@ async function saveSetterPrompt(value) {
     toast("You can't edit this business.", "bad");
     return false;
   }
+  const target = promptSaveTarget(state);
+  if (!target) {
+    toast(language() === "es" ? "Espera a que cargue el prompt de este negocio." : "Wait for this business's prompt to load.", "bad");
+    return false;
+  }
   const body = String(value || "").trim();
   if (!state.supabase) {
     const versions = state.promptVersions || [];
@@ -1691,7 +1737,8 @@ async function saveSetterPrompt(value) {
     return true;
   }
   try {
-    const saved = await dashboardCall({ action: "save_prompt", prompt: body, voice: state.testerMode ? undefined : clampVoice(state.setterVoice) });
+    const saved = await dashboardCall({ action: "save_prompt", business_id: target, prompt: body, voice: state.testerMode ? undefined : clampVoice(state.setterVoice) });
+    if (!stillOn(state, target)) return false;
     rememberPrompt(saved.prompt || body, saved.version, saved.tested_at);
     toast(agentText(language()).saved);
     state.promptDraft = null;
@@ -1806,8 +1853,10 @@ async function buildWinningPrompt() {
     ].join("\n\n"));
     return;
   }
+  const target = state.businessId;
   try {
-    const saved = await dashboardCall({ action: "build_setter_prompt" });
+    const saved = await dashboardCall({ action: "build_setter_prompt", business_id: target });
+    if (!stillOn(state, target)) return;
     openPromptDraft(saved.reply || "");
     if (saved.provider_label) toast(saved.provider_label + (saved.model ? " · " + saved.model : ""));
   } catch (error) {
@@ -2091,8 +2140,18 @@ async function restoreSetterPrompt(version) {
     await saveSetterPrompt(version.body);
     return;
   }
+  const target = promptSaveTarget(state);
+  if (!target) {
+    toast(language() === "es" ? "Espera a que cargue el prompt de este negocio." : "Wait for this business's prompt to load.", "bad");
+    return;
+  }
+  if (!(state.promptVersions || []).some((row) => row.id === version.id)) {
+    toast(language() === "es" ? "Esa versión no es de este negocio." : "That version is not from this business.", "bad");
+    return;
+  }
   try {
-    const saved = await dashboardCall({ action: "restore_prompt", version_id: version.id });
+    const saved = await dashboardCall({ action: "restore_prompt", business_id: target, version_id: version.id });
+    if (!stillOn(state, target)) return;
     if (saved.voice != null) state.setterVoice = clampVoice(saved.voice);
     rememberPrompt(saved.prompt || version.body, saved.version, saved.tested_at);
     toast(agentText(language()).saved);
@@ -2238,6 +2297,10 @@ async function sendTrial(prompt, message, options) {
   const followup = options && Number(options.followup);
   const asBusiness = Boolean(options && options.sender === "business");
   if (!followup && !sample) return;
+  if (!promptReady(state)) {
+    toast(language() === "es" ? "Espera a que cargue el prompt de este negocio." : "Wait for this business's prompt to load.", "bad");
+    return;
+  }
   state.setterDraft = body;
   state.setterPane = "chat";
   const delayMin = document.getElementById("reply-delay-min");
@@ -3571,6 +3634,7 @@ function markTesterChrome() {
 }
 
 async function loadTester(id) {
+  resetPromptState(state);
   state.settings = null;
   state.agentSwitches = [];
   state.agentCards = [];
@@ -3595,10 +3659,12 @@ async function loadTester(id) {
   state.bookingLink = bookingLinkFor("");
   try {
     const data = await dashboardCall({ action: "load", business_id: id });
+    if (!stillOn(state, id)) return false;
     state.setterPrompt = String(data.prompt || "");
     state.setterPromptSaved = Boolean(state.setterPrompt.trim());
     state.setterTestedAt = data.tested_at || null;
     state.setterDraft = null;
+    markPromptLoaded(state, id);
     if (data.access) state.canEditPrompt = data.access.can_edit_prompt === true;
     if (data.language === "es" || data.language === "en") state.language = writeLanguage(safeStorage(), data.language);
     hideBoot();
@@ -3649,16 +3715,22 @@ async function loadTeam() {
 async function teamInvite(row) {
   if (!state.canManageTeam) return toast("Only the business owner can manage access.", "bad");
   if (!readyToSave()) return toast("This preview does not save.", "bad");
+  // One request at a time: repeated clicks used to create duplicate invites.
+  if (state.teamSaving) return;
+  state.teamSaving = true;
   try {
     const saved = await dashboardCall({ action: "team_invite", email: row.email, role: row.role });
     state.teamLastLink = saved.added ? "" : String(saved.link || "");
     const es = language() === "es";
     if (saved.added) toast(saved.emailed ? (es ? "Acceso añadido. Le enviamos un email." : "Access added. They got an email.") : (es ? "Acceso añadido. Ya puede iniciar sesión." : "Access added. They can log in now."));
+    else if (saved.reused) toast(saved.emailed ? (es ? "Ya tenía una invitación. La actualizamos y la reenviamos." : "They already had an invite. It was updated and emailed again.") : (es ? "Ya tenía una invitación. La actualizamos. Comparte el enlace." : "They already had an invite. It was updated. Share the link."));
     else toast(saved.emailed ? (es ? "Invitación enviada por email." : "Invite emailed.") : (es ? "Invitación creada. Comparte el enlace." : "Invite created. Share the link."));
     state.team = null;
     await loadTeam();
   } catch (error) {
     toast(error.message, "bad");
+  } finally {
+    state.teamSaving = false;
   }
 }
 

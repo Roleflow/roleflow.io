@@ -50,6 +50,7 @@ const logoutBtn = document.getElementById("nav-logout");
 logoutBtn.addEventListener("click", logout);
 let panelWorkspaces = [];
 let panelEnabled = new Map();
+let panelWorkspacesError = "";
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -353,9 +354,15 @@ if (readGridPreview() && !preview && new URLSearchParams(location.search).get("t
 }
 
 async function boot(supabase, user) {
-  const profileRes = await supabase.from("profiles").select("full_name, email, business_name").eq("id", user.id).maybeSingle();
-  let profile = profileRes.data;
-  if (missingColumn(profileRes.error)) {
+  // Every read below is independent, so they run at the same time. Run one
+  // after another they took 10+ seconds on a slow connection, and the page
+  // showed only the loading skeleton until the last one returned.
+  const [profileRes0, adminRes] = await Promise.all([
+    supabase.from("profiles").select("full_name, email, business_name").eq("id", user.id).maybeSingle(),
+    supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle()
+  ]);
+  let profile = profileRes0.data;
+  if (missingColumn(profileRes0.error)) {
     const slim = await supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
     profile = slim.data;
   }
@@ -366,7 +373,6 @@ async function boot(supabase, user) {
   document.getElementById("user-email").textContent = email;
   chip.hidden = false;
 
-  const adminRes = await supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
   const isAdmin = Boolean(adminRes.data);
   if (isAdmin) {
     nav.append(el("nav", { class: "app-nav", id: "admin-links", "aria-label": "Admin" }, [
@@ -378,22 +384,43 @@ async function boot(supabase, user) {
     markNav();
   }
 
+  const loadPeople = async () => {
+    let res = await supabase.from("profiles").select("id, full_name, email, business_name, onboarding_submissions(status)");
+    if (res.error) res = await supabase.from("profiles").select("id, full_name, email, onboarding_submissions(status)");
+    if (res.error) res = await supabase.from("profiles").select("id, full_name, email");
+    return res;
+  };
+  const loadAgents = async () => {
+    let res = await supabase.from("client_ai_setters").select("id, client_id, agent_name, status, prompt_sections, prompt_updated_at, last_activity_at, created_at");
+    if (missingColumn(res.error)) {
+      res = await supabase.from("client_ai_setters").select("id, client_id, agent_name, status, prompt_sections, prompt_updated_at, last_activity_at");
+    }
+    return res;
+  };
+  const loadStats = async () => {
+    let res = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day");
+    if (missingColumn(res.error)) {
+      res = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, converted_count, conversion_rate, last_activity_at, leads_per_day");
+    }
+    return res;
+  };
+  const none = Promise.resolve({ data: [], error: null });
+  const [peopleRes, agentsRes, statsRes, accessRes, pendingRes, stageRes, workspaceRes, testerRes] = await Promise.all([
+    loadPeople(),
+    loadAgents(),
+    loadStats(),
+    supabase.from("business_access").select("agent_id, role"),
+    isAdmin ? supabase.from("onboarding_submissions").select("user_id, publish_agent_id, publish_status").eq("publish_status", "pending") : none,
+    supabase.from("acq_onboarding").select("business_id, status"),
+    supabase.from("acq_workspaces").select("id, name, owner_id, created_at").order("name", { ascending: true }),
+    supabase.rpc("acq_my_tester_businesses")
+  ]);
+
   const peopleById = new Map();
-  let peopleRes = await supabase.from("profiles").select("id, full_name, email, business_name, onboarding_submissions(status)");
-  if (peopleRes.error) {
-    peopleRes = await supabase.from("profiles").select("id, full_name, email, onboarding_submissions(status)");
-  }
-  if (peopleRes.error) {
-    peopleRes = await supabase.from("profiles").select("id, full_name, email");
-  }
   if (!peopleRes.error) {
     (peopleRes.data || []).forEach((person) => peopleById.set(person.id, person));
   }
 
-  let agentsRes = await supabase.from("client_ai_setters").select("id, client_id, agent_name, status, prompt_sections, prompt_updated_at, last_activity_at, created_at");
-  if (missingColumn(agentsRes.error)) {
-    agentsRes = await supabase.from("client_ai_setters").select("id, client_id, agent_name, status, prompt_sections, prompt_updated_at, last_activity_at");
-  }
   if (agentsRes.error) {
     hideBoot();
     const message = missingRelation(agentsRes.error)
@@ -404,16 +431,11 @@ async function boot(supabase, user) {
     return;
   }
 
-  let statsRes = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, by_category, converted_count, conversion_rate, last_activity_at, leads_per_day");
-  if (missingColumn(statsRes.error)) {
-    statsRes = await supabase.from("client_ai_setter_stats").select("agent_id, total_leads, by_status, by_source, converted_count, conversion_rate, last_activity_at, leads_per_day");
-  }
   const statsById = new Map();
   (statsRes.data || []).forEach((row) => statsById.set(row.agent_id, row));
   const agents = agentsRes.data || [];
   const statsError = statsRes.error ? scrub(statsRes.error.message) : "";
   const roles = new Map();
-  const accessRes = await supabase.from("business_access").select("agent_id, role");
   if (!accessRes.error) {
     (accessRes.data || []).forEach((row) => roles.set(row.agent_id, row.role));
   }
@@ -421,35 +443,28 @@ async function boot(supabase, user) {
   roles.forEach((role, id) => {
     if (role === "viewer" || role === "editor") sharedIds.add(id);
   });
-  if (agents.length) {
-    const memberRes = await supabase.from("business_members").select("agent_id, status").in("agent_id", agents.map((agent) => agent.id)).eq("status", "active");
-    if (!memberRes.error) (memberRes.data || []).forEach((row) => sharedIds.add(row.agent_id));
-  }
   const pendingIds = new Set();
-  if (isAdmin) {
-    const pendingRes = await supabase.from("onboarding_submissions").select("user_id, publish_agent_id, publish_status").eq("publish_status", "pending");
-    if (!pendingRes.error) {
-      (pendingRes.data || []).forEach((row) => {
-        if (row.publish_agent_id) pendingIds.add(row.publish_agent_id);
-        const linked = agents.find((agent) => agent.client_id && agent.client_id === row.user_id);
-        if (linked) pendingIds.add(linked.id);
-      });
-    }
+  if (isAdmin && !pendingRes.error) {
+    (pendingRes.data || []).forEach((row) => {
+      if (row.publish_agent_id) pendingIds.add(row.publish_agent_id);
+      const linked = agents.find((agent) => agent.client_id && agent.client_id === row.user_id);
+      if (linked) pendingIds.add(linked.id);
+    });
   }
 
   const stages = new Map();
-  const stageRes = await supabase.from("acq_onboarding").select("business_id, status");
   if (!stageRes.error) (stageRes.data || []).forEach((row) => stages.set(row.business_id, row.status));
 
-  const workspaceRes = await supabase.from("acq_workspaces").select("id, name, owner_id, created_at").order("name", { ascending: true });
-  const testerRes = await supabase.rpc("acq_my_tester_businesses");
   panelWorkspaces = mergeTesterBusinesses(workspaceRes.error ? [] : (workspaceRes.data || []), testerRes.error ? [] : (testerRes.data || []));
+  panelWorkspacesError = workspaceRes.error ? scrub(workspaceRes.error.message) : "";
   panelEnabled = new Map();
   const workspaceIds = panelWorkspaces.filter((row) => !row.tester_role).map((row) => row.id);
-  if (workspaceIds.length) {
-    const enabledRes = await supabase.from("acq_settings").select("agent_id, system_enabled").in("agent_id", workspaceIds);
-    if (!enabledRes.error) (enabledRes.data || []).forEach((row) => panelEnabled.set(row.agent_id, row.system_enabled === true));
-  }
+  const [memberRes, enabledRes] = await Promise.all([
+    agents.length ? supabase.from("business_members").select("agent_id, status").in("agent_id", agents.map((agent) => agent.id)).eq("status", "active") : none,
+    workspaceIds.length ? supabase.from("acq_settings").select("agent_id, system_enabled").in("agent_id", workspaceIds) : none
+  ]);
+  if (!memberRes.error) (memberRes.data || []).forEach((row) => sharedIds.add(row.agent_id));
+  if (!enabledRes.error) (enabledRes.data || []).forEach((row) => panelEnabled.set(row.agent_id, row.system_enabled === true));
 
   function paint() {
     cancelWorkforce();
@@ -592,7 +607,12 @@ function paintPanelRoster(supabase, user) {
     ? "Abre uno, conecta Instagram o empieza el prompt del setter. Añadir crea el mismo panel."
     : "Open one, connect Instagram, or start the setter prompt. Adding a business creates the same panel." }));
   const grid = el("div", { class: "biz-board", id: "panel-board" });
-  if (!panelWorkspaces.length) {
+  if (panelWorkspacesError) {
+    grid.append(el("div", { class: "state", id: "panel-board-error" }, [
+      el("h2", { text: es ? "No se pudieron cargar tus negocios" : "Your businesses could not be loaded" }),
+      el("p", { text: (es ? "Recarga la página. " : "Refresh the page. ") + panelWorkspacesError })
+    ]));
+  } else if (!panelWorkspaces.length) {
     grid.append(el("div", { class: "state" }, [
       el("h2", { text: es ? "Todavía no hay negocios" : "No businesses yet" }),
       el("p", { text: es ? "Añade el nombre. El negocio nuevo usa el mismo panel." : "Add the business name. The new business uses the same panel." })

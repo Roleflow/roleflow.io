@@ -133,3 +133,26 @@ export function inviteEmail(businessName, role, link, existing) {
 export function inviteToken(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+
+// Open invites, one per email: the newest row wins. Older duplicates (the
+// panel used to create one per click) stay in the table but are not listed.
+export function dedupeInvites(rows, now = Date.now()) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && !row.accepted_at && (!row.expires_at || Date.parse(row.expires_at) > now))
+    .slice()
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+    .filter((row) => {
+      const key = String(row.email || "").trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+// When the owner invites an email that already has an open invite, reuse the
+// newest one instead of adding another row.
+export function reusableInvite(rows, email, now = Date.now()) {
+  const key = String(email || "").trim().toLowerCase();
+  return dedupeInvites(rows, now).find((row) => String(row.email || "").trim().toLowerCase() === key) || null;
+}
