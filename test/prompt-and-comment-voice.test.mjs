@@ -123,7 +123,10 @@ const catalog = voiceCatalog(notes);
 const spoken = resolveOutgoing("Here is {{voice:opener_coaching}} and {{booking_link}}", { voices: catalog, bookingLink: "" });
 assert.equal(spoken.voices[0].id, "v1");
 assert.equal(spoken.text.includes("{{voice:"), false);
-assert.match(spoken.text, new RegExp(ROLEFLOW_BOOKING_LINK.replace(/[.]/g, "\\.")));
+// No saved link means no link at all, never the Roleflow calendar.
+assert.equal(spoken.text.includes(ROLEFLOW_BOOKING_LINK), false);
+assert.equal(spoken.text.includes("{{booking_link}}"), false);
+assert.equal(bookingLinkFor(""), "");
 assert.equal(bookingLinkFor("https://calendar.example/room"), "https://calendar.example/room");
 
 const local = localTrialText({

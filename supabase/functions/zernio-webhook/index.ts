@@ -27,14 +27,14 @@ import {
 import { VOICE_FAILED_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceMetadata, voiceOptions, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
-import { bookingBehaviour } from "../_shared/booking-plan.js";
+import { bookingBehaviour, storedBookingLinks } from "../_shared/booking-plan.js";
 import { agentEnabled, stampAgentEnabled, sendBlocked } from "../_shared/agent-control.js";
 import { readDmGate } from "../_shared/dm-gate.js";
 import { loadMemory, memoryRule, ourRecentBubbles, repeatedBubble, retryRule } from "../_shared/reply-memory.js";
 import { markSeen, nextDueInMs, textLeadMs, pauseThenSend, waitBeforeTypingMs } from "../_shared/typing-plan.js";
 import { briefKnowledge, chooseModel, delaySeconds, handoverOnSent, leadPatch, officeOpen } from "../_shared/setter-gate.js";
 import { classifierSystem, classifyComment, commentVoicePlan, madridDayStartIso, parseClassifier } from "../_shared/comment-voice.js";
-import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
+import { expandPrompt, promptBookingLink, resolveOutgoing, staleBookingLinks, tokenGuide, voiceCatalog, voiceClipPayload } from "../_shared/prompt-tokens.js";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST." });
@@ -264,16 +264,20 @@ async function planJob(admin, job, apiKey) {
     const knowledge = (settings.data
       ? "\n\nBusiness knowledge\nOffer: " + (settings.data.offer_summary || "") + "\nICP: " + (settings.data.icp_notes || "") + "\nNotes: " + (settings.data.knowledge_base || "")
       : "") + briefKnowledge(brief.data && brief.data.fields);
+    // The booking link in this business's own setter prompt is the one sent.
+    const bookingSettings = { booking_fallback_url: prefs.booking_fallback_url || "" };
     const booking = bookingBehaviour({
       sections,
       tools: tools.data || [],
-      settings: { booking_fallback_url: prefs.booking_fallback_url || "" }
+      settings: bookingSettings,
+      promptLink: promptBookingLink(setterPrompt)
     });
+    const bookingLink = booking.link;
+    const staleLinks = staleBookingLinks(bookingLink, storedBookingLinks(tools.data || [], bookingSettings));
     const clipRows = await admin.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, mime_type, delivery_path, delivery_mime, active, speech_provider").eq("business_id", job.account.businessId).eq("active", true);
     const clips = clipRows.error ? [] : (clipRows.data || []);
     const sentRows = await admin.from("acq_clip_sends").select("clip_id").eq("business_id", job.account.businessId).eq("conversation_key", String(job.threadId || ""));
     const alreadySent = sentRows.error ? [] : (sentRows.data || []).map((item) => item.clip_id);
-    const bookingLink = bookingLinkFor(prefs.booking_fallback_url || "");
     const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", job.account.businessId).eq("active", true);
     const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
     const promptBody = expandPrompt(setterPrompt, bookingLink) + "\n\n" + tokenGuide(catalog, bookingLink) + "\n\n" + systemPrompt({}, booking) + knowledge + clipInstructions(clips);
@@ -312,6 +316,7 @@ async function planJob(admin, job, apiKey) {
     });
     plan.voiceCatalog = catalog;
     plan.bookingLink = bookingLink;
+    plan.staleLinks = staleLinks;
   } catch (error) {
     const unconfigured = Boolean(error && typeof error === "object" && "code" in error && error.code === "llm_unconfigured");
     await admin.from("ig_outbox").update({
@@ -342,7 +347,7 @@ async function planJob(admin, job, apiKey) {
       await admin.from("acq_contacts").update({ attributes: next.attributes, tags: next.tags, updated_at: new Date().toISOString() }).eq("id", contact.data.id).eq("business_id", job.account.businessId);
     }
   }
-  const spoken = resolveOutgoing(replyText(plan), { voices: plan.voiceCatalog || [], bookingLink: plan.bookingLink });
+  const spoken = resolveOutgoing(replyText(plan), { voices: plan.voiceCatalog || [], bookingLink: plan.bookingLink, staleLinks: plan.staleLinks || [] });
   const text = spoken.text;
   const tokenVoice = spoken.voices[0] && job.event.kind !== "comment" ? voiceClipPayload(spoken.voices[0]) : null;
   let chosen = tokenVoice || plan.clipChoice || null;

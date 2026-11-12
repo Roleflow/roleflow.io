@@ -9,9 +9,9 @@ import { planTurn } from "./ig/engine.js";
 import { completeJson, resolveProvider, providerHelp, systemPrompt } from "./ig/llm.js";
 import { bookingTool, loadSetterReply, logLlmError } from "../_shared/llm-provider.js";
 import { splitReply } from "../_shared/split-reply.js";
-import { bookingAllows, bookingBehaviour } from "../_shared/booking-plan.js";
+import { bookingAllows, bookingBehaviour, storedBookingLinks } from "../_shared/booking-plan.js";
 import { clipInstructions } from "../_shared/clip-plan.js";
-import { bookingLinkFor, expandPrompt, resolveOutgoing, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
+import { expandPrompt, promptBookingLink, resolveOutgoing, staleBookingLinks, tokenGuide, voiceCatalog, voiceToken } from "../_shared/prompt-tokens.js";
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
 import { keyLinksBlock } from "../_shared/key-links.js";
 import { pickRoutedNote } from "../_shared/voice-route.js";
@@ -309,12 +309,13 @@ async function runOutbox(db, row) {
     await db.from("ig_outbox").update({ payload: row.payload }).eq("id", row.id).eq("business_id", businessId);
   }
   const loaded = await loadSetterReply(db, businessId, env);
-  const booking = await loadBooking(db, businessId, prompts, settings);
+  const booking = await loadBooking(db, businessId, prompts, settings, savedPrompt);
   const clipRows = await db.from("acq_owner_clips").select("id, label, when_to_use, kind, storage_path, active, speech_provider").eq("business_id", businessId).eq("active", true);
   const clips = clipRows.error ? [] : (clipRows.data || []);
   const voiceRows = await db.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", businessId).eq("active", true);
   const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
-  const bookingLink = bookingLinkFor(settings.booking_fallback_url || "");
+  const bookingLink = booking.link;
+  const staleLinks = staleBookingLinks(bookingLink, booking.storedLinks);
   const commentGuide = await loadCommentGuide(db, businessId, catalog);
   const keyLinks = await loadKeyLinks(db, businessId);
   let plan;
@@ -378,7 +379,7 @@ async function runOutbox(db, row) {
     if (step) await markFollowup(db, row, "skipped", plan.reason || "no_response", null);
     return finish("done");
   }
-  const bubbles = (await maybeBook(db, businessId, thread, settings, plan, booking)).map((text) => resolveOutgoing(text, { voices: catalog, bookingLink }));
+  const bubbles = (await maybeBook(db, businessId, thread, settings, plan, booking)).map((text) => resolveOutgoing(text, { voices: catalog, bookingLink, staleLinks }));
   const splitWords = Number.isFinite(Number(settings.reply_split_words)) ? Number(settings.reply_split_words) : 15;
   const spoken = bubbles.flatMap((item) => splitReply(item.text, splitWords)).filter(Boolean);
   const tokenNote = row.kind === "comment_private" ? null : (bubbles.find((item) => item.voices && item.voices[0]) || { voices: [] }).voices[0] || null;
@@ -796,14 +797,20 @@ async function postGraph(token, body, replying) {
   return { ok: false, error: payload?.error?.message || "Instagram send failed.", retry };
 }
 
-async function loadBooking(db, businessId, sections, settings) {
+async function loadBooking(db, businessId, sections, settings, savedPrompt) {
   const tools = await db.from("acq_agent_tools").select("kind, name, config").eq("business_id", businessId);
   if (tools.error) throw new Error("tools lookup failed");
-  return bookingBehaviour({
+  const prompt = savedPrompt == null ? await setterPromptBody(db, businessId) : savedPrompt;
+  const bookingSettings = { booking_fallback_url: (settings && settings.booking_fallback_url) || "" };
+  // The booking link in this business's own setter prompt is the one sent.
+  const promptLink = promptBookingLink(prompt);
+  const booking = bookingBehaviour({
     sections,
     tools: tools.data || [],
-    settings: { booking_fallback_url: (settings && settings.booking_fallback_url) || "" }
+    settings: bookingSettings,
+    promptLink
   });
+  return { ...booking, storedLinks: storedBookingLinks(tools.data || [], bookingSettings) };
 }
 
 async function maybeBook(db, businessId, thread, settings, plan, booking) {

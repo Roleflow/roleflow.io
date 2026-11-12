@@ -45,11 +45,68 @@ export function voiceCatalog(notes) {
   return rows;
 }
 
+// A saved https link, or "" when there is none. There is no shared default:
+// one business must never send another business's calendar.
 export function bookingLinkFor(value) {
   const text = String(value || "").trim();
-  if (!text) return ROLEFLOW_BOOKING_LINK;
-  if (!/^https:\/\/[^\s]+$/i.test(text)) return ROLEFLOW_BOOKING_LINK;
+  if (!text) return "";
+  if (!/^https:\/\/[^\s]+$/i.test(text)) return "";
   return text.slice(0, 500);
+}
+
+// The booking link written in a business's own setter prompt. That prompt is
+// the source of truth: the link it gives is the one the setter sends.
+const URL_RE = /https:\/\/[^\s<>"'`()\[\]{}]+/gi;
+const BOOKING_URL = /calendar\.app\.google|calendly\.com|cal\.com\/|\/widget\/bookings?\/|\/bookings?\/|\/booking\b|\/book\b|\/schedul|\/appointment|tidycal\.com|acuityscheduling\.com|savvycal\.com|zcal\.co|\/meetings\/|oncehub\.com|youcanbook\.me/i;
+const BOOKING_LINE = /\b(book|booking|booked|calendar|calendly|schedule|appointment|demo call|strategy call|discovery call|pick (?:a|the) time|agenda|agendar|cita|reserva)\b/i;
+
+function cleanUrl(raw) {
+  return String(raw || "").replace(/[.,;:!?\u201d\u2019*_~]+$/, "").slice(0, 500);
+}
+
+export function promptBookingLink(body) {
+  const lines = String(body || "").split(/\r?\n/);
+  let lineHit = "";
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const urls = line.match(URL_RE) || [];
+    for (const raw of urls) {
+      const url = cleanUrl(raw);
+      if (!/^https:\/\/[^\s]+\.[^\s]+/.test(url)) continue;
+      if (BOOKING_URL.test(url)) return url;
+      const context = line + " " + (lines[index - 1] || "");
+      if (!lineHit && BOOKING_LINE.test(context) && !/thank/i.test(line + " " + url)) lineHit = url;
+    }
+  }
+  return lineHit;
+}
+
+// The link the setter sends for one business: the one in its own prompt,
+// else that business's saved booking link, else none.
+export function businessBookingLink({ prompt, settingsLink } = {}) {
+  return promptBookingLink(prompt) || bookingLinkFor(settingsLink);
+}
+
+// Other booking links stored for a business (its old settings link, a booking
+// tool, the Roleflow site calendar). If one shows up in a reply, it is swapped
+// for the business's own link.
+export function staleBookingLinks(link, candidates) {
+  const own = String(link || "").trim();
+  const seen = new Set();
+  return [ROLEFLOW_BOOKING_LINK].concat(candidates || [])
+    .map((item) => cleanUrl(String(item || "").trim()))
+    .filter((item) => item && /^https:\/\//i.test(item) && item !== own && !own.startsWith(item) && !seen.has(item) && seen.add(item));
+}
+
+export function pinBookingLink(text, link, stale) {
+  const own = String(link || "").trim();
+  let out = String(text || "");
+  if (!own) return out;
+  for (const other of stale || []) {
+    if (!other || other === own) continue;
+    out = out.split(other).join(own);
+  }
+  return out;
 }
 
 export function normalizeBookingLink(value) {
@@ -61,6 +118,7 @@ export function normalizeBookingLink(value) {
 
 export function expandPrompt(body, bookingLink) {
   const link = bookingLinkFor(bookingLink);
+  if (!link) return String(body || "");
   return String(body || "").replace(BOOKING_TOKEN_RE, link);
 }
 
@@ -69,7 +127,9 @@ export function tokenGuide(catalog, bookingLink) {
   const lines = notes.map((note) => "- " + voiceToken(note.slug) + " plays " + note.title);
   return [
     "Tokens:",
-    "- " + BOOKING_TOKEN + " is " + bookingLinkFor(bookingLink) + ". Write the token when you share the booking link.",
+    bookingLinkFor(bookingLink)
+      ? "- " + BOOKING_TOKEN + " is " + bookingLinkFor(bookingLink) + ", the booking link in this business's prompt. Share only this booking link, exactly as written."
+      : "- No booking link is saved for this business. Do not write " + BOOKING_TOKEN + " and do not invent a link.",
     notes.length
       ? "Voice notes. Put one token in the reply when that note should play. Do not claim a note was sent in words."
       : "No voice notes are saved. Do not invent a voice token.",
@@ -104,8 +164,9 @@ export function resolveOutgoing(text, input) {
     }
     return "";
   }).replace(BOOKING_TOKEN_RE, bookingLinkFor(source.bookingLink));
+  const pinned = pinBookingLink(replaced, bookingLinkFor(source.bookingLink), source.staleLinks || []);
   return {
-    text: replaced.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
+    text: pinned.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
     voices
   };
 }
