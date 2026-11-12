@@ -68,8 +68,8 @@ export function signupErrorMessage(error) {
   const raw = [error && error.message, error && error.msg, error && error.error_description, error && error.details, error && error.code]
     .filter(Boolean)
     .join(" ");
-  if (/invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) {
-    return "The account could not be created. Try again in a minute.";
+  if (/by invitation/i.test(raw) || /invalid access code/i.test(raw) || /database error saving new user/i.test(raw)) {
+    return "The account could not be created. Sign-up needs a valid team link or invite.";
   }
   return (error && error.message) || "Could not create the account.";
 }

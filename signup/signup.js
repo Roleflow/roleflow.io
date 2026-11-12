@@ -2,7 +2,7 @@ import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, safeNe
 import { clearAuthParams, clearCallbackMemory, friendlyAuthError, isLoginTab, readAuthCallback, rememberCallback, resolveSession } from "../auth/callback.js";
 import { bindShell, markNav, setBusy, toast } from "../auth/ui.js";
 import { PROOF_SLOTS, nextProof } from "../businesses/model.js";
-import { inviteDestination, joinDestination, linkRoleLabel, signupMetadata, signupNeeds, signupReturnPath } from "./entry.js";
+import { inviteDestination, joinDestination, linkRoleLabel, signupAllowed, signupClosedReason, signupMetadata, signupNeeds, signupReturnPath } from "./entry.js";
 
 bindShell();
 
@@ -103,6 +103,7 @@ let invite = null;
 let inviteToken = params.get("invite") || "";
 let joinCode = params.get("join") || "";
 let joinLink = null;
+let linksChecked = !(inviteToken || joinCode);
 const tabs = [tabSignup, tabLogin];
 
 function wantsLogin() {
@@ -126,15 +127,13 @@ function showTab(mode) {
   const roleLabel = invited ? linkRoleLabel(invite.role) : "";
   document.getElementById("page-sub").textContent = invited
     ? "You're invited to " + invite.business_name + " as " + roleLabel + ". Log in if you already have an account. This invite only adds that business."
-    : inviteToken
-      ? "Use the invited email to log in or create an account. We'll add you to that business."
-      : joinLink
-        ? "This link joins " + joinLink.business_name + " as " + linkRoleLabel(joinLink.role) + ". Log in if you already have an account."
-        : joinCode
-        ? "This link is turned off or was replaced. Ask the business owner for a new one, or sign up to start your own business."
-        : login
-          ? "Open your account to continue onboarding, or email yourself a sign-in link."
-          : "AI Client Acquisition Engine for coaches and info businesses. This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
+    : joinLink
+      ? "This link joins " + joinLink.business_name + " as " + linkRoleLabel(joinLink.role) + ". Log in if you already have an account."
+      : login
+        ? "Open your account to continue onboarding, or email yourself a sign-in link."
+        : !linksChecked
+          ? "Checking your link…"
+          : signupClosedReason({ inviteToken, inviteOk: false, joinCode, joinOk: false });
   document.title = login ? "Log in · AI Client Acquisition Engine · Roleflow" : "Create your account · AI Client Acquisition Engine · Roleflow";
   document.getElementById("skip-link").setAttribute("href", login ? "#login-form" : "#signup-form");
   markNav();
@@ -256,6 +255,26 @@ if (!isConfigured()) {
         instagramLabel.firstChild.textContent = "Instagram handle (optional)";
       }
     }
+    // No valid invite or team link: the sign-up form is closed. The sign-up
+    // trigger rejects such sign-ups anyway; this only says why up front.
+    function closeSignup() {
+      const reason = signupClosedReason({ inviteToken, inviteOk: Boolean(inviteEmail()), joinCode, joinOk: Boolean(joinLink) });
+      if (!reason) return false;
+      form.querySelectorAll("label").forEach((label) => { label.hidden = true; });
+      form.querySelectorAll("input").forEach((input) => { input.disabled = true; input.required = false; });
+      const submit = form.querySelector("button[type=submit]");
+      if (submit) { submit.disabled = true; submit.hidden = true; }
+      let note = document.getElementById("signup-closed");
+      if (!note) {
+        note = document.createElement("p");
+        note.id = "signup-closed";
+        note.className = "signup-closed";
+        note.setAttribute("role", "status");
+        form.prepend(note);
+      }
+      note.textContent = reason;
+      return true;
+    }
     function showEntryError(message) {
       const text = message || "That link could not be used.";
       showError(text);
@@ -295,6 +314,7 @@ if (!isConfigured()) {
     }
     if (inviteToken) {
       const preview = await supabase.rpc("preview_invite", { p_token: inviteToken });
+      linksChecked = true;
       invite = preview.data || null;
       if (invite && invite.email) {
         relaxForLink();
@@ -305,10 +325,12 @@ if (!isConfigured()) {
       showTab(wantsLogin() ? "login" : "signup");
     } else if (joinCode) {
       const preview = await supabase.rpc("acq_preview_join", { p_code: joinCode });
+      linksChecked = true;
       joinLink = preview.data && preview.data.business_name ? preview.data : null;
       if (joinLink) relaxForLink();
       showTab(wantsLogin() ? "login" : "signup");
     }
+    closeSignup();
     const resolved = await resolveSession(supabase, window.location.href);
     if (resolved.session) {
       clearAuthParams();
@@ -341,6 +363,7 @@ if (!isConfigured()) {
         if (!/^\S+@\S+\.\S+$/.test(email)) return showError("Enter a valid email address.");
         const inviteOk = Boolean(inviteEmail());
         const joinOk = !inviteOk && Boolean(joinLink);
+        if (!signupAllowed({ inviteOk, joinOk })) return showError(signupClosedReason({ inviteToken, inviteOk, joinCode, joinOk }));
         const needs = signupNeeds({ inviteOk, joinOk });
         if (needs.instagram && !instagram) return showError("Enter your Instagram handle.");
         if (password.length < 8) return showError("Use at least 8 characters in the password.");
