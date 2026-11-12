@@ -599,8 +599,19 @@ function aiBar(ui, copy, desk) {
   const status = ui.el("p", { id: "prompt-edit-status", class: "claude-notice", role: "status" });
   if (!desk.editError) status.hidden = true;
   else status.textContent = desk.editError;
+  const send = bar.querySelector("button[type=submit]");
+  if (desk.aiBusy) {
+    input.disabled = true;
+    if (send) send.disabled = true;
+    status.hidden = false;
+    status.textContent = copy.working;
+  } else if (desk.editNote && !desk.editError) {
+    status.hidden = false;
+    status.textContent = desk.editNote;
+  }
   bar.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (desk.aiBusy) return;
     const instruction = input.value.trim();
     if (!instruction) return;
     if (!ui.editPrompt) {
@@ -609,18 +620,46 @@ function aiBar(ui, copy, desk) {
       status.textContent = desk.editError;
       return;
     }
+    // One edit at a time, and the prompt box is locked while the AI works so
+    // nothing typed meanwhile is overwritten.
+    const target = ui.state.businessId;
+    const area = document.getElementById("setter-prompt");
+    desk.aiBusy = true;
+    desk.editError = "";
+    desk.editNote = "";
     input.disabled = true;
+    if (send) send.disabled = true;
+    if (area) area.readOnly = true;
     status.hidden = false;
+    const started = Date.now();
     status.textContent = copy.working;
-    const result = await ui.editPrompt(currentPromptValue(ui), instruction);
-    input.disabled = false;
+    const tick = setInterval(() => {
+      status.textContent = copy.working + " " + Math.round((Date.now() - started) / 1000) + "s";
+    }, 1000);
+    let result;
+    try {
+      result = await ui.editPrompt(currentPromptValue(ui), instruction);
+    } catch (error) {
+      result = { error: (error && error.message) || copy.editFailed };
+    } finally {
+      clearInterval(tick);
+      desk.aiBusy = false;
+      input.disabled = false;
+      if (send) send.disabled = false;
+      if (area) area.readOnly = false;
+    }
+    if ((result && result.stale) || ui.state.businessId !== target) {
+      ui.paint();
+      return;
+    }
     if (!result || result.error || !result.prompt) {
       desk.editError = (result && result.error) || copy.editFailed;
       status.textContent = desk.editError;
+      ui.paint();
       return;
     }
     desk.editError = "";
-    status.hidden = true;
+    desk.editNote = result.summary || "";
     ui.state.promptDraft = { body: result.prompt, base: ui.state.setterPrompt || "" };
     ui.state.setterDraft = result.prompt;
     desk.editing = true;
@@ -644,6 +683,7 @@ function aiBar(ui, copy, desk) {
       ui.state.setterDraft = ui.state.setterPrompt || "";
       desk.editing = false;
       desk.editError = "";
+      desk.editNote = "";
       ui.paint();
     }));
     wrap.append(actions);

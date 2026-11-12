@@ -2682,11 +2682,14 @@ async function restoreBrief(id) {
   await saveBrief(version.fields || {}, Array.isArray(version.cards) ? version.cards : [], "Restored");
 }
 
-async function callStudio(action, extra) {
-  if (!readyToSave()) {
-    toast("Sign in to use the model.", "bad");
+async function callStudio(action, extra, options) {
+  const quiet = Boolean(options && options.quiet);
+  const fail = (message) => {
+    if (quiet) return { error: message };
+    toast(message, "bad");
     return null;
-  }
+  };
+  if (!readyToSave()) return fail("Sign in to use the model.");
   const invoked = await state.supabase.functions.invoke("roleflow-studio", {
     body: { action, business_id: state.businessId, ...extra }
   });
@@ -2696,13 +2699,9 @@ async function callStudio(action, extra) {
       const body = await invoked.error.context.json().catch(() => null);
       if (body && body.error) message = String(body.error);
     }
-    toast(message, "bad");
-    return null;
+    return fail(message);
   }
-  if (invoked.data && invoked.data.error) {
-    toast(String(invoked.data.error), "bad");
-    return null;
-  }
+  if (invoked.data && invoked.data.error) return fail(String(invoked.data.error));
   return invoked.data;
 }
 
@@ -2717,9 +2716,14 @@ async function editPrompt(prompt, instruction) {
   if (!state.supabase) {
     return { prompt: String(prompt || "").trim() + "\n\n" + String(instruction || "").trim() };
   }
-  const data = await callStudio("edit", { prompt, instruction, fields: (state.brief && state.brief.fields) || {} });
-  if (!data || !data.prompt) return { error: "The edit did not run." };
-  return { prompt: String(data.prompt) };
+  // Only this business's prompt goes out, and the answer is dropped if the
+  // owner switched business while the AI was working.
+  const target = state.businessId;
+  const data = await callStudio("edit", { prompt, instruction }, { quiet: true });
+  if (!stillOn(state, target)) return { error: "", stale: true };
+  if (!data) return { error: "The edit did not run." };
+  if (data.error || !data.prompt) return { error: String(data.error || "The edit did not run.") };
+  return { prompt: String(data.prompt), summary: String(data.summary || ""), edits: Number(data.edits) || 0 };
 }
 
 async function scoreWithModel(fields) {
