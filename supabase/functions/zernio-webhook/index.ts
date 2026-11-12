@@ -22,8 +22,7 @@ import {
   replyText,
   safeWebhookError,
   sendRequest,
-  voiceRefreshRequest
-} from "../_shared/ig-gateway.js";
+  voiceRefreshRequest, fromConnectedAccount, connectedSenderAllowed, CONNECTED_SENDER_WINDOW_MS } from "../_shared/ig-gateway.js";
 import { VOICE_FAILED_BODY, inboundText, modelInbound, understandVoice, voiceBody, voiceFailureMessage, voiceMetadata, voiceOptions, voiceRule } from "../_shared/voice-transcribe.js";
 import { adminClient, json, loadGatewayConfig } from "../_shared/gateway-http.js";
 import { shouldAutoReply } from "../_shared/inbox-send.js";
@@ -100,6 +99,7 @@ Deno.serve(async (req) => {
           }
         }
         if (!queued) return;
+        if (event.kind === "message" && !await connectedSenderOk(admin, account.businessId, stored.data.thread_id, event.username)) return;
         const lead = await admin.from("acq_contacts").select("ai_enabled").eq("business_id", account.businessId).eq("external_id", event.senderId).maybeSingle();
         if (lead.error) throw new Error("lead lookup failed");
         if (!shouldAutoReply(true, lead.data)) return;
@@ -130,6 +130,20 @@ Deno.serve(async (req) => {
   }
   return json(result.status, result.body);
 });
+
+// Replies to another Roleflow-connected account stop after a few in a row, so
+// two setters cannot loop. Real leads are never affected.
+async function connectedSenderOk(admin, businessId, threadId, username) {
+  if (!String(username || "").trim() || !threadId) return true;
+  const rows = await admin.from("ig_gateway_accounts").select("username").eq("status", "connected");
+  if (rows.error) throw new Error("account lookup failed");
+  const connected = fromConnectedAccount(username, (rows.data || []).map((row) => row.username));
+  if (!connected) return true;
+  const since = new Date(Date.now() - CONNECTED_SENDER_WINDOW_MS).toISOString();
+  const out = await admin.from("ig_messages").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("thread_id", threadId).eq("direction", "out").gte("created_at", since);
+  if (out.error) throw new Error("message count failed");
+  return connectedSenderAllowed(true, out.count || 0);
+}
 
 async function lookupAccount(admin, accountId) {
   if (!accountId) return null;
