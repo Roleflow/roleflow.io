@@ -447,7 +447,7 @@ def patch_signup(foot):
     path = ROOT / "signup" / "index.html"
     text = path.read_text(encoding="utf-8")
     if 'rel="canonical"' not in text:
-        desc = "Create your Roleflow account to start onboarding. Qualified clients save their answers and book Instagram DM calls. An access code is required to join."
+        desc = "Create your Roleflow account to start onboarding. Qualified clients save their answers and book Instagram DM calls."
         if not 150 <= len(desc) <= 160:
             raise SystemExit(f"signup meta {len(desc)}")
         block = f'''<title>Create your account · Roleflow</title>

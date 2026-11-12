@@ -30,21 +30,21 @@ export function joinDestination(data, errorMessage) {
   return { ok: false, message: String(message) };
 }
 
-// What the sign-up form asks for. A valid invite or a team join link that is
-// on needs no access code and no Instagram handle; the server checks the link
-// again when the account is created.
+// What the sign-up form asks for. Nobody needs an access code. A valid invite
+// or a team join link that is on also makes the Instagram handle optional; the
+// server checks the link again when the account is created.
 export function signupNeeds({ inviteOk, joinOk } = {}) {
   const linked = Boolean(inviteOk || joinOk);
-  return { accessCode: !linked, instagram: !linked };
+  return { instagram: !linked };
 }
 
-// The metadata sent with supabase.auth.signUp. Only one of invite_token,
-// join_code, or access_code is sent.
-export function signupMetadata({ name, instagram, accessCode, inviteToken, inviteOk, joinCode, joinOk } = {}) {
+// The metadata sent with supabase.auth.signUp: name, Instagram, and at most one
+// of invite_token or join_code. No access code is sent.
+export function signupMetadata({ name, instagram, inviteToken, inviteOk, joinCode, joinOk } = {}) {
   const base = { full_name: String(name || ""), instagram: String(instagram || "") };
   if (inviteOk && inviteToken) return { ...base, invite_token: String(inviteToken) };
   if (joinOk && joinCode) return { ...base, join_code: String(joinCode) };
-  return { ...base, access_code: String(accessCode || "") };
+  return base;
 }
 
 export function linkRoleLabel(role) {

@@ -114,13 +114,14 @@ assert.match(sql, /check \(role in \('tester', 'prompt_editor', 'editor'\)\)/);
 
 
 // --- sign-up from a link needs no access code or Instagram handle ------------------
-assert.deepEqual(signupNeeds({}), { accessCode: true, instagram: true }, "no link: access code and Instagram");
-assert.deepEqual(signupNeeds({ inviteOk: true }), { accessCode: false, instagram: false });
-assert.deepEqual(signupNeeds({ joinOk: true }), { accessCode: false, instagram: false });
+assert.deepEqual(signupNeeds({}), { instagram: true }, "no link: Instagram, and no access code");
+assert.deepEqual(signupNeeds({ inviteOk: true }), { instagram: false });
+assert.deepEqual(signupNeeds({ joinOk: true }), { instagram: false });
 assert.deepEqual(signupMetadata({ name: "A", instagram: "", inviteToken: "tok", inviteOk: true, accessCode: "x" }), { full_name: "A", instagram: "", invite_token: "tok" });
 assert.deepEqual(signupMetadata({ name: "A", instagram: "h", joinCode: "c", joinOk: true }), { full_name: "A", instagram: "h", join_code: "c" });
-assert.deepEqual(signupMetadata({ name: "A", instagram: "h", joinCode: "c", joinOk: false, accessCode: "Code" }), { full_name: "A", instagram: "h", access_code: "Code" }, "a dead link falls back to the access code");
-assert.deepEqual(signupMetadata({ name: "A", instagram: "h", inviteToken: "t", inviteOk: false, accessCode: "Code" }), { full_name: "A", instagram: "h", access_code: "Code" });
+assert.deepEqual(signupMetadata({ name: "A", instagram: "h", joinCode: "c", joinOk: false, accessCode: "Code" }), { full_name: "A", instagram: "h" }, "a dead link is a normal sign-up; no access code is sent");
+assert.deepEqual(signupMetadata({ name: "A", instagram: "h", inviteToken: "t", inviteOk: false }), { full_name: "A", instagram: "h" });
+assert.deepEqual(signupMetadata({ name: "A", instagram: "h" }), { full_name: "A", instagram: "h" }, "no link: name and Instagram only");
 assert.equal(signupReturnPath({ joinCode: "abc", joinOk: true }), "/signup/?mode=login&join=abc");
 assert.equal(signupReturnPath({ inviteToken: "t", inviteOk: true }), "/signup/?mode=login&invite=t");
 assert.equal(signupReturnPath({}), "/signup/?mode=login");
@@ -129,9 +130,9 @@ assert.equal(linkRoleLabel("prompt_editor"), "Tester + prompt edits");
 
 const signupJs = read("signup/signup.js");
 assert.match(signupJs, /rpc\("acq_preview_join", \{ p_code: joinCode \}\)/);
-assert.match(signupJs, /data: signupMetadata\(\{ name, instagram, accessCode, inviteToken, inviteOk, joinCode, joinOk \}\)/);
+assert.match(signupJs, /data: signupMetadata\(\{ name, instagram, inviteToken, inviteOk, joinCode, joinOk \}\)/);
 assert.match(signupJs, /if \(needs\.instagram && !instagram\) return showError/, "Instagram is optional for link sign-ups");
-assert.match(signupJs, /if \(needs\.accessCode && !accessCode\) return showError/);
+assert.doesNotMatch(signupJs, /access-code|accessCode|Enter your access code/, "the sign-up page has no access code");
 assert.doesNotMatch(signupJs, /if \(!instagram\) return showError/);
 
 const enforce = sql.slice(sql.indexOf("function private.enforce_signup_access_code()"));
@@ -142,3 +143,19 @@ assert.match(sql, /grant execute on function public\.acq_preview_join\(text\) to
 const newUser = sql.slice(sql.indexOf("function public.handle_new_user()"));
 assert.match(newUser, /join_role in \('tester', 'prompt_editor', 'editor'\)/);
 assert.match(newUser, /on conflict \(business_id, user_id\) do nothing;\n    if acq_role is null then acq_role := join_role; end if;/);
+
+// --- sign-up needs no access code at all (20261111200000) ---------------------------
+const noCode = read("supabase/migrations/20261111200000_signup_without_access_code.sql");
+const noCodeFn = noCode.slice(noCode.indexOf("create or replace function private.enforce_signup_access_code()"));
+assert.doesNotMatch(noCodeFn, /signup_settings|Invalid access code|expected/, "the access code is no longer checked");
+assert.match(noCodeFn, /- 'invite_member_id' - 'acq_invite_id' - 'acq_join_business_id' - 'acq_join_role'/, "forged markers are still stripped");
+assert.match(noCodeFn, /raise exception 'Invalid invite';/, "a bad invite token still fails");
+assert.match(noCodeFn, /from public\.acq_join_links as l where l\.code = join_code/);
+assert.match(noCodeFn, /- 'access_code' - 'join_code';\n  return new;\nend;/, "a sent access code is dropped, never stored");
+assert.match(noCode, /revoke execute on function private\.enforce_signup_access_code\(\) from public, anon, authenticated;/);
+assert.doesNotMatch(noCode, /function public\.handle_new_user/, "account and business creation are unchanged");
+const drawer = read("auth/sidebar.js");
+assert.doesNotMatch(drawer, /access_code|drawer-access-code|Enter your access code/, "homepage sign-up sends no access code");
+assert.match(drawer, /if \(!instagram\) return \(signupError\.textContent = "Enter your Instagram handle\."\);/, "homepage sign-up still needs Instagram");
+assert.match(signupJs, /if \(needs\.instagram && !instagram\) return showError\("Enter your Instagram handle\."\);/);
+assert.match(read("signup/index.html"), /<input id="instagram"[^>]* required>/, "Instagram stays required by default");

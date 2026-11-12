@@ -125,13 +125,13 @@ function showTab(mode) {
   const invited = invite && invite.email;
   const roleLabel = invited ? linkRoleLabel(invite.role) : "";
   document.getElementById("page-sub").textContent = invited
-    ? "You're invited to " + invite.business_name + " as " + roleLabel + ". No access code is needed. Log in if you already have an account. This invite only adds that business."
+    ? "You're invited to " + invite.business_name + " as " + roleLabel + ". Log in if you already have an account. This invite only adds that business."
     : inviteToken
       ? "Use the invited email to log in or create an account. We'll add you to that business."
       : joinLink
-        ? "This link joins " + joinLink.business_name + " as " + linkRoleLabel(joinLink.role) + ". No access code is needed. Log in if you already have an account."
+        ? "This link joins " + joinLink.business_name + " as " + linkRoleLabel(joinLink.role) + ". Log in if you already have an account."
         : joinCode
-        ? "This link is turned off or was replaced. Ask the business owner for a new one, or sign up with an access code."
+        ? "This link is turned off or was replaced. Ask the business owner for a new one, or sign up to start your own business."
         : login
           ? "Open your account to continue onboarding, or email yourself a sign-in link."
           : "AI Client Acquisition Engine for coaches and info businesses. This is where qualified clients start onboarding. Your answers are saved to the account, so you can finish on any device.";
@@ -245,14 +245,10 @@ if (!isConfigured()) {
       });
     }
     const inviteEmail = () => (invite && invite.email ? String(invite.email) : "");
-    // A valid invite or a team join link that is on: no access code and no
-    // Instagram handle. The sign-up trigger checks the link again server-side.
+    // A valid invite or a team join link that is on: the Instagram handle is
+    // optional. The sign-up trigger checks the link again server-side.
     function relaxForLink() {
       const needs = signupNeeds({ inviteOk: Boolean(inviteEmail()), joinOk: Boolean(joinLink) });
-      const access = document.getElementById("access-code");
-      const accessLabel = access.closest("label");
-      if (accessLabel) accessLabel.hidden = !needs.accessCode;
-      access.required = needs.accessCode;
       const instagramInput = document.getElementById("instagram");
       instagramInput.required = needs.instagram;
       const instagramLabel = instagramInput.closest("label");
@@ -339,7 +335,6 @@ if (!isConfigured()) {
         const name = document.getElementById("name").value.trim();
         const email = document.getElementById("email").value.trim();
         const instagram = normalizeHandle(document.getElementById("instagram").value);
-        const accessCode = document.getElementById("access-code").value.trim();
         const password = document.getElementById("password").value;
         const confirm = document.getElementById("confirm").value;
         if (!name) return showError("Enter your name.");
@@ -348,7 +343,6 @@ if (!isConfigured()) {
         const joinOk = !inviteOk && Boolean(joinLink);
         const needs = signupNeeds({ inviteOk, joinOk });
         if (needs.instagram && !instagram) return showError("Enter your Instagram handle.");
-        if (needs.accessCode && !accessCode) return showError("Enter your access code.");
         if (password.length < 8) return showError("Use at least 8 characters in the password.");
         if (password !== confirm) return showError("Those passwords do not match.");
         const button = form.querySelector("button[type=submit]");
@@ -357,7 +351,7 @@ if (!isConfigured()) {
           email,
           password,
           options: {
-            data: signupMetadata({ name, instagram, accessCode, inviteToken, inviteOk, joinCode, joinOk }),
+            data: signupMetadata({ name, instagram, inviteToken, inviteOk, joinCode, joinOk }),
             emailRedirectTo: authReturnUrl(
               signupReturnPath({ inviteToken, inviteOk, joinCode, joinOk }),
               params.get("next"),

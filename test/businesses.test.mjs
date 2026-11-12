@@ -154,7 +154,7 @@ assert.match(read("supabase/functions/business-members/index.ts"), /https:\/\/ap
 assert.match(read("supabase/functions/business-members/index.ts"), /signup\/\?invite=/);
 assert.match(read("signup/signup.js"), /preview_invite/);
 assert.match(read("signup/signup.js"), /accept_invite/);
-assert.match(read("signup/index.html"), /id="access-code"/);
+assert.doesNotMatch(read("signup/index.html"), /access-code|Access code/, "sign-up has no access code field");
 
 const assetsSql = read("supabase/migrations/20261016140000_business_assets.sql");
 assert.match(assetsSql, /create table if not exists public\.business_assets/);
