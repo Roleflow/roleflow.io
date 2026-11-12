@@ -22,7 +22,8 @@ const halved = splitReply(clause, 10);
 assert.equal(halved.length >= 2, true);
 
 const studio = read("supabase/functions/roleflow-studio/index.ts");
-const edit = studio.slice(studio.indexOf("chain: setter.chain"), studio.indexOf("runtime,"));
+const chainLine = studio.split("\n").find((line) => line.includes("chain: setter.chain.slice"));
+const edit = chainLine || "";
 assert.match(studio, /loadSetterReply/);
 assert.match(edit, /chain: setter\.chain/);
 assert.doesNotMatch(edit, /temperature/);

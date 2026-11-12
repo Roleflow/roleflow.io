@@ -4,6 +4,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 import { completeChat, loadBusinessRuntime, loadSetterReply, logLlmError, platformDefault } from "../_shared/llm-provider.js";
+import { PROMPT_MAX } from "../_shared/prompt-history.js";
+import { applyPromptEdits, editBudget, editFailureMessage, editRequest, fetchWithDeadline, retryNote } from "../_shared/prompt-edits.js";
 
 const HOUR_LIMIT = 15;
 const XAI_URL = "https://api.x.ai/v1/chat/completions";
@@ -73,6 +75,9 @@ Deno.serve(async (req) => {
   const runtime = loaded ? (loaded.runtime || platformDefault(env)) : null;
   if (runtime && runtime.provider === "xai" && !runtime.endpoint) runtime.endpoint = XAI_URL;
   if (!setter && !runtime) return json(503, { error: "The assistant is not available yet. The model key is not set." });
+  if (action === "edit" && promptEdit) {
+    return await editPrompt({ admin, businessId, setter, runtime, loaded, body });
+  }
   let text = "";
   try {
     const result = setter
@@ -110,11 +115,6 @@ Deno.serve(async (req) => {
     if (!reply) return json(502, { error: "The model returned an empty reply." });
     return json(200, { reply });
   }
-  if (action === "edit" && String(body.prompt || "").trim()) {
-    const prompt = String(parsed.prompt || "").trim().slice(0, 80000);
-    if (!prompt) return json(502, { error: "The model returned an empty prompt." });
-    return json(200, { prompt });
-  }
   return json(200, { fields: cleanFields(parsed.fields || parsed) });
 });
 
@@ -122,7 +122,7 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
   if (action === "score") {
     const prompt = String(body.prompt || "").trim();
     if (prompt) {
-      return "Score this agent prompt from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Prompt:\n" + prompt.slice(0, 30000);
+      return "Score this agent prompt from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Prompt:\n" + prompt.slice(0, PROMPT_MAX);
     }
     return "Score this business brief from 0 to 10. Return {\"score\": number, \"items\": string[] } with at most 8 short improvements. Brief JSON:\n" + JSON.stringify(fields);
   }
@@ -132,10 +132,6 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
   }
   if (action === "edit") {
     const instruction = String(body.instruction || "").slice(0, 500);
-    const prompt = String(body.prompt || "").trim();
-    if (prompt) {
-      return "Apply this edit to the agent prompt. Return {\"prompt\": string} with the full rewritten prompt. Do not add facts that are not implied by the prompt. Edit: " + instruction + "\nPrompt:\n" + prompt.slice(0, 30000);
-    }
     return "Apply this edit to the brief and return {\"fields\": {same keys}}. Edit: " + instruction + "\nBrief JSON:\n" + JSON.stringify(fields);
   }
   const lines = Array.isArray(body.lines) ? body.lines.slice(-12) : [];
@@ -143,6 +139,57 @@ function promptFor(action: string, fields: Record<string, string>, body: Record<
     return "Draft one reply a person can edit. Do not claim it was sent. Return {\"reply\": string}. Lead state: " + String(body.lead_state || "open") + ". Thread JSON:\n" + JSON.stringify(lines) + "\nBrief JSON:\n" + JSON.stringify(fields);
   }
   return "Practice reply only. The user is playing " + String(body.as || "lead") + ". Lead state: " + String(body.lead_state || "open") + ". Return {\"reply\": string}. Thread JSON:\n" + JSON.stringify(lines) + "\nBrief JSON:\n" + JSON.stringify(fields);
+}
+
+// "Edit with AI" on the setter prompt. The whole prompt goes to the model, but
+// the model sends back only the edits, which are applied here. Unasked parts
+// stay exactly as the owner wrote them, the reply is small and fast, and a
+// long prompt is never cut off or truncated.
+async function editPrompt({ admin, businessId, setter, runtime, loaded, body }) {
+  const original = String(body.prompt || "").trim();
+  if (original.length > PROMPT_MAX) return json(400, { error: "This prompt is longer than " + PROMPT_MAX + " characters." });
+  const instruction = String(body.instruction || "").trim().slice(0, 500);
+  if (!instruction) return json(400, { error: "Write what to change." });
+  const budget = editBudget(instruction);
+  const started = Date.now();
+  const ask = async (note) => {
+    const input = {
+      system: SYSTEM,
+      messages: [{ role: "user", content: editRequest(original, instruction, note) }],
+      json: true,
+      maxTokens: budget.maxTokens,
+      fetchImpl: fetchWithDeadline(budget.timeoutMs),
+      onError: (info) => logLlmError(admin, { businessId, purpose: "prompt", ...info })
+    };
+    return setter
+      ? await completeChat({ ...input, chain: setter.chain.slice(0, 2) })
+      : await completeChat({ ...input, runtime, fallback: loaded && loaded.fallback, temperature: 0.2 });
+  };
+  let note = "";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let result;
+    try {
+      result = await ask(note);
+    } catch (error) {
+      return json(502, { error: editFailureMessage(error) });
+    }
+    const parsed = parseJson(result.text || "");
+    if (!parsed) {
+      const cut = result.trimmedCutOff ? { code: "cut_off" } : { message: "The model did not return JSON." };
+      return json(502, { error: editFailureMessage(cut) });
+    }
+    const edits = Array.isArray(parsed.edits) ? parsed.edits : [];
+    const summary = String(parsed.summary || "").trim().slice(0, 300);
+    if (!edits.length) return json(200, { ok: false, error: summary || "The AI made no change.", prompt: "" });
+    const applied = applyPromptEdits(original, edits);
+    if (applied.ok) {
+      if (!applied.changed) return json(200, { ok: false, error: "The AI made no change.", prompt: "" });
+      console.log(JSON.stringify({ event: "prompt_edit", business_id: businessId, chars_in: original.length, chars_out: applied.prompt.length, edits: applied.applied, attempts: attempt + 1, ms: Date.now() - started }));
+      return json(200, { ok: true, prompt: applied.prompt.slice(0, PROMPT_MAX), summary, edits: applied.applied });
+    }
+    note = retryNote(applied.failed);
+  }
+  return json(502, { error: "The AI could not match the text to change. Nothing was changed. Try quoting the line you want edited." });
 }
 
 function cleanFields(input: unknown) {
