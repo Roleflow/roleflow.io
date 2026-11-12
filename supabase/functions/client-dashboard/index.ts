@@ -41,6 +41,8 @@ import { normalizeCap } from "../_shared/comment-voice.js";
 import { commentSlotGuide, whenToSendFromRules } from "../_shared/comment-slot.js";
 import {
   bookingLinkFor,
+  businessBookingLink,
+  staleBookingLinks,
   expandPrompt,
   normalizeBookingLink,
   promptVersionLabel,
@@ -197,7 +199,10 @@ async function previewSetter(admin, businessId, userId, body, access) {
   if (!message && !followup) return json(200, { ok: false, error: "Write a message to try." });
   const scenario = trialScenario(body.scenario);
   const settings = await admin.from("acq_settings").select("booking_fallback_url").eq("agent_id", businessId).maybeSingle();
-  const bookingLink = bookingLinkFor(settings.data && settings.data.booking_fallback_url);
+  // The booking link written in the prompt being tried is the one sent.
+  const settingsLink = (settings.data && settings.data.booking_fallback_url) || "";
+  const bookingLink = businessBookingLink({ prompt, settingsLink });
+  const staleLinks = staleBookingLinks(bookingLink, [settingsLink]);
   const voiceRows = await admin.from("acq_voice_library").select("id, title, slot, storage_path, mime_type, active").eq("agent_id", businessId).eq("active", true);
   const catalog = voiceCatalog(voiceRows.error ? [] : voiceRows.data || []);
   const history = Array.isArray(body.messages) ? body.messages : [];
@@ -254,7 +259,7 @@ async function previewSetter(admin, businessId, userId, body, access) {
   }
   const text = unwrapModelText(result && result.text).trim();
   if (!text) return json(200, { ok: false, error: "The model returned an empty reply.", sent: false });
-  const resolved = resolveOutgoing(text, { voices: catalog, bookingLink });
+  const resolved = resolveOutgoing(text, { voices: catalog, bookingLink, staleLinks });
   const reply = trimToSentence(dropIncompleteTail(clientSafeText(resolved.text)), 8000);
   if (!reply) return json(200, { ok: false, error: "The model response was cut off.", sent: false });
   const providerId = String(result.provider || runtime.provider || "");

@@ -4,7 +4,7 @@
 
 const NAMED_SLOTS = ["booking_confirmation", "pre_call", "pre_call_value", "reminder"];
 
-export function bookingBehaviour({ sections, tools, settings }) {
+export function bookingBehaviour({ sections, tools, settings, promptLink }) {
   const source = sections && typeof sections === "object" ? sections : {};
   const text = ["workflow", "booking_logic", "qualification_rules", "followup_logic"]
     .map((key) => String(source[key] || "").trim())
@@ -13,7 +13,9 @@ export function bookingBehaviour({ sections, tools, settings }) {
   const required = requiredBeforeBooking(text);
   return {
     text,
-    link: bookingLink(tools, settings),
+    // The link in the business's own setter prompt wins over any tool or
+    // saved setting.
+    link: ownLink(promptLink) || bookingLink(tools, settings),
     slots: namedSlots(text),
     required,
     qualifyBeforeBook: required.length > 0 || /only book after|before (you |we )?book|qualification before booking/i.test(text),
@@ -69,6 +71,23 @@ function lineValue(text, label) {
 function namedSlots(text) {
   const body = String(text || "").toLowerCase();
   return NAMED_SLOTS.filter((slot) => new RegExp("(?:voice note slot|slot)\\s+" + slot + "\\b").test(body));
+}
+
+function ownLink(value) {
+  const link = String(value || "").trim();
+  return link.startsWith("https://") ? link.slice(0, 500) : "";
+}
+
+// Every booking link stored outside the prompt, for swapping stale ones out.
+export function storedBookingLinks(tools, settings) {
+  const out = [];
+  (Array.isArray(tools) ? tools : []).forEach((tool) => {
+    if (!tool || tool.kind !== "booking") return;
+    const config = tool.config && typeof tool.config === "object" ? tool.config : {};
+    [config.calendar_link, config.booking_url].forEach((item) => { if (item) out.push(String(item)); });
+  });
+  if (settings && settings.booking_fallback_url) out.push(String(settings.booking_fallback_url));
+  return out;
 }
 
 function bookingLink(tools, settings) {

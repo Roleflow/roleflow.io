@@ -12,7 +12,7 @@ import { renderVoiceDesk } from "./voice-desk.js";
 import { storageContentType, VOICE_MAX_BYTES, VOICE_MAX_MS, voiceError } from "./voice-audio.js";
 import { splitReply } from "./split-reply.js";
 import { activateTrial, blankTrial, trialBelongsTo, trialHistory, trialIsLive } from "./trial-thread.js";
-import { bookingLinkFor, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
+import { bookingLinkFor, businessBookingLink, promptVersionLabel, resolveOutgoing, voiceCatalog, voiceToken } from "./prompt-tokens.js";
 import { keyHint, previewKeys } from "./model-key.js";
 import { STANDING_RULES, draftBrief, transcriptsForModel } from "./winning-conversations.js";
 import { clampVoice, voiceFooter } from "./setter-voice.js";
@@ -2354,7 +2354,7 @@ async function sendTrial(prompt, message, options) {
       history,
       inbound: sample,
       voices: state.voices || [],
-      bookingLink: state.bookingLink,
+      bookingLink: businessBookingLink({ prompt: body, settingsLink: state.bookingLink }),
       versions: state.promptVersions,
       testedAt: state.setterTestedAt,
       savedPrompt: state.setterPrompt,
