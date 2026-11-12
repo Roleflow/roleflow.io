@@ -1,4 +1,4 @@
-import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, logout, signupErrorMessage } from "./supabase.js";
+import { authReturnUrl, destinationAfterLogin, getSupabase, isConfigured, logout } from "./supabase.js";
 
 const drawer = document.getElementById("site-drawer");
 const toggle = document.getElementById("menu-toggle");
@@ -10,9 +10,7 @@ if (!drawer || !toggle) {
   const member = document.getElementById("drawer-member");
   const signupForm = document.getElementById("drawer-signup");
   const loginForm = document.getElementById("drawer-login");
-  const signupError = document.getElementById("drawer-signup-error");
   const loginError = document.getElementById("drawer-login-error");
-  const signupOk = document.getElementById("drawer-signup-ok");
   const loginOk = document.getElementById("drawer-login-ok");
   const adminLink = document.getElementById("drawer-admin");
   const crmLink = document.getElementById("drawer-crm");
@@ -27,7 +25,7 @@ if (!drawer || !toggle) {
     document.documentElement.classList.toggle("drawer-open", open);
     if (open) {
       const focusTarget = member.hidden
-        ? (signupForm.hidden ? loginForm : signupForm).querySelector("input")
+        ? (signupForm.hidden ? loginForm.querySelector("input") : document.getElementById("show-signup"))
         : document.getElementById("drawer-dashboard");
       focusTarget?.focus();
     } else {
@@ -99,12 +97,6 @@ if (!drawer || !toggle) {
   else if (wantsLogin()) setOpen(true);
   document.getElementById("drawer-logout").addEventListener("click", logout);
 
-  function normalizeHandle(value) {
-    const handle = String(value || "").trim();
-    if (!handle || handle.startsWith("@") || /[/\s]/.test(handle)) return handle;
-    return "@" + handle;
-  }
-
   async function paint(session) {
     const token = ++paintToken;
     if (!session) {
@@ -137,8 +129,6 @@ if (!drawer || !toggle) {
   }
 
   if (!isConfigured()) {
-    signupError.textContent = "Add the Supabase keys in supabase/config.js before accounts can be created.";
-    signupForm.querySelector("button[type=submit]").disabled = true;
     loginForm.querySelector("button[type=submit]").disabled = true;
   } else {
     const supabase = getSupabase();
@@ -148,41 +138,8 @@ if (!drawer || !toggle) {
       paint(session);
     });
 
-    signupForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      signupError.textContent = "";
-      signupOk.textContent = "";
-      const name = document.getElementById("drawer-full-name").value.trim();
-      const email = document.getElementById("drawer-email").value.trim();
-      const instagram = normalizeHandle(document.getElementById("drawer-instagram").value);
-      const password = document.getElementById("drawer-password").value;
-      const confirm = document.getElementById("drawer-confirm").value;
-      if (!name) return (signupError.textContent = "Enter your name.");
-      if (!/^\S+@\S+\.\S+$/.test(email)) return (signupError.textContent = "Enter a valid email address.");
-      if (!instagram) return (signupError.textContent = "Enter your Instagram handle.");
-      if (password.length < 8) return (signupError.textContent = "Use at least 8 characters in the password.");
-      if (password !== confirm) return (signupError.textContent = "Those passwords do not match.");
-      const button = signupForm.querySelector("button[type=submit]");
-      button.disabled = true;
-      const { data: created, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: name, instagram },
-          emailRedirectTo: authReturnUrl("/login/", "/account/", window.location.href)
-        }
-      });
-      button.disabled = false;
-      if (error) {
-        signupError.textContent = signupErrorMessage(error);
-        return;
-      }
-      if (created.session) {
-        window.location.replace("/account/acquisition/");
-        return;
-      }
-      signupOk.textContent = "Check your email to confirm the account, then log in.";
-    });
+    // Sign-up is by invitation: the drawer has no sign-up form. People sign
+    // up from a team link or an invite email (/signup/?join=… or ?invite=…).
 
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -223,7 +180,7 @@ if (!drawer || !toggle) {
       button.disabled = false;
       if (error) {
         loginError.textContent = /signups not allowed|user not found|not allowed/i.test(error.message || "")
-          ? "No account uses that email yet. Sign up first."
+          ? "No account uses that email yet. Sign up from your team link or invite email first."
           : error.message;
         return;
       }

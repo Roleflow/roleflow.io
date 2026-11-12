@@ -47,6 +47,22 @@ export function signupMetadata({ name, instagram, inviteToken, inviteOk, joinCod
   return base;
 }
 
+// Sign-up is by invitation only: a valid invite (for that email) or a team join
+// link that is on. The sign-up trigger enforces the same rule server-side.
+export const INVITE_ONLY_MESSAGE = "Sign-up is by invitation. Ask the business owner for a team link.";
+
+export function signupAllowed({ inviteOk, joinOk } = {}) {
+  return Boolean(inviteOk || joinOk);
+}
+
+// Why the sign-up form is closed, or "" when it is open.
+export function signupClosedReason({ inviteToken, inviteOk, joinCode, joinOk } = {}) {
+  if (signupAllowed({ inviteOk, joinOk })) return "";
+  if (inviteToken) return "This invite link is not valid or has expired. Ask the business owner for a new one, or log in if you already have an account.";
+  if (joinCode) return "This team link is turned off or was replaced. Ask the business owner for a new one, or log in if you already have an account.";
+  return INVITE_ONLY_MESSAGE;
+}
+
 export function linkRoleLabel(role) {
   if (role === "editor") return "Editor";
   if (role === "prompt_editor") return "Tester + prompt edits";

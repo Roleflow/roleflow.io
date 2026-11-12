@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { inviteMail, inviteRequest, openInvite, rateLimiter } from "../supabase/functions/_shared/hooks-invite.js";
 import { JOIN_ROLE_DEFAULT, joinLinkNote, joinLinkUrl, joinRole } from "../acquire/team-access.js";
-import { joinDestination, linkRoleLabel, signupMetadata, signupNeeds, signupReturnPath } from "../signup/entry.js";
+import { INVITE_ONLY_MESSAGE, joinDestination, linkRoleLabel, signupAllowed, signupClosedReason, signupMetadata, signupNeeds, signupReturnPath } from "../signup/entry.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -156,6 +156,35 @@ assert.match(noCode, /revoke execute on function private\.enforce_signup_access_
 assert.doesNotMatch(noCode, /function public\.handle_new_user/, "account and business creation are unchanged");
 const drawer = read("auth/sidebar.js");
 assert.doesNotMatch(drawer, /access_code|drawer-access-code|Enter your access code/, "homepage sign-up sends no access code");
-assert.match(drawer, /if \(!instagram\) return \(signupError\.textContent = "Enter your Instagram handle\."\);/, "homepage sign-up still needs Instagram");
+assert.doesNotMatch(drawer, /auth\.signUp\(/, "the homepage drawer cannot create accounts (sign-up is by invitation)");
 assert.match(signupJs, /if \(needs\.instagram && !instagram\) return showError\("Enter your Instagram handle\."\);/);
 assert.match(read("signup/index.html"), /<input id="instagram"[^>]* required>/, "Instagram stays required by default");
+
+// --- sign-up is by invitation only (20261112130000) ---------------------------------
+assert.equal(INVITE_ONLY_MESSAGE, "Sign-up is by invitation. Ask the business owner for a team link.");
+assert.equal(signupAllowed({}), false, "no link: no sign-up");
+assert.equal(signupAllowed({ inviteOk: true }), true);
+assert.equal(signupAllowed({ joinOk: true }), true);
+assert.equal(signupClosedReason({}), INVITE_ONLY_MESSAGE);
+assert.equal(signupClosedReason({ joinCode: "c", joinOk: true }), "");
+assert.equal(signupClosedReason({ inviteToken: "t", inviteOk: true }), "");
+assert.match(signupClosedReason({ joinCode: "dead" }), /team link is turned off or was replaced/);
+assert.match(signupClosedReason({ inviteToken: "bad" }), /invite link is not valid or has expired/);
+assert.deepEqual(signupNeeds({ joinOk: true }), { instagram: false }, "Instagram stays optional for link sign-ups");
+assert.match(signupJs, /function closeSignup\(\) \{/);
+assert.match(signupJs, /\n    closeSignup\(\);\n    const resolved = await resolveSession/, "the form closes once links are checked, before anything else");
+assert.match(signupJs, /if \(!signupAllowed\(\{ inviteOk, joinOk \}\)\) return showError\(signupClosedReason\(/, "submit is refused without a link");
+assert.match(signupJs, /input\.disabled = true; input\.required = false;/);
+const homepageHtml = read("index.html");
+assert.match(homepageHtml, /id="drawer-invite-only">Sign-up is by invitation\. Ask the business owner for a team link\.</);
+assert.doesNotMatch(homepageHtml, /id="drawer-full-name"|id="drawer-password"|Create account/, "the drawer has no sign-up form");
+const inviteOnly = read("supabase/migrations/20261112130000_signup_invite_only.sql");
+const inviteOnlyFn = inviteOnly.slice(inviteOnly.indexOf("create or replace function private.enforce_signup_access_code()"));
+assert.match(inviteOnlyFn, /raise exception 'Sign-up is by invitation';\nend;/, "no valid link: no account");
+assert.match(inviteOnlyFn, /raise exception 'Invalid invite';/);
+assert.match(inviteOnlyFn, /- 'invite_member_id' - 'acq_invite_id' - 'acq_join_business_id' - 'acq_join_role'/);
+assert.match(inviteOnlyFn, /new\.raw_app_meta_data->>'signup_allowed'/, "admin-made accounts use app_metadata, which the public endpoint cannot set");
+assert.doesNotMatch(inviteOnlyFn, /raw_user_meta_data->>'signup_allowed'/, "the bypass is never read from user metadata");
+assert.doesNotMatch(inviteOnlyFn, /signup_settings|access_code' *=|Invalid access code/, "no access code anywhere");
+assert.doesNotMatch(inviteOnly, /function public\.handle_new_user/);
+assert.match(inviteOnly, /revoke execute on function private\.enforce_signup_access_code\(\) from public, anon, authenticated;/);

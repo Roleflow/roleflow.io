@@ -131,16 +131,10 @@
       <button type="button" id="show-signup" role="tab" aria-selected="true" aria-controls="drawer-signup" tabindex="0">Sign up</button>
       <button type="button" id="show-login" role="tab" aria-selected="false" aria-controls="drawer-login" tabindex="-1">Log in</button>
     </div>
-    <form id="drawer-signup" class="drawer-form" role="tabpanel" aria-labelledby="show-signup">
-      <label>Your name<input id="drawer-full-name" name="name" type="text" autocomplete="name" required></label>
-      <label>Email<input id="drawer-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
-      <label>Instagram handle<input id="drawer-instagram" name="instagram" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-      <label>Password<span class="drawer-hint">At least 8 characters.</span><input id="drawer-password" name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-      <label>Confirm password<input id="drawer-confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
-      <p class="drawer-err" id="drawer-signup-error" role="alert"></p>
-      <p class="drawer-ok" id="drawer-signup-ok" role="status"></p>
-      <button class="btn" type="submit">Create account</button>
-    </form>
+    <div id="drawer-signup" class="drawer-form" role="tabpanel" aria-labelledby="show-signup">
+      <p class="drawer-note" id="drawer-invite-only">Sign-up is by invitation. Ask the business owner for a team link.</p>
+      <p class="drawer-note">Got a team link or an invite email? Open it to create your account. Already have an account? Log in.</p>
+    </div>
     <form id="drawer-login" class="drawer-form" role="tabpanel" aria-labelledby="show-login" hidden>
       <label>Email<input id="drawer-login-email" name="email" type="email" autocomplete="email" inputmode="email" required></label>
       <label>Password<input id="drawer-login-password" name="password" type="password" autocomplete="current-password"></label>
