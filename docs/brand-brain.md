@@ -1,6 +1,6 @@
 # Brand Brain
 
-This is the source of truth for how Roleflow sounds, what it sells, and which proof the team may use. Edit this file and deploy it. Agentic HQ reads it from `/docs/brand-brain.md`.
+This is the source of truth for how Roleflow sounds, what it sells, and which proof the team may use. Edit this file and deploy it. The product no longer opens it from an admin page.
 
 ## Voice
 
@@ -13,7 +13,6 @@ Instagram DM sales systems, paid on commission.
 ## Proof
 
 - Add the claims the team is allowed to repeat.
-- Drafts stay inside Agentic HQ until Diego ships them.
 
 ## Do not invent
 

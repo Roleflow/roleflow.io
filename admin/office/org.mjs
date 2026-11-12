@@ -1,11 +1,9 @@
-// Roleflow org for the Agentic HQ office.
-//
-// Seat geometry lives here. The agent-hq edge function only returns the
-// calling agent's own tasks and schedules, so it cannot place the floor.
-// Who sits in each seat, the "N of M agents below the C-suite" pill, and the
-// desk line come from the admin client's hq_agents / hq_tasks / hq_activity /
-// hq_schedules rows (see currentDesk in desk.mjs). Live names such as
-// "Chief Revenue Officer (CRO)" match the canonical seat or a previous HQ name.
+// Seat geometry for the office floor. The per-business Workforce view still
+// draws this layout. The agent-hq edge function only returns the calling
+// agent's own tasks and schedules, so it cannot place the floor. Who sits in
+// each seat and the "N of M agents below the C-suite" pill come from
+// hq_agents rows. Live names such as "Chief Revenue Officer (CRO)" match the
+// canonical seat or a previous name.
 
 export function belowLine(below, total) {
   return below + " of " + total + " agents below the C-suite";

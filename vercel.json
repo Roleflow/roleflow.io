@@ -25,17 +25,32 @@
     },
     {
       "source": "/admin/office",
-      "destination": "/admin/hq/",
+      "destination": "/admin/",
       "statusCode": 301
     },
     {
       "source": "/admin/office/",
-      "destination": "/admin/hq/",
+      "destination": "/admin/",
       "statusCode": 301
     },
     {
       "source": "/admin/office/index.html",
-      "destination": "/admin/hq/",
+      "destination": "/admin/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/hq",
+      "destination": "/admin/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/hq/",
+      "destination": "/admin/",
+      "statusCode": 301
+    },
+    {
+      "source": "/admin/hq/index.html",
+      "destination": "/admin/",
       "statusCode": 301
     },
     {

@@ -1,8 +1,8 @@
 # Agentic HQ API
 
-Diego manages agents in the admin UI at `/admin/hq/`. The isometric office is the main view there, filling the area beside the sidebar, and it reads the same tables (agents, tasks, comments, and the Needs Diego queue). `/admin/office` redirects to `/admin/hq`. Three.js loads only when that office view opens. Each agent can also call this HTTP API with its own key to read its queue and post drafts back.
+The admin pages for Office, AI Workforce, Overview, Tasks, Needs Diego, Schedule, Agents, and Activity are gone. `/admin/hq` and `/admin/office` redirect to `/admin/`. The tables and this HTTP API stay. Each agent can still call the API with its own key to read its queue and post drafts back. There is no admin screen left for issuing a new key, editing agents, or answering a Needs Diego item.
 
-Nothing in this API sends email, DMs, or social posts. Task results are drafts for Diego. Approving or rejecting a `needs_diego` item is admin-only and stays inside Agentic HQ.
+Nothing in this API sends email, DMs, or social posts. Task results are drafts. Approving or rejecting a `needs_diego` item is not available from this API.
 
 ## Tables
 
@@ -31,14 +31,14 @@ Apply migrations in filename order. Agent HQ depends on `public.is_admin()` from
 5. The migration adds the HQ tables to the `supabase_realtime` publication when that publication exists. The admin UI subscribes with the logged-in admin session.
 6. Diego issues a key from **Agents → Edit → Issue API key**. The plaintext is shown once. Only a SHA-256 hash is stored. Issuing a new key revokes the previous active key. Revoke from the same screen.
 
-The live roster is the 19 Oct 2026 org. Chief of Staff sits over five chiefs: Chief Revenue Officer, Chief Content Officer, Chief Operating Officer, Chief Financial Officer, and Chief Technology Officer. Under them: Lead Generation Manager and Outbound SDR, Inbound Triage Specialist, CRM Database Administrator, Social Media Distribution Manager and Community Engagement Specialist, Paid Media & Partnerships Specialist, Quality Assurance Analyst, Proof & Case Study Specialist, Frontend Engineer, Backend & Database Engineer, Integrations Engineer, QA & Release Engineer, and Security & Access Admin. Sales Operations Manager, Finance Manager, and New Bot are retired and stay in the tables so their history remains. Agentic HQ hides retired rows. Website Buildeer and Loom Outreacher were notes, not separate rows.
+The live roster is the 19 Oct 2026 org. Chief of Staff sits over five chiefs: Chief Revenue Officer, Chief Content Officer, Chief Operating Officer, Chief Financial Officer, and Chief Technology Officer. Under them: Lead Generation Manager and Outbound SDR, Inbound Triage Specialist, CRM Database Administrator, Social Media Distribution Manager and Community Engagement Specialist, Paid Media & Partnerships Specialist, Quality Assurance Analyst, Proof & Case Study Specialist, Frontend Engineer, Backend & Database Engineer, Integrations Engineer, QA & Release Engineer, and Security & Access Admin. Sales Operations Manager, Finance Manager, and New Bot are retired and stay in the tables so their history remains. Website Buildeer and Loom Outreacher were notes, not separate rows.
 
 ## Call the API
 
 ```bash
 export SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
 export SUPABASE_ANON_KEY="YOUR_PUBLISHABLE_KEY"
-export AGENT_API_KEY="rfhq_..."   # issued in Agentic HQ, never commit this
+export AGENT_API_KEY="rfhq_..."   # existing agent key, never commit this
 ```
 
 `AGENT_API_KEY` looks like `rfhq_` plus 64 hex characters. Send it only in `X-Agent-Key`.
@@ -93,7 +93,7 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
   -d '{"action":"create","title":"Research the ICP brief","description":"Draft for Diego.","estimate_minutes":40,"priority":"high","business_id":"BUSINESS_UUID"}'
 ```
 
-A successful response includes `task_id`, `business_id`, `station`, `priority`, and `estimate_minutes`. The create is written to `hq_activity`. Passing another agent's id does nothing: the task stays on this agent. An agent key cannot change `station` after create. Diego can move the card from Agentic HQ.
+A successful response includes `task_id`, `business_id`, `station`, `priority`, and `estimate_minutes`. The create is written to `hq_activity`. Passing another agent's id does nothing: the task stays on this agent. An agent key cannot change `station` after create.
 
 ### timing
 
@@ -162,7 +162,7 @@ curl -sS "$SUPABASE_URL/functions/v1/agent-hq" \
   -d '{"action":"needs_diego","task_id":"TASK_UUID","question":"Ship the homepage draft?"}'
 ```
 
-Diego answers in the Needs Diego inbox (one item, or a numbered batch such as `1 yes`). That writes the decision and a comment. It does not email or message anyone.
+The Needs Diego inbox is gone, so this call still records the question and leaves `decision` as `pending`. It does not email or message anyone, and this API does not write the decision.
 
 ## Errors
 
