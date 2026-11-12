@@ -186,8 +186,14 @@ async function planJob(admin, job, apiKey) {
     score: row.score || null,
     lastUserMessageAt: row.last_user_message_at || new Date().toISOString()
   };
+  // Every model key the shared provider reads. Claude was missing here, so a
+  // business set to Claude always fell back to its second model.
   const env = {
     LLM_PROVIDER: Deno.env.get("LLM_PROVIDER") || "",
+    ANTHROPIC_API_KEY: Deno.env.get("ANTHROPIC_API_KEY") || "",
+    ANTHROPIC_MODEL: Deno.env.get("ANTHROPIC_MODEL") || "",
+    OPENROUTER_API_KEY: Deno.env.get("OPENROUTER_API_KEY") || "",
+    OPENROUTER_MODEL: Deno.env.get("OPENROUTER_MODEL") || "",
     XAI_API_KEY: Deno.env.get("XAI_API_KEY") || "",
     XAI_MODEL: Deno.env.get("XAI_MODEL") || "",
     OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || "",

@@ -633,6 +633,27 @@ function anthropicRequest({ runtime, spec, model, system, messages, json, toolLi
   };
 }
 
+// Gemini function declarations accept only an OpenAPI subset. Keys such as
+// additionalProperties make it reject the whole request.
+const GEMINI_SCHEMA_DROP = new Set(["additionalProperties", "$schema", "$id", "$ref", "definitions", "$defs", "patternProperties", "unevaluatedProperties", "const", "examples", "default"]);
+
+export function geminiSchema(schema) {
+  if (Array.isArray(schema)) return schema.map(geminiSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  const out = {};
+  Object.keys(schema).forEach((key) => {
+    if (GEMINI_SCHEMA_DROP.has(key)) return;
+    const value = schema[key];
+    if (key === "properties" && value && typeof value === "object") {
+      out.properties = {};
+      Object.keys(value).forEach((name) => { out.properties[name] = geminiSchema(value[name]); });
+      return;
+    }
+    out[key] = geminiSchema(value);
+  });
+  return out;
+}
+
 function geminiRequest({ runtime, model, system, messages, json, toolList, heat, maxTokens }) {
   const gemini3 = /^gemini-3/i.test(model);
   const generationConfig = {};
@@ -654,7 +675,7 @@ function geminiRequest({ runtime, model, system, messages, json, toolList, heat,
       functionDeclarations: toolList.map((tool) => ({
         name: String(tool.name).slice(0, 64),
         description: String(tool.description || "").slice(0, 500),
-        parameters: tool.parameters || { type: "object", properties: {} }
+        parameters: geminiSchema(tool.parameters || { type: "object", properties: {} })
       }))
     }];
   }
