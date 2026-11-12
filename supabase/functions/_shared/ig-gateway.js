@@ -328,6 +328,24 @@ export function voiceRefreshRequest(event, apiKey) {
   };
 }
 
+// A DM can come from an Instagram account that is itself connected to Roleflow
+// (for example an owner testing one business from another business's account).
+// The setter still answers it, but only a few times in a row: when the other
+// side is also a setter, the two would otherwise reply to each other forever.
+export const CONNECTED_SENDER_WINDOW_MS = 30 * 60 * 1000;
+export const CONNECTED_SENDER_MAX_OUT = 8;
+
+export function connectedSenderAllowed(isConnected, recentOutbound) {
+  if (!isConnected) return true;
+  return Number(recentOutbound || 0) < CONNECTED_SENDER_MAX_OUT;
+}
+
+export function fromConnectedAccount(username, connected) {
+  const name = String(username || "").trim().replace(/^@/, "").toLowerCase();
+  if (!name) return false;
+  return (connected || []).some((item) => String(item || "").trim().replace(/^@/, "").toLowerCase() === name);
+}
+
 export function shouldEnqueue(event, flags) {
   if (!event || event.ignored || event.standby || event.kind === "sent") return false;
   const setterOn = Boolean(flags && flags.setterOn === true);
