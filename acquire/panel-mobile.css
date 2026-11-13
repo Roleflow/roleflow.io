@@ -250,7 +250,7 @@
   body.platform .outreach-frame{min-height:calc(100dvh - 132px);height:calc(100dvh - 132px)}
   body.platform .outreach-card .btn,body.platform .outreach-viewer .btn{min-height:44px}
   body.platform .outreach-card .btn{width:100%}
-  body.platform .outreach-card input[type=text]{width:100%}
+  body.platform .outreach-card input[type=text],body.platform .outreach-card input[type=time],body.platform .outreach-card input[type=number],body.platform .outreach-card textarea{width:100%}
   body.platform .outreach-price,body.platform .outreach-term,body.platform .outreach-soon{overflow-wrap:anywhere}
 }
 

@@ -13,6 +13,11 @@
 .outreach-viewer-bar{display:flex;justify-content:space-between;gap:12px;align-items:center}
 .outreach-frame{width:100%;min-height:640px;border:0;border-radius:16px;background:#0A1226}
 .outreach-stage{display:grid;place-items:center;padding:24px;text-align:center}
+.workflow-activity{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.workflow-activity li{border:1px solid var(--line);border-radius:12px;padding:10px 12px;overflow-wrap:anywhere}
+.outreach-card input[type=time],.outreach-card input[type=number],.outreach-card textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--line);background:#101A33;color:var(--ink);padding:10px 12px;font:inherit}
+.outreach-card textarea{min-height:96px;resize:vertical}
+#workflow-connect:disabled{opacity:.55;cursor:not-allowed}
 
 body.platform{text-align:left}
 .icon-btn{width:36px;height:36px;border-radius:999px;border:1px solid var(--line);background:#1D2848;color:var(--ink);display:grid;place-items:center;cursor:pointer;font:700 .75rem var(--b);padding:0}

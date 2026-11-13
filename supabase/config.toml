@@ -455,6 +455,11 @@ verify_jwt = true
 [functions.outreach-usage]
 verify_jwt = false
 
+# outreach-controller is the disabled worker callback. Do not deploy it and do not set
+# OUTREACH_CONTROLLER_ENABLED. A deployed call returns 503 and does not send.
+[functions.outreach-controller]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327
